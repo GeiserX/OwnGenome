@@ -190,7 +190,6 @@ tests/e2e/prs-scores-and-run-options-1-strand-sex.sh	SC2013	for id in $(awk -F'\
 tests/e2e/prs-scores-and-run-options-1-strand-sex.sh	SC2016	check "control: the default run's pgsc_calc had no --keep_ambiguous" bash -c '! grep -q -- --keep_ambiguous "$1"' _ "${D}/prs/pgsc_calc.${STAMP1}/nextflow.log"
 tests/e2e/prs-scores-and-run-options-2-panel-chrx.sh	SC2013	for id in $(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${REPO}/assets/pgs_scores.tsv"); do
 tests/e2e/qc-1-sample-qc.sh	SC2329	above() { [ -n "$1" ] && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 > b + 0) }'; }
-tests/e2e/qc-1-sample-qc.sh	SC2329	below() { [ -n "$1" ] && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 < b + 0) }'; }
 tests/e2e/reports-and-pgx-correctness-reports.sh	SC2329	cleanup() { rm -f "$PRS" "$STATUS"; rmdir "${D}/prs" 2>/dev/null || true; }
 tests/e2e/reports-and-pgx-correctness-revel.sh	SC2329	restore() {
 tests/e2e/run-all-launcher.sh	SC2329	all_cached() { [ "$(status_count "$1" CACHED)" -ge 10 ] && [ "$(status_count "$1" COMPLETED)" -eq 0 ] && [ "$(status_count "$1" FAILED)" -eq 0 ]; }

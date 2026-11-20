@@ -400,7 +400,10 @@ pub fn build(work: &Path) -> Result<(String, String), BuildError> {
     let mut text = String::from(
         "# assets/sv_rule_regions.tsv: the GRCh38 regions where og sv postfilter overrides AnnotSV's class 4\n\
          # or 5. Written by scripts/ci/build-sv-rule-regions.sh, which says how each rule's rows are chosen;\n\
-         # rebuild it there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file.\n",
+         # rebuild it there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file.\n\
+         # Sources and terms: the TRExplorer catalog, Copyright (c) 2024 Broad Institute, MIT licence\n\
+         # (assets/licences/TRExplorer-LICENSE.txt); GENCODE, open access; HGNC and the NCBI assembly\n\
+         # regions, no restriction on use.\n",
     );
     text.push_str(&format!(
         "# {summary}.\n#chrom\tstart\tend\trule\taction\tname\tsource\n"
@@ -566,7 +569,7 @@ mod tests {
         fixture(&dir, false);
         let (text, summary) = build(&dir).unwrap();
         fs::remove_dir_all(&dir).unwrap();
-        let body: Vec<&str> = text.lines().skip(4).collect();
+        let body: Vec<&str> = text.lines().skip_while(|l| l.starts_with("# ")).collect();
         assert_eq!(
             body,
             [
@@ -585,6 +588,37 @@ mod tests {
             "Rows: gene_alias 2, ig_tr_locus 2, mhc 1, tandem_repeat 2"
         );
         assert!(text.contains("\n# Rows: gene_alias 2, ig_tr_locus 2, mhc 1, tandem_repeat 2.\n"));
+    }
+
+    #[test]
+    fn the_header_names_each_source_and_its_terms() {
+        let dir = std::env::temp_dir().join(format!("og-svrules-terms-{}", std::process::id()));
+        fixture(&dir, false);
+        let (text, _) = build(&dir).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        let header: String = text
+            .lines()
+            .take_while(|l| l.starts_with("# "))
+            .map(|l| &l[2..])
+            .collect::<Vec<_>>()
+            .join(" ");
+        for want in [
+            "TRExplorer catalog, Copyright (c) 2024 Broad Institute, MIT licence",
+            "(assets/licences/TRExplorer-LICENSE.txt)",
+            "GENCODE, open access",
+            "HGNC and the NCBI assembly regions, no restriction on use",
+        ] {
+            assert!(
+                header.contains(want),
+                "{want:?} not in the header: {header}"
+            );
+        }
+        let notice = fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/licences/TRExplorer-LICENSE.txt"
+        ))
+        .unwrap();
+        assert!(notice.starts_with("MIT License\n\nCopyright (c) 2024 Broad Institute\n"));
     }
 
     #[test]

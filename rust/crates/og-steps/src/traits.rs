@@ -735,6 +735,82 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
     }
     Ok(out)
 }
+/// The two haplotypes of a key that is one diplotype (`a/b`). An empty key
+/// or several diplotypes (`a/b|c/d`, whose reading already says what phase
+/// would decide) give `None`.
+fn assumed_copies<'a>(r: &'a Rule, key: &str) -> Option<(&'a Hap, &'a Hap)> {
+    if key.is_empty() || key.contains('|') {
+        return None;
+    }
+    let (a, b) = key.split_once('/')?;
+    let hap = |n: &str| r.haps.iter().find(|h| h.name == n);
+    Some((hap(a)?, hap(b)?))
+}
+/// "x and y", or "x, y and z".
+fn join_and(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+/// Where the changed alleles (the alt of each heterozygous site) sit, given
+/// the alleles of one copy: the other copy carries the rest.
+fn placement(r: &Rule, het: &[usize], copy: &[String]) -> String {
+    let alt = |i: &usize| format!("{} {}", r.sites[*i].row["rsid"], r.sites[*i].row["alt"]);
+    let (on, off): (Vec<usize>, Vec<usize>) = het
+        .iter()
+        .partition(|i| copy[**i] == r.sites[**i].row["alt"]);
+    let all = join_and(&het.iter().map(alt).collect::<Vec<_>>());
+    if on.is_empty() || off.is_empty() {
+        format!("{all} sit on one copy")
+    } else if het.len() == 2 {
+        format!("{all} sit on different copies")
+    } else {
+        format!(
+            "{} sit on one copy and {} on the other",
+            join_and(&on.iter().map(alt).collect::<Vec<_>>()),
+            join_and(&off.iter().map(alt).collect::<Vec<_>>())
+        )
+    }
+}
+/// The reading when read-backed phase puts the alleles on copies the rule
+/// does not describe, where the genotypes alone read `label`.
+fn phased_apart(
+    r: &Rule,
+    het: &[usize],
+    copies: [(&Vec<String>, Option<usize>); 2],
+    label: &str,
+) -> String {
+    let rs: Vec<_> = r.sites.iter().map(|s| s.row["rsid"].as_str()).collect();
+    let name = |(h, n): (&Vec<String>, Option<usize>)| {
+        n.map_or_else(
+            || format!("{} at {}", h.join(","), rs.join(", ")),
+            |n| r.haps[n].name.clone(),
+        )
+    };
+    let changed = copies
+        .iter()
+        .filter(|(h, _)| h.iter().zip(&r.sites).any(|(a, s)| a == &s.row["alt"]))
+        .count();
+    let unknown = copies.iter().filter(|(_, n)| n.is_none()).count();
+    format!(
+        "Read-backed phase shows that {}: the copies are {} and {}{}. This rule does not describe {}, so the pair is not read; without phase these genotypes would read {label}.",
+        placement(r, het, copies[0].0),
+        name(copies[0]),
+        name(copies[1]),
+        if changed == 1 {
+            ", so one copy is changed and the other is not"
+        } else {
+            ""
+        },
+        if unknown == 1 {
+            "that copy"
+        } else {
+            "those copies"
+        }
+    )
+}
 fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
     let g: Vec<_> = r.sites.iter().map(|s| genotype(s, gt)).collect();
     let rs: Vec<_> = r.sites.iter().map(|s| s.row["rsid"].as_str()).collect();
@@ -830,34 +906,86 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
     } else {
         "not_needed"
     };
-    let key = if r.meta["needs_phase"] == "no" {
-        allowed(r, &g.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|")
-    } else {
-        let het: Vec<_> = g
+    let het: Vec<_> = g
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| g.alleles[0] != g.alleles[1])
+        .map(|(i, _)| i)
+        .collect();
+    // The two copies read-backed phase gives, when one phase block holds
+    // every heterozygous site; the homozygous sites are on both copies.
+    let from_reads = || -> Option<(Vec<String>, Vec<String>)> {
+        let calls: Vec<_> = het
             .iter()
-            .enumerate()
-            .filter(|(_, g)| g.alleles[0] != g.alleles[1])
-            .map(|(i, _)| i)
-            .collect();
+            .map(|i| phased.and_then(|p| p.get(&r.sites[*i].key())))
+            .collect::<Option<_>>()?;
+        if !calls.iter().all(|v| v.2 == calls[0].2) {
+            return None;
+        }
+        let mut h1: Vec<_> = g.iter().map(|g| g.alleles[0].clone()).collect();
+        let mut h2: Vec<_> = g.iter().map(|g| g.alleles[1].clone()).collect();
+        for (i, c) in het.iter().zip(calls) {
+            h1[*i] = c.0.clone();
+            h2[*i] = c.1.clone();
+        }
+        Some((h1, h2))
+    };
+    let why = if phased.is_some() {
+        "no read or read pair covered them together"
+    } else {
+        "no phasing ran (no BAM, or phasing failed)"
+    };
+    let mut caveat = String::new();
+    let key = if r.meta["needs_phase"] == "no" {
+        let key = allowed(r, &g.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|");
+        // One diplotype read without phase from two or more heterozygous
+        // sites assumes which alleles share a copy: read-backed phase checks
+        // it, and without it the reading says what it assumes.
+        let assumed = assumed_copies(r, &key);
+        match (het.len() >= 2, assumed) {
+            (true, Some((a, b))) => match from_reads() {
+                Some((h1, h2)) => {
+                    phase = "read_backed";
+                    let n1 = r.haps.iter().position(|h| h.alleles == h1);
+                    let n2 = r.haps.iter().position(|h| h.alleles == h2);
+                    if let (Some(x), Some(y)) = (n1, n2) {
+                        format!("{}/{}", r.haps[x.min(y)].name, r.haps[x.max(y)].name)
+                    } else {
+                        let label = r
+                            .combos
+                            .iter()
+                            .rev()
+                            .find(|c| c.key == key)
+                            .map_or(key.as_str(), |c| c.label.as_str());
+                        return finish(
+                            out,
+                            phase,
+                            ".",
+                            Status::OtherHaplotype,
+                            phased_apart(r, &het, [(&h1, n1), (&h2, n2)], label),
+                        );
+                    }
+                }
+                None => {
+                    caveat = format!(
+                        " Phase unknown: this reading assumes {} (the copies {} and {}); {why}, so that is not checked.",
+                        placement(r, &het, &a.alleles),
+                        a.name,
+                        b.name
+                    );
+                    key
+                }
+            },
+            _ => key,
+        }
+    } else {
         let mut h1: Vec<_> = g.iter().map(|g| g.alleles[0].clone()).collect();
         let mut h2: Vec<_> = g.iter().map(|g| g.alleles[1].clone()).collect();
         if het.len() >= 2 {
-            let calls: Option<Vec<_>> = het
-                .iter()
-                .map(|i| phased.and_then(|p| p.get(&r.sites[*i].key())))
-                .collect();
-            if let Some(calls) = calls.filter(|c| c.iter().all(|v| v.2 == c[0].2)) {
-                for (i, c) in het.iter().zip(calls) {
-                    h1[*i] = c.0.clone();
-                    h2[*i] = c.1.clone();
-                }
+            if let Some((p1, p2)) = from_reads() {
+                (h1, h2) = (p1, p2);
                 phase = "read_backed";
             } else {
-                let why = if phased.is_some() {
-                    "no read or read pair covered them together"
-                } else {
-                    "no phasing ran (no BAM, or phasing failed)"
-                };
                 return finish(
                     out,
                     "unphased",
@@ -900,7 +1028,13 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
         .rev()
         .find(|c| !key.is_empty() && c.key == key)
     {
-        Some(c) => finish(out, phase, &c.label, Status::Called, c.reading.clone()),
+        Some(c) => finish(
+            out,
+            phase,
+            &c.label,
+            Status::Called,
+            format!("{}{caveat}", c.reading),
+        ),
         None => finish(
             out,
             phase,
@@ -923,7 +1057,7 @@ fn stage_tsv(path: &str, columns: &[&str], rows: &[Row]) -> Result<AtomicFile> {
 }
 fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result<usize> {
     let mut sites = BTreeMap::new();
-    for r in rules.iter().filter(|r| r.meta["needs_phase"] == "yes") {
+    for r in rules {
         let calls: Option<Vec<_>> = r
             .sites
             .iter()
@@ -932,6 +1066,17 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
                 (g.status == Status::Called).then_some(g)
             })
             .collect();
+        // A rule that reads without phase sends its sites only when the
+        // genotypes read one diplotype that assumes which alleles share a
+        // copy: read-backed phase then checks that assumption.
+        let calls = calls.filter(|c| {
+            r.meta["needs_phase"] == "yes"
+                || assumed_copies(
+                    r,
+                    &allowed(r, &c.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|"),
+                )
+                .is_some()
+        });
         if let Some(calls) = calls {
             let het: Vec<_> = r
                 .sites
@@ -1456,6 +1601,154 @@ mod tests {
         );
         let gt = genotypes(r, &[0, 0, 0]);
         assert_eq!(rule_line(r, &gt, None)["phase"], "not_needed");
+    }
+    /// A rule read without phase (HFE, SERPINA1, GC, CAD9p21, MAPT) that
+    /// gets one diplotype from two heterozygous sites assumes which alleles
+    /// share a copy. Unphased, the reading says so; read-backed phase in one
+    /// block confirms it, or puts the alleles on copies the rule does not
+    /// describe and the pair is not read.
+    #[test]
+    fn a_double_heterozygote_read_without_phase_says_what_it_assumes() {
+        let (_, rules) = assets();
+        let rule = |id: &str| rules.iter().find(|r| r.id == id).unwrap();
+        // Phase of each site: 0|1 puts the alt on the second copy.
+        let phased = |r: &Rule, gts: &[&str], ps: [&str; 2]| -> Phased {
+            r.sites
+                .iter()
+                .zip(gts)
+                .zip(ps)
+                .map(|((s, gt), ps)| {
+                    let (a, b) = gt.split_once('|').unwrap();
+                    let base = |i: &str| s.row[if i == "1" { "alt" } else { "ref" }].clone();
+                    (s.key(), (base(a), base(b), ps.to_owned()))
+                })
+                .collect()
+        };
+        for (id, label, place) in [
+            (
+                "HFE",
+                "C282Y/H63D",
+                "sit on different copies (the copies C282Y and H63D)",
+            ),
+            (
+                "SERPINA1",
+                "PiSZ",
+                "sit on different copies (the copies S and Z)",
+            ),
+            (
+                "GC",
+                "Gc1S/Gc2",
+                "sit on different copies (the copies Gc1S and Gc2)",
+            ),
+            (
+                "CAD9p21",
+                "one risk copy",
+                "sit on one copy (the copies nonrisk and risk)",
+            ),
+            ("MAPT", "H1/H2", "sit on one copy (the copies H1 and H2)"),
+        ] {
+            let r = rule(id);
+            let gt = genotypes(r, &[1, 1]);
+            let plain = r.combos.iter().find(|c| c.label == label).unwrap();
+            let line = rule_line(r, &gt, None);
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("called", label, "not_used"),
+                "{id}"
+            );
+            assert!(line["reading"].starts_with(&plain.reading), "{id}");
+            assert!(
+                line["reading"].contains("Phase unknown"),
+                "{id}: {}",
+                line["reading"]
+            );
+            assert!(line["reading"].contains(place), "{id}: {}", line["reading"]);
+            assert!(line["reading"].contains("no phasing ran"), "{id}");
+            let rs = &r.sites;
+            assert!(
+                line["reading"].contains(&format!(
+                    "{} {} and {} {}",
+                    rs[0].row["rsid"], rs[0].row["alt"], rs[1].row["rsid"], rs[1].row["alt"]
+                )),
+                "{id}: {}",
+                line["reading"]
+            );
+            // Phased as the reading assumes: the plain reading, no caveat.
+            let same = if place.contains("different") {
+                ["1|0", "0|1"]
+            } else {
+                ["1|0", "1|0"]
+            };
+            let other = if place.contains("different") {
+                ["1|0", "1|0"]
+            } else {
+                ["1|0", "0|1"]
+            };
+            let line = rule_line(r, &gt, Some(&phased(r, &same, ["5", "5"])));
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("called", label, "read_backed"),
+                "{id}"
+            );
+            assert_eq!(line["reading"], plain.reading, "{id}");
+            // Two phase blocks are no phase: the caveat stays.
+            let line = rule_line(r, &gt, Some(&phased(r, &same, ["5", "6"])));
+            assert_eq!(line["phase"], "not_used", "{id}");
+            assert!(line["reading"].contains("no read or read pair"), "{id}");
+            // Phased the other way: not the assumed pair, not read.
+            let line = rule_line(r, &gt, Some(&phased(r, &other, ["5", "5"])));
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("other_haplotype", ".", "read_backed"),
+                "{id}"
+            );
+            assert!(line["reading"].contains("not read"), "{id}");
+            assert!(
+                line["reading"].contains(&format!("would read {label}.")),
+                "{id}: {}",
+                line["reading"]
+            );
+            // One heterozygous site assumes nothing.
+            for choices in [[1, 0], [0, 1], [2, 1], [1, 2]] {
+                let line = rule_line(r, &genotypes(r, &choices), None);
+                assert!(
+                    !line["reading"].contains("Phase unknown"),
+                    "{id} {choices:?}"
+                );
+            }
+        }
+        // HFE with C282Y and H63D on one copy: one copy changed, the other wt.
+        let r = rule("HFE");
+        let line = rule_line(
+            r,
+            &genotypes(r, &[1, 1]),
+            Some(&phased(r, &["0|1", "0|1"], ["5", "5"])),
+        );
+        assert_eq!(
+            line["reading"],
+            "Read-backed phase shows that rs1800562 A and rs1799945 G sit on one copy: the copies \
+             are wt and A,G at rs1800562, rs1799945, so one copy is changed and the other is not. \
+             This rule does not describe that copy, so the pair is not read; without phase these \
+             genotypes would read C282Y/H63D."
+        );
+        // APOE's double heterozygote line already names the other pair.
+        let apoe = rule("APOE");
+        let line = rule_line(apoe, &genotypes(apoe, &[1, 1]), None);
+        assert_eq!(line["result"], "e2/e4");
+        assert!(!line["reading"].contains("Phase unknown"));
+        // WhatsHap gets the two HFE sites, not APOE's.
+        let scratch = Scratch::new();
+        let path = scratch.put("phase", "");
+        let mut gt = genotypes(r, &[1, 1]);
+        gt.extend(genotypes(apoe, &[1, 1]));
+        assert_eq!(phase_vcf(&path, "S", &rules, &gt).unwrap(), 2);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("rs1800562") && text.contains("rs1799945"));
+        assert!(!text.contains("rs429358"));
+        assert_eq!(
+            phase_vcf(&path, "S", &rules, &genotypes(r, &[1, 2])).unwrap(),
+            0
+        );
     }
     /// The call floor (decision D10): a site whose GQ is below 20, or whose
     /// record the caller filtered, is not read. GQ 20, a missing GQ and

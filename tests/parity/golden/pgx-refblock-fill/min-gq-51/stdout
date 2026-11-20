@@ -1,0 +1,17 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position (for use with symbolic alleles)">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Conditional genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum DP observed within the GVCF block.">
+##ALT=<ID=*,Description="Represents any possible alternative allele at this location">
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chr2,length=242193529>
+##contig=<ID=chr6,length=170805979>
+##contig=<ID=chr10,length=133797422>
+##contig=<ID=chr19,length=58617616>
+##contig=<ID=chrX,length=156040895>
+##INFO=<ID=PGX_REFBLOCK,Number=0,Type=Flag,Description="0/0 written by pgx_refblock_fill.py: reference blocks cover the whole REF span">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	REFBLOCKS
+chr10	94949282	.	A	G	30	PASS	.	GT:GQ:DP	0/1:30:28

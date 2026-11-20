@@ -6,7 +6,9 @@
 #     somalier's chrX sites fall inside the slices, too few for a sex call, so
 #     the step says it could not check the sex and goes on, also when male is
 #     declared: somalier's table then carries male as the pedigree's sex,
-#     which the verdict does not take for a call;
+#     which the verdict does not take for a call. VerifyBamID2 keeps a few
+#     hundred markers there, so FREEMIX reads uncertain, with the count
+#     taken from the log of its first run;
 #   - sex: with sites at the slice's own chrX calls (case 21; HG002 is male,
 #     so somalier sees them homozygous), declared female stops the step,
 #     somalier's own table shows the pedigree's female next to the male it
@@ -70,6 +72,16 @@ check_eq "contamination verdict" "$(tval "$T" contamination)" ok
 check_eq "VerifyBamID2's marker check was skipped (the slices hold fewer than 1,000 markers)" \
   "$(tval "$T" verifybamid2_marker_check)" skipped
 check "the log says why it ran again" has 'Fewer than 1,000 panel markers have reads' "$(cat "$STEP_LOG")"
+MK=$(tval "$T" verifybamid2_markers)
+check "VerifyBamID2's first run logged the markers it kept (${MK:-none})" above "$MK" 0
+check "fewer than the 1,000 its check asks for (${MK:-none})" below "$MK" 1000
+check_eq "so FREEMIX is uncertain" "$(tval "$T" contamination_confidence)" uncertain
+check "and the step says so" has 'The estimate is uncertain: VerifyBamID2 skipped its marker check' "$(cat "$STEP_LOG")"
+# One sample: identity is uncertain below 1,000 somalier sites, else not checked.
+SITES_N=$(tval "$T" sites_genotyped)
+WANT_ID=not_checked
+below "$SITES_N" 1000 && WANT_ID=uncertain
+check_eq "identity from ${SITES_N:-no} somalier sites and no other sample" "$(tval "$T" identity)" "$WANT_ID"
 check_eq "no declared sex: somalier's pedigree sex is unknown" "$(scol original_pedigree_sex)" unknown
 
 # Declared male on the same 2 chrX sites: somalier starts its sex column from

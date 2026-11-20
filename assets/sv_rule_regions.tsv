@@ -1,6 +1,9 @@
 # assets/sv_rule_regions.tsv: the GRCh38 regions where og sv postfilter overrides AnnotSV's class 4
 # or 5. Written by scripts/ci/build-sv-rule-regions.sh, which says how each rule's rows are chosen;
 # rebuild it there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file.
+# Sources and terms: the TRExplorer catalog, Copyright (c) 2024 Broad Institute, MIT licence
+# (assets/licences/TRExplorer-LICENSE.txt); GENCODE, open access; HGNC and the NCBI assembly
+# regions, no restriction on use.
 # Rows: gene_alias 10, ig_tr_locus 6, mhc 1, tandem_repeat 2409.
 #chrom	start	end	rule	action	name	source
 chr1	939398	939508	tandem_repeat	class_3	SAMD11:48bp motif	TRExplorer v2.1; GENCODE 50 MANE Select CDS

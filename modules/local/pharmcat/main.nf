@@ -16,8 +16,11 @@
     REF or ALT is longer than one base (an indel such as UGT1A1 *28), so
     og pgx refblock-fill writes a 0/0 record with PharmCAT's own
     alleles there when reference blocks with GQ >= 20 cover the whole REF
-    span and no other record overlaps it. The expanded file is named without
-    .g.vcf, which PharmCAT refuses.
+    span and no other record overlaps it. The same GQ 20 floor holds for
+    every reference call it passes on: a 0/0 record (a block or a
+    DeepVariant RefCall) below GQ 20, or without a GQ, is left out, so
+    PharmCAT reads that position as missing, not as a confident 0/0. The
+    expanded file is named without .g.vcf, which PharmCAT refuses.
 
     PharmCAT types neither HLA nor CYP2D6 from a VCF. When PGX_CONSENSUS
     wrote outside calls for the sample (HLA-A and HLA-B from T1K, a CYP2D6

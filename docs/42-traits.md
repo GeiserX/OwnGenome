@@ -11,7 +11,7 @@ These are the results most people find easiest to read, and the pipeline had no 
 ## Tool
 
 - **bcftools** (`bcftools convert --gvcf2vcf`, `view`, `query`) reads the genotypes at the table's positions from the gVCF.
-- **WhatsHap** (`whatshap phase`) phases the heterozygous sites of a rule that needs phase from the BAM's reads.
+- **WhatsHap** (`whatshap phase`) phases from the BAM's reads the heterozygous sites of a rule that needs phase, and those of a rule read without phase whose genotypes assume which alleles share a copy.
 - **`og traits table`** (Rust) reads each genotype against the table, and each rule against the rule table.
 
 ## Docker Image
@@ -22,7 +22,7 @@ These are the results most people find easiest to read, and the pipeline had no 
 
 - `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz` with its `.tbi`: the gVCF of [step 3](03-variant-calling.md). A gVCF holds reference blocks, so a position where you match the reference reads as ref/ref, and a position with no reads has no record and reads as "not covered". A variant-only VCF cannot tell those two apart, so the step does not read one. The gVCF must hold one sample: a gVCF with several sample columns stops the step with the count.
 - `assets/traits.tsv`: the table, and `assets/genotype_rules.tsv`: the rules.
-- `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` as for the other steps), optional: WhatsHap reads it when a rule needs phase. Without it, or when WhatsHap fails (step 42 prints a warning and goes on, as `TRAITS_PHASE` does in Nextflow), such a rule is read only when at most one of its sites is heterozygous.
+- `${SAMPLE}/aligned/${SAMPLE}_sorted.bam` with its `.bai` (`ALIGN_DIR` as for the other steps), optional: WhatsHap reads it when a rule needs phase. Without it, or when WhatsHap fails (step 42 prints a warning and goes on, as `TRAITS_PHASE` does in Nextflow), such a rule is read only when at most one of its sites is heterozygous. WhatsHap also phases the double heterozygote of a rule read without phase; without the BAM such a reading keeps its "Phase unknown" note.
 
 In the Nextflow pipeline (`traits` in `--tools`, part of the default list) the processes `TRAITS_SITES` and `TRAITS` run for every sample with a gVCF, and `TRAITS_PHASE` (WhatsHap) for every such sample with a BAM: one DeepVariant wrote (FASTQ, BAM or CRAM rows) or one the samplesheet gives in its `gvcf` and `gvcf_index` columns. A sample without one is skipped with a warning. From an existing VCF, `run-all.sh` passes a gVCF on only for a sample with a BAM and a VCF whose gVCF lies beside the VCF; any other sample that starts from a VCF gets step 42 listed as skipped, with the reason. A failed traits task is skipped and the run goes on, as for the other report-only tools.
 
@@ -88,10 +88,10 @@ Some results need several sites read together: APOE's ε alleles come from two s
 
 The two haplotypes a person's genotypes make are looked up by their alleles, and the pair gives the combination line. A heterozygous site does not say which of its alleles shares a copy with the alleles at the other sites, so:
 
-- **`needs_phase no`** (APOE): the combination line is the one listing every pair the genotypes allow. Heterozygous at both APOE sites allows ε2/ε4 and ε1/ε3; that line reads ε2/ε4 and says it could also be the rare ε1/ε3.
+- **`needs_phase no`** (APOE, APOL1, SERPINA1, HFE, GC, CAD9p21, MAPT): the combination line is the one listing every pair the genotypes allow. Heterozygous at both APOE sites allows ε2/ε4 and ε1/ε3; that line reads ε2/ε4 and says it could also be the rare ε1/ε3. When the genotypes allow one pair only but two or more sites are heterozygous, that pair is an assumption about which alleles share a copy: heterozygous at both HFE sites reads C282Y/H63D only if C282Y and H63D sit on different copies. Such a reading ends with what it assumes, for example "Phase unknown: this reading assumes rs1800562 A and rs1799945 G sit on different copies (the copies C282Y and H63D); no phasing ran (no BAM, or phasing failed), so that is not checked." Those sites also go to WhatsHap (`og traits phase-sites`); APOE's do not, because its line already names both pairs. When one phase block holds them all, the phase decides (`phase` read_backed): the pair it confirms reads without the caveat, and a pair with a copy the rule does not describe is `other_haplotype`, not read. Its reading says where the reads put the alleles, and, when only one copy carries any change, "one copy is changed and the other is not". Phased C282Y and H63D on one copy read that way, with the other copy wt.
 - **`needs_phase yes`** (TAS2R38): with one heterozygous site or none, the two haplotypes follow from the genotypes. With two or more, WhatsHap phases them from the reads: a read, or the two reads of a pair, that covers two of the sites shows which alleles sit on one copy. When every heterozygous site of the rule lands in one phase block the rule is read (`phase` read_backed); otherwise it is `unphased`, not read. The three TAS2R38 sites lie within 741 bases, so a read pair can span them, but not always.
 
-`status` of a rule line is `called`, `not_covered` (a site has no genotype), `low_gq` (a site's call has a GQ below 20 or a caller filter: not read, no result), `other_allele` (an allele the rule does not describe), `other_haplotype` (a copy that is none of the rule's haplotypes; it names the alleles) or `unphased`. `phase` is `not_used` (needs_phase no), `not_needed`, `read_backed` or `unphased`.
+`status` of a rule line is `called`, `not_covered` (a site has no genotype), `low_gq` (a site's call has a GQ below 20 or a caller filter: not read, no result), `other_allele` (an allele the rule does not describe), `other_haplotype` (a copy that is none of the rule's haplotypes; it names the alleles) or `unphased`. `phase` is `not_used` (needs_phase no, and no phase block held the heterozygous sites), `not_needed`, `read_backed` or `unphased`.
 
 The rules today:
 
@@ -106,7 +106,7 @@ The rules today:
 | CAD9p21 | rs10757278, rs1333049 | nonrisk, risk | 17478679, 17554300, 17478681 |
 | MAPT | rs1052553, rs8070723 | H1, H2 | 15654335, 19912324, 21685912 |
 
-The six rules after TAS2R38 need no phase. Their sites lie close together on one copy (the two APOL1 G1 changes were in perfect linkage disequilibrium in Genovese et al. 2010; the 9p21 and 17q21.31 tags each mark one haplotype), or, for HFE, a double heterozygote reads as one change on each copy. A copy the rule does not describe, such as a 9p21 copy with only one of the two risk alleles, is `other_haplotype`, not read. What each rule leaves out, said in its note:
+The six rules after TAS2R38 are read without phase. A double heterozygote of each rests on an assumption, and the reading says it (see `needs_phase no` above). SERPINA1 PiSZ, HFE C282Y/H63D and GC Gc1S/Gc2 assume the two changes sit on different copies. APOL1 G0/G1, CAD9p21 "one risk copy" and MAPT H1/H2 assume both sites sit on one copy: the two APOL1 G1 changes were in perfect linkage disequilibrium in Genovese et al. (2010), and the 9p21 and 17q21.31 tags each mark one haplotype. A copy the rule does not describe, such as a 9p21 copy with only one of the two risk alleles, is `other_haplotype`, not read. What each rule leaves out, said in its note:
 
 - APOL1 G2 (rs71785313) is a 6-base deletion. The rule table reads single-base sites only, so the rule itself reads G1, and a G2 copy reads as G0 there. The HTML and text reports read G2 beside the rule (`og summary collect`, the `apol1` module of `rust/crates/og-summary/src/collect/group_c/traits.rs`) from the sample's gVCF, or its VCF when there is no gVCF, and show the G1 plus G2 result under "With G2": G1/G2, G2/G2 and G1/G1 are the high-risk genotype. Two G2 copies read G2/G2 even when the G1 sites were not read. A VCF without reference blocks cannot tell a reference base from a position with no reads, so there a result with no G2 copy is marked `(no G2 call)`. The G2 reading uses the same floor as the trait sites: a call over the deletion span with a GQ below 20, a G2 call whose FILTER is not `PASS` or `.`, or a reference call whose FILTER is not `PASS`, `.` or `RefCall`, leaves G2 not read, so two G2 copies at GQ 5 never read G2/G2. The Nextflow report gets the sample's gVCF too (DeepVariant's, or the samplesheet's `gvcf` column), so both runs read the gVCF when there is one.
 - SERPINA1: M is any copy with neither S nor Z; rarer deficiency and null alleles are not read. A serum level confirms a deficiency.
@@ -139,13 +139,13 @@ The APOE line is the APOE rule of `assets/genotype_rules.tsv`, written into the 
 
 ## Runtime
 
-Seconds: bcftools reads the gVCF at the table's positions through its index (36 rows and 17 rule sites), and WhatsHap, when a rule needs it, reads the BAM over three sites within 741 bases.
+Seconds: bcftools reads the gVCF at the table's positions through its index (36 rows and 17 rule sites), and WhatsHap, when a rule has two or more heterozygous sites to phase, reads the BAM over them (each rule's sites lie within about 7 kb).
 
 ## Notes
 
 - A reading is what the cited studies found on average in the people they studied. It is not a diagnosis, and for most traits it says little about one person.
 - Rows marked `ancestry` read differently in other populations; their note says how. Lactase persistence is the clearest case: -13910T explains it in Europeans, and the three African alleles have their own rows.
-- Each traits table row is read alone. The genotype rules read several sites together: APOE, the TAS2R38 taster haplotype with read-backed phase, and the six rules of the table above. Two different MC1R red-hair variants on the same or on different copies are still read one by one; their note says so.
+- Each traits table row is read alone. The genotype rules read several sites together: APOE, the TAS2R38 taster haplotype with read-backed phase, and the six rules of the table above, which use read-backed phase when it covers their heterozygous sites. Two different MC1R red-hair variants on the same or on different copies are still read one by one; their note says so.
 - SNVs only; the table has no indel and no chrX, chrY or chrM row.
 - Positions with no genotype (no reads, or a no-call) are listed as not read. On the e2e fixture, a small slice of the HG002 genome, only the table positions inside its slices are read, and the e2e case checks their genotypes against the GIAB truth.
 - The licence: the readings, notes and table are this project's own text, GPL-3.0-or-later like the rest of the repository.

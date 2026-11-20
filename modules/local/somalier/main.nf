@@ -17,15 +17,17 @@
     SAMPLE_QC writes <id>_sample_qc.tsv with og qc sample (rust/, bin/og on
     the task PATH; the rule scripts/33-sample-qc.sh runs too): somalier's
     sex against the samplesheet's, VERIFYBAMID2's FREEMIX against
-    --freemix_warn, and the other samples somalier finds to be the same
-    person. workflows/bam_analysis.nf stops the run on a sex mismatch
-    (--sex_check warn logs it), the check INDEXCOV makes from the BAM index,
-    made again from the reads. Then og qc sex-loss (rust/) adds the mosaic_*
-    rows: the share of cells that lost the Y (or one X), from MOSDEPTH's
-    windows (when mosdepth runs) and, for a woman, the VCF's chrX allele
-    fractions. SAMPLE_QC waits for the VCF, so on a FASTQ row somalier's sex
-    check reports after DEEPVARIANT; INDEXCOV's check still stops the run
-    before it.
+    --freemix_warn (uncertain on a skipped marker check or fewer than 5,000
+    markers), and the other samples somalier finds to be the same person
+    (identity uncertain below 1,000 informative sites, not checked with no
+    other sample in the run). workflows/bam_analysis.nf stops the run on a
+    sex mismatch (--sex_check warn logs it), the check INDEXCOV makes from
+    the BAM index, made again from the reads. Then og qc sex-loss (rust/)
+    adds the mosaic_* rows: the share of cells that lost the Y (or one X),
+    from MOSDEPTH's windows (when mosdepth runs) and, for a woman, the
+    VCF's chrX allele fractions. SAMPLE_QC waits for the VCF, so on a FASTQ
+    row somalier's sex check reports after DEEPVARIANT; INDEXCOV's check
+    still stops the run before it.
 
     Equivalent to: scripts/33-sample-qc.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,7 +163,8 @@ process SAMPLE_QC {
         --selfsm ${selfsm} \\
         --declared-sex "${meta.sex ?: ''}" \\
         --freemix-warn ${params.freemix_warn} \\
-        --marker-check "\$(cat ${marker_check})" \\
+        --marker-check "\$(sed -n 1p ${marker_check})" \\
+        --verifybamid2-markers "\$(sed -n 2p ${marker_check})" \\
         --out ${meta.id}_sample_qc.tsv
     og qc sex-loss --table ${meta.id}_sample_qc.tsv ${mosaic_args}
 

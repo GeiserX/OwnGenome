@@ -183,7 +183,7 @@ One owner per locus. These loci are Parascopy's: no row of `bin/cn_loci.tsv` tha
 
 A new locus is a new row for a model already in the pinned data; it needs no code change. A rerun of the bash step removes the table of a row the catalog no longer has, so every catalog table in `paralogs/` comes from the last run. A row whose region has no read is not assessed and costs one `samtools view -c`, so a BAM of part of the genome runs Parascopy only where it has reads.
 
-`assets/parascopy_models_v1.7.txt` lists every region of the 167 models of the pinned data (`models_GRCh38_1KGP_v1.7.tar.gz`, Zenodo record 15019940, archive sha256 `2e9be08b69936f13a49d52c7764f2414beac27a99b95e0c48b2e2ccafbb8c846`), the same for the five populations. Each gene there is the model file `<gene>.gz` of the `list.txt` the data installs. `cargo test -p og-steps --test paralog_loci` refuses a catalog row whose model is not on that list: the gene GBA1, for example, has the model `GBA.gz`, not `GBA1.gz`.
+`assets/parascopy_models_v1.7.txt` lists every region of the 167 models of the pinned data (`models_GRCh38_1KGP_v1.7.tar.gz`, Zenodo record 15019940, archive sha256 `2e9be08b69936f13a49d52c7764f2414beac27a99b95e0c48b2e2ccafbb8c846`), the same for the five populations. That data is Timofey Prodanov's, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); the file's header names it and what changed: only the model regions are kept, and overlapping copy regions are merged. Each gene there is the model file `<gene>.gz` of the `list.txt` the data installs. `cargo test -p og-steps --test paralog_loci` refuses a catalog row whose model is not on that list: the gene GBA1, for example, has the model `GBA.gz`, not `GBA1.gz`.
 
 ## HBA1 and HBA2 from Depth
 

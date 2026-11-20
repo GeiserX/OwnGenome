@@ -16,6 +16,12 @@
 //!   required columns (tsv, csv), INFO/FORMAT/FILTER fields (vcf) or
 //!   top-level keys (json). `--observe` also lists every file under
 //!   `DIR/S` with what it has.
+//! - `--baseline FILE`: the contract of the last release, against this one
+//!   ([`check_baseline`]): every stable row of FILE still has a row here,
+//!   still stable; a stable file keeps its format, every leg that wrote it
+//!   and every field it required. New rows, and changes to experimental and
+//!   internal rows, are free. Guard's `rust` job runs it against the newest
+//!   1.x release tag.
 //!
 //! Exit 0 when nothing is broken, 1 when something is (or the contract is
 //! malformed: `ERROR: …`), 2 on a usage error. `--repo` defaults to the
@@ -44,7 +50,7 @@ use std::io::{self, BufRead, Read, Write};
 use std::path::Path;
 use std::sync::LazyLock;
 
-const USAGE: &str = "usage: og dev contract [--contract CONTRACT] [--repo REPO] [--static] [--outputs OUTPUTS]\n                       [--leg {bash,nextflow}] [--sample SAMPLE] [--observe]\n";
+const USAGE: &str = "usage: og dev contract [--contract CONTRACT] [--repo REPO] [--static] [--baseline BASELINE]\n                       [--outputs OUTPUTS] [--leg {bash,nextflow}] [--sample SAMPLE] [--observe]\n";
 
 const COLUMNS: [&str; 9] = [
     "kind",
@@ -714,6 +720,99 @@ fn check_static(repo: &str, rows: &[Row]) -> Result<Vec<String>, String> {
     Ok(problems)
 }
 
+// ---------------------------------------------------------------- the release side
+
+/// The legs a file row's `legs` cell names.
+fn legs_of(legs: &str) -> &'static [&'static str] {
+    match legs {
+        "both" => &["bash", "nextflow"],
+        "bash" => &["bash"],
+        "nextflow" => &["nextflow"],
+        _ => &[],
+    }
+}
+
+fn required(r: &Row) -> Vec<&str> {
+    if r.required == "-" {
+        Vec::new()
+    } else {
+        r.required.split(',').collect()
+    }
+}
+
+/// What `rows` broke of `base`, the contract of the last release. Every
+/// stable row of the release still has a row of the same kind and name, and
+/// one of them is stable. A stable file row is still written by every leg
+/// that wrote it, and each stable row of it that covers one of those legs
+/// keeps the format and every required field. The `step`, `process` and
+/// `e2e` cells say where the code and the tests stand, not what is promised,
+/// so they may change.
+pub fn check_baseline(base: &[Row], rows: &[Row]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for b in base.iter().filter(|r| r.stability == Stability::Stable) {
+        let k = b.kind.word();
+        let same: Vec<&Row> = rows
+            .iter()
+            .filter(|r| r.kind == b.kind && r.name == b.name)
+            .collect();
+        let Some(first) = same.first() else {
+            problems.push(format!(
+                "BREAKING: the stable {k} {} (baseline line {}) has no row in the contract: removed or renamed since the release",
+                b.name, b.line
+            ));
+            continue;
+        };
+        let stable: Vec<&Row> = same
+            .iter()
+            .copied()
+            .filter(|r| r.stability == Stability::Stable)
+            .collect();
+        if stable.is_empty() {
+            let now = match first.stability {
+                Stability::Experimental => "experimental",
+                _ => "internal",
+            };
+            problems.push(format!(
+                "BREAKING: the stable {k} {} (baseline line {}) is {now} now (contract line {}): a stable row stays stable until 2.0",
+                b.name, b.line, first.line
+            ));
+            continue;
+        }
+        if b.kind != Kind::File {
+            continue;
+        }
+        let was = legs_of(&b.legs);
+        for leg in was {
+            if !stable.iter().any(|r| legs_of(&r.legs).contains(leg)) {
+                problems.push(format!(
+                    "BREAKING: the stable file {} (baseline line {}, legs {}) is no longer written by the {leg} leg",
+                    b.name, b.line, b.legs
+                ));
+            }
+        }
+        let want = required(b);
+        for r in stable
+            .iter()
+            .filter(|r| legs_of(&r.legs).iter().any(|l| was.contains(l)))
+        {
+            if r.format != b.format {
+                problems.push(format!(
+                    "BREAKING: the stable file {} (contract line {}) is {}, it was {} at the release (baseline line {})",
+                    r.name, r.line, r.format, b.format, b.line
+                ));
+            }
+            let have = required(r);
+            for f in want.iter().filter(|f| !have.contains(f)) {
+                problems.push(format!(
+                    "BREAKING: the stable file {} (contract line {}) no longer requires {f}, which the release promised (baseline line {})",
+                    r.name, r.line, b.line
+                ));
+            }
+        }
+    }
+    problems
+}
+
 // ---------------------------------------------------------------- the run side
 
 /// The lines of a plain or gzip file, invalid UTF-8 replaced.
@@ -970,6 +1069,7 @@ struct Args {
     contract: Option<String>,
     repo: Option<String>,
     static_: bool,
+    baseline: Option<String>,
     outputs: Option<String>,
     leg: Option<String>,
     sample: Option<String>,
@@ -998,6 +1098,7 @@ fn parse(args: &[String]) -> Result<Option<Args>, String> {
             "-h" | "--help" => return Ok(None),
             "--contract" => a.contract = Some(value(flag)?),
             "--repo" => a.repo = Some(value(flag)?),
+            "--baseline" => a.baseline = Some(value(flag)?),
             "--outputs" => a.outputs = Some(value(flag)?),
             "--sample" => a.sample = Some(value(flag)?),
             "--leg" => {
@@ -1015,8 +1116,8 @@ fn parse(args: &[String]) -> Result<Option<Args>, String> {
             _ => return Err(format!("unrecognized arguments: {arg}")),
         }
     }
-    if !a.static_ && a.outputs.is_none() {
-        return Err("give --static or --outputs".to_owned());
+    if !a.static_ && a.outputs.is_none() && a.baseline.is_none() {
+        return Err("give --static, --baseline or --outputs".to_owned());
     }
     if a.outputs.is_some() && (a.leg.is_none() || a.sample.is_none()) {
         return Err("--outputs needs --leg and --sample".to_owned());
@@ -1067,6 +1168,31 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
                 return 1;
             }
         }
+    }
+    if let Some(path) = &a.baseline {
+        let base = match read_contract(path) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = writeln!(out, "ERROR: baseline: {e}");
+                return 1;
+            }
+        };
+        let mut p = check_baseline(&base, &rows);
+        let n = base
+            .iter()
+            .filter(|r| r.stability == Stability::Stable)
+            .count();
+        let _ = writeln!(
+            out,
+            "baseline: {n} stable rows of {path} checked, {} problems",
+            p.len()
+        );
+        if n == 0 {
+            p.push(format!(
+                "the baseline {path} has no stable row: the check checked nothing"
+            ));
+        }
+        problems.extend(p);
     }
     if let (Some(dir), Some(leg), Some(sample)) = (&a.outputs, &a.leg, &a.sample) {
         let (n, mut p) = check_outputs(&rows, dir, leg, sample, a.observe, out);

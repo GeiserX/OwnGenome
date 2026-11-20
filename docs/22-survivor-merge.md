@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Keeps the structural variants (SVs) that two or more independent callers agree on. SURVIVOR merge pairs two calls when both of their breakpoints lie within 1,000 bp of each other, their SV type and strands agree, and the event is at least 50 bp long. Each consensus record says how many callers support it and which.
+Keeps the structural variants (SVs) that two or more callers agree on. SURVIVOR merge pairs two calls when both of their breakpoints lie within 1,000 bp of each other, their SV type and strands agree, and the event is at least 50 bp long. Each consensus record says how many callers support it and which. That is caller agreement, not validation (see Why).
 
 ## Why
 
@@ -12,7 +12,7 @@ Individual SV callers each have distinct biases and false-positive profiles:
 - **Delly**: strongest for inversions and balanced translocations (paired-end, split reads and depth)
 - **CNVpytor**: best for large CNVs (read depth only)
 
-An SV seen by two callers that use different signals is more likely to be real.
+An SV that two callers report is less likely to be one caller's artefact. Agreement is not independent proof, though. Manta and Delly both read split and paired reads from the same alignment, so a misaligned read cluster both of them see can reach the consensus. Only CNVpytor reads a different signal, depth, and its breakpoints are coarse (see Limitations).
 
 The step used to bin calls by chromosome, `int(POS/1000)` and SV type. That split one deletion called at positions 999 and 1001 over two bins, and counted two deletions of very different size that start in one bin as agreement. SURVIVOR compares both breakpoints, so neither happens: the e2e case `tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` runs both situations on the synthetic three-caller set in `tests/fixtures/sv/`.
 
@@ -41,7 +41,7 @@ At least two of the following (the script uses every one it finds):
 | TIDDIT (script 4a) | `${GENOME_DIR}/${SAMPLE}/sv_tiddit/${SAMPLE}_sv.vcf.gz` |
 | Sniffles2 (script 4c, long reads) | `${GENOME_DIR}/${SAMPLE}/sv_sniffles/${SAMPLE}_sv.vcf.gz` |
 
-GRIDSS (step 4b) is left out, and the script says so when its VCF exists. GRIDSS reports every event as a pair of breakends (`SVTYPE=BND`), which never match the DEL, DUP and INV records of the other callers.
+GRIDSS (step 4b) is left out of the SV consensus, and the script says so when its VCF exists. GRIDSS reports every event as a pair of breakends (`SVTYPE=BND`), and nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 counts BND as the same type as INV and TRA, so a GRIDSS breakend would pair with another caller's inversion or translocation and count as a vote for an event GRIDSS never typed. Step 4b writes GRIDSS's own high-confidence calls to `sv_gridss/<sample>_gridss.high.vcf.gz`.
 
 The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `manta`, `delly`, `cnvpytor`) merges the callers it ran.
 
@@ -83,7 +83,7 @@ A typical 30X WGS genome produces:
 - **Delly**: 5,000-15,000 SVs
 - **CNVpytor**: 3,000-4,000 CNVs, 1,500-2,000 of them with e-value < 0.01 (see [interpreting results](interpreting-results.md#cnvpytor-results-step-18))
 
-Multi-caller SVs have lower false-positive rates than single-caller calls. The count after the merge has not been measured on a real genome with this version of the step.
+An SV two callers report is less likely to be one caller's artefact, but it is not validated: see Why. The count after the merge has not been measured on a real genome with this version of the step.
 
 SV types in the output: **DEL** (deletion), **DUP** (duplication), **INV** (inversion), **INS** (insertion), **TRA** (a translocation, SURVIVOR's name for a breakend pair between two chromosomes).
 
@@ -102,12 +102,12 @@ docker run --rm -v "${GENOME_DIR}:/genome" "${BCFTOOLS_IMAGE}" \
 - Single-caller SVs are discarded even if they are real. If you suspect a specific SV, check the individual caller outputs directly.
 - CNVpytor's calls are depth-only and their breakpoints are coarse (its bin size), so a CNVpytor call often lies more than 1 kb from the Manta or Delly breakpoint of the same event and does not pair with it.
 - The CNVpytor VCF made from its table carries no genotype and no quality.
-- Breakend (BND) records pair only with breakends of another caller. That includes a lone Manta inversion junction of 1 Mb or more, which step 4 keeps as its two breakends instead of a whole-span inversion.
+- A breakend (BND) record pairs with a breakend, an inversion (INV) or a translocation (TRA) of another caller: SURVIVOR 1.0.7 lets a BND match those two types. That includes a lone Manta inversion junction of 1 Mb or more, which step 4 keeps as its two breakends instead of a whole-span inversion.
 
 ## Notes
 
 - Run this step only after completing at least two of: step 4 (Manta), step 19 (Delly), step 18 (CNVpytor).
-- The consensus VCF can be annotated or loaded into IGV for visual inspection.
+- Load the consensus VCF into IGV to look at it, but never run AnnotSV on it. Its sample columns are the callers, not you, and its positions are SURVIVOR's merged ones. AnnotSV (step 5) annotates the callers' own calls, and the reports join `SUPP` and `SUPP_VEC` onto them ([step 5](05-annotsv.md)).
 
 ## Links
 

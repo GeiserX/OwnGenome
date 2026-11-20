@@ -571,6 +571,16 @@ def prs_sex_note(d):
             "Give the sex to mark a score of the other sex not applicable (docs/25-prs.md).")
 
 
+# The start of the line under the scores when every percentile was withheld
+# for an input that lists variants only (the scores' percentile_note): the
+# panel ran, so the no-panel line would be false.
+PRS_WITHHELD_TEXT = ("Percentile withheld: the input lists variants only, so each scoring site it leaves out adds "
+                     "nothing to the sum, and the raw sum cannot be compared with the reference panel's samples, "
+                     "whose genotypes are complete. Genotypes with a reference call (0/0) at one genotyped "
+                     "position in five or more keep the percentile; a gVCF from step 3 or a chip VCF usually has "
+                     "them.")
+
+
 def prs_note(d):
     """The line under the PRS scores, in both reports: what the numbers can be compared with."""
     x = prs_chrx_note(d) + prs_sex_note(d)
@@ -583,6 +593,8 @@ def prs_note(d):
         return (f"Percentile: where the score falls among the {group or 'most similar'} samples{panel}, "
                 f"the group whose genetic ancestry is most similar to this sample's (pgsc_calc).{low} "
                 f"A percentile is not a risk.{eff} {PRS_ANCESTRY_NOTE} See docs/25-prs.md." + x)
+    if any(r.get("percentile_note") for r in d.get("scores", [])):
+        return f"{PRS_WITHHELD_TEXT} {PRS_ANCESTRY_NOTE} See docs/25-prs.md." + x
     return ("Raw score only: no ancestry reference panel was installed, so there is no percentile and the sum "
             f"cannot be compared with anyone (scripts/setup.sh --ancestry-panel adds it). {PRS_ANCESTRY_NOTE} "
             "See docs/25-prs.md." + x)

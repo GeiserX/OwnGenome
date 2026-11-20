@@ -47,7 +47,9 @@ Checks:
      named ("1 scored, 2 left out (not matched in the panel run)");
   5. both reports: a percentile with its group when there is one, the
      "Raw score only" line when there is none, and the not-assessed line about
-     percentiles only then; a score whose chrX rows were left out is named,
+     percentiles only then; a panel run whose percentiles were withheld for a
+     variant-only input says so in both reports and in not-assessed, never
+     that no panel was installed; a score whose chrX rows were left out is named,
      one whose chrX rows were scored is not; both captions, with a panel
      and without, carry the ancestry-transfer caveat of docs/25-prs.md;
   6. the ClinVar card: a homozygous 3-star P/LP hit gets no green badge,
@@ -133,6 +135,8 @@ def check(desc, ok, detail=""):
 
 
 PRS_NOT_ADJUSTED = "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums"
+PRS_WITHHELD = ("Polygenic score percentiles: the input lists variants only, so the percentiles were withheld and "
+                "the scores are raw sums")
 
 
 def haplogroup_explore(kind, hg):
@@ -682,7 +686,25 @@ def main():
               and "PGS000002 (3)" not in txt, txt)
         check("no panel: the HTML row says raw score only", "<td>raw score only</td>" in html)
         check("no panel: not-assessed names the missing percentiles",
-              PRS_NOT_ADJUSTED in summ["not_assessed"])
+              PRS_NOT_ADJUSTED in summ["not_assessed"] and PRS_WITHHELD not in summ["not_assessed"])
+        # A panel run whose input lists variants only: og prs table withheld
+        # every percentile and wrote why (Percentile_Note). Neither report
+        # may say that no panel was installed, nor tell the user to add one.
+        d = f"{work}/sample_withheld/S"
+        withheld = "percentile withheld: the input lists variants only"
+        put(f"{d}/prs/S_prs_summary.tsv", "\t".join(PRS_COLUMNS[:-1] + ["Percentile_Note", "Input"]) + "\n"
+            f"Coronary artery disease\tPGS000001\t62\t2\t3\t66.7\tNA\tEUR\t0\t0\t\t\t{withheld}\tvcf\n")
+        summ = collect_summary.collect("S", d)
+        txt, html = render_report.text_report(summ), render_report.html_report(summ)
+        check("withheld: both reports say the percentile was withheld for a variant-only input",
+              "Percentile withheld: the input lists variants only" in txt
+              and "Percentile withheld: the input lists variants only" in html, txt)
+        check("withheld: no report says no panel was installed, nor asks for one",
+              "no ancestry reference panel was installed" not in txt + html
+              and "--ancestry-panel adds it" not in txt + html, txt)
+        check("withheld: not-assessed gives the true reason",
+              PRS_WITHHELD in summ["not_assessed"] and PRS_NOT_ADJUSTED not in summ["not_assessed"],
+              summ["not_assessed"])
         d = f"{work}/sample_adj/S"
         put(f"{d}/prs/S_prs_summary.tsv", "\t".join(PRS_COLUMNS) + "\n"
             "Coronary artery disease\tPGS000001\t1.25\t2\t3\t66.7\t94.4\tEUR\t0\tgvcf\n")

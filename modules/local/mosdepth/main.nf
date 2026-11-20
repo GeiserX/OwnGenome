@@ -51,14 +51,16 @@ process MOSDEPTH {
     # Gene callability, as scripts/16b-mosdepth.sh: the genes with a position
     # (not the ALT-only ones), reads of MAPQ 20 or more, bases at 10x or more.
     # It writes into callability/, so its own summary and region files never
-    # match the globs of the outputs above.
+    # match the globs of the outputs above. No --fast-mode: without it the
+    # bases where the two mates of a pair overlap count once and the bases of a
+    # CIGAR deletion do not count, so a gene is read only when 10 fragments
+    # cover it.
     mkdir -p callability
     awk -F'\\t' -v OFS='\\t' '!/^#/ && \$1 != "gene" && \$4 ~ /^[0-9]+\$/ {print \$3, \$4, \$5, \$1}' \\
         ${callability_genes} > callability/genes.bed
     mosdepth \\
         --by callability/genes.bed \\
         --mapq 20 \\
-        --fast-mode \\
         --no-per-base \\
         --threads ${task.cpus} \\
         --thresholds 10 \\

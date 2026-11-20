@@ -8,6 +8,11 @@
 #   GRIDSS (04b): runs with --workingdir sv_gridss/work, removed once the VCF
 #     is written; it is skipped, with the reason, when Docker has less memory
 #     than GRIDSS_MIN_MEM_GB (default 32; the fake Docker reports 16 GiB).
+#     After the raw VCF it writes sv_gridss/<sample>_gridss.high.vcf.gz with
+#     bcftools and GRIDSS's high-confidence rule (QUAL>=1000 && INFO/AS>0 &&
+#     INFO/RAS>0), and its index, and says its calls are left out of the SV
+#     consensus (step 22 does not convert them). A second run finds the raw
+#     VCF, skips GRIDSS and writes the high-confidence file again from it.
 #   Delly (19): gets -x with the exclude map setup.sh installs; without it,
 #     runs as before and warns.
 #   Sniffles2 (04c): stops with exit 1, before Sniffles2, when the first
@@ -62,6 +67,9 @@ case "$args" in
   *" bcftools view -e "*)
     # The expression and the files of a filter call, one per line
     printf '%s\n' "${5}" "${*: -1}" > "${CASE_WORK}/bcftools-filter" ;;
+  *" bcftools view -i "*)
+    # The expression and the input of an include call, one per line
+    printf '%s\n' "${5}" "${*: -1}" > "${CASE_WORK}/bcftools-include" ;;
 esac
 exec "${CASE_WORK}/hook-outputs" "$@"
 HOOK
@@ -94,6 +102,39 @@ GRIDSS_MIN_MEM_GB=8 run_expect 0 gridss "${SCRIPTS}/04b-gridss.sh" sample1
 docker_log_has '^run image=[^ ]*gridss.* --workingdir /genome/sample1/sv_gridss/work ' "GRIDSS ran without --workingdir sv_gridss/work"
 docker_log_has "^run image=[^ ]*gridss.* -t ${THREADS:-8} " "GRIDSS did not get THREADS"
 [ ! -e "${GENOME_DIR}/sample1/sv_gridss/work" ] || fail "step 04b kept sv_gridss/work after GRIDSS wrote its VCF"
+# Step 22 leaves GRIDSS out, and the step says so instead of sending you there.
+output_has gridss 'left out of the SV consensus'
+output_lacks gridss 'converts and integrates'
+# GRIDSS's own high-confidence rule, applied with the pinned bcftools to the raw
+# VCF, which stays beside the filtered one.
+G=/genome/sample1/sv_gridss
+[ "$(sed -n 1p "${CASE_WORK}/bcftools-include" 2>/dev/null)" = 'QUAL>=1000 && INFO/AS>0 && INFO/RAS>0' ] \
+  || fail "step 04b did not filter with GRIDSS's high-confidence rule: $(sed -n 1p "${CASE_WORK}/bcftools-include" 2>/dev/null)"
+[ "$(sed -n 2p "${CASE_WORK}/bcftools-include" 2>/dev/null)" = "${G}/sample1_gridss.vcf.gz" ] \
+  || fail "step 04b did not filter GRIDSS's raw VCF"
+docker_log_has "^run image=[^ ]*bcftools[^ ]* :: .* bcftools view -i .* -o ${G//./\\.}/sample1_gridss\\.high\\.vcf\\.gz " \
+  "step 04b did not write sv_gridss/sample1_gridss.high.vcf.gz with BCFTOOLS_IMAGE"
+docker_log_has "^run image=[^ ]*bcftools.* bcftools index -f -t ${G//./\\.}/sample1_gridss\\.high\\.vcf\\.gz" \
+  "step 04b did not index the high-confidence VCF"
+H="${GENOME_DIR}/sample1/sv_gridss/sample1_gridss"
+[ -f "${H}.vcf.gz" ] && [ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
+  || fail "step 04b did not leave the raw VCF, the high-confidence VCF and its index"
+output_has gridss 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
+# A second run finds the raw VCF: it skips GRIDSS and writes the high-confidence
+# file again from that VCF. The raw VCF is a finished one, ending with the BGZF
+# end-of-file block as htslib writes it, so the step takes it as done.
+{ printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c
+  printf '\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00'; } > "${H}.vcf.gz"
+: > "$FAKE_DOCKER_LOG"
+rm -f "${H}.high.vcf.gz" "${H}.high.vcf.gz.tbi"
+GRIDSS_MIN_MEM_GB=8 run_expect 0 gridss-skip "${SCRIPTS}/04b-gridss.sh" sample1
+output_has gridss-skip 'skipping GRIDSS'
+if awk '/^run image=[^ ]*gridss/ { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; then
+  fail "step 04b ran GRIDSS again although its VCF exists"
+fi
+[ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
+  || fail "step 04b did not write the high-confidence VCF and its index from the existing raw VCF"
+output_has gridss-skip 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
 
 # --- Delly ----------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"

@@ -492,8 +492,11 @@ amut painting '.sections.ancestry_fine.data.painting = [{"code": "AFR", "group":
     {"group": "Narrow", "fraction": 0.005, "low": 0.0, "high": 0.02}, {"group": "Unfit", "fraction": null, "low": null, "high": null}]'
 amut no-painting '.sections.ancestry_fine.data.painting = [] | .sections.ancestry_fine.data.not_painted = []
   | .sections.ancestry_fine.data.left_out = [] | .sections.ancestry_fine.data.painting_png = ""'
+# prs-raw is a run without the panel, so no score has a percentile note: a
+# withheld note (c-full's T2D row) would make og print the withheld line,
+# which the oracle's commit predates (the cargo test prs_withheld.rs covers it).
 amut prs-raw '.sections.prs.data.adjusted = false | del(.sections.prs.data.ancestry)
-  | .sections.prs.data.scores |= map(.percentile = "" | .evaluated_in = null)'
+  | .sections.prs.data.scores |= map(.percentile = "" | .evaluated_in = null | .percentile_note = "")'
 amut prs-sex '.sections.prs.data.ancestry = {"population": "", "panel": "", "low_confidence": "True"}
   | .sections.prs.data.scores = [
     {"condition": "Prostate", "pgs_id": "PGS2", "score": "1", "matched": "5", "total": "6", "chrx": "0",

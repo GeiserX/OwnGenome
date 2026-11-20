@@ -24,7 +24,9 @@
                      samplesheet's sex its plink2 gets the sex (--update-sex),
                      which it needs to read chrX
     PRS_SUMMARY      <id>_prs_summary.tsv (og prs table),
-                     a score of the other sex marked not applicable, also
+                     a score of the other sex marked not applicable, a
+                     percentile withheld when PRS_SCORE_SITES' genotypes
+                     list variants only (under one 0/0 in five), also
                      published as <id>_prs_summary.<YYYYMMDD-HHMM>.tsv so a
                      rerun keeps it, and with the panel the ancestry table
                      of step 26
@@ -328,7 +330,9 @@ process PRS_SUMMARY {
     publishDir { "${params.outdir}/${meta.id}/ancestry" }, mode: params.publish_dir_mode, pattern: '*_ancestry.tsv'
 
     input:
-    tuple val(meta), path(results), val(input_kind), path(scores, stageAs: 'pgs')
+    // target: PRS_SCORE_SITES' genotypes, which pgsc_calc scored; og prs
+    // table withholds the percentiles when they hold no reference calls.
+    tuple val(meta), path(results), val(input_kind), path(scores, stageAs: 'pgs'), path(target, stageAs: 'target/*')
     val(panel_name)      // '' without an ancestry panel
 
     output:
@@ -350,7 +354,7 @@ process PRS_SUMMARY {
     if [ -f ${results}/ZERO_MATCHES ]; then FLAGS=(--zero-matches); fi
     if [ -f ${results}/BELOW_THRESHOLD ]; then FLAGS=(--below-threshold ${results}/pgsc_calc.log); fi
     og prs table --sample ${meta.id} --results ${results} --sampleset sample \\
-        --scores pgs --input-kind ${input_kind} --sex '${sex}' \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
+        --scores pgs --input-kind ${input_kind} --sex '${sex}' --target ${target} \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
     cp -p ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.\$(date -r ${meta.id}_prs_summary.tsv +%Y%m%d-%H%M).tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
@@ -358,7 +362,7 @@ process PRS_SUMMARY {
 
     stub:
     """
-    printf 'Condition\\tPGS_ID\\tScore_SUM\\tVariants_Matched\\tVariants_Total\\tMatched_Pct\\tPercentile\\tAncestry_Group\\tChrX\\tAmbiguous\\tApplies_To\\tSex_Check\\tInput\\n' > ${meta.id}_prs_summary.tsv
+    printf 'Condition\\tPGS_ID\\tScore_SUM\\tVariants_Matched\\tVariants_Total\\tMatched_Pct\\tPercentile\\tAncestry_Group\\tChrX\\tAmbiguous\\tApplies_To\\tSex_Check\\tPercentile_Note\\tInput\\n' > ${meta.id}_prs_summary.tsv
     cp ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.20260101-0000.tsv
     if [ -n "${panel_name}" ]; then printf 'key\\tvalue\\nsample\\t%s\\n' ${meta.id} > ${meta.id}_ancestry.tsv; fi
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml

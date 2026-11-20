@@ -24,7 +24,10 @@
 # as a one-line pedigree (--ped), so its own table and MultiQC show it beside
 # the sex from the reads; the verdict is still the sex from the reads alone. FREEMIX above FREEMIX_WARN
 # (default 0.03) is a warning only: contamination makes calls less reliable,
-# it does not make them someone else's.
+# it does not make them someone else's. On thin evidence the table says so:
+# FREEMIX from fewer than 5,000 markers, or with VerifyBamID2's marker check
+# skipped, is uncertain, and so is identity from fewer than 1,000 somalier
+# sites; with no other sample to compare, identity is not checked.
 # A data problem in the mosaic estimate (og qc sex-loss) never stops the step
 # either (a missing og binary does):
 # below about 10% of the cells nothing can be told at 30x, and above it the
@@ -133,7 +136,9 @@ done
 # --- 2. VerifyBamID2: contamination ----------------------------------------------
 # VerifyBamID2 refuses to estimate when fewer than 1,000 panel markers have
 # reads (a targeted or sliced BAM). Then it runs again without that check,
-# and the table says the marker check was skipped.
+# and the table says the marker check was skipped. Its check logs how many
+# markers it kept ("N SNP markers remained after sanity check"); the run
+# without the check does not, so the count comes from the first run's log.
 echo ""
 echo "--- VerifyBamID2"
 VB_OUT="/genome/${SAMPLE}/qc/verifybamid2/${SAMPLE}"
@@ -148,7 +153,10 @@ vb2() {
       --NumThread "$THREADS" "$@" > "$VB_LOG" 2>&1
 }
 SANITY_CHECK=passed
-if ! vb2; then
+VB_RC=0
+vb2 || VB_RC=$?
+MARKERS=$(sed -n '/SNP markers remained after sanity check/{s/.* \([0-9][0-9]*\) SNP markers remained.*/\1/p;q;}' "$VB_LOG")
+if [ "$VB_RC" -ne 0 ]; then
   if grep -q 'Insufficient Available markers' "$VB_LOG"; then
     SANITY_CHECK=skipped
     echo "Fewer than 1,000 panel markers have reads; running again without VerifyBamID2's marker check."
@@ -177,6 +185,7 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
     --declared-sex "$DECLARED_SEX" \
     --freemix-warn "$FREEMIX_WARN" \
     --marker-check "$SANITY_CHECK" \
+    --verifybamid2-markers "$MARKERS" \
     --out "/genome/${SAMPLE}/qc/${SAMPLE}_sample_qc.tsv"
 TABLE="${OUT}/${SAMPLE}_sample_qc.tsv"
 [ -s "$TABLE" ] || { echo "ERROR: no ${TABLE}" >&2; exit 1; }
@@ -208,7 +217,10 @@ echo "Results: ${TABLE}"
 echo "  somalier:     ${OUT}/somalier/${SAMPLE}.samples.tsv, ${SAMPLE}.html"
 echo "  VerifyBamID2: ${OUT}/verifybamid2/${SAMPLE}.selfSM"
 echo ""
-echo "Contamination: FREEMIX $(val freemix) (VerifyBamID2's marker check ${SANITY_CHECK})"
+echo "Contamination: FREEMIX $(val freemix) (VerifyBamID2's marker check ${SANITY_CHECK}, ${MARKERS:-an unknown number of} markers kept)"
+if [ "$(val contamination_confidence)" = uncertain ]; then
+  echo "  The estimate is uncertain: $(val contamination_confidence_reason)."
+fi
 if [ "$(val contamination)" = warn ]; then
   echo "!!! FREEMIX $(val freemix) is above ${FREEMIX_WARN}: about $(awk -v f="$(val freemix)" 'BEGIN { printf "%d", f * 100 + 0.5 }')% of the reads may come" >&2
   echo "!!! from another person. Calls, above all heterozygous ones, are less reliable; see docs/33-sample-qc.md." >&2
@@ -224,6 +236,7 @@ echo "Sex from the reads (somalier): $(val inferred_sex)"
 if [ -n "$(val same_person_as)" ]; then
   echo "!!! The same person as: $(val same_person_as)" >&2
 fi
+echo "Identity: $(val identity) ($(val identity_reason))"
 case "$(val sex_check)" in
   ok) echo "  Declared sex:  ${DECLARED_SEX}"; echo "  Sex check: OK" ;;
   not_checked) echo "  Sex check: not done ($(val sex_check_reason))" ;;
