@@ -141,7 +141,7 @@ COMMON_AF = 0.01
 # equal; the set stays written here because this file also runs where only
 # bin/ is mounted). A section whose step is not here (variant calling, step
 # 03, which run-all reuses on purpose) is never marked stale.
-RUN_ALL_STEPS = {"03a", "03b", "03c", "03d", "04", "04b", "05", "06", "07", "08", "09", "09b", "10", "11",
+RUN_ALL_STEPS = {"03a", "03b", "03c", "03d", "04", "04a", "04b", "05", "06", "07", "08", "09", "09b", "10", "11",
                  "12", "13", "14", "15", "16", "16b", "17", "18", "19", "20", "21", "22", "23", "25", "26",
                  "26b", "27", "28", "29", "30", "31", "32", "33", "35", "35b", "37", "38", "39", "40", "41",
                  "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53"}

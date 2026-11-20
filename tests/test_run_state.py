@@ -195,7 +195,7 @@ def run_all_steps():
     planned = set(re.findall(r'"(\d+b?) ([^":]+):(\w+)"', src))
     planned |= set(re.findall(r'plan "(\d+b?) ([^"]+)" (\w+)', src))
     other = set(re.findall(r"printf 'step\\t(\d+b?)\\tskipped", src)) - {s for s, _, _ in planned}
-    scripts = set(re.findall(r"\b\w+:(\d+b?)-[\w-]+\b", src))  # GRIDSS:04b-gridss ...
+    scripts = set(re.findall(r"\b\w+:(\d+[ab]?)-[\w-]+\b", src))  # TIDDIT:04a-tiddit, GRIDSS:04b-gridss ...
     m = re.search(r'compgen -G "03\[([a-d-]+)\]', src)
     callers = {f"03{c}" for c in "abcd"} if m and m.group(1) == "a-d" else set()
     return planned, other | scripts | callers

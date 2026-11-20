@@ -23,13 +23,18 @@
 #   the ACMG SF genes; the report's own secondary-findings card from step 23 stays);
 #   HPO=HP:0001250,HP:0001263 (the symptoms as HPO ids: step 48 ranks the variants that could explain them with Exomiser,
 #   after setup.sh --exomiser-data);
+#   EVERYTHING=true (every optional step of assets/everything.tsv: every --tools name, KIR, HLA_QC, GRIDSS, TIDDIT,
+#   IMPUTATION, SOMATIC, BENCHMARK and every EXTRA_CALLERS; TOOLS or a switch set to another value stops it with exit 2.
+#   A step that would be skipped because its data is not installed, or because ANCESTRY_PANEL, ANCESTRY_FINE_DIR or
+#   ARCHAIC_DIR is none, stops it with exit 2 before Nextflow, naming the setup command; a skip that comes from the
+#   input stays a skip: no BAM, no gVCF, a female sample for the Y steps, a BAM that is not PacBio HiFi for Paraphase);
 #   REF_FASTA, EH_CATALOG (a file, or bundled), MANTA_CALL_REGIONS, PARASCOPY_POPULATION, PARAPHASE_REGIONS, ANCESTRY_PANEL (--ancestry_ref; none: raw
 #   scores), ANCESTRY_FINE_DIR (--ancestry_fine_panel, step 26b,
 #   always 100 bootstrap replicates; none: skip), ARCHAIC_DIR and ARCHAIC_POP (--archaic_data and --archaic_pop,
 #   step 43; ARCHAIC_DIR=none: skip), PGSC_CALC_DIR (--pgsc_calc), LOCITYPER_DATA (--locityper_data, step 53's
 #   database) and LOCITYPER_BG_REGION (--locityper_bg_region) as for the single steps; the panels, the databases and
 #   pgsc_calc are passed when installed.
-# Run as scripts after the pipeline: GRIDSS=true (04b), IMPUTATION=true (14),
+# Run as scripts after the pipeline: TIDDIT=true (04a), GRIDSS=true (04b), IMPUTATION=true (14),
 #   SOMATIC=true (29), EXTRA_CALLERS=gatk,freebayes,strelka2,octopus (03a-03d), BENCHMARK=true (needs
 #   EXTRA_CALLERS or a second caller VCF); then the HTML report (24) and the text report, also after a failed pipeline.
 # FAMILIES=families.tsv (who is related to whom, assets/families.example.tsv): when the sample is in a family, the sex
@@ -56,8 +61,8 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 # shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
 SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
-  PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
-  FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
+  PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS TIDDIT IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
+  FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION EVERYTHING NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
 RERUN_CMD="cd $(printf '%q' "$PWD") && "; for v in "${SWITCHES[@]}"; do [ -z "${!v+x}" ] || RERUN_CMD+="${v}=$(printf '%q' "${!v}") "; done
 RERUN_CMD+=$(printf '%q ' "${SCRIPT_DIR}/run-all.sh" "$SAMPLE" "$SEX" "$@"); RERUN_CMD=${RERUN_CMD% }
 # With -bg nextflow returns at once, and the steps would be recorded and the reports written before the run ends.
@@ -66,6 +71,25 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 validate_sample "$SAMPLE"
+# EVERYTHING=true: every tool row of assets/everything.tsv goes into TOOLS (html_report aside: this script writes
+# the report itself, step 24) and every switch row is set to its value. EVHOW keeps each row's install command.
+EV="" EVMISS=(); declare -A EVHOW=()
+if [[ "${EVERYTHING:-}" =~ ^(true|1)$ ]]; then
+  EV=1 EVT="" EVF="${PGP_ROOT}/assets/everything.tsv"
+  [ -s "$EVF" ] || { echo "ERROR: EVERYTHING=true reads ${EVF}, which is missing" >&2; exit 2; }
+  [ -z "${TOOLS:-}" ] || { echo "ERROR: EVERYTHING=true names every step itself: unset TOOLS (TOOLS=${TOOLS})" >&2; exit 2; }
+  while IFS=$'\t' read -r kind name value _; do
+    case "$kind" in
+      tool) [ "$name" = html_report ] || EVT+="${EVT:+,}${name}"; EVHOW[$name]=$value ;;
+      input) EVHOW[$name]=$value ;;
+      switch) if [ -n "${!name:-}" ] && [ "${!name}" != "$value" ] && ! { [ "$value" = true ] && [ "${!name}" = 1 ]; }; then
+          echo "ERROR: EVERYTHING=true sets ${name}=${value}: unset ${name} (it is ${!name})" >&2; exit 2; fi
+        printf -v "$name" '%s' "$value" ;;
+    esac
+  done < <(grep -v '^#' "$EVF" | tail -n +2)
+  TOOLS=$EVT
+  echo "[Everything] EVERYTHING=true: every optional step (${EVF}); one that lacks its data stops the run before Nextflow"
+fi
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
 SF=${CPSR_SECONDARY_FINDINGS:-true}  # as scripts/17-cpsr.sh reads it: unset or empty is true, else true or false only
@@ -130,7 +154,18 @@ plan() {  # plan "STEP Label" TOOL [REASON]: 0 when TOOL runs
   [[ -n "$NOBAM" || " 16 16b 10 20 21 04 19 15 22 08 09 09b 18 05 28 32 33 35 35b 37 45 49 " != *" ${1%% *} "* ]] || r="no BAM"
   [ -z "$t" ] || [[ ",${t// /}," == *",$2,"* ]] || r=${r:-not in TOOLS}
   if [ -z "$r" ]; then SEL+=("$2") RUNS+=("${1%% *}") TOOL_OF[${1%% *}]=$2; printf '  %-28s runs\n' "$1"; return 0; fi
-  printf '  %-28s skipped    (%s)\n' "$1" "$r"; printf 'step\t%s\tskipped (%s)\n' "${1%% *}" "$r" >> "$STATUS"; return 1
+  printf '  %-28s skipped    (%s)\n' "$1" "$r"; printf 'step\t%s\tskipped (%s)\n' "${1%% *}" "$r" >> "$STATUS"
+  evmiss "$1" "$2" "$r"; return 1
+}
+# evmiss "STEP Label" TOOL REASON: with EVERYTHING=true, a skip for data that is not installed, or for X=none, stops
+# the run before Nextflow (the list prints after the plan). A skip that comes from the input is not one of them.
+evmiss() {
+  local h=${EVHOW[$2]:-setup.sh}; [ "$h" != - ] || h=setup.sh
+  [ -n "$EV" ] || return 0
+  case "$3" in
+    *=none) EVMISS+=("$1: $3: unset ${3%%=*}") ;;
+    "data not installed"*|"not installed"*|"opt-in"*) EVMISS+=("$1: $3; install: $h") ;;
+  esac
 }
 arg() { [ ! -e "$2" ] || NF+=("$1" "$2"); }  # arg --param FILE: pass FILE when it exists
 CV="${G}/clinvar/clinvar_pathogenic_chr.vcf.gz" A="${G}/annotations" CAT=${EH_CATALOG:-}
@@ -186,8 +221,9 @@ for p in "07 PharmCAT:pharmcat" "27 CPIC lookup:cpic" "11 ROH:roh" "12 Mito hapl
 plan "06 ClinVar screen" clinvar "$(need "$CV" "${CV}.tbi")" && NF+=(--clinvar "$CV" --clinvar_index "${CV}.tbi")
 H=$(data_file hla_dat || true) GT=$(data_file gencode_genes || true)
 plan "08 HLA typing (T1K)" hla_typing "$(need "$H" "$GT")" && NF+=(--hla_dat "$H" --hla_genes "$GT") \
-  && if on KIR; then K="${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"; [ -s "$K" ] && NF+=(--kir true --kir_dat "$K") \
-    || echo "  KIR typing skipped: data not installed: ${K#"$G"/} (setup.sh --kir-data)"; fi
+  && if on KIR; then K="${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"; if [ -s "$K" ]; then NF+=(--kir true --kir_dat "$K")
+    else echo "  KIR typing skipped: data not installed: ${K#"$G"/} (setup.sh --kir-data)"
+      [ -z "$EV" ] || EVMISS+=("08 KIR typing (KIR=true): data not installed: ${K#"$G"/}; install: setup.sh --kir-data"); fi; fi
 [[ " ${SEL[*]} " != *" hla_typing "* ]] || ! on HLA_QC || { NF+=(--hla_qc true); echo "    (HLA_QC=true: OptiType checks T1K's HLA-A and HLA-B)"; }
 plan "09 ExpansionHunter" expansion_hunter "$(need "$CAT")" && NF+=(--expansion_catalog "$CAT")
 plan "09b Stranger" stranger "$(need "$CAT")" || true
@@ -216,7 +252,18 @@ plan "21 Cyrius CYP2D6" cyrius "$([ -n "$CYOK" ] || if [ -e "${CY}/INSTALLED" ] 
   && NF+=(--cyrius_install "$CY") && { [ -n "$T" ] || echo "    (planned because setup.sh --cyrius installed it; TOOLS without cyrius leaves it out)"; }
 plan "35 Parascopy SMN1/SMN2" parascopy "$(optin parascopy || need "${PS}/homology_table/GRCh38.bed.gz")" && NF+=(--parascopy_data "$PS") \
   && NF+=(--parascopy_population "${PARASCOPY_POPULATION:-EUR}")
-plan "35b Paraphase (PacBio HiFi)" paraphase "$(optin paraphase)" && { [ -z "${PARAPHASE_REGIONS:-}" ] || NF+=(--paraphase_regions "$PARAPHASE_REGIONS"); }
+# Step 35b reads PacBio HiFi reads only. og paraphase check-bam, which PARAPHASE_CHECK runs too, says whether every
+# read group of the BAM is PL:PACBIO (exit 3: not). Another BAM is a skip, not a failed step; so is a FASTQ row, which
+# the pipeline aligns as short reads. A check that cannot run leaves the step to PARAPHASE_CHECK.
+hifi() {
+  [ -n "$NOBAM" ] || return 0
+  [ -n "$fb" ] || { echo 'not PacBio HiFi: a FASTQ row is aligned as short reads'; return 0; }
+  local rc=0
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og paraphase check-bam "/genome/${fb#"$G"/}" \
+    > /dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 3 ] || echo 'not PacBio HiFi: a read group of the BAM is not PL:PACBIO'
+}
+plan "35b Paraphase (PacBio HiFi)" paraphase "$(optin paraphase || hifi)" && { [ -z "${PARAPHASE_REGIONS:-}" ] || NF+=(--paraphase_regions "$PARAPHASE_REGIONS"); }
 plan "25 PRS" prs "$(need "$(compgen -G "${G}/prs_scores/*.txt.gz" | head -n 1 || echo "${G}/prs_scores/<PGS id>.txt.gz")")" && NF+=(--pgs_scoring "${G}/prs_scores") \
   && { PC=${PGSC_CALC_DIR:-${G}/tools/pgsc_calc-${PGSC_CALC_VERSION}}; [ ! -f "${PC}/main.nf" ] || NF+=(--pgsc_calc "$PC"); }
 # Step 26 is pgsc_calc's projection inside the PRS run, with its panel and the site list setup.sh writes beside it.
@@ -228,7 +275,8 @@ AF=${ANCESTRY_FINE_DIR:-${G}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
 plan "26b Fine-grained ancestry" ancestry_fine "$(if [ "$AF" = none ]; then echo 'ANCESTRY_FINE_DIR=none'; else need "${AF}/model/DONE"; fi)" \
   && NF+=(--ancestry_fine_panel "$AF")
 YD="${G}/reference/yleaf-${YLEAF_DATA_VERSION}/data"
-plan "37 Y haplogroup (Yleaf)" y_haplogroup "$(optin y_haplogroup || need "${YD}/hg38/new_positions.txt")" && NF+=(--yleaf_data "$YD")
+plan "37 Y haplogroup (Yleaf)" y_haplogroup "$(optin y_haplogroup || if [ "$SEX" = male ]; then need "${YD}/hg38/new_positions.txt"
+  else echo 'female sample: no Y chromosome'; fi)" && NF+=(--yleaf_data "$YD")
 # Step 40 reads the gVCF: a row that starts from a VCF without one beside it has none.
 CS="${G}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
 plan "40 Raw-data export" consumer_export "$(optin consumer_export || if [ -n "$fv" ] && [ -z "$GROW" ]; then echo 'no gVCF beside the VCF'; else need "$CS"; fi)" \
@@ -292,6 +340,10 @@ case "$LD" in /*) ;; *) LD="${G}/${LD}" ;; esac
 if [[ ",${T// /}," == *",locityper,"* ]]; then plan "53 Hard loci (Locityper)" locityper "$(if [ -z "$NOBAM" ]; then echo 'no BAM'; else need "${LD}/DONE"; fi)" \
   && NF+=(--locityper_data "$LD") && { [ -z "${LOCITYPER_BG_REGION:-}" ] || NF+=(--locityper_bg_region "$LOCITYPER_BG_REGION"); } || true; else KNOWN+=" locityper"; fi
 for t in ${T//,/ }; do [[ "${KNOWN} " == *" ${t} "* ]] || { echo "ERROR: unknown step '${t}' in TOOLS. Known:${KNOWN}" >&2; exit 2; }; done
+if [ "${#EVMISS[@]}" -gt 0 ]; then
+  { echo "ERROR: EVERYTHING=true runs every optional step, and ${#EVMISS[@]} cannot run (nothing started):"; printf '  %s\n' "${EVMISS[@]}"
+    echo "Install what is missing, or run without EVERYTHING=true to skip them."; } >&2; exit 2
+fi
 arg --cytoband "$(data_file cytoband || true)"; ! GEX=$(data_file gencode_exons) || NF+=(--gencode_exons "$GEX"); arg --delly_exclude "$(data_file delly_exclude || true)"; arg --manta_call_regions "${MANTA_CALL_REGIONS:-}"
 # Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): ClinVar with its index, and gnomAD's chrM sites.
 MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; then NF+=(--mito_clinvar "$MC"); fi; arg --gnomad_mito "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
@@ -336,7 +388,7 @@ if [[ " $* " != *" --publish_dir_mode"* && " $* " != *" -w "* && " $* " != *" -w
   rm -f "$LP" "${S}/.pgp-link-probe.$$" "${G}/.pgp-link-probe.$$"
 fi
 if on SKIP_TRIM; then NF+=(--skip_trim true); fi
-for v in GRIDSS:04b-gridss IMPUTATION:14-imputation-prep SOMATIC:29-mutect2-somatic; do if on "${v%%:*}"; then OPTIN+=("${v#*:}.sh"); fi; done
+for v in TIDDIT:04a-tiddit GRIDSS:04b-gridss IMPUTATION:14-imputation-prep SOMATIC:29-mutect2-somatic; do if on "${v%%:*}"; then OPTIN+=("${v#*:}.sh"); fi; done
 for c in ${C//,/ }; do OPTIN+=("$(cd "$SCRIPT_DIR" && compgen -G "03[a-d]-${c}*.sh")") || { echo "ERROR: unknown caller '${c}' in EXTRA_CALLERS (gatk, freebayes, strelka2, octopus)" >&2; exit 2; }; done
 if ! on BENCHMARK; then :; elif [ -n "$C" ] || compgen -G "${S}/vcf_*/${SAMPLE}.vcf.gz" >/dev/null || [ -f "${S}/vcf_strelka2/results/variants/variants.vcf.gz" ]; then OPTIN+=(benchmark-variants.sh)
 else echo "  benchmark-variants skipped (only one caller VCF: set EXTRA_CALLERS, or run a 03a-03d script first)"; fi

@@ -425,6 +425,7 @@ switch	VIRAL_REF	-	-	-	-	experimental	-	-
 switch	MEGANE_KMERS	-	-	-	-	experimental	-	-
 switch	MOCHA_DATA	-	-	-	-	experimental	-	-
 switch	GRIDSS	-	-	-	-	stable	-	-
+switch	TIDDIT	-	-	-	-	stable	-	-
 switch	IMPUTATION	-	-	-	-	stable	-	-
 switch	SOMATIC	-	-	-	-	stable	-	-
 switch	EXTRA_CALLERS	-	-	-	-	stable	-	-
@@ -433,6 +434,7 @@ switch	FAMILIES	-	-	-	-	experimental	-	-
 switch	OWNGENOME_LIVE_URL	-	-	-	-	experimental	-	-
 switch	LOCITYPER_DATA	-	-	-	-	experimental	-	-
 switch	LOCITYPER_BG_REGION	-	-	-	-	experimental	-	-
+switch	EVERYTHING	-	-	-	-	stable	-	-
 switch	NXF_VER	-	-	-	-	stable	-	-
 switch	NXF_WORK	-	-	-	-	stable	-	-
 switch	NXF_HOME	-	-	-	-	stable	-	-
