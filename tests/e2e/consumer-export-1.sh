@@ -5,8 +5,11 @@
 # places inside the fixture's regions).
 #   1. step 40 writes both zips; the strict reader passes both;
 #   2. every site gets the genotype a second, independent reading of the
-#      gVCF gives it (each site looked up among all gVCF records), almost
-#      every site is called, and almost none lacks a gVCF record;
+#      gVCF gives it (each site looked up among all gVCF records, after the
+#      reference calls below the D10 floor, GQ under 20 or a FILTER other
+#      than PASS, . or RefCall, are made no-calls), almost every site is
+#      called, almost none lacks a gVCF record, and the summary counts as
+#      weak exactly the sites the floor took;
 #   3. a planted hole (the gVCF record over one called site removed) makes
 #      that site '--' and changes no other site;
 #   4. round trip: scripts/chip-to-vcf.sh reads the exported 23andMe file and
@@ -115,11 +118,38 @@ for line in gzip.open(sites, "rt"):
     print(f"{rsid}\t{''.join(sorted(letters)) if letters else '--'}")
 PY
 }
-expected_calls "$GVCF" "$SITES" > "${CASE_TMP}/expected.tsv"
+# weak_as_nocall IN OUT: IN with the GT of every weak reference call (GT all
+# 0 with GQ under 20, or a FILTER other than PASS, . or RefCall) set to ./.,
+# so expected_calls reads those as no-calls; a missing GQ stays readable (D10).
+weak_as_nocall() {
+  gzip -dc "$1" | awk -F'\t' -v OFS='\t' '
+    /^#/ || NF < 10 { print; next }
+    {
+      n = split($9, k, ":"); mv = split($10, v, ":"); gi = 0; qi = 0
+      for (i = 1; i <= n; i++) { if (k[i] == "GT") gi = i; if (k[i] == "GQ") qi = i }
+      if (gi == 0 || gi > mv) { print; next }
+      m = split(v[gi], a, /[\/|]/); ref = 1
+      for (i = 1; i <= m; i++) if (a[i] != "0") ref = 0
+      weak = ($7 != "PASS" && $7 != "." && $7 != "RefCall") || (qi > 0 && v[qi] ~ /^[0-9]+$/ && v[qi] + 0 < 20)
+      if (ref && weak) {
+        v[gi] = "./."; s = v[1]
+        for (i = 2; i <= mv; i++) s = s ":" v[i]
+        $10 = s
+      }
+      print
+    }' | gzip -c > "$2"
+}
+weak_as_nocall "$GVCF" "${CASE_TMP}/floored.g.vcf.gz"
+expected_calls "${CASE_TMP}/floored.g.vcf.gz" "$SITES" > "${CASE_TMP}/expected.tsv"
+expected_calls "$GVCF" "$SITES" > "${CASE_TMP}/expected_nofloor.tsv"
 grep -v '^#' "${CASE_TMP}/export_23andme.txt" | cut -f1,4 > "${CASE_TMP}/exported.tsv"
 DIFF=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/exported.tsv") | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
 head -n 5 < <(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/exported.tsv") | awk -F'\t' '$2 != $3')
 check_eq "sites whose exported genotype differs from the independent reading of the gVCF" "$DIFF" 0
+FLOORED=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/expected_nofloor.tsv") \
+  | awk -F'\t' '$2 == "--" && $3 != "--"' | wc -l | tr -d ' ')
+WEAK=$(val 'no_call: weak reference call (GQ below 20, or filtered)' "$SUM")
+check_eq "sites the GQ 20 floor makes -- (independent reading) against the summary's weak reference calls" "${WEAK:-0}" "$FLOORED"
 CALLED=$(val called "$SUM")
 check_ge "sites called, in percent of ${N_SITES}" "$(( ${CALLED:-0} * 100 / N_SITES ))" 90
 NOREC=$(val 'no_call: no gVCF record' "$SUM")
@@ -164,7 +194,8 @@ check_step_exit "40-export-consumer.sh (planted hole)"
 unz "${G}/${H}/consumer_export/${H}_23andme_v5.zip" "${CASE_TMP}/hole.txt"
 check_eq "the planted hole's site ${HOLE_ID:-none} is --" "$(awk -F'\t' -v r="${HOLE_ID:-none}" '$1 == r {print $4}' "${CASE_TMP}/hole.txt")" "--"
 # Only sites the removed record covered may change.
-expected_calls "${G}/${H}/vcf/${H}.g.vcf.gz" "$SITES" > "${CASE_TMP}/hole_expected.tsv"
+weak_as_nocall "${G}/${H}/vcf/${H}.g.vcf.gz" "${CASE_TMP}/hole_floored.g.vcf.gz"
+expected_calls "${CASE_TMP}/hole_floored.g.vcf.gz" "$SITES" > "${CASE_TMP}/hole_expected.tsv"
 HDIFF=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/hole_expected.tsv") <(grep -v '^#' "${CASE_TMP}/hole.txt" | cut -f1,4 | LC_ALL=C sort) \
   | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
 check_eq "planted hole: sites that differ from the independent reading of the holed gVCF" "$HDIFF" 0
