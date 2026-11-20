@@ -744,13 +744,13 @@ fn genotype_all(
             Some(c) => c,
             None => {
                 // No #CHROM line: one sample column is read, two cannot be
-                // told apart.
+                // told apart, so every record is checked until one is seen.
                 if l.iter().filter(|&&c| c == b'\t').count() > FIRST_SAMPLE {
                     return Err(Fail::data(format!(
                         "{gvcf} line {lineno}: more than one sample column and no #CHROM header line to name them"
                     )));
                 }
-                *col.insert(FIRST_SAMPLE)
+                FIRST_SAMPLE
             }
         };
         // Python indexed the line with its "\n"; t1 and t2 never reach it.
