@@ -9,8 +9,9 @@
 # the insertions it calls and reads a short catalog of insertions known to
 # cause disease (assets/mei_sites.tsv: the FKTN SVA of Fukuyama muscular
 # dystrophy, the TAF1 SVA of X-linked dystonia-parkinsonism, the BBS1 SVA of
-# Bardet-Biedl syndrome) as seen, not seen, or not callable (too few reads
-# there to tell). With AnnotSV's data in GENOME_DIR (annotsv_annotations/, as
+# Bardet-Biedl syndrome) as seen (a call that passed MEGAnE's filters), call
+# filtered out (only calls MEGAnE flagged), not seen, or not callable (too few
+# reads there to tell). With AnnotSV's data in GENOME_DIR (annotsv_annotations/, as
 # step 05 reads it), AnnotSV annotates the insertions the table lists: the
 # genes each falls in, where in them, the frequency of a benign insertion at
 # that place, and AnnotSV's class (NA for every insertion: AnnotSV 3.5 scores
@@ -27,7 +28,7 @@
 #                                        with at least one copy, and AnnotSV's genes, location,
 #                                        benign frequency and class ("." without AnnotSV's data)
 #         mei/<sample>_mei_annotsv.tsv   AnnotSV's table of those insertions (with its data only)
-#         mei/<sample>_mei_sites.tsv     the catalog with seen / not seen / not callable
+#         mei/<sample>_mei_sites.tsv     the catalog with seen / call filtered out / not seen / not callable
 #         mei/<sample>_mei_depth.tsv     samtools bedcov over the catalog windows
 #         mei/<sample>_megane.log        MEGAnE's log
 # MEGAnE reads the whole BAM; about an hour for a 30x genome on 4 threads, in

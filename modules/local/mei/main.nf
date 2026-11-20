@@ -16,7 +16,8 @@
                   class, NA for every insertion (AnnotSV 3.5 scores deletions
                   and duplications only); then og mei report: the calls
                   with those columns ("." without AnnotSV's data), and the
-                  catalog as seen / not seen / not callable. 4 CPUs and 8 GB
+                  catalog as seen / call filtered out / not seen / not
+                  callable. 4 CPUs and 8 GB
                   with AnnotSV's data, as step 05 gives AnnotSV, 1 and 2 GB
                   without (conf/base.config)
 
