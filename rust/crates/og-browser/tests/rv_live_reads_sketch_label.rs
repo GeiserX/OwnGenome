@@ -5,8 +5,9 @@
 //! 1. A finding's reads drawing says it is an illustration before the
 //!    picture, and no offer of reads in the demo links to the viewer page,
 //!    which only says the demo has no reads: the finding page, a card's
-//!    links, a chart mark's panel and the map's card say "Reads: not in the
-//!    demo" instead. Outside the demo the finding page keeps its link.
+//!    links, a chart mark's panel, a search hit with a place and the map's
+//!    card say "Reads: not in the demo" instead. Outside the demo the
+//!    finding page keeps its link.
 //! 2. After a search for CYP2D6, choosing its finding and selecting the
 //!    card's reads button, the reads panel's top is inside the viewport, on
 //!    a wide screen and on a phone.
@@ -82,6 +83,36 @@ fn copy_dir(from: &Path, to: &Path) {
             fs::copy(&src, &dst).unwrap();
         }
     }
+}
+
+/// A term of the demo's search index with a mention at a place: its hit
+/// offers the reads (the first in sorted order, as tests/test_live_demo.py
+/// picks it).
+fn located_term(demo: &Path) -> Option<String> {
+    let path = demo
+        .join("runs")
+        .join(RUN)
+        .join(format!("{RUN}_search_index.json"));
+    let index = json::loads(&fs::read_to_string(path).ok()?).ok()?;
+    let Value::Object(top) = index else {
+        return None;
+    };
+    let Some(Value::Object(terms)) = top.get("terms") else {
+        return None;
+    };
+    let placed = |m: &Value| matches!(m, Value::Object(m) if matches!(m.get("locus"), Some(Value::Str(s)) if !s.is_empty()));
+    let located = |items: &Value| match items {
+        Value::Array(items) => items.iter().any(|it| match it {
+            Value::Object(it) => {
+                matches!(it.get("mentions"), Some(Value::Array(ms)) if ms.iter().any(placed))
+            }
+            _ => false,
+        }),
+        _ => false,
+    };
+    let mut names: Vec<&String> = terms.keys().collect();
+    names.sort();
+    names.into_iter().find(|t| located(&terms[*t])).cloned()
 }
 
 /// Wide screen or phone: the page's own size, as a reader's window.
@@ -326,6 +357,54 @@ fn the_demo_says_it_has_no_reads_and_the_reads_panel_comes_into_view() {
     let links = text(b.eval(READS_LINKS).ok());
     check(
         "browser: the demo's person page links no reads to the viewer page",
+        links == "[]",
+        links,
+    );
+
+    // The search box: a hit with a place says the demo has no reads, as the
+    // other offers do (the same steps as tests/test_live_demo.py's search).
+    let term = located_term(&demo).unwrap_or_default();
+    let plain = !term.is_empty()
+        && term
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
+    check(
+        "the demo's search index has a term with a mention at a place",
+        plain,
+        format!("{term:?}"),
+    );
+    b.eval(
+        "var s = document.getElementById('replay-slider'); \
+         if (s) { s.value = s.max; s.dispatchEvent(new Event('input')); } true",
+    )
+    .unwrap();
+    let field = "document.querySelector('input[type=search]:not(#gm-find)')";
+    let open = text(b.wait(
+        &format!("var i = {field}; i && !i.disabled && 'enabled'"),
+        secs(30),
+    ));
+    let hit = if open == "enabled" && plain {
+        b.eval(&format!(
+            "var i = {field}; i.value = '{term}'; i.dispatchEvent(new Event('input')); true"
+        ))
+        .unwrap();
+        text(b.wait(
+            "+(document.documentElement.dataset.pgpSearch || 0) > 0 && \
+             JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.search-results .viewer'), \
+             function (v) { return v.textContent; }))",
+            secs(20),
+        ))
+    } else {
+        format!("the search box is {open}")
+    };
+    check(
+        &format!("browser: a search hit for {term} with a place says 'Reads: not in the demo'"),
+        hit.contains("Reads: not in the demo") && !hit.contains("reads at "),
+        hit,
+    );
+    let links = text(b.eval(READS_LINKS).ok());
+    check(
+        "browser: the demo's search results link no reads to the viewer page",
         links == "[]",
         links,
     );
