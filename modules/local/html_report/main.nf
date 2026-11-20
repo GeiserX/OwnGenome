@@ -71,8 +71,8 @@ process HTML_REPORT {
     def gvcf_index = meta.gvcf ? meta.gvcf[1].toString().replace("'", "'\\''") : ''
     def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
     def release = workflow.manifest.version ?: ''
-    // --intervals on one line with single spaces, as bin/write_manifest.sh writes INTERVALS
-    def intervals = params.intervals ? params.intervals.toString().trim().split(/\s+/).join(' ').replace("'", "'\\''") : ''
+    // --intervals as given, single-quoted below like gvcf; the task script puts it on one line
+    def intervals = params.intervals ? params.intervals.toString().replace("'", "'\\''") : ''
     """
     # Where og summary collect looks for each output (rust/crates/og-summary)
     S=layout/${id}
@@ -88,9 +88,11 @@ process HTML_REPORT {
     release='${release}'
     [ -z "\$release" ] || printf 'run\\tpipeline_version\\t%s\\n' "\$release" >> "\$S/run_manifest.tsv"
     # The regions this run was limited to (bash: the run intervals row), so
-    # og summary collect marks the genome-wide sections partial
+    # og summary collect marks the genome-wide sections partial; one line with
+    # single spaces, as bin/write_manifest.sh writes INTERVALS
     intervals='${intervals}'
-    [ -z "\$intervals" ] || printf 'run\\tintervals\\t%s\\n' "\$intervals" >> "\$S/run_manifest.tsv"
+    read -r -d '' -a regions <<< "\$intervals" || true
+    [ "\${#regions[@]}" -eq 0 ] || printf 'run\\tintervals\\t%s\\n' "\${regions[*]}" >> "\$S/run_manifest.tsv"
     for f in input/*; do
         n=\$(basename "\$f")
         if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi

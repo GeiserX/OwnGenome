@@ -13,8 +13,8 @@
 # whole under the same overlap.
 #
 # The run intervals row (INTERVALS, run-all.sh's --intervals): INTERVALS set
-# writes one row, its regions on one line with single spaces; INTERVALS unset
-# or blank writes none. Then og summary collect reads the manifest the script
+# writes one row, its regions on one line with single spaces; INTERVALS unset,
+# blank, genome or chip (step 29's whole genome and CHIP genes) writes none. Then og summary collect reads the manifest the script
 # wrote, beside a sample VCF with calls on all 22 autosomes: the row marks the
 # run partial ("limited to the run's intervals"). Red controls: a copy of the
 # script without the row line writes no row with INTERVALS set, and the same
@@ -162,7 +162,11 @@ else
 fi
 manifest "${REPO}/bin/write_manifest.sh" "${T}/noiv"
 manifest "${REPO}/bin/write_manifest.sh" "${T}/blankiv" "  "
-for gd in noiv blankiv; do
+# genome and chip are step 29's own INTERVALS values (the whole genome, the
+# CHIP genes), not regions the run was limited to.
+manifest "${REPO}/bin/write_manifest.sh" "${T}/genomeiv" " genome "
+manifest "${REPO}/bin/write_manifest.sh" "${T}/chipiv" "chip"
+for gd in noiv blankiv genomeiv chipiv; do
   rows=$(intervals_rows "${T}/${gd}")
   if [ -z "$rows" ]; then
     ok "${gd}: no run intervals row (a whole-genome run)"
@@ -234,35 +238,58 @@ else
 fi
 
 # 5. The Nextflow side: HTML_REPORT (modules/local/html_report/main.nf) writes
-# the same row from --intervals. Its def turns params.intervals into one line
-# with single spaces; its task script writes the row. No Nextflow here: the
-# script's two intervals lines run in bash, Groovy's escapes undone and the
-# value the def would hand them put in, and must write the row section 3
-# wants. Red control: a copy of the module without the printf line writes no
-# row. HTML_REPORT_MODULE overrides the module (to show the check red on a
-# module that has no row).
+# the same row from --intervals. No Nextflow here, so the test does what
+# Nextflow would: it evaluates the module's def intervals (toString, then each
+# .replace("'", "'\\''"); any other step is refused, so a new step needs a new
+# test), puts the result in the task script's intervals lines, Groovy's
+# escapes undone, and runs those lines in bash. A value with a tab and a
+# newline must give the row section 3 wants; a value with a quote must reach
+# the row as it is. Red controls: module copies without the one-line step,
+# without the quote escape and without the printf line must not.
+# HTML_REPORT_MODULE overrides the module.
 MOD=${HTML_REPORT_MODULE:-${REPO}/modules/local/html_report/main.nf}
+# nf_def MODULE VALUE: what the module's def intervals gives for --intervals
+# VALUE (a Groovy '' is false, and both sides give '').
+nf_def() {
+  local expr v=$2 q="'" r="'\\''"
+  local head='params.intervals ? params.intervals.toString()' tail=" : ''"
+  local esc=".replace(\"'\", \"'\\\\''\")"
+  expr=$(sed -n -E 's/^[[:space:]]*def intervals = (.*)$/\1/p' "$1")
+  [[ "$expr" == "$head"*"$tail" ]] || { echo "def intervals is not '${head}...${tail}': '${expr}'"; return 1; }
+  expr=${expr#"$head"}
+  expr=${expr%"$tail"}
+  while [ -n "$expr" ]; do
+    [[ "$expr" == "$esc"* ]] || { echo "def intervals has a step this test cannot evaluate: '${expr}'"; return 1; }
+    v=${v//"$q"/"$r"}
+    expr=${expr#"$esc"}
+  done
+  printf '%s' "$v"
+}
 # nf_rows MODULE VALUE: the rows the module's intervals lines write for VALUE.
 nf_rows() {
-  local d
+  local d val
   d=$(mktemp -d "${T}/nf.XXXXXX")
+  nf_def "$1" "$2" > "${d}/val" || { cat "${d}/val"; return; }
+  val=$(cat "${d}/val"; printf x)
+  val=${val%x}
   # The lines from intervals='${intervals}' to the printf of the row, as bash
-  # sees them: \$ is $, \\ is \ (any other escape is refused).
+  # sees them: \$ is $, \\ is \ (any other escape is refused), then the def's
+  # value in place of ${intervals}, as data.
   # shellcheck disable=SC2016  # the dollar signs are awk's and the script's
-  if ! awk -v val="$2" '
+  if ! OG_VAL="$val" awk '
     index($0, "intervals='"'"'${intervals}'"'"'") { on = 1 }
     on {
-      line = $0
-      sub(/\$\{intervals\}/, val, line)
       out = ""
-      for (i = 1; i <= length(line); i++) {
-        c = substr(line, i, 1)
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
         if (c == "\\") {
-          nxt = substr(line, i + 1, 1)
+          nxt = substr($0, i + 1, 1)
           if (nxt != "\\" && nxt != "$") { print "unexpected Groovy escape \\" nxt > "/dev/stderr"; exit 1 }
           out = out nxt; i++
         } else out = out c
       }
+      k = index(out, "${intervals}")
+      if (k) out = substr(out, 1, k - 1) ENVIRON["OG_VAL"] substr(out, k + 12)
       print out
       if (index($0, "printf") && index($0, "run\\\\tintervals")) { found = 1; exit }
     }
@@ -273,17 +300,20 @@ nf_rows() {
   (cd "$d" && S="$d" bash -euo pipefail "${d}/block.sh") 2> "${d}/err" || { echo "the lines failed: $(cat "${d}/err")"; return; }
   [ ! -e "${d}/run_manifest.tsv" ] || awk -F'\t' '$1 == "run" && $2 == "intervals"' "${d}/run_manifest.tsv"
 }
-def=$(grep -E "^[[:space:]]*def intervals = " "$MOD" || true)
-if [[ "$def" == *"params.intervals"* && "$def" == *"split(/\\s+/).join(' ')"* ]]; then
-  ok "HTML_REPORT reads --intervals onto one line with single spaces"
-else
-  bad "HTML_REPORT has no def intervals that puts params.intervals on one line: '${def}'"
-fi
-rows=$(nf_rows "$MOD" "chr1:1-1000000 chr2:1-1000000")
+messy=$' chr1:1-1000000\t chr2:1-1000000\n'
+quoted="chr1:1-1000000 it's"
+want_quoted=$'run\tintervals\t'"$quoted"
+rows=$(nf_rows "$MOD" "$messy")
 if [ "$rows" = "$want" ]; then
-  ok "HTML_REPORT writes the run intervals row write_manifest.sh writes"
+  ok "HTML_REPORT writes the row write_manifest.sh writes, --intervals with a tab and a newline on one line"
 else
   bad "HTML_REPORT wrote '${rows//$'\t'/ }', want '${want//$'\t'/ }'"
+fi
+rows=$(nf_rows "$MOD" "$quoted")
+if [ "$rows" = "$want_quoted" ]; then
+  ok "HTML_REPORT writes a quote in --intervals as it is"
+else
+  bad "HTML_REPORT wrote '${rows//$'\t'/ }' for a quote, want '${want_quoted//$'\t'/ }'"
 fi
 rows=$(nf_rows "$MOD" "")
 if [ -z "$rows" ]; then
@@ -291,7 +321,25 @@ if [ -z "$rows" ]; then
 else
   bad "HTML_REPORT without --intervals wrote '${rows//$'\t'/ }'"
 fi
-# Red control: the module without the printf line of the row.
+# Red controls: module copies that each break one step.
+# shellcheck disable=SC2016  # the module's text, not expansions
+sed 's/"\\${regions\[\*\]}" >>/"\\$intervals" >>/' "$MOD" > "${T}/html_report_rawiv.nf"
+# shellcheck disable=SC2016  # as above
+if ! grep -qF '"\$intervals" >>' "${T}/html_report_rawiv.nf"; then
+  bad "control: could not drop the one-line step from the module copy"
+elif [ "$(nf_rows "${T}/html_report_rawiv.nf" "$messy")" != "$want" ]; then
+  ok "control: the module without the one-line step does not write the row"
+else
+  bad "control: the module without the one-line step still wrote the row; the check above cannot fail"
+fi
+sed '/def intervals = /s/\.replace([^)]*)//' "$MOD" > "${T}/html_report_noesc.nf"
+if grep -E 'def intervals = .*replace' "${T}/html_report_noesc.nf" > /dev/null; then
+  bad "control: could not drop the quote escape from the module copy"
+elif [ "$(nf_rows "${T}/html_report_noesc.nf" "$quoted")" != "$want_quoted" ]; then
+  ok "control: the module without the quote escape does not write a quote as it is"
+else
+  bad "control: the module without the quote escape still wrote the quote; the check above cannot fail"
+fi
 sed '/printf .run\\\\tintervals/d' "$MOD" > "${T}/html_report_norow.nf"
 if grep -q 'run\\\\tintervals' "${T}/html_report_norow.nf"; then
   bad "control: could not drop the printf line from the module copy"
