@@ -8,7 +8,9 @@
 # autosomal depth it reads from step 16b's mosdepth output. The Nextflow
 # MITO_VARIANTS runs the same filter on the same mosdepth files: its script
 # block, run here with a fake gatk, passes the same depth (30), and 0 when the
-# workflow gives it no mosdepth files. The workflow joins MOSDEPTH's output
+# workflow gives it no mosdepth files. At depth 0 the filter marks nothing:
+# step 20 and the module warn, and the annotation table gets the '# numt'
+# line (og mito annotate --numt-default). The workflow joins MOSDEPTH's output
 # in, and the module stops when mosdepth ran and the join gave it nothing
 # (the stub runs in nextflow.yml go through that check).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
@@ -95,7 +97,9 @@ docker_log_has '^run image=[^ ]*gatk.* Mutect2 ' "step 29 reused a result withou
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 mito-no-depth "${SCRIPTS}/20-mtoolbox.sh" sample1
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*--autosomal-coverage 0 ' "step 20 did not run NuMTFilterTool"
-output_has mito-no-depth 'no mosdepth output'
+output_has mito-no-depth 'WARNING: no mosdepth output'
+docker_log_has '^run image=[^ ]*python.* /pgp-bin/og mito annotate .*--numt-default --out ' \
+  "step 20 without a depth did not tell og mito annotate the NuMT filter used the default depth"
 M="${GENOME_DIR}/sample1/mosdepth"
 mkdir -p "$M"
 printf 'chrom\tlength\tbases\tmean\tmin\tmax\nchr1\t1000\t30000\t30.00\t0\t60\nchr2\t1000\t30000\t30.00\t0\t60\nchrM\t16569\t1\t1000.00\t0\t2000\ntotal\t2000\t60000\t30.00\t0\t60\n' \
@@ -113,6 +117,12 @@ run_expect 0 mito "${SCRIPTS}/20-mtoolbox.sh" sample1
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*--autosomal-coverage 30 ' "step 20 did not pass the median autosomal depth (30)"
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*-O /genome/sample1/mito/sample1_chrM_filtered\.vcf\.gz' \
   "NuMTFilterTool does not write the file the reports read"
+docker_log_has '^run image=[^ ]*python.* /pgp-bin/og mito annotate ' "step 20 did not annotate its calls"
+if grep -q -- '--numt-default' "$FAKE_DOCKER_LOG"; then fail "step 20 with a measured depth still said the NuMT filter used the default"; fi
+: > "$FAKE_DOCKER_LOG"
+AUTOSOMAL_COVERAGE=25 run_expect 0 mito-given-depth "${SCRIPTS}/20-mtoolbox.sh" sample1
+docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*--autosomal-coverage 25 ' "step 20 did not pass AUTOSOMAL_COVERAGE"
+if grep -q -- '--numt-default' "$FAKE_DOCKER_LOG"; then fail "step 20 with AUTOSOMAL_COVERAGE still said the NuMT filter used the default"; fi
 
 # --- MITO_VARIANTS (Nextflow) ------------------------------------------------------------
 # The shell of the module's script block, with its Groovy values filled in:
@@ -151,12 +161,25 @@ grep -q ' FilterMutectCalls .*-O sample1_chrM_mutect2_filtered\.vcf\.gz' "${NFW}
   || fail "FilterMutectCalls does not write the intermediate file NuMTFilterTool reads"
 run_mito_module ""
 grep -q -- '--autosomal-coverage 0 ' <<<"${NUMT} " || fail "MITO_VARIANTS without mosdepth files did not run the filter at depth 0: ${NUMT:-no call}"
-grep -q 'mosdepth is not in --tools' "${NFW}/out.txt" || fail "MITO_VARIANTS without mosdepth files does not say why the depth is 0"
+grep -q 'WARNING: mosdepth is not in --tools' "${NFW}/out.txt" || fail "MITO_VARIANTS without mosdepth files does not warn why the depth is 0"
+# MITO_VARIANTS_ANNOTATE passes --numt-default exactly when mosdepth is not
+# in --tools, the case where MITO_VARIANTS had no depth files.
+# shellcheck disable=SC2016  # the dollar signs are Groovy placeholders, matched literally
+grep -qF "contains('mosdepth') ? '' : '--numt-default'" "$MOD" \
+  || fail "MITO_VARIANTS_ANNOTATE does not pass --numt-default without mosdepth in --tools"
+# shellcheck disable=SC2016
+grep -qF 'og mito annotate --vcf ${vcf} ${cv} ${gn} ${numt} --out' "$MOD" \
+  || fail "MITO_VARIANTS_ANNOTATE does not hand og mito annotate its --numt-default"
 # The workflow joins MOSDEPTH's summary and distribution in, failing on a BAM
 # with no mosdepth row (a plain join drops that sample from MITO_VARIANTS), and
 # the module refuses to go on without them when mosdepth ran.
 grep -qF 'ch_bam.join(ch_mosdepth_depth, failOnMismatch: true)' "${REPO_ROOT}/workflows/bam_analysis.nf" \
   || fail "workflows/bam_analysis.nf does not join MOSDEPTH's output into MITO_VARIANTS with failOnMismatch"
+# A task's stderr stays in its work directory when the task succeeds, so the
+# workflow itself says on the console that the NuMT filter has no depth.
+grep -q 'log.warn "mito_variants: mosdepth is not in --tools, so the NuMT filter runs at the default depth 0' \
+  "${REPO_ROOT}/workflows/bam_analysis.nf" \
+  || fail "workflows/bam_analysis.nf does not warn on the console when mito_variants runs without mosdepth"
 [ "$(grep -c "contains('mosdepth') && !mosdepth_summary" "$MOD")" -eq 2 ] \
   || fail "MITO_VARIANTS' script and stub do not both stop when mosdepth ran and its output is missing"
 echo "MITO_VARIANTS marks possible NuMTs at the depth step 20 uses."

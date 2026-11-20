@@ -843,9 +843,11 @@ dependencies = [
 name = "og-live"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "indexmap",
  "jiff",
  "og-bloodtype",
+ "og-browser",
  "og-io",
  "og-nf",
  "og-pedigree",

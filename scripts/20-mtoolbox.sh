@@ -11,7 +11,8 @@
 # the autosomes. GATK's NuMTFilterTool marks an allele as possible_numt when
 # its depth is what such copies could explain at the sample's median autosomal
 # coverage. That median is read from step 16b's mosdepth output, or taken from
-# AUTOSOMAL_COVERAGE; without either the filter marks nothing.
+# AUTOSOMAL_COVERAGE; without either the filter runs at depth 0 and marks
+# nothing: the step warns, and the annotation table's '# numt' line says so.
 #
 # Last, each call is annotated with its ClinVar record (clinvar/clinvar_chr.vcf.gz,
 # which setup.sh installs) and with gnomAD v3.1's chrM sites (GNOMAD_MITO_URL in
@@ -99,6 +100,7 @@ echo "[5/8] Marking possible NuMTs..."
 # Median autosomal depth: the depth at which half of the chr1-22 bases are
 # covered at least that deep, from mosdepth's per-chromosome distribution.
 MOSDEPTH_PREFIX="${SAMPLE_DIR}/mosdepth/${SAMPLE}.mosdepth"
+NUMT_DEFAULT=
 if [ -n "${AUTOSOMAL_COVERAGE:-}" ]; then
   echo "  Median autosomal coverage: ${AUTOSOMAL_COVERAGE} (AUTOSOMAL_COVERAGE)"
 elif [ -s "${MOSDEPTH_PREFIX}.summary.txt" ] && [ -s "${MOSDEPTH_PREFIX}.global.dist.txt" ]; then
@@ -114,8 +116,9 @@ elif [ -s "${MOSDEPTH_PREFIX}.summary.txt" ] && [ -s "${MOSDEPTH_PREFIX}.global.
   echo "  Median autosomal coverage: ${AUTOSOMAL_COVERAGE} (from ${MOSDEPTH_PREFIX}.global.dist.txt)"
 else
   AUTOSOMAL_COVERAGE=0
+  NUMT_DEFAULT=--numt-default
   echo "  WARNING: no mosdepth output (run scripts/16b-mosdepth.sh first) and no AUTOSOMAL_COVERAGE:"
-  echo "  the NuMT filter runs with coverage 0 and marks nothing."
+  echo "  the NuMT filter runs with the default depth 0 and marks nothing; the annotation table says so."
 fi
 run_in --cpus 2 --memory 4g \
   "$GATK_IMAGE" \
@@ -139,6 +142,7 @@ run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
     --vcf "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz" \
     --clinvar "$(cpath "$CLINVAR_VCF")" \
     --gnomad "$(cpath "$GNOMAD_MITO")" \
+    ${NUMT_DEFAULT:+"$NUMT_DEFAULT"} \
     --out "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_annotated.tsv"
 
 echo "[7/8] mtDNA copy number (chrM against autosomal reads, from the BAM index)..."
