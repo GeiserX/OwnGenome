@@ -44,7 +44,7 @@ With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only w
 ## How it decides
 
 1. For each gene of `assets/chip_genes.tsv` the step takes the transcript Ensembl tags `MANE_Select`, and calls inside its coding exons, 10 bases wider on each side so the splice donor and acceptor sites are in. That is 162 exons and about 35 kb with Ensembl 116.
-2. Mutect2 calls in tumour-only mode, with the read orientation model, and with gnomAD and the panel of normals when they are installed. With the common-sites VCF, GetPileupSummaries counts the reads at its common sites inside the same exons, CalculateContamination estimates from them how much of the sample is another person's DNA, and FilterMutectCalls gets that estimate (`--contamination-table`). Another person's DNA adds its own alleles at a low VAF, the VAF of a small clone; with the estimate, FilterMutectCalls marks a call that contamination explains `contamination`, and the call reads `filtered`. The exons hold few common sites, so the estimate is rough; a whole-genome estimate is VerifyBamID2's FREEMIX in step 33.
+2. Mutect2 calls in tumour-only mode, with the read orientation model, and with gnomAD and the panel of normals when they are installed. With the common-sites VCF, GetPileupSummaries counts the reads at every one of its 59,295 sites across the genome, CalculateContamination estimates from them how much of the sample is another person's DNA, and FilterMutectCalls gets that estimate (`--contamination-table`). Another person's DNA adds its own alleles at a low VAF, the VAF of a small clone; with the estimate, FilterMutectCalls marks a call that contamination explains `contamination`, and the call reads `filtered`. The pileups do not stop at the CHIP exons, as step 29's do at its intervals: the exons hold 8 of the 59,295 sites, too few for an estimate. Step 33's VerifyBamID2 gives a second, separate estimate (FREEMIX).
 3. Each call that changes the protein is put in the gene's class from the table:
 
 | Gene | Counted | Source (PMID) |
@@ -124,7 +124,7 @@ Both reports show a "Clonal Haematopoiesis (CHIP)" section: the calls, the state
 
 ## Runtime
 
-Not measured on a whole genome. Mutect2 reads about 35 kb of the BAM, which takes minutes, not hours.
+Not measured on a whole genome. Mutect2 reads about 35 kb of the BAM, which takes minutes, not hours. With the common-sites VCF, GetPileupSummaries also reads the BAM at the VCF's 59,295 sites.
 
 ## Notes
 

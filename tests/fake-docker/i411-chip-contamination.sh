@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step 49 (CHIP) gives FilterMutectCalls the contamination estimate when step
-# 29's common-sites VCF is installed with its .tbi: GetPileupSummaries at the
-# common sites inside the CHIP exons, CalculateContamination, then
+# 29's common-sites VCF is installed with its .tbi: GetPileupSummaries at every
+# site of that VCF (not only inside the CHIP exons), CalculateContamination, then
 # FilterMutectCalls with --contamination-table and --tumor-segmentation.
 # Without the VCF, or without its .tbi, there is no estimate and the log says
 # so. The Nextflow CHIP_MUTECT2 runs the same commands: its script block, run
@@ -44,27 +44,18 @@ export FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hook-chip"
 C=/genome/sample1/chip/sample1_chip
 
 # --- the bash step ---------------------------------------------------------------------
-# No common-sites VCF: no estimate, and the log says so.
-: > "$FAKE_DOCKER_LOG"
-run_expect 0 chip-no-common "${SCRIPTS}/49-chip.sh" sample1
-docker_log_has '^run image=[^ ]*gatk.* FilterMutectCalls .*--ob-priors ' "step 49 did not run FilterMutectCalls"
-if grep -qE 'GetPileupSummaries|CalculateContamination|--contamination-table' "$FAKE_DOCKER_LOG"; then
-  fail "step 49 estimated contamination without the common-sites VCF"
-fi
-output_has chip-no-common 'no common-sites VCF .*: no contamination estimate'
-
 # The common-sites VCF with its .tbi: the estimate, and FilterMutectCalls reads it.
 mkdir -p "${G}/somatic"
 printf 'placeholder\n' > "$COMMON"
 printf 'placeholder\n' > "${COMMON}.tbi"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 chip-common "${SCRIPTS}/49-chip.sh" sample1
-docker_log_has "^run image=[^ ]*gatk.* GetPileupSummaries -I /genome/sample1/aligned/sample1_sorted\\.bam -V /genome/somatic/small_exac_common_3\\.hg38\\.vcf\\.gz -L /genome/somatic/small_exac_common_3\\.hg38\\.vcf\\.gz -L ${C}\\.bed --interval-set-rule INTERSECTION -O ${C}_pileups\\.table" \
-  "step 49 did not summarise the pileups at the common sites inside the CHIP exons"
-docker_log_has "^run image=[^ ]*gatk.* CalculateContamination -I ${C}_pileups\\.table --tumor-segmentation ${C}_segments\\.table -O ${C}_contamination\\.table" \
-  "step 49 did not estimate contamination from those pileups"
 docker_log_has "^run image=[^ ]*gatk.* FilterMutectCalls .*--contamination-table ${C}_contamination\\.table --tumor-segmentation ${C}_segments\\.table" \
   "FilterMutectCalls did not get the contamination table"
+docker_log_has "^run image=[^ ]*gatk.* GetPileupSummaries -I /genome/sample1/aligned/sample1_sorted\\.bam -V /genome/somatic/small_exac_common_3\\.hg38\\.vcf\\.gz -L /genome/somatic/small_exac_common_3\\.hg38\\.vcf\\.gz -O ${C}_pileups\\.table" \
+  "step 49 did not summarise the pileups at every common site"
+docker_log_has "^run image=[^ ]*gatk.* CalculateContamination -I ${C}_pileups\\.table --tumor-segmentation ${C}_segments\\.table -O ${C}_contamination\\.table" \
+  "step 49 did not estimate contamination from those pileups"
 # The estimate comes before the filter that reads it.
 awk '/ CalculateContamination / { c = NR } / FilterMutectCalls / { f = NR } END { exit !(c && f > c) }' "$FAKE_DOCKER_LOG" \
   || fail "FilterMutectCalls ran before CalculateContamination"
@@ -76,7 +67,18 @@ rm -f "${COMMON}.tbi"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 chip-common-no-tbi "${SCRIPTS}/49-chip.sh" sample1
 if grep -q -- '--contamination-table' "$FAKE_DOCKER_LOG"; then fail "step 49 used the common-sites VCF without its .tbi"; fi
-output_has chip-common-no-tbi 'no contamination estimate'
+output_has chip-common-no-tbi 'no common-sites VCF .*: no contamination estimate'
+
+# No common-sites VCF: no estimate, and the log says so.
+rm -f "$COMMON"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 chip-no-common "${SCRIPTS}/49-chip.sh" sample1
+docker_log_has '^run image=[^ ]*gatk.* FilterMutectCalls .*--ob-priors ' "step 49 did not run FilterMutectCalls"
+if grep -qE 'GetPileupSummaries|CalculateContamination|--contamination-table' "$FAKE_DOCKER_LOG"; then
+  fail "step 49 estimated contamination without the common-sites VCF"
+fi
+output_has chip-no-common 'no common-sites VCF .*: no contamination estimate'
+printf 'placeholder\n' > "$COMMON"
 printf 'placeholder\n' > "${COMMON}.tbi"
 
 # --- CHIP_MUTECT2 (Nextflow) -------------------------------------------------------------
@@ -105,8 +107,8 @@ run_module() {
   cat "${NFW}/gatk.log" "${NFW}/out.txt"
 }
 run_module common.vcf.gz
-grep -q '^gatk GetPileupSummaries -I in\.bam -V common\.vcf\.gz -L common\.vcf\.gz -L chip\.bed --interval-set-rule INTERSECTION -O pileups\.table$' "${NFW}/gatk.log" \
-  || fail "CHIP_MUTECT2 did not summarise the pileups at the common sites inside the BED, as step 49 does"
+grep -q '^gatk GetPileupSummaries -I in\.bam -V common\.vcf\.gz -L common\.vcf\.gz -O pileups\.table$' "${NFW}/gatk.log" \
+  || fail "CHIP_MUTECT2 did not summarise the pileups at every common site, as step 49 does"
 grep -q '^gatk CalculateContamination -I pileups\.table --tumor-segmentation segments\.table -O contamination\.table$' "${NFW}/gatk.log" \
   || fail "CHIP_MUTECT2 did not estimate contamination"
 grep -q '^gatk FilterMutectCalls .*--contamination-table contamination\.table --tumor-segmentation segments\.table .*-O s1_chip_filtered\.vcf\.gz$' "${NFW}/gatk.log" \

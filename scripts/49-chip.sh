@@ -7,8 +7,8 @@
 # each on its MANE Select transcript from Ensembl's gene annotation (setup.sh
 # --chip-data). gnomAD's AF-only germline resource and the panel of normals of
 # step 29 are used when they are in GENOME_DIR/somatic/, and so is step 29's
-# common-sites VCF: GetPileupSummaries and CalculateContamination estimate how
-# much of the sample is another person's DNA, and FilterMutectCalls gets that
+# common-sites VCF: GetPileupSummaries at its sites across the genome and
+# CalculateContamination estimate how much of the sample is another person's DNA, and FilterMutectCalls gets that
 # estimate, so a contaminant's alleles are not read as a clone. bcftools csq names
 # each change on that transcript, and og chip (bin/og) keeps the changes in
 # the table's CHIP classes, leaves out the ones whose VAF looks inherited (35%
@@ -91,13 +91,15 @@ run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk LearnReadOrientationModel -I "$(c
 FILTER=(gatk FilterMutectCalls -R "${REF_FASTA_C}" -V "$(cpath "${P}_unfiltered.vcf.gz")"
   --ob-priors "$(cpath "${P}_orientation.tar.gz")" -O "$(cpath "${P}_filtered.vcf.gz")")
 # Another person's DNA in the sample adds alleles at a low VAF, the VAF of a
-# small clone. The contamination estimate comes from the common sites inside
-# the same exons, as in step 29, and lets FilterMutectCalls mark those calls.
+# small clone. CalculateContamination estimates that share from the reads at
+# every site of the common-sites VCF, across the genome: the CHIP exons hold
+# only 8 of its 59,295 sites, too few for an estimate. FilterMutectCalls then
+# marks the calls contamination explains.
 rm -f "${P}_contamination.table" "${P}_segments.table"
 if [ -f "$COMMON_VCF" ] && [ -f "${COMMON_VCF}.tbi" ]; then
   echo "  contamination estimate: common sites ${COMMON_VCF}"
   run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk GetPileupSummaries -I "$(cpath "$BAM")" -V "$(cpath "$COMMON_VCF")" \
-    -L "$(cpath "$COMMON_VCF")" -L "$(cpath "${P}.bed")" --interval-set-rule INTERSECTION -O "$(cpath "${P}_pileups.table")"
+    -L "$(cpath "$COMMON_VCF")" -O "$(cpath "${P}_pileups.table")"
   run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk CalculateContamination -I "$(cpath "${P}_pileups.table")" \
     --tumor-segmentation "$(cpath "${P}_segments.table")" -O "$(cpath "${P}_contamination.table")"
   FILTER+=(--contamination-table "$(cpath "${P}_contamination.table")" --tumor-segmentation "$(cpath "${P}_segments.table")")

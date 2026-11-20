@@ -93,13 +93,12 @@ process CHIP_MUTECT2 {
         --native-pair-hmm-threads ${task.cpus} --max-mnp-distance 0 ${resources}
     gatk LearnReadOrientationModel -I f1r2.tar.gz -O orientation.tar.gz
     # Another person's DNA in the sample adds alleles at the VAF of a small
-    # clone: the estimate from the common sites inside the BED lets
-    # FilterMutectCalls mark those calls.
+    # clone. The estimate reads every common site across the genome (the BED
+    # holds too few) and lets FilterMutectCalls mark those calls.
     common_sites='${common_sites}'
     contamination=''
     if [ -n "\$common_sites" ]; then
-        gatk GetPileupSummaries -I ${bam} -V "\$common_sites" -L "\$common_sites" -L ${bed} \\
-            --interval-set-rule INTERSECTION -O pileups.table
+        gatk GetPileupSummaries -I ${bam} -V "\$common_sites" -L "\$common_sites" -O pileups.table
         gatk CalculateContamination -I pileups.table --tumor-segmentation segments.table -O contamination.table
         contamination='--contamination-table contamination.table --tumor-segmentation segments.table'
     else
