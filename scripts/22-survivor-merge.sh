@@ -11,8 +11,15 @@
 #
 # Inputs, each used when it exists (two or more are needed): Manta (step 04),
 # Delly (19), CNVpytor (18), TIDDIT (04a) and Sniffles2 (04c). GRIDSS (04b) is
-# left out: it reports every event as a pair of breakends (SVTYPE=BND), which
-# never match the DEL, DUP and INV records of the other callers.
+# left out: it reports every event as a pair of breakends (SVTYPE=BND), and
+# nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 counts BND
+# as the same type as INV and TRA, so its breakends would pair with the other
+# callers' inversions and translocations and count as votes for an event GRIDSS
+# never typed.
+#
+# SUPP counts callers that agree, not independent proof: Manta and Delly both
+# read split and paired reads, so they share alignment errors. AnnotSV (step 05)
+# annotates the callers' own calls; the reports join SUPP onto them.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -98,7 +105,7 @@ for c in "${CALLERS[@]}"; do
   USED+=("$name")
 done
 if [ -f "${S}/sv_gridss/${SAMPLE}_gridss.vcf.gz" ]; then
-  echo "  [--] gridss: left out, its breakend (BND) records do not match the other callers' DEL, DUP and INV"
+  echo "  [--] gridss: left out of the SV consensus: its breakend pairs (BND) are not turned into DEL, DUP or INV events"
 fi
 echo ""
 
@@ -134,6 +141,8 @@ echo "  Callers (SUPP_VEC order): ${USED[*]}"
 echo "  Consensus SVs (2+ callers): ${COUNT}"
 echo "  Output: ${OUT}"
 echo "============================================"
+echo "SUPP is caller agreement, not validation: Manta and Delly read the same split and"
+echo "  paired reads. Annotate the callers' own calls (step 05), not this file."
 echo "By support (SUPP_VEC: one digit per caller above):"
 run_in "$BCFTOOLS_IMAGE" bcftools query -f '%INFO/SVTYPE\t%INFO/SUPP_VEC\n' "$(cpath "$OUT")" \
   | sort | uniq -c | sort -rn | head -20

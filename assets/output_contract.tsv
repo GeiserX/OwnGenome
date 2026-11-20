@@ -222,6 +222,8 @@ file	{sample}/sv_duphold/{sample}_sv_duphold.vcf	15	DUPHOLD	nextflow	vcf	stable	
 file	{sample}/sv_filtered/{sample}_sv_filtered.log	15	DUPHOLD_FILTER	nextflow	text	stable	-	-
 file	{sample}/sv_filtered/{sample}_sv_filtered.vcf.gz	15	DUPHOLD_FILTER	nextflow	vcf	stable	-	-
 file	{sample}/sv_filtered/{sample}_sv_filtered.vcf.gz.tbi	15	DUPHOLD_FILTER	nextflow	index	stable	-	-
+file	{sample}/sv_gridss/{sample}_gridss.high.vcf.gz	04b	-	bash	vcf	stable	-	-
+file	{sample}/sv_gridss/{sample}_gridss.high.vcf.gz.tbi	04b	-	bash	index	stable	-	-
 file	{sample}/sv_merged/{sample}_sv_consensus.vcf.gz	22	SURVIVOR_SORT	both	vcf	stable	-	-
 file	{sample}/sv_merged/{sample}_sv_consensus.vcf.gz.tbi	22	SURVIVOR_SORT	both	index	stable	-	-
 file	{sample}/telomere/{sample}	10	TELOMERE_HUNTER	both	dir	stable	-	-

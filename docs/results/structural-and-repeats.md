@@ -34,14 +34,14 @@ A typical human genome has:
 ### Which Callers to Trust?
 
 If you ran multiple SV callers:
-- **Called by 2+ callers (Manta + Delly, or Manta + CNVpytor):** Lower false-positive rate
+- **Called by 2+ callers (Manta + Delly, or Manta + CNVpytor):** less likely to be one caller's artefact, but not validated: Manta and Delly read the same split and paired reads, so an alignment artefact can reach both
 - **Called by 1 caller only:** Lower confidence, may be false positive
 - **duphold DHFFC < 0.7 for deletions:** High confidence (depth drops as expected)
 - **duphold DHBFC > 1.3 for duplications:** High confidence (depth rises as expected)
 
 ### SV Consensus (Step 22)
 
-`${SAMPLE}/sv_merged/${SAMPLE}_sv_consensus.vcf.gz` keeps the SVs that two or more callers found (Manta, Delly, CNVpytor and, when they ran, Sniffles2 and TIDDIT): SURVIVOR pairs two calls when both breakpoints lie within 1 kb of each other and their type and strands agree. `SUPP` says how many callers found each one and `SUPP_VEC` which. GRIDSS is left out (its breakend records never match). It is the short list to read first, but it drops real SVs that only one caller found; see [step 22](../22-survivor-merge.md#limitations).
+`${SAMPLE}/sv_merged/${SAMPLE}_sv_consensus.vcf.gz` keeps the SVs that two or more callers found (Manta, Delly, CNVpytor and, when they ran, Sniffles2 and TIDDIT): SURVIVOR pairs two calls when both breakpoints lie within 1 kb of each other and their type and strands agree. `SUPP` says how many callers found each one and `SUPP_VEC` which. `SUPP` is caller agreement, not validation. GRIDSS is left out of the SV consensus: nothing here turns its breakend pairs into DEL, DUP or INV events. Its high-confidence calls are in `${SAMPLE}/sv_gridss/${SAMPLE}_gridss.high.vcf.gz` ([step 4b](../04b-gridss.md#quality-filtering)). The consensus is the short list to read first, but it drops real SVs that only one caller found; see [step 22](../22-survivor-merge.md#limitations). Never run AnnotSV on it: its sample columns are the callers and its positions are SURVIVOR's. The reports already join its support onto AnnotSV's class 4 and 5 SVs ([step 5](../05-annotsv.md)).
 
 ### AnnotSV Output
 
