@@ -69,14 +69,21 @@ These steps operate on VCF data and do not depend on genome-wide BAM coverage. T
 | Step | Name | Why It Works |
 |---|---|---|
 | **6** | ClinVar Screen | Checks your variants (whatever you have) against ClinVar |
-| **7** | PharmCAT | Star allele calling from VCF genotypes |
 | **8** | HLA Typing (T1K) | HLA genes are included in all major exome capture kits |
 | **11** | ROH Analysis | Runs on VCF genotype data. Detects large ROH (>5 Mb) but misses smaller ones due to sparse non-coding coverage |
 | **12** | Mito Haplogroup | Works if your capture kit includes mitochondrial targets (most clinical kits do) |
 | **13** | VEP Annotation | Annotates whatever variants you supply |
 | **17** | CPSR | Cancer predisposition screening on your VCF. All ACMG SF v3.2 genes are coding |
 | **25** | PRS | Matches scoring file variants against your VCF. Expect ~5-15% variant matching (vs ~28% from WGS) because most PRS scoring files include non-coding variants |
-| **27** | CPIC Recommendations | Operates on PharmCAT output |
+
+### Runs, but Some Answers Are Incomplete
+
+These steps run as they are, but an exome does not cover every position they read. Read [Drug-Gene Answers on an Exome](#drug-gene-answers-on-an-exome) before you use their results.
+
+| Step | Name | What Is Missing |
+|---|---|---|
+| **7** | PharmCAT | Some defining variants of CYP2C19, CYP3A5, CYP3A4, UGT1A1, DPYD, CYP2B6, VKORC1, IFNL3, CFTR and F2 sit outside the coding exons, where a typical capture does not read |
+| **27** | CPIC Recommendations | Reads PharmCAT's calls, so it carries the same gaps |
 
 ### Needs Adjustment
 
@@ -115,7 +122,7 @@ If you have run WGS before, the variant counts from WES will look very different
 | PASS variants | ~4.5 million | ~25,000-40,000 |
 | Coding variants | ~20,000-25,000 | ~20,000-25,000 |
 | ClinVar hits (pathogenic + LP) | 0-10 typical | 0-10 typical |
-| PharmCAT gene calls | 20+ genes | 20+ genes |
+| PharmCAT gene calls | 20+ genes | 20+ genes, some without a defining position ([see below](#drug-gene-answers-on-an-exome)) |
 | VEP HIGH impact | 100-200 | 80-150 |
 
 The coding variant counts are nearly identical because WES specifically targets those regions. Where WES differs is the total count: you are missing ~99% of variants, almost all of which are in non-coding regions. For clinical interpretation of coding mutations, WES and WGS produce comparable results.
@@ -162,7 +169,7 @@ MODEL_TYPE=WES ./scripts/03-deepvariant.sh $SAMPLE
 
 ### 5. Run VCF-Based Analysis
 
-These steps work unchanged:
+These steps run with no exome setting:
 
 ```bash
 ./scripts/06-clinvar-screen.sh $SAMPLE     # ClinVar pathogenic variants
@@ -171,6 +178,8 @@ These steps work unchanged:
 ./scripts/17-cpsr.sh $SAMPLE               # Cancer predisposition screening
 ./scripts/27-cpic-lookup.sh $SAMPLE        # Drug recommendations
 ```
+
+Steps 7 and 27 run as they are, but some of their answers are incomplete on an exome: read [Drug-Gene Answers on an Exome](#drug-gene-answers-on-an-exome) first.
 
 ### 6. Run BAM-Based Steps (with Adjustments)
 
@@ -183,6 +192,32 @@ CAPTURE_BED=${GENOME_DIR}/reference/your_capture.bed ./scripts/16b-mosdepth.sh $
 ### 7. Skip These Steps
 
 Do **not** run: TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), GRIDSS (4b), Mito analysis (20), Ancestry projection (26).
+
+---
+
+## Drug-Gene Answers on an Exome
+
+PharmCAT (step 7) calls a gene from a fixed list of positions. Some of the variants that define a star allele sit in a promoter, an intron or a UTR, and a typical exome capture (the coding exons plus about 50 bases on each side) does not read them. PharmCAT drops a position it has no call for. It cannot call an allele whose defining variant sits there, and it calls the gene from the positions it did read. When those match the reference, the gene can come out as \*1/\*1 with normal function, even if you carry the allele. A few stray reads outside the capture can also give such a position a weak reference call, which PharmCAT reads like any other.
+
+These are the PharmCAT 3.4.0 positions that a capture of the coding exons with 50 bases of padding does not read (exons of the RefSeq Select transcript, GRCh38):
+
+| Gene | Position | Where | Alleles it defines | What a missed allele looks like |
+|---|---|---|---|---|
+| CYP2C19 | rs12248560 (c.-806C>T) | promoter | \*17 (and \*4, still called from its start-codon variant) | a rapid or ultrarapid metabolizer reads as normal |
+| CYP3A5 | rs776746 (\*3, 6986A>G) | intron 3 | \*3 | the most common allele in Europeans, a non-expresser, reads as \*1 (expresser): this changes the tacrolimus dose |
+| CYP3A4 | rs35599367 | intron 6 | \*22 and \*37 (a \*37 then matches \*3) | decreased function reads as normal |
+| UGT1A1 | rs887829 (c.-364C>T) | promoter | \*80 and its combinations with \*28 and \*37 | decreased function reads as normal |
+| UGT1A1 | rs3064744, the TA repeat | promoter, about 55 bases before the start codon | \*28, \*36, \*37 | decreased function reads as normal, unless the kit pads more than 55 bases and the repeat has depth at the capture edge |
+| DPYD | rs75017182 (c.1129-5923C>G) | deep intron | HapB3 | HapB3 is called from c.1236G>A alone, the coding variant that travels with it; c.1129-5923C>G on its own is not seen |
+| CYP2B6 | rs34223104 (c.-82T>C) | promoter, 82 bases before the start codon | \*22 and four rarer alleles | increased function reads as normal, unless the kit pads more than 82 bases |
+| VKORC1 | rs9923231 (c.-1639G>A) | promoter | the warfarin-sensitive allele (T) | the gene has no call, and step 27's single-position fallback reports the position as not callable |
+| IFNL3 | rs12979860 | in IFNL4, about 3.2 kb from IFNL3's coding exons | the variant allele (T) | the gene has no call |
+| CFTR | rs75039782 (3849+10kbC>T) | deep intron | an ivacaftor-responsive variant | a carrier of this variant reads as having none |
+| F2 | rs1799963 (20210G>A) | 3' UTR, 97 bases after the stop codon | prothrombin 20210A | the gene has no call, unless the kit targets the UTRs |
+
+Every position of ABCG2, CACNA1S, CYP2C9, CYP4F2, F5, G6PD, NAT2, NUDT15, RYR1, SLCO1B1 and TPMT lies within 50 bases of a coding exon, so a capture reads them where it has depth. CYP2D6, HLA-A, HLA-B and MT-RNR1 do not come from these positions: see [step 7's limitations](07-pharmacogenomics.md#limitations).
+
+Your kit's BED file and the reads at its edges decide the exact list. PharmCAT writes the positions it had no call for to `${SAMPLE}.missing_pgx_var.vcf`. Check that file before you act on a call in one of the genes above, and treat a normal-function call there as unconfirmed. [Step 7's limitations](07-pharmacogenomics.md#limitations) say what the reports show for these genes.
 
 ---
 
@@ -229,9 +264,11 @@ Most clinical and research WES providers use one of a few standard capture kits.
 
 4. **ROH detection is less precise.** Runs of homozygosity analysis on WES data detects large ROH segments (>5 Mb) reasonably well because exome targets are spread across all chromosomes. Smaller ROH segments may be missed due to gaps between captured regions.
 
-5. **Ancestry estimation does not work.** The projection onto a reference panel (step 26) needs common variants spread across the genome, which exome data cannot provide.
+5. **Some drug-gene answers are incomplete.** Defining variants of CYP2C19, CYP3A5, CYP3A4, UGT1A1, DPYD and other genes sit outside the coding exons, so PharmCAT can call a normal-function allele where you carry one it could not see. See [Drug-Gene Answers on an Exome](#drug-gene-answers-on-an-exome).
 
-6. **Deep intronic and regulatory variants are invisible.** Some clinically significant variants are in deep intronic regions (e.g., splicing regulators) or promoters/enhancers. WES will not detect these. If you have a clinical suspicion that WES missed, WGS is the appropriate follow-up.
+6. **Ancestry estimation does not work.** The projection onto a reference panel (step 26) needs common variants spread across the genome, which exome data cannot provide.
+
+7. **Deep intronic and regulatory variants are invisible.** Some clinically significant variants are in deep intronic regions (e.g., splicing regulators) or promoters/enhancers. WES will not detect these. If you have a clinical suspicion that WES missed, WGS is the appropriate follow-up.
 
 ---
 
@@ -246,11 +283,11 @@ If you are choosing between the two:
 | **Coding variant detection** | Higher per-base depth in exons | Same variants, slightly lower depth |
 | **Non-coding variants** | None | Full coverage |
 | **Structural variants** | Very limited | Comprehensive |
-| **Pharmacogenomics** | Same (PGx genes are coding) | Same |
+| **Pharmacogenomics** | Misses defining variants in promoters and introns (CYP2C19 \*17, CYP3A5 \*3, UGT1A1 \*28 and others) | Reads them |
 | **Repeat expansions** | Very limited | Full |
 | **ClinVar screening** | ~90% of ClinVar pathogenic variants are coding | Catches the other ~10% too |
 | **Future reanalysis value** | Limited to exons | Full genome for future discoveries |
 
-**If you already have WES data:** This pipeline extracts substantial value from it. Run the compatible steps and you will get ClinVar screening, pharmacogenomics, cancer predisposition, and functional annotation that is comparable to WGS for coding regions.
+**If you already have WES data:** This pipeline extracts substantial value from it. Run the compatible steps and you will get ClinVar screening, cancer predisposition and functional annotation that is comparable to WGS for coding regions, and drug-gene answers with the gaps listed in [Drug-Gene Answers on an Exome](#drug-gene-answers-on-an-exome).
 
 **If you are ordering new sequencing:** WGS is generally recommended because the price difference has shrunk dramatically while WGS captures everything WES does plus non-coding regions, structural variants, and repeat expansions. The extra data storage is the main downside.

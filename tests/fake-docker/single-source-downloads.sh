@@ -25,7 +25,7 @@ FAKE_DOWNLOAD_PARTIAL='clinvar\.vcf\.gz$' run_rc setup-dropped "${SCRIPTS}/setup
 [ ! -e "${G}/clinvar/clinvar.vcf.gz" ] || fail "a cut download was stored as clinvar.vcf.gz"
 
 : > "$FAKE_DOCKER_LOG"
-run_expect 0 setup-again "${SCRIPTS}/setup.sh" "$G"
+run_expect 3 setup-again "${SCRIPTS}/setup.sh" "$G"
 docker_log_has '^curl [^ ]*/clinvar\.vcf\.gz -> ' "the second run did not download ClinVar again"
 [ -s "${G}/clinvar/clinvar.vcf.gz" ] || fail "the second run left no clinvar.vcf.gz"
 [ ! -e "${G}/clinvar/clinvar.vcf.gz.part" ] || fail "clinvar.vcf.gz.part is still there after a complete download"

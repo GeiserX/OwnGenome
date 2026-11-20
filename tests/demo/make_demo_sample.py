@@ -1170,7 +1170,8 @@ def lpa_depth(row):
 # The table og cn call --locus LPA_KIV2 writes for lpa_depth.
 LPA_TABLE = ("metric\tvalue\nstatus\testimated\nkiv2_copies\t37.0\nci95_low\t36.3\nci95_high\t37.8\n"
              "class\ttypical\nkiv2_depth\t86.61\nflank_depth\t31.09\nmapq0_share\t0.500\n"
-             "message\tabout 37 KIV-2 repeats in total (95% interval 36.3 to 37.8): within or overlapping the range "
+             "message\tabout 37 KIV-2 repeats in total over both copies (95% interval for read sampling, "
+             "36.3 to 37.8; aligner or library bias not included): within or overlapping the range "
              "most people have (30 to 45 for about 70% of the 1000 Genomes samples)\n"
              "advice\tA research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 "
              "European Atherosclerosis Society consensus advises measuring it at least once in every adult.\n")

@@ -13,4 +13,4 @@ docker_log_has '^curl [^ ]*\.fa' "setup.sh did not download the reference with c
 docker_log_has '^curl [^ ]*clinvar\.vcf\.gz ' "setup.sh did not download ClinVar with curl"
 output_lacks setup 'wget: command not found'
 output_lacks setup 'unbound variable'
-expect_rc setup 0
+expect_rc setup 3

@@ -425,6 +425,7 @@ for st in stale failed unreadable; do
   cmut "clinical-$st" ".sections.couple = $couple | reduce ($keys) as \$k (.;
     .sections[\$k].state = \"$st\" | .sections[\$k].note = \"note of \(\$k) <&>\")"
 done
+# shellcheck disable=SC2016  # jq's $h, not the shell's
 cmut clinvar-many '.sections.clinvar.data.hits as $h | .sections.clinvar.data.hits = ($h + $h + $h + $h + $h + $h)
   | .sections.clinvar.data.hits[55].cdna = {"check": "flagged", "note": "clipped <x>", "alt_reads": 4, "alt_clipped": 3,
     "ref_reads": 10, "ref_clipped": 0, "construct": "pcDNA3"}

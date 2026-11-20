@@ -6,7 +6,7 @@
 
 use super::util::{Obj, at, bin_rows, count, key_error, lines, s, strs, table};
 use super::{Ctx, Out};
-use og_steps::pgx_rules::HLA_GENES;
+use og_steps::pgx_rules::{HLA_GENES, pharmcat_ambiguity};
 use pycompat::json::Value;
 
 /// A quality-0 allele with more candidates than this is "no confident call".
@@ -25,6 +25,29 @@ pub struct Locus {
 }
 
 impl Locus {
+    /// Step 36's T1K rules: HLA-A or HLA-B is not passed to PharmCAT when
+    /// an allele has quality 0 or below, or when its tied candidates or an
+    /// expression suffix leave an allele PharmCAT acts on uncertain
+    /// ([`pharmcat_ambiguity`]).
+    fn withheld_from_pharmcat(&self) -> bool {
+        if !HLA_GENES.contains(&self.gene.as_str()) {
+            return false;
+        }
+        let names: Vec<String> = self
+            .alleles
+            .iter()
+            .map(|a| {
+                candidates(a)
+                    .iter()
+                    .map(|c| format!("HLA-{c}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.low_confidence || pharmcat_ambiguity(&self.gene, &names).is_some()
+    }
+
     fn json(&self) -> Value {
         let mut o = Obj::new()
             .set("gene", s(&self.gene))
@@ -33,7 +56,7 @@ impl Locus {
             .set("low_confidence", Value::Bool(self.low_confidence))
             .set(
                 "withheld_from_pharmcat",
-                Value::Bool(self.low_confidence && HLA_GENES.contains(&self.gene.as_str())),
+                Value::Bool(self.withheld_from_pharmcat()),
             )
             .set(
                 "candidates",
@@ -120,15 +143,35 @@ enum Match {
     Mixed,
 }
 
+/// A null (`N`) or questionable-expression (`Q`) allele name: the letter
+/// right after the last digit (`B*57:01:01N`).
+fn not_expressed(name: &str) -> bool {
+    let mut rev = name.chars().rev();
+    matches!(
+        (rev.next(), rev.next()),
+        (Some('N' | 'Q'), Some(d)) if d.is_ascii_digit()
+    )
+}
+
+/// A candidate in the group counts only when it is expressed: a null form
+/// of a group (`B*57:01:01N` for `B*57:01`) makes the allele uncertain.
 fn matches(allele: &str, group: &str) -> Match {
     let prefix = format!("{group}:");
-    let hits: Vec<bool> = candidates(allele)
+    let hits: Vec<Match> = candidates(allele)
         .iter()
-        .map(|c| *c == group || c.starts_with(&prefix))
+        .map(|c| {
+            if *c != group && !c.starts_with(&prefix) {
+                Match::No
+            } else if not_expressed(c) {
+                Match::Mixed
+            } else {
+                Match::Yes
+            }
+        })
         .collect();
-    if !hits.is_empty() && hits.iter().all(|h| *h) {
+    if !hits.is_empty() && hits.iter().all(|h| *h == Match::Yes) {
         Match::Yes
-    } else if hits.iter().any(|h| *h) {
+    } else if hits.iter().any(|h| *h != Match::No) {
         Match::Mixed
     } else {
         Match::No
@@ -365,6 +408,23 @@ fn kir(c: &Ctx<'_>) -> Result<Option<Value>, String> {
     ))
 }
 
+/// `bin/hla_alleles.tsv`: in the tables folder ([`super::util::default_tables`]),
+/// else in the `bin/` of the install root, the folder that holds the
+/// assets the run reads. A binary outside the checkout falls back to a
+/// relative `bin`, which only resolves from the repository root; the
+/// assets folder (`--assets`) names the install root from any folder.
+fn allele_table(c: &Ctx<'_>) -> String {
+    let t = c.table("hla_alleles.tsv");
+    if crate::is_file(&t) {
+        return t;
+    }
+    std::path::Path::new(c.assets)
+        .parent()
+        .map(|root| root.join("bin").join("hla_alleles.tsv"))
+        .filter(|p| p.is_file())
+        .map_or(t, |p| p.display().to_string())
+}
+
 /// Step 08's T1K genotype table, the derived calls, and OptiType and KIR
 /// when they ran.
 pub fn hla(c: &Ctx<'_>) -> Out {
@@ -385,7 +445,7 @@ pub fn hla(c: &Ctx<'_>) -> Out {
         let (a, q) = alleles(&c, false);
         loci.push(locus(c[0], a, q, c.get(1).copied().unwrap_or("")));
     }
-    let table = bin_rows(&c.table("hla_alleles.tsv"))?;
+    let table = bin_rows(&allele_table(c))?;
     let mut out = Obj::new()
         .set("loci", Value::Array(loci.iter().map(Locus::json).collect()))
         .set("derived", derived(&loci, &table)?);
@@ -397,4 +457,116 @@ pub fn hla(c: &Ctx<'_>) -> Out {
     }
     let _ = at;
     Ok(Some((p, out.val())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::{Group, Input, collect};
+    use crate::testutil::Dir;
+    use pycompat::json::Value;
+
+    const REPO_TABLE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin/hla_alleles.tsv");
+
+    /// Group c of folder `d`, its install root `d` (`d/assets`, `d/bin`),
+    /// with the tables folder a binary outside the checkout falls back to:
+    /// `bin`, relative, which the test's working folder (the crate) lacks.
+    fn hla(d: &Dir, genotype: &str) -> Value {
+        d.put("bin/hla_alleles.tsv", std::fs::read(REPO_TABLE).unwrap());
+        d.put("assets/.keep", "");
+        d.put("S/hla_t1k/S_hla_genotype.tsv", genotype);
+        let input = Input {
+            sample: "S".into(),
+            sample_dir: d.path("S"),
+            declared_sex: None,
+            assets: d.path("assets"),
+            group: Group::C,
+            tables: "bin".into(),
+        };
+        assert!(!std::path::Path::new("bin/hla_alleles.tsv").exists());
+        let v = collect(&input).unwrap().to_json();
+        let Value::Object(m) = v else { panic!() };
+        let Some(Value::Object(s)) = m.get("sections") else {
+            panic!()
+        };
+        s.get("hla").unwrap().clone()
+    }
+
+    fn get<'a>(v: &'a Value, k: &str) -> &'a Value {
+        match v {
+            Value::Object(m) => m.get(k).unwrap_or_else(|| panic!("no {k} in {v:?}")),
+            _ => panic!("{k} of {v:?}"),
+        }
+    }
+
+    fn list(v: &Value) -> &[Value] {
+        match v {
+            Value::Array(a) => a,
+            _ => panic!("not a list: {v:?}"),
+        }
+    }
+
+    /// The state of a table allele (`B*57:01`) and HLA-B's withheld flag.
+    fn state(sec: &Value, allele: &str) -> (Value, Value) {
+        let data = get(sec, "data");
+        let row = list(get(get(data, "derived"), "alleles"))
+            .iter()
+            .find(|r| get(r, "allele") == &Value::Str(allele.into()))
+            .unwrap();
+        let b = list(get(data, "loci"))
+            .iter()
+            .find(|l| get(l, "gene") == &Value::Str("HLA-B".into()))
+            .unwrap();
+        (
+            get(row, "state").clone(),
+            get(b, "withheld_from_pharmcat").clone(),
+        )
+    }
+
+    #[test]
+    fn the_allele_table_is_read_from_the_install_root_in_any_folder() {
+        let d = Dir::new("hla-root");
+        let sec = hla(
+            &d,
+            "HLA-B\t2\tHLA-B*57:01:01\t10\t60\tHLA-B*07:02:01\t9\t48\n",
+        );
+        assert_eq!(get(&sec, "state"), &Value::Str("ok".into()), "{sec:?}");
+        let (b5701, withheld) = state(&sec, "B*57:01");
+        assert_eq!(b5701, Value::Str("present".into()));
+        assert_eq!(withheld, Value::Bool(false));
+    }
+
+    #[test]
+    fn a_tie_or_a_null_of_a_drug_allele_is_withheld_and_uncertain() {
+        let d = Dir::new("hla-tie");
+        for tie in [
+            "HLA-B*57:01:01,HLA-B*58:01:01",
+            "HLA-B*58:01:01,HLA-B*57:01:01",
+        ] {
+            let sec = hla(
+                &d,
+                &format!("HLA-B\t2\tHLA-B*07:02:01\t10\t60\t{tie}\t9\t48\n"),
+            );
+            for a in ["B*57:01", "B*58:01"] {
+                let (st, withheld) = state(&sec, a);
+                assert_eq!(st, Value::Str("uncertain".into()), "{tie} {a}");
+                assert_eq!(withheld, Value::Bool(true), "{tie}");
+            }
+        }
+        // A null form of B*57:01 (hypothetical name) is not B*57:01 present.
+        let sec = hla(
+            &d,
+            "HLA-B\t2\tHLA-B*07:02:01\t10\t60\tHLA-B*57:01:99N\t9\t48\n",
+        );
+        let (st, withheld) = state(&sec, "B*57:01");
+        assert_eq!(st, Value::Str("uncertain".into()));
+        assert_eq!(withheld, Value::Bool(true));
+        // A null on the other copy hides nothing: B*57:01 stays present.
+        let sec = hla(
+            &d,
+            "HLA-B\t2\tHLA-B*08:67:01N\t10\t60\tHLA-B*57:01:01\t9\t48\n",
+        );
+        let (st, withheld) = state(&sec, "B*57:01");
+        assert_eq!(st, Value::Str("present".into()));
+        assert_eq!(withheld, Value::Bool(false));
+    }
 }

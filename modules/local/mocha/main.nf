@@ -9,7 +9,9 @@
                     from the reference (bcftools +mochatools)
       MOCHA_PHASE   Beagle against the panel, one chromosome at a time (those
                     the panel has), with the panel's cnps.bed alongside
-      MOCHA_CALL    the phased genotypes onto the prepared sites, MoChA
+      MOCHA_CALL    the phased genotypes onto the prepared sites of every
+                    chromosome (one the panel lacks stays unphased, so the
+                    phase check of og mocha report names it), MoChA
                     (bcftools +mocha, the common germline CNVs as --cnp), and
                     the per-chromosome site counts
       MOCHA_REPORT  og mocha report (bin/og): the calls above the floor
@@ -91,7 +93,7 @@ process MOCHA_PHASE {
     [ -f ${mocha_data}/cnps.bed ] || { echo "ERROR: ${mocha_data}/cnps.bed not found: the panel is older than its CNV list (rerun setup.sh --mocha-data)" >&2; exit 1; }
     cp ${mocha_data}/cnps.bed phase/cnps.bed
     for c in \$(cat ${chroms}); do
-        [ -s ${mocha_data}/panel/\$c.vcf.gz ] || continue
+        [ -s ${mocha_data}/panel/\$c.vcf.gz ] || { echo "[WARN] The panel has no file for \$c: not phased, so a heterozygous site there makes the sample not assessed"; continue; }
         beagle -Xmx${heap}g gt=${phase_in} chrom=\$c ref=${mocha_data}/panel/\$c.vcf.gz map=${mocha_data}/maps/\$c.map \\
             out=phase/\$c impute=false seed=1 nthreads=${task.cpus} > phase/\$c.out 2>&1 \\
             || { tail -n 20 phase/\$c.out; exit 1; }
@@ -140,7 +142,6 @@ process MOCHA_CALL {
     def p = meta.id
     """
     set -euo pipefail
-    chroms=\$(paste -sd, ${phase}/chroms.txt)
     # Beagle writes no ##contig lines and concat refuses records on an
     # undeclared contig: give each Beagle VCF the contig lines of prep.bcf.
     bcftools view -h ${prep} | grep '^##contig=' > contigs.hdr
@@ -152,7 +153,7 @@ process MOCHA_CALL {
     done
     bcftools concat --no-version -Ob -o phased_gt.bcf "\${f[@]}"
     bcftools index -f phased_gt.bcf
-    bcftools annotate --no-version -a phased_gt.bcf -c FMT/GT -r "\$chroms" -Ob -o phased.bcf ${prep}
+    bcftools annotate --no-version -a phased_gt.bcf -c FMT/GT -Ob -o phased.bcf ${prep}
     bcftools index -f phased.bcf
     bcftools +mocha --genome GRCh38 --no-version --mhc chr6:27518932-33480487 --kir chr19:54071493-54992731 --cnp ${phase}/cnps.bed \\
       --calls ${p}_mocha_calls_raw.tsv --stats ${p}_mocha_stats.tsv --log ${p}_mocha.log phased.bcf
