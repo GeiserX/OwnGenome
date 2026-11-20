@@ -177,9 +177,10 @@ When the run starts from an existing VCF, the pipeline does not read a gVCF besi
 | `MANTA_CALL_REGIONS=file` | a bgzipped BED of the regions Manta calls | `--manta_call_regions` |
 | `ANCESTRY_PANEL=file`, `PGSC_CALC_DIR=dir` | another ancestry panel (step 26 and the percentiles of step 25), another pgsc_calc checkout; both are passed when `setup.sh` installed them, and `ANCESTRY_PANEL=none` scores without the panel | `--ancestry_ref`, `--pgsc_calc` |
 | `ANCESTRY_FINE_DIR=dir` | another fine-grained ancestry panel (step 26b); passed when `setup.sh --ancestry-fine-panel` installed it, and `ANCESTRY_FINE_DIR=none` skips the step | `--ancestry_fine_panel` |
-| `GRIDSS=true`, `IMPUTATION=true`, `SOMATIC=true` | run steps 4b, 14 and 29 as scripts after the pipeline | |
+| `TIDDIT=true`, `GRIDSS=true`, `IMPUTATION=true`, `SOMATIC=true` | run steps 4a, 4b, 14 and 29 as scripts after the pipeline | |
 | `EXTRA_CALLERS=gatk,freebayes,strelka2,octopus` | run the alternative callers 3a to 3d after the pipeline | |
 | `BENCHMARK=true` | runs `benchmark-variants.sh` after them; it needs `EXTRA_CALLERS` or a second caller's VCF from an earlier 3a-3d run, and is skipped without one | |
+| `EVERYTHING=true` | runs every optional step: see [Every optional step](#every-optional-step) | `-profile everything` |
 
 GRIDSS is not part of the SV consensus (step 22): it reports every event as a pair of breakends, which never match the DEL, DUP and INV records of Manta, Delly and CNVpytor.
 
@@ -218,6 +219,20 @@ Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count a
 The `work/` folder holds a copy of every intermediate file (from FASTQ, several hundred GB: [disk](hardware-requirements.md#per-sample-storage)). Once the run succeeded and the results look right, delete `<sample>/nextflow/work` to free the space; the next run then starts from scratch.
 
 **After a failure** run the same command again: `-resume` reuses every task that finished and runs the rest, including from the start the one that was running when the run stopped. **To rerun one step by hand**, run its script, for example `./scripts/06-clinvar-screen.sh your_name` after a ClinVar update, then `./scripts/24-html-report.sh your_name` and `./scripts/generate-report.sh your_name` to refresh the reports. A script reads the folders the scripts write; where the pipeline's folder differs (above), a script that reads another step's output may need that step run by hand first.
+
+### Every optional step
+
+`EVERYTHING=true ./scripts/run-all.sh your_name male` runs every step the pipeline has, the opt-in ones too. The list is [`assets/everything.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv), one row per optional item:
+
+- every `--tools` name goes into `TOOLS`, so Parascopy, Paraphase, the Y steps, the raw-data export, blood groups, Lp(a), VNtyper, CHIP, viral DNA, ancient populations, MEGAnE, MoChA and Locityper run;
+- `KIR`, `HLA_QC`, `TIDDIT`, `GRIDSS`, `IMPUTATION`, `SOMATIC` and `BENCHMARK` are `true`, and `EXTRA_CALLERS` is `gatk,freebayes,strelka2,octopus`;
+- `TOOLS`, or one of these switches set to another value, stops the run with exit 2.
+
+A step whose data is not installed stops the run with exit 2 before Nextflow starts, and the error names the command that installs it, for example `setup.sh --yleaf-data`. So does `ANCESTRY_PANEL`, `ANCESTRY_FINE_DIR` or `ARCHAIC_DIR` set to `none`. Cyrius counts too: `setup.sh --cyrius` installs it, and you accept its non-commercial licence when you run that command. A skip that comes from the sample stays a skip: no BAM, no gVCF, a female sample for the two Y steps, a BAM that is not PacBio HiFi for Paraphase.
+
+Some things only you can give, so `EVERYTHING=true` leaves them to you: the symptoms for Exomiser (`HPO`), the families file (`FAMILIES`) and the drugs you take (`--medications`). The long-read scripts (2b, 3e, 4c) read ONT or PacBio HiFi reads, so you run them by hand on such data. One step stays out: `cram_archive` writes a CRAM copy of each BAM, which costs disk and adds no result.
+
+On the Nextflow path, `-profile docker,everything` sets the same tools and switches (`conf/everything.config`). Pass the database of each tool; `main.nf` stops before any task and names the option a tool lacks. CI fails when a new opt-in step, switch, setup flag or optional image has no row in the list (`og dev everything-check`).
 
 ### Path A: I Have FASTQ Files (Raw Reads)
 
