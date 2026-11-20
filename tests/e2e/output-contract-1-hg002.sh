@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The 1.0 output contract (assets/output_contract.tsv) on the HG002 base outputs: every stable file
 # the bash steps and the Nextflow run (case 60) wrote is there under its contracted name, with its
-# required columns, VCF fields and JSON keys. Red control: a copy of the Nextflow results with one
+# required columns, VCF fields and JSON keys. The base leg runs no step 09b: Stranger's VCF comes
+# from bash-step-09-str, which the needs column of scripts/ci/e2e-case-times.tsv puts first.
+# Red control: a copy of the Nextflow results with one
 # column dropped and one file renamed must fail, naming both.
 . "$(dirname "$0")/lib.sh"
 
