@@ -11829,324 +11829,432 @@
      {
       "gene": "RHCE",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "AMY1A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "AMY1B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "AMY1C",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "GSTM1",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "NOTCH2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "FCGR1A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "GBA1",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.1667,
       "status": "not read"
      },
      {
       "gene": "FCGR2A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.6666,
       "status": "not read"
      },
      {
       "gene": "FCGR2C",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "FCGR3B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "CFHR3",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "CFHR1",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "PROS1",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "UGT2B17",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "UGT2B15",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "GYPE",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "GYPB",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "GTF2H2C",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "SMN2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "SMN1",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "GTF2H2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "HSPA1B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "C4A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "C4B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "CYP21A2",
       "owner": "cn_loci:CYP21A2",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.6666,
       "status": "not read"
      },
      {
       "gene": "LPA",
       "owner": "cn_loci:LPA_KIV2",
+      "owner_step": "46",
+      "owner_status": "ran",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "PMS2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "GTF2I",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "DEFA1B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "CEL",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "MUC5B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "KLRC2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "KRT6B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "KRT6C",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1665,
       "status": "not read"
      },
      {
       "gene": "KRT6A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "CHRFAM7A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "STRC",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "SORD",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.8333,
       "status": "not read"
      },
      {
       "gene": "HBA2",
       "owner": "cn_loci:HBA",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "HBA1",
       "owner": "cn_loci:HBA",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.6659,
       "status": "not read"
      },
      {
       "gene": "TPSB2",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1666,
       "status": "not read"
      },
      {
       "gene": "TPSAB1",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3331,
       "status": "not read"
      },
      {
       "gene": "OTOA",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "SULT1A1",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "HYDIN",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.1667,
       "status": "not read"
      },
      {
       "gene": "HP",
       "owner": "cn_loci:HP",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "CCL3L3",
       "owner": "cn_loci:CCL3L1",
+      "owner_step": "35",
+      "owner_status": "ran",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "CYP2A6",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.0,
       "status": "not read"
      },
      {
       "gene": "CYP2B6",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "CD177",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.3333,
       "status": "not read"
      },
      {
       "gene": "APOBEC3A",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.5,
       "status": "not read"
      },
      {
       "gene": "APOBEC3B",
       "owner": "parascopy",
+      "owner_step": "35",
+      "owner_status": "not run",
       "share": 0.6667,
       "status": "not read"
      },
      {
       "gene": "CYP2D6",
       "owner": "pypgx",
+      "owner_step": "32",
+      "owner_status": "ran",
       "share": 0.5,
       "status": "not read"
      }
