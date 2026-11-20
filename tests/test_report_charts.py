@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""The report's charts on the live page, on DEMO-001, the invented demo sample.
+"""The report's charts in the HTML report and on the live page, on the invented
+sections of tests/fixtures/report_charts/ and on DEMO-001, the invented demo
+sample.
 
-The charts' own checks (bin/report_charts.py, og report charts) are cargo
-tests now: rust/crates/og-render/tests/charts.rs. What stays here is the
-browser check of the live page, which needs the live site's Python server:
+The cargo tests in rust/crates/og-render/tests/charts.rs check og report
+charts and hold it to the output of bin/report_charts.py frozen at 65095e97.
+What stays here checks what bin/render_report.py still ships:
 
+  7. the HTML report: no <script>, every href="#..." of the page resolves to
+     an id, each chart sits in its section below that section's caveat, and
+     the hits table carries the id the charts link to. It stays until
+     og report render embeds the figures (charts::figure in html.rs); that
+     lane ports it to its cargo tests;
+  8. two renders of the demo give the same charts.json apart from
+     generated_utc, with its schema version and the five charts;
  10. the live page (bin/owngenome_live.py with bin/owngenome_live_charts.py and
      assets/live/plugins/charts.js): the plugin serves <run>_charts.json and
      names it in state.json; in a headless Chrome, signed in, the five charts
@@ -17,6 +26,7 @@ browser check of the live page, which needs the live site's Python server:
 The demo's charts file it serves comes from bin/render_report.py --charts-json.
 """
 import contextlib
+import copy
 import io
 import json
 import os
@@ -39,6 +49,14 @@ def check(desc, ok, detail=""):
         FAILS += 1
 
 
+def fixture():
+    with open(os.path.join(REPO, "tests", "fixtures", "report_charts", "sections.json")) as f:
+        return {"sample": "S", "generated_utc": "2026-01-01 00:00 UTC", "sections": json.load(f)["sections"]}
+
+
+def href_problems(page):
+    ids = set(re.findall(r'\sid="([^"]+)"', page))
+    return sorted({h for h in re.findall(r'href="#([^"]*)"', page) if h not in ids})
 
 
 def demo_checks(work):
@@ -58,6 +76,33 @@ def demo_checks(work):
         with open(f"{work}/c{i}.json") as f:
             outs.append(json.load(f))
         check(f"8. render {i} of the demo exits 0", rc == 0)
+    a, b = (dict(x, generated_utc=None) for x in outs)
+    check("8. charts.json of two renders is the same apart from generated_utc", a == b and outs[0]["charts"])
+    b2 = copy.deepcopy(b)
+    b2["charts"][0]["marks"][0]["value"] = -1
+    check("8. red control: one changed value is caught", a != b2)
+    check("8. charts.json carries its schema version and the five charts of the demo",
+          outs[0]["schema_version"] == 1 and [c["id"] for c in outs[0]["charts"]]
+          == ["clinvar-stars", "genome", "mito", "ancestry-fine", "prs"], [c["id"] for c in outs[0]["charts"]])
+
+    # 7. the offline page, with the fixture's sections on the demo (53 hits, ROH, poly-C)
+    with open(f"{work}/s1.json") as f:
+        s = json.load(f)
+    s["sections"].update(fixture()["sections"])
+    page = render_report.html_report(s)
+    check("7. the HTML report has no <script", "<script" not in page.lower())
+    check("7. every href=\"#...\" resolves to an id of the page", href_problems(page) == [], href_problems(page))
+    check("7. red control: a link to a missing id is caught",
+          href_problems(page.replace('id="clinvar-hits"', 'id="gone"')) == ["clinvar-hits"])
+    for sid, key in (("clinvar", "CLINVAR_FREQ_NOTE"), ("roh", "ROH_NOTE"), ("mito", "MITO_NOTE"),
+                     ("ancestry-fine", "ANCESTRY_FINE_NOTE"), ("prs", "PRS_ANCESTRY_NOTE")):
+        sec = re.search(rf'<section class="sec[^"]*" id="{sid}">(.*?)\n  </section>', page, re.S).group(1)
+        cav = sec.find(render_report.E(getattr(render_report, key)))
+        fig = sec.find('<figure class="chart">')
+        check(f"7. section {sid}: one chart, below its caveat",
+              sec.count('<figure class="chart">') == 1 and -1 < cav < fig, (cav, fig))
+    check("7. the hits table carries the id the charts link to, and its rows keep their shape",
+          page.count('<a id="clinvar-hits"></a>') == 1 and len(re.findall(r"<tr><td>chr", page)) >= 50)
 
 
 def page_problems(b, base, run):
