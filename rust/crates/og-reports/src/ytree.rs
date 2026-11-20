@@ -27,14 +27,27 @@
 //! The rules. A SNP is called when at least `--min-depth` reads (10) cover
 //! it and 90% of them carry one of its two bases: derived (D) or ancestral
 //! (A); anything else is a no-call (N). A branch is positive with at least
-//! one D and more D than A, negative with an A and no more D than A. The
-//! terminal branch is the deepest positive branch with no blocking branch
-//! above it (ties: more D on the path, then the smaller id). A negative
-//! branch blocks the branches below it, except one with a single A: the
-//! branches below it on the path outvote that site when they carry D at
-//! [`OUTVOTE`] or more distinct positions, and the site is reported
+//! one D and more D than A, negative with an A and no more D than A. A
+//! negative branch blocks the branches below it, except one with a single
+//! A: the branches below it on the path outvote that site when they carry D
+//! at [`OUTVOTE`] or more distinct positions, and the site is reported
 //! (`Outvoted_ancestral`). Two A on one branch still block, and so does a
-//! second single-A branch on the same path.
+//! second single-A branch on the same path. The terminal branch is the
+//! positive branch with no blocking branch above it that has the most
+//! support, D minus A on its path from the root (for two branches on
+//! different lineages: D minus A from their common branch down); ties go to
+//! the deeper branch, then more D on the path, then the smaller id. On one
+//! lineage the deeper branch never has less support, so the walk goes as
+//! deep as before; across lineages an outvoted branch no longer wins on
+//! depth alone over a clean branch with more support.
+//!
+//! The result row also says how much of the evidence was readable and what
+//! the ranking set aside: `Informative_callable` (tree SNPs on the tables
+//! whose site has `--min-depth` reads, called or not), `Path_breadth` (that
+//! share of the path's SNPs on the tables), and `Conflict` with
+//! `Conflict_support` and `Terminal_support` (the other-lineage candidate
+//! with the most support of its own from the common branch, above 0, and
+//! both supports from there; `.` when there is none).
 //!
 //! How it is built: the tree is read as a stream of JSON events straight
 //! into an arena of branches in the order the Python walked them (parents
@@ -50,7 +63,8 @@
 //! A branch whose `id`, `snps` or `children` is of a type the Python could
 //! not use, or that repeats one of those keys, is refused with its place in
 //! the tree (the Python crashed, or kept the last copy). Both outputs are
-//! written whole or not at all.
+//! written whole or not at all. The Python ranked by depth first; the
+//! support ranking and the five columns after `Outvoted_ancestral` are new.
 
 use crate::y::{is_file, path_join};
 use crate::yjson::{Event, Reader};
@@ -567,14 +581,17 @@ fn read_pileup(path: &str) -> Result<Pileup, Error> {
     })
 }
 
+/// The reads at `snp`'s site, when there are at least `min_depth` of them.
+fn callable(snp: Snp, pileup: &Pileup, min_depth: i128) -> Option<(&[u32; 4], u64)> {
+    let c = pileup.counts.get(&snp.pos)?;
+    let depth: u64 = c.iter().map(|&x| u64::from(x)).sum();
+    (i128::from(depth) >= min_depth).then_some((c, depth))
+}
+
 fn call(snp: Snp, pileup: &Pileup, min_depth: i128) -> Call {
-    let Some(c) = pileup.counts.get(&snp.pos) else {
+    let Some((c, depth)) = callable(snp, pileup, min_depth) else {
         return Call::None;
     };
-    let depth: u64 = c.iter().map(|&x| u64::from(x)).sum();
-    if i128::from(depth) < min_depth {
-        return Call::None;
-    }
     // As the Python compares: the count against 0.9 times the depth, in floats.
     let limit = MAJORITY * depth as f64;
     if f64::from(c[snp.der as usize]) >= limit {
@@ -629,6 +646,8 @@ struct Stats {
     d: u32,
     a: u32,
     n: u32,
+    /// SNPs on the tables whose site has `--min-depth` reads, called or not.
+    callable: u32,
     der_sites: Sites,
 }
 
@@ -647,6 +666,7 @@ fn node_stats(l: &Loaded, node: &Node, pileup: &Pileup, min_depth: i128) -> Stat
         d: 0,
         a: 0,
         n: 0,
+        callable: 0,
         der_sites: Sites::Zero,
     };
     for g in l.tree.node_groups(node) {
@@ -655,6 +675,7 @@ fn node_stats(l: &Loaded, node: &Node, pileup: &Pileup, min_depth: i128) -> Stat
             continue;
         };
         s.on_table += 1;
+        s.callable += u32::from(callable(snp, pileup, min_depth).is_some());
         match call(snp, pileup, min_depth) {
             Call::Derived => {
                 s.d += 1;
@@ -695,16 +716,26 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
     // single-ancestral-SNP branches on it, whether a blocking branch is on
     // it, and the derived sites below its single-ancestral-SNP branch (None
     // without one).
+    //
+    // A candidate is a positive branch with no blocking branch above it.
+    // Candidates rank by their support: derived minus ancestral calls on
+    // the path from the root. Between two candidates on different lineages
+    // that is the support of each from their common ancestor down, because
+    // the shared part cancels; on one lineage the deeper candidate never has
+    // less, so the walk still goes as deep as its calls allow. Depth, then
+    // the derived calls on the path, then the smaller id break ties.
     let n = nodes.len();
     let mut path_d = vec![0u64; n];
+    let mut score = vec![0i64; n];
     let mut singles = vec![0u8; n];
     let mut blocked = vec![false; n];
     let mut soft: Vec<Option<Sites>> = vec![None; n];
-    let mut best: Option<usize> = None;
+    let mut candidates: Vec<usize> = Vec::new();
     for (i, node) in nodes.iter().enumerate() {
         let s = &stats[i];
         let p = (node.parent != NONE).then_some(node.parent as usize);
         path_d[i] = u64::from(s.d) + p.map_or(0, |p| path_d[p]);
+        score[i] = i64::from(s.d) - i64::from(s.a) + p.map_or(0, |p| score[p]);
         singles[i] = u8::from(single(s)).saturating_add(p.map_or(0, |p| singles[p]));
         blocked[i] =
             (negative(s) && !single(s)) || singles[i] >= 2 || p.is_some_and(|p| blocked[p]);
@@ -714,20 +745,44 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
             p.and_then(|p| soft[p]).map(|x| x.union(s.der_sites))
         };
         if positive(s) && !blocked[i] && soft[i].is_none_or(|x| x.count() >= OUTVOTE) {
-            let better = match best {
-                None => true,
-                Some(b) => {
-                    let (nb, nn) = (&nodes[b], node);
-                    let key = (nn.depth, path_d[i]);
-                    let bkey = (nb.depth, path_d[b]);
-                    key > bkey || (key == bkey && id_or_empty(nn) < id_or_empty(nb))
-                }
-            };
-            if better {
-                best = Some(i);
-            }
+            candidates.push(i);
         }
     }
+    let rank = |a: usize, b: usize| {
+        (score[a], nodes[a].depth, path_d[a])
+            .cmp(&(score[b], nodes[b].depth, path_d[b]))
+            .then_with(|| id_or_empty(&nodes[b]).cmp(id_or_empty(&nodes[a])))
+    };
+    let best = candidates.iter().copied().max_by(|&a, &b| rank(a, b));
+    // The strongest candidate on another lineage: the one with the most
+    // support of its own from the branch it shares with the best one (above
+    // 0), the conflict the ranking set aside. Its support is counted from
+    // that common branch down, never from the root: a candidate that splits
+    // off low inherits the shared part, which says nothing for it. Ties go
+    // to the ranking above.
+    let conflict = best.and_then(|b| {
+        let mut on_path = vec![false; n];
+        let mut at = b as u32;
+        while at != NONE {
+            on_path[at as usize] = true;
+            at = nodes[at as usize].parent;
+        }
+        let base = |c: usize| {
+            let mut k = c;
+            while !on_path[k] {
+                k = nodes[k].parent as usize;
+            }
+            score[k]
+        };
+        let (c, k) = candidates
+            .iter()
+            .copied()
+            .filter(|&c| !on_path[c] && nodes[c].id.is_some())
+            .map(|c| (c, base(c)))
+            .filter(|&(c, k)| score[c] > k)
+            .max_by(|&(a, ka), &(b, kb)| (score[a] - ka).cmp(&(score[b] - kb)).then(rank(a, b)))?;
+        Some((c, score[c] - k, score[b] - k))
+    });
     // The path from the root to the best branch, branches without an id left out.
     let mut path = Vec::new();
     let mut at = best.map_or(NONE, |b| b as u32);
@@ -754,6 +809,7 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
     let mut anc_term = String::from(".");
     let mut outvoted: Vec<&str> = Vec::new();
     let (mut pd, mut pa, mut pn) = (0u64, 0u64, 0u64);
+    let (mut p_on, mut p_callable) = (0u64, 0u64);
     let anc_ids: Vec<Vec<u32>> = path
         .iter()
         .map(|&i| ancestral_ids(&l, &nodes[i], &pileup, min_depth))
@@ -780,6 +836,10 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
             pa + u64::from(s.a),
             pn + u64::from(s.n),
         );
+        (p_on, p_callable) = (
+            p_on + u64::from(s.on_table),
+            p_callable + u64::from(s.callable),
+        );
         if single(s) {
             outvoted.push(anc[0]);
         }
@@ -793,11 +853,24 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
         outvoted.join(",")
     };
     let level = path.len();
+    let informative: u64 = stats.iter().map(|s| u64::from(s.callable)).sum();
+    let breadth = if p_on == 0 {
+        ".".to_owned()
+    } else {
+        crate::fixed(p_callable as f64 / p_on as f64, 3)
+    };
+    let (c_id, c_support, t_support) = match conflict {
+        Some((c, cs, ts)) => (id(c), cs.to_string(), ts.to_string()),
+        None => (".", ".".to_owned(), ".".to_owned()),
+    };
+    // The columns after Outvoted_ancestral are new: a reader that takes the
+    // columns by name reads the file as before.
     let row = format!(
         "Sample_name\tHg\tLevel\tPath_derived\tPath_ancestral\tPath_no_call\tAncestral_in_terminal\t\
-         SNPs_called\tMin_depth\tTree\tPositions\tOutvoted_ancestral\n\
+         SNPs_called\tMin_depth\tTree\tPositions\tOutvoted_ancestral\t\
+         Informative_callable\tPath_breadth\tConflict\tConflict_support\tTerminal_support\n\
          {sample}\t{hg}\t{level}\t{pd}\t{pa}\t{pn}\t{anc_term}\t{called}\t{min_depth}\t\
-         {tree_label}\t{pos_label}\t{outvoted}\n"
+         {tree_label}\t{pos_label}\t{outvoted}\t{informative}\t{breadth}\t{c_id}\t{c_support}\t{t_support}\n"
     );
     crate::write_atomic(&format!("{prefix}_y_tree_path.tsv"), body.as_bytes()).map_err(fail)?;
     crate::write_atomic(&format!("{prefix}_y_tree.txt"), row.as_bytes()).map_err(fail)?;
@@ -814,6 +887,12 @@ fn place(dir: &str, pileup_path: &str, sample: &str, prefix: &str, min_depth: i1
             let _ = write!(
                 extra,
                 "; ancestral on the path, outvoted by the SNPs below it: {outvoted}"
+            );
+        }
+        if c_id != "." {
+            let _ = write!(
+                extra,
+                "; another lineage has support too: {c_id} ({c_support} against {t_support} from their common branch)"
             );
         }
         format!(
@@ -1034,7 +1113,13 @@ mod tests {
         );
         place(&dir, &p, "S", &prefix, 10).unwrap();
         assert_eq!(hg(&d), "Z", "two distinct sites below outvote x1");
-        assert!(d.read("o_y_tree.txt").ends_with("\tx1\n"));
+        let t = d.read("o_y_tree.txt");
+        let (head, row) = t.split_once('\n').unwrap();
+        let col = head.split('\t').position(|c| c == "Outvoted_ancestral");
+        assert_eq!(
+            col.and_then(|i| row.trim_end().split('\t').nth(i)),
+            Some("x1")
+        );
     }
 
     #[test]

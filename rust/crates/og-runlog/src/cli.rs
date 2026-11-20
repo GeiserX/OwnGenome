@@ -257,7 +257,7 @@ pub fn run(args: &[String], env: &Env, out: &mut dyn Write, err: &mut dyn Write)
         Err(e) => return usage_error(err, spec.verb, &e),
     };
     match spec.verb {
-        "state" => state(&p, env, out, err),
+        "state" => state(&p, env, err),
         "tasks" => tasks(&p, out, err),
         "eta" => eta(&p, env, out, err),
         "headroom" => headroom(&p, env, out, err),
@@ -265,7 +265,7 @@ pub fn run(args: &[String], env: &Env, out: &mut dyn Write, err: &mut dyn Write)
     }
 }
 
-fn state(p: &Parsed, env: &Env, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+fn state(p: &Parsed, env: &Env, err: &mut dyn Write) -> u8 {
     let steps = match steps_of(p) {
         Ok(s) => s,
         Err(e) => return fail(err, e),
@@ -292,7 +292,7 @@ fn state(p: &Parsed, env: &Env, out: &mut dyn Write, err: &mut dyn Write) -> u8 
     if let Err(e) = write_atomic(&target, &json_text(&st.to_json())) {
         return fail(err, format!("cannot write {}: {e}", target.display()));
     }
-    let _ = writeln!(out, "Run state written: {}", target.display());
+    let _ = writeln!(err, "Run state written: {}", target.display());
     0
 }
 

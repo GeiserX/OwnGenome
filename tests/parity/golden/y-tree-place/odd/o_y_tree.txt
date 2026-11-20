@@ -1,0 +1,2 @@
+Sample_name	Hg	Level	Path_derived	Path_ancestral	Path_no_call	Ancestral_in_terminal	SNPs_called	Min_depth	Tree	Positions	Outvoted_ancestral	Informative_callable	Path_breadth	Conflict	Conflict_support	Terminal_support
+S	Mé-a	1	2	0	0	.	7	10	current tree	position tables	.	7	1.000	Mé-b	2	2

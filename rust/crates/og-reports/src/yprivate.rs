@@ -21,9 +21,14 @@
 //! 7. ALT fraction (AD, else VAF) at least `--min-fraction` (0.9);
 //! 8. depth at most `--max-depth-factor` (2.0) times the median depth of
 //!    the calls that passed 1 to 7 (0 turns this gate off);
-//! 9. not at any position of the two public SNP tables of the tree folder.
+//! 9. not a change the two public SNP tables of the tree folder name: a
+//!    row at the same position with the same two bases (either order), or a
+//!    row at that position whose bases are unusable. Another base at a known
+//!    position is a new mutation and stays.
 //!
-//! Records with more than one REF or ALT base never reach the gates.
+//! Records with more than one REF or ALT base never reach the gates. The
+//! sample is the VCF's only sample column; a VCF with more is read only
+//! when `--sample` names one of them, and refused otherwise.
 //! `--callable-mask` defaults to `DIR/callable_mask_chrY.fasta.gz`.
 //!
 //! How it is built: the mask is one bit per base, read in one pass over the
@@ -36,7 +41,9 @@
 //! position after the first); a gzip input is recognised by its bytes, not
 //! by a `.gz` name; the output is written whole or not at all; digits are
 //! ASCII digits only (the Python's `isdigit` also took other Unicode
-//! digits, which its `int()` then refused with a traceback).
+//! digits, which its `int()` then refused with a traceback). The Python
+//! read the first sample column of any VCF and dropped every call at a
+//! public position whatever its bases; both are the rules above now.
 
 use crate::y::{is_file, path_join};
 use crate::ytree::{MIN_DEPTH, PAR1_END, PAR2_START, TABLES};
@@ -149,8 +156,23 @@ fn read_mask(path: &str) -> Result<Mask, Error> {
     Ok(m)
 }
 
-/// Every position the two tables name, sorted and distinct.
-fn public_positions(dir: &str) -> Result<Vec<u64>, Error> {
+/// A public SNP: its position and its two bases (ancestral and derived,
+/// upper case), or `None` when the table row gives no usable pair, so any
+/// allele at that position counts as named. A usable pair is two different
+/// single bases, each A, C, G or T: a row with the same base twice names no
+/// change, so it cannot say which one is known and counts as unusable.
+type Public = (u64, Option<[u8; 2]>);
+
+/// One base of a table or VCF column, upper case, when it is A, C, G or T.
+fn snv_base(s: &str) -> Option<u8> {
+    match s.as_bytes() {
+        [b] if b"ACGTacgt".contains(b) => Some(b.to_ascii_uppercase()),
+        _ => None,
+    }
+}
+
+/// Every SNP the two tables name, sorted and distinct.
+fn public_positions(dir: &str) -> Result<Vec<Public>, Error> {
     let mut pos = Vec::new();
     let mut found = 0;
     for t in TABLES {
@@ -161,11 +183,22 @@ fn public_positions(dir: &str) -> Result<Vec<u64>, Error> {
         found += 1;
         for line in crate::lines(&path, Utf8::Strict)? {
             let line = line?;
-            let mut c = line.strip_suffix('\n').unwrap_or(&line).split('\t');
-            if let Some(p) = c.nth(3).filter(|p| crate::digits(p)) {
+            let c: Vec<&str> = line
+                .strip_suffix('\n')
+                .unwrap_or(&line)
+                .split('\t')
+                .collect();
+            if let Some(p) = c.get(3).filter(|p| crate::digits(p)) {
                 // A position past u64 is past the mask's end: no record reaches it.
                 if let Ok(p) = p.parse::<u64>() {
-                    pos.push(p);
+                    let bases = match (
+                        c.get(5).and_then(|b| snv_base(crate::strip(b))),
+                        c.get(6).and_then(|b| snv_base(crate::strip(b))),
+                    ) {
+                        (Some(a), Some(d)) if a != d => Some([a, d]),
+                        _ => None,
+                    };
+                    pos.push((p, bases));
                 }
             }
         }
@@ -182,6 +215,24 @@ fn public_positions(dir: &str) -> Result<Vec<u64>, Error> {
     pos.sort_unstable();
     pos.dedup();
     Ok(pos)
+}
+
+/// A public table names this change: a row at `pos` with the same two
+/// bases, in either order (the reference can carry the derived base), or a
+/// row at `pos` whose bases are not usable. A different change at a known
+/// position is a new mutation there, so it stays private.
+fn named(public: &[Public], pos: u64, ref_: char, alt: char) -> bool {
+    let start = public.partition_point(|p| p.0 < pos);
+    public[start..]
+        .iter()
+        .take_while(|p| p.0 == pos)
+        .any(|p| match p.1 {
+            None => true,
+            Some([a, d]) => {
+                let (a, d) = (char::from(a), char::from(d));
+                (a, d) == (ref_, alt) || (d, a) == (ref_, alt)
+            }
+        })
 }
 
 /// `FORMAT:sample` lookup: the value of the first `key`, `None` when the key
@@ -271,10 +322,16 @@ impl Median {
 }
 
 /// One chrY SNV record before the gates, as far as the gates read it.
-fn gate_record(c: &[&str], mask: &Mask, g: &Gates, drops: &mut [u64; 9]) -> Option<Kept> {
+fn gate_record(
+    c: &[&str],
+    col: usize,
+    mask: &Mask,
+    g: &Gates,
+    drops: &mut [u64; 9],
+) -> Option<Kept> {
     let pos: u64 = c[1].parse().unwrap_or(u64::MAX);
     let fmt = c[8];
-    let sample = c[9];
+    let sample = c[col];
     let drop = |drops: &mut [u64; 9], gate: Gate| {
         drops[gate as usize] += 1;
         None
@@ -327,6 +384,24 @@ fn is_snv_base(s: &str) -> bool {
     matches!(s, "A" | "C" | "G" | "T" | "a" | "c" | "g" | "t")
 }
 
+/// The index among the VCF's sample columns of the one to scan: the only
+/// one, or the one named `sample` when there are more.
+fn sample_column(vcf: &str, names: &[&str], sample: &str) -> Result<usize, Error> {
+    if names.len() <= 1 {
+        return Ok(0);
+    }
+    names.iter().position(|n| *n == sample).ok_or_else(|| {
+        let shown: Vec<&str> = names.iter().take(5).copied().collect();
+        Error(format!(
+            "{vcf} holds {} samples ({}{}) and none is named {sample}: \
+             give --sample the name of the man to scan, or a VCF of him alone",
+            names.len(),
+            shown.join(", "),
+            if names.len() > 5 { ", ..." } else { "" }
+        ))
+    })
+}
+
 struct Run<'a> {
     vcf: &'a str,
     dir: &'a str,
@@ -347,24 +422,44 @@ fn private_snps(r: &Run<'_>) -> Outcome {
     let mut drops = [0u64; 9];
     let mut records = 0u64;
     let mut kept: Vec<Kept> = Vec::new();
+    // The sample column: the only one, or the one --sample names. Another
+    // man's calls in a joint VCF are never this man's private SNPs.
+    let mut column: Option<usize> = None;
     for line in crate::lines(r.vcf, Utf8::Strict).map_err(fail)? {
         let line = line.map_err(fail)?;
+        let text = line.strip_suffix('\n').unwrap_or(&line);
+        if let Some(head) = text.strip_prefix("#CHROM\t") {
+            let head = head.strip_suffix('\r').unwrap_or(head);
+            let names: Vec<&str> = head.split('\t').skip(8).collect();
+            column = Some(9 + sample_column(r.vcf, &names, r.sample).map_err(fail)?);
+            continue;
+        }
         if line.starts_with('#') {
             continue;
         }
-        let c: Vec<&str> = line
-            .strip_suffix('\n')
-            .unwrap_or(&line)
-            .split('\t')
-            .collect();
-        if c.len() < 10 || !matches!(c[0], "chrY" | "Y") || !crate::digits(c[1]) {
+        let c: Vec<&str> = text.split('\t').collect();
+        let col = match column {
+            Some(col) => col,
+            None if c.len() > 10 => {
+                return Err((
+                    Error(format!(
+                        "{} has more than one sample column and no #CHROM line naming them: \
+                         give a VCF of this sample alone",
+                        r.vcf
+                    )),
+                    1,
+                ));
+            }
+            None => 9,
+        };
+        if c.len() <= col || !matches!(c[0], "chrY" | "Y") || !crate::digits(c[1]) {
             continue;
         }
         if !is_snv_base(c[3]) || !is_snv_base(c[4]) {
             continue;
         }
         records += 1;
-        if let Some(k) = gate_record(&c, &mask, &r.gates, &mut drops) {
+        if let Some(k) = gate_record(&c, col, &mask, &r.gates, &mut drops) {
             kept.push(k);
         }
     }
@@ -378,7 +473,7 @@ fn private_snps(r: &Run<'_>) -> Outcome {
     for k in kept {
         if limit.is_some_and(|l| k.depth as f64 > l) {
             drops[Gate::ExcessDepth as usize] += 1;
-        } else if public.binary_search(&k.pos).is_ok() {
+        } else if named(&public, k.pos, k.ref_, k.alt) {
             drops[Gate::Public as usize] += 1;
         } else {
             rows.push(k);

@@ -7,6 +7,15 @@
 //! 10, 15 s. A request to one host waits for the one before it to that host
 //! to end, so parallel lookups never hit one upstream twice at once.
 //!
+//! When the last try got no answer at all (no connection, a name that does
+//! not resolve, a timeout, a TLS handshake that broke), a 5xx or 429, or a
+//! 403, the error is [`LookupError::Unreachable`]: the upstream did not
+//! answer this machine. A 403 counts because an upstream that refuses a
+//! whole network answers it to every request from there: from 2026-11-19
+//! rest.ensembl.org answered 403 to GitHub's runners and 200 elsewhere. It
+//! is not asked again. Every answer that came back wrong (another 4xx, an
+//! empty body, a body that is not JSON) stays [`LookupError::Failed`].
+//!
 //! `curl` does the transfer (it is on every machine OwnGenome runs on, and
 //! `scripts/lib/common.sh` downloads with it too), so `og` carries no TLS
 //! stack. The URL, the headers and any token go to curl on its standard
@@ -230,10 +239,25 @@ impl Drop for Scratch {
     }
 }
 
-/// One transfer: the status (0 when there was no answer) or curl's error.
+/// One transfer: the status (0 when there was no answer) or curl's error
+/// and its exit code.
 enum Outcome {
     Status(u16, Vec<u8>, Headers),
-    NoAnswer(String),
+    NoAnswer(String, i32),
+}
+
+/// curl exit codes that mean the upstream did not answer: 5 and 6 a name
+/// that does not resolve, 7 no connection, 28 a timeout, 35 a TLS handshake
+/// that broke, 52 nothing sent back, 55 and 56 a connection that broke,
+/// 16 and 92 an HTTP/2 stream that broke. Any other curl failure (a bad
+/// option, a file it cannot write, a certificate that does not verify) is
+/// not an outage and stays an error.
+const NO_ANSWER: &[i32] = &[5, 6, 7, 16, 28, 35, 52, 55, 56, 92];
+
+/// A status that means the upstream did not answer the question: a server
+/// error or "too many requests".
+fn unanswered(code: u16) -> bool {
+    code >= 500 || code == 429 || code == 403
 }
 
 impl Client {
@@ -316,11 +340,15 @@ impl Client {
         if !out.status.success() {
             let msg = String::from_utf8_lossy(&out.stderr).trim().to_owned();
             let msg = msg.strip_prefix("curl: ").unwrap_or(&msg).to_owned();
-            return Ok(Outcome::NoAnswer(if msg.is_empty() {
-                format!("curl exited {}", out.status.code().unwrap_or(-1))
-            } else {
-                msg
-            }));
+            let rc = out.status.code().unwrap_or(-1);
+            return Ok(Outcome::NoAnswer(
+                if msg.is_empty() {
+                    format!("curl exited {rc}")
+                } else {
+                    msg
+                },
+                rc,
+            ));
         }
         let code: u16 = String::from_utf8_lossy(&out.stdout)
             .trim()
@@ -344,6 +372,8 @@ impl Fetch for Client {
         let lane = self.lane(&host);
         let retries = req.retries.unwrap_or(self.retries);
         let mut last = String::new();
+        // Whether the last try got no answer (see `NO_ANSWER`, `unanswered`).
+        let mut unreachable = false;
         for attempt in 0..=retries {
             if attempt > 0 {
                 std::thread::sleep(Duration::from_secs(self.backoff * u64::from(attempt)));
@@ -355,12 +385,14 @@ impl Fetch for Client {
                 self.transfer(req)?
             };
             let (code, raw, headers) = match outcome {
-                Outcome::NoAnswer(why) => {
+                Outcome::NoAnswer(why, rc) => {
                     last = format!("no answer ({why})");
+                    unreachable = NO_ANSWER.contains(&rc);
                     continue;
                 }
                 Outcome::Status(c, r, h) => (c, r, h),
             };
+            unreachable = unanswered(code);
             if !(200..300).contains(&code) {
                 last = format!("HTTP {code}");
                 if (400..500).contains(&code) && code != 429 {
@@ -386,7 +418,12 @@ impl Fetch for Client {
                 }
             }
         }
-        Err(LookupError::Failed(format!("{}: {last}", req.url)))
+        let msg = format!("{}: {last}", req.url);
+        Err(if unreachable {
+            LookupError::Unreachable(msg)
+        } else {
+            LookupError::Failed(msg)
+        })
     }
 }
 
@@ -517,6 +554,87 @@ mod tests {
         let path = a.0.clone();
         drop(a);
         assert!(!path.exists());
+    }
+
+    /// A server on 127.0.0.1 that answers each connection with the next of
+    /// `answers` (status, body), then stops. Its URL.
+    fn serve(answers: Vec<(u16, &'static str)>) -> String {
+        use std::io::{BufRead, BufReader};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/x", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for (code, body) in answers {
+                let Ok((mut s, _)) = l.accept() else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut line = String::new();
+                while r.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
+                    line.clear();
+                }
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 {code} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        url
+    }
+
+    fn ask(url: &str, retries: u32) -> Result<(Body, Headers), LookupError> {
+        let mut c = Client::new(retries);
+        c.backoff = 0;
+        c.request(&Request::get(url, Want::Json))
+    }
+
+    #[test]
+    fn no_answer_is_unreachable() {
+        for code in [500, 502, 503, 429, 403] {
+            let e = ask(&serve(vec![(code, ""), (code, "")]), 1).unwrap_err();
+            assert!(
+                matches!(&e, LookupError::Unreachable(m) if m.contains(&format!("HTTP {code}"))),
+                "{code}: {e:?}"
+            );
+        }
+        // A port nobody listens on: no connection.
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let e = ask(&format!("http://127.0.0.1:{port}/x"), 0).unwrap_err();
+        assert!(
+            matches!(&e, LookupError::Unreachable(m) if m.contains("no answer")),
+            "{e:?}"
+        );
+        // The message reads as before: the variant changes, not the text.
+        assert!(
+            e.to_string()
+                .starts_with(&format!("http://127.0.0.1:{port}/x: no answer"))
+        );
+    }
+
+    #[test]
+    fn a_wrong_answer_is_not_unreachable() {
+        for (answers, why) in [
+            (vec![(404, "")], "HTTP 404"),
+            (vec![(401, "")], "HTTP 401"),
+            (vec![(200, ""), (200, "")], "empty answer"),
+            (vec![(200, "<html>"), (200, "<html>")], "answer is not JSON"),
+            // The last try decides: an outage that ends in a 404 is a 404.
+            (vec![(503, ""), (404, "")], "HTTP 404"),
+        ] {
+            let e = ask(&serve(answers), 1).unwrap_err();
+            assert!(
+                matches!(&e, LookupError::Failed(m) if m.ends_with(why)),
+                "{why}: {e:?}"
+            );
+        }
+        // A curl failure that is not about the upstream (a scheme it does
+        // not speak) is an error, not an outage.
+        let e = ask("pgp-no-such-scheme://example.invalid/x", 0).unwrap_err();
+        assert!(matches!(&e, LookupError::Failed(_)), "{e:?}");
+        // And an outage that ends in an answer is that answer.
+        let (body, _) = ask(&serve(vec![(503, ""), (200, "[1]")]), 1).unwrap();
+        assert!(matches!(body, Body::Json(Value::Array(_))));
     }
 
     #[test]

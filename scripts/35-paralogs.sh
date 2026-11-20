@@ -9,7 +9,8 @@
 # between the copies allow, of each copy (psCN), each with a Phred quality
 # (20 = 99% likely right). It needs a BAM aligned to a reference without ALT
 # contigs, the default (a BAM with ALT or HLA contigs stops the step with a
-# REFUSED line), and the homology table and 1000 Genomes models that
+# REFUSED line, and one whose header cannot be checked stops it with exit 2),
+# and the homology table and 1000 Genomes models that
 # `setup.sh --parascopy-data` installs.
 #
 # The loci come from assets/paralog_loci.tsv: one row per Parascopy model of
@@ -62,6 +63,8 @@
 #                         With it the depth is not stratified by GC content
 #                         (--no-gc): a few regions rarely span the GC range
 #                         Parascopy's GC model needs, and it stops on them.
+#                         Give it 1,000 windows or more: with fewer, Parascopy
+#                         stops with an IndexError even with --no-gc.
 #   PARALOG_LOCI          the catalog (default assets/paralog_loci.tsv)
 #
 # Output: ${GENOME_DIR}/${SAMPLE}/paralogs/${SAMPLE}_<table>_copy_number.tsv
@@ -106,23 +109,26 @@ for f in "$BAM" "${BAM}.bai" "$REF_FASTA" "${REF_FASTA}.fai" "$LOCI"; do
 done
 # A BAM aligned to a reference with ALT or HLA contigs is refused: Parascopy
 # and the HBA depth count read copy number from depth, and that depth splits
-# between a gene and its ALT copy (og cn check-bam, exit 4).
-# A header that cannot be read leaves the check undone, with a warning.
+# between a gene and its ALT copy (og cn check-bam, exit 4; the step exits 1).
+# A check that cannot run (the header cannot be read, or og fails) stops the
+# step with exit 2: an unchecked BAM never reaches a depth count.
 mkdir -p "$OUTDIR"
 HDR="${OUTDIR}/bam_header.part"
+rc=0
 if run_in --cpus 1 --memory 1g "${PARASCOPY_IMAGE}" samtools view -H "$(cpath "$BAM")" > "$HDR"; then
-  rc=0
   run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PARASCOPY_IMAGE}" \
     /pgp-bin/og cn check-bam --header "$(cpath "$HDR")" || rc=$?
   rm -f "$HDR"
   if [ "$rc" -eq 4 ]; then
     exit 1
   elif [ "$rc" -ne 0 ]; then
-    echo "WARNING: the ALT contig check of the BAM header failed (exit ${rc}); it was not done." >&2
+    echo "ERROR: the ALT contig check of the BAM header failed (exit ${rc}), so ${BAM} was not checked; the step stops." >&2
+    exit 2
   fi
 else
   rm -f "$HDR"
-  echo "WARNING: could not read the BAM header; the ALT contig check was not done." >&2
+  echo "ERROR: could not read the header of ${BAM}, so its ALT contig check could not run; the step stops." >&2
+  exit 2
 fi
 if [ ! -f "$TABLE" ] || [ ! -d "$MODELS" ]; then
   echo "ERROR: Parascopy ${PARASCOPY_DATA_VERSION}'s data is not installed (${TABLE}, ${MODELS}/)." >&2

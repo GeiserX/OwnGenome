@@ -36,7 +36,7 @@ serve() {
 G="${CASE_WORK}/genome"
 mkdir -p "$G"
 serve "${CASE_WORK}/served"
-FAKE_DOWNLOAD_DIR="${CASE_WORK}/served" run_expect 0 setup "${SCRIPTS}/setup.sh" "$G"
+FAKE_DOWNLOAD_DIR="${CASE_WORK}/served" run_expect 3 setup "${SCRIPTS}/setup.sh" "$G"
 docker_log_has "^curl ${NCBI//./\\.}/${NAME//./\\.}\\.gz -> " "setup.sh did not download the no-ALT analysis set from NCBI"
 docker_log_has "^curl ${NCBI//./\\.}/md5checksums\\.txt -> " "setup.sh did not read NCBI's md5checksums.txt"
 docker_log_has "^curl ${NCBI//./\\.}/${NAME//./\\.}\\.fai -> " "setup.sh did not download NCBI's .fai"

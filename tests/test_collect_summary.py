@@ -1994,7 +1994,8 @@ def report_sections_mito_roh_telomere_cnv(work, schema):
           == ["chrM:302 AC>ACC,A", "chrM:16189 T>C"] and mi["pass"] == 4, mi)
     check("mito: one listed site per heteroplasmic call (m.3243), the poly-C calls not listed",
           len(mi["heteroplasmic_sites"]) == mi["heteroplasmic"]
-          and mi["heteroplasmic_sites"] == [{"pos": 3243, "ref": "A", "alt": "G", "af": 0.3}], mi)
+          and mi["heteroplasmic_sites"] == [{"pos": 3243, "ref": "A", "alt": "G", "af": 0.3,
+                                         "origin_edge": False, "low_af": False}], mi)
     check("mito: both reports show the tract count and the note",
           "Heteroplasmic (AF 0.05 to 0.95, outside the D-loop poly-C tracts): 1" in txt
           and "Length heteroplasmy in the D-loop poly-C tracts (m.303-315, m.16184-16193; common, usually technical): 2"

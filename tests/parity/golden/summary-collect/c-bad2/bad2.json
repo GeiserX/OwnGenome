@@ -337,7 +337,14 @@
     ],
     "annotation": {
      "note": "no annotation table (mito/<id>_chrM_annotated.tsv): step 20 ran before it annotated, or the Nextflow MITO_VARIANTS_ANNOTATE task failed (see the Nextflow log)"
-    }
+    },
+    "heteroplasmic_origin_edge": 0,
+    "heteroplasmic_low_af": 0,
+    "origin_edge_regions": [
+     "m.1-500",
+     "m.16000-16569"
+    ],
+    "low_af_ceiling": 0.1
    }
   },
   "traits": {

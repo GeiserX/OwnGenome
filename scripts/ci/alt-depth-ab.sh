@@ -18,7 +18,11 @@
 #
 # The whole-genome minimap2 index is built in parts of IDX_PART bases (-I),
 # so it fits a 16 GB runner, and mapped with --split-prefix, which merges the
-# parts into the MAPQ one index would give. Needs Docker, gh (GH_TOKEN), curl,
+# parts so MAPQ counts the hits of every part. That is not the same as step
+# 02's one index: where an ALT copy is identical to the primary both give
+# MAPQ 0, but where the copy differs a little the split run can give MAPQ 0 to
+# more reads, so its with-ALT rows of such copies may overstate the loss
+# (docs/realignment.md says so beside the table). Needs Docker, gh (GH_TOKEN), curl,
 # md5sum and about 25 GB of disk; builds og first (scripts/setup.sh --og) when
 # bin/.og has none for this checkout. Writes ab.tsv and ab.md into <work_dir>,
 # and ab.md to the job summary.

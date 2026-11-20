@@ -21,7 +21,13 @@ name: Freshness
 # assets/pgs_scores.tsv or scripts/25-prs.sh changes, and a dry run of the
 # report when its own code or versions.env changes. The
 # whole-tree link check runs monthly, so a link that dies upstream shows in the
-# issue instead of failing an unrelated pull request.
+# issue instead of failing an unrelated pull request. For the same reason the
+# pull-request dry run passes --unreachable-warns: an upstream that does not
+# answer at all (no connection, a timeout, HTTP 5xx or 429 after the retries,
+# or a 403 that refuses the runner's network) is listed as a warning there and does not fail the pull request. Every answer
+# that did come back still has to be right (a 404, an empty or odd answer
+# fails), and the monthly report on main stays strict: there an outage is an
+# error and goes into the issue.
 #
 # A manual run with pr_base runs the pull-request job too, as a pull request
 # from those base commits would: the files changed and the URLs added are taken
@@ -224,7 +230,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           rc=0
-          rust/target/release/og dev freshness --out "${RUNNER_TEMP}/fresh.md" > /dev/null || rc=$?
+          rust/target/release/og dev freshness --unreachable-warns --out "${RUNNER_TEMP}/fresh.md" > /dev/null || rc=$?
           cat "${RUNNER_TEMP}/fresh.md" >> "$GITHUB_STEP_SUMMARY"
           cat "${RUNNER_TEMP}/fresh.md"
           exit "$rc"

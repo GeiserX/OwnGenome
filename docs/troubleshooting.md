@@ -21,25 +21,32 @@ Definitive reference for diagnosing and fixing problems with OwnGenome. Organize
 
 ### Container exits immediately with no output
 
-**Symptom:** `docker run` returns instantly. No error message. Exit code 137.
+**Symptom:** a step stops with no error message. `docker run` exits with code 137.
 
-**Cause:** The container was OOM-killed (Out Of Memory). Docker silently kills containers that exceed their `--memory` limit. Exit code 137 = SIGKILL from the kernel OOM killer.
+**Cause:** Exit code 137 is 128 + 9: the process got SIGKILL. The usual cause is a kill for memory: the kernel kills the container's process when it passes its `--memory` limit, or when the Docker Desktop VM runs out of memory. A `docker kill`, a `docker stop` past its grace period or another supervisor gives the same code. So 137 alone does not prove a kill for memory.
 
-**How to confirm:**
+**How to confirm:** the step scripts run each container with `--rm`, so after the failure `docker ps -a` no longer shows it (`docker ps -a --latest` shows an older, unrelated container). Check while the step runs again:
 ```bash
-# Check the last container's exit status
-docker ps -a --latest --format "{{.Status}}"
-# Output like "Exited (137)" confirms OOM
+# In a second terminal, before you run the step again:
+docker events --filter event=oom
+# Or replay the last 30 minutes: docker events --since 30m --until "$(date +%s)" --filter event=oom
+# An "oom" line for the step's container confirms a kill at its memory limit.
+# A kill because the whole host (or VM) ran out can leave no "oom" line: read the kernel log.
 
-# Check system logs for OOM events
-dmesg | grep -i "oom\|killed" | tail -10
+# On a Linux host, the kernel log names the kill:
+dmesg | grep -i "out of memory\|oom-kill" | tail -10   # or: journalctl -k | grep -i oom
 
-# On Docker Desktop (Mac/Windows)
-# Check Docker Desktop > Troubleshoot > Logs
+# For a container you ran yourself without --rm:
+docker inspect -f '{{.State.OOMKilled}}' <container>   # true: killed for memory
+
+# On Docker Desktop (Mac/Windows) the kernel log belongs to the VM:
+# check Docker Desktop > Troubleshoot > Logs
 ```
 
+Under `run-all.sh` and Nextflow, a task that exits 137 is retried once with twice the memory, whatever sent the kill. Its trace row and `.exitcode` file show 137.
+
 **Fix:**
-1. Increase the `--memory` flag in the script that failed (for step 3, `DV_MEM`). With `run-all.sh` you do not edit a script: the pipeline gives each task a memory request and doubles it on the one retry after an out-of-memory exit, up to `--max_memory`
+1. Increase the `--memory` flag in the script that failed (for step 3, `DV_MEM`). With `run-all.sh` you do not edit a script: the pipeline gives each task a memory request and doubles it on the one retry after an exit that usually means a kill for memory (137 among them), up to `--max_memory`
 2. Bound what runs at once. With `run-all.sh`, `--max_memory` (e.g. `./scripts/run-all.sh <sample> <sex> --max_memory 24.GB`; without it, the machine's RAM) and `THREADS=N` (`--max_cpus`, by default the machine's CPU count) cap each task, not the total: Nextflow starts tasks until their requests fill the machine's CPUs and RAM. On Docker Desktop and colima that is the VM's: `run-all.sh` reads its size from `docker info` and books no more (`<sample>/nextflow/executor.config`). To bound the total lower, pass a config with an `executor` block ([a shared host](hardware-requirements.md#a-shared-host)); a rerun reuses the steps that finished
 3. Increase Docker Desktop memory allocation (see [Docker Desktop not enough memory](#docker-desktop-not-enough-memory-macwindows))
 4. For DeepVariant run as a script, lower `THREADS` (its shard count) and `DV_MEM` together, e.g. `THREADS=4 DV_MEM=16g ./scripts/03-deepvariant.sh <sample> <sex>`
@@ -112,9 +119,15 @@ docker run --rm -it \
 
 **Symptom:** `OSError: [Errno 13] Permission denied: '/genome/sample/output'` or similar.
 
-**Cause:** Most bioinformatics Docker images run as a non-root user (e.g., UID 1000). When writing to bind-mounted host directories, the container user may not have write access.
+**Cause:** the container's user cannot write to the bind-mounted host folder. The step scripts run each container as you (`--user` with your UID and GID, `HOME=/tmp`), with only the sample folder writable. Older versions ran every container as root, so a sample folder they wrote holds root-owned files that a step running as you cannot overwrite. A few steps whose image cannot run unprivileged pass `--root` at their call (Strelka2, Manta, CPSR and `benchmark-variants.sh`). Most bioinformatics images name a non-root user of their own (e.g., UID 1000), so a container you start by hand without `--user` may not be able to write either.
 
-**Fix:** Add `--user root` to the `docker run` command. All pipeline scripts already include this flag, but if you are running commands manually:
+**Fix for a step script:** when the sample folder holds a path you do not own, the step prints the command that takes it back. Run it, then run the step again:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" "${GENOME_DIR:?Set GENOME_DIR to your data directory}/${SAMPLE:?Set SAMPLE to the sample name}"
+```
+
+**Fix for a command you run by hand:** run it as yourself with `--user "$(id -u):$(id -g)"`. Use `--user root` only for an image that cannot run unprivileged:
 
 ```bash
 docker run --rm --user root \
@@ -123,10 +136,7 @@ docker run --rm --user root \
   your-command
 ```
 
-**Note:** Files created with `--user root` will be owned by root on the host. To fix ownership afterward:
-```bash
-sudo chown -R $(whoami) ${GENOME_DIR}/${SAMPLE}/
-```
+Files written with `--user root` are owned by root on the host. Take them back with the `sudo chown` command above.
 
 ---
 
@@ -226,7 +236,7 @@ grep -E '(%%|!!) executor|^~> ' "$GENOME_DIR/<sample>/nextflow/.nextflow.log" | 
 bin/og run headroom --work-dir "${GENOME_DIR:?Set GENOME_DIR to your data directory}/<sample>/nextflow/work" --outdir "$GENOME_DIR"
 ```
 
-On macOS `bin/og` does not run on the host: see [where og runs](run-state.md).
+On macOS `bin/og` runs the native macOS build that `scripts/setup.sh --og` puts in `bin/.og/`, so the command runs on the host as shown ([where og runs](run-state.md)).
 
 A line `disk work and results` means both folders sit on one filesystem. The inode share counts too: a disk can run out of inodes before it runs out of bytes. [Where a run stands](run-state.md#memory-and-disk-headroom) says what each figure means.
 
@@ -738,7 +748,7 @@ ExpansionHunter \
 ### Clinical data skipped during setup
 
 Setup installs VEP 116, the PCGR/CPSR bundle and VEP 115 by default.
-If one is missing, read the warning above `Setup complete!`.
+If one is missing, setup ends with `Setup finished: core ready, N items missing` and lists it under `Missing` with its retry command. The warning above it says why.
 The disk checks require 56 GB, 15 GB and 52 GB peak respectively, each plus a 5 GB margin.
 The disk space occupied by a partial download counts toward that peak. Sparse file holes do not count.
 Setup removes stale extraction files before checking space and checks a retained PCGR archive against its pinned SHA-256 before reuse.

@@ -8,6 +8,8 @@
 //! Outputs must agree byte for byte, except `generated_utc` (the clock), the
 //! disk numbers of `headroom` (free space moves between two calls) and the
 //! host memory line where Python can read the RAM and og cannot (not Linux).
+//! `og run state` says its one sentence on stderr where the Python said it on
+//! stdout.
 //!
 //! The Python is `OG_PYTHON`, else `python3`; it must be 3.9 or newer. A
 //! missing Python, or an oracle that cannot be materialised, fails the test:
@@ -273,10 +275,14 @@ fn state_parity(sample: &str, dir: &Path, extra: &[&str]) {
     oa.extend(["--out", &oo]);
     let (p, o) = (py("run_state", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
+    // og writes the file and says so on stderr; the Python said it on
+    // stdout. Same sentence, and nothing on og's stdout (docs/rust.md,
+    // "Command lines").
+    assert_eq!(o.stdout, "", "og run state --out printed on stdout");
     same(
-        "stdout",
+        "Run state written",
         &p.stdout.replace(&po, "OUT"),
-        &o.stdout.replace(&oo, "OUT"),
+        &o.stderr.replace(&oo, "OUT"),
     );
     same(
         "run_state.json",
@@ -734,12 +740,15 @@ fn delta_parity(d: &Path, args: &[&str]) {
     oa.extend(["--out", &oo]);
     let (p, o) = (py("run_delta", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
-    same("delta stdout", &p.stdout, &o.stdout);
+    // og words a reason that names inputs as a guess; the oracle states
+    // it as a fact. Map og's wording back so the rest stays byte for byte.
+    let old = |s: &str| s.replace("likely from changed inputs: ", "changed inputs: ");
+    same("delta stdout", &p.stdout, &old(&o.stdout));
     for ext in ["txt", "html", "json"] {
         same(
             &format!("delta .{ext}"),
             &fs::read_to_string(format!("{po}.{ext}")).unwrap(),
-            &fs::read_to_string(format!("{oo}.{ext}")).unwrap(),
+            &old(&fs::read_to_string(format!("{oo}.{ext}")).unwrap()),
         );
     }
 }
