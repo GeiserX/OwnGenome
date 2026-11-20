@@ -340,3 +340,183 @@ fn a_missing_table_is_a_message() {
     assert!(!d.join("o.tsv").exists());
     std::fs::remove_dir_all(d).unwrap();
 }
+
+// og sv survivor-prep: which records vote in step 22's SURVIVOR merge.
+
+use super::survivor_prep::{self, NoVote};
+
+fn prep_text(input: &str, caller: &str) -> (String, survivor_prep::Counts) {
+    let mut out = Vec::new();
+    let c = survivor_prep::prep(input.as_bytes(), "in.vcf", caller, &mut out).unwrap();
+    (String::from_utf8(out).unwrap(), c)
+}
+
+const SV_HEAD: &str = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n";
+
+fn sv_rec(id: &str, filter: &str, info: &str, format: &str, sample: &str) -> String {
+    format!(
+        "chr20\t1000\t{id}\tN\t<DEL>\t60\t{filter}\tSVTYPE=DEL;END=5000;{info}\t{format}\t{sample}\n"
+    )
+}
+
+#[test]
+fn a_reference_genotype_gives_no_vote() {
+    for gt in ["0/0", "0|0", "0", "0/.", ".|0", "00"] {
+        assert!(survivor_prep::reference_only(gt), "{gt} calls no ALT");
+    }
+    for gt in ["0/1", "1/1", "1", "./1", "0|2", "./.", ".", ""] {
+        assert!(
+            !survivor_prep::reference_only(gt),
+            "{gt} is not reference only"
+        );
+    }
+    let input = [
+        SV_HEAD.to_owned(),
+        sv_rec("REF00", "PASS", "CT=3to5", "GT:FT", "0/0:PASS"),
+        sv_rec("REF0", "PASS", "CT=3to5", "GT", "0"),
+        sv_rec("HALF", "PASS", "CT=3to5", "GT", "0/."),
+        sv_rec("HET", "PASS", "CT=3to5", "GT:FT", "0/1:PASS"),
+        sv_rec("NOCALL", ".", "CT=3to5", "GT", "./."),
+    ]
+    .concat();
+    let (out, c) = prep_text(&input, "delly");
+    // Red-first control: before this verb, step 22 kept every PASS record,
+    // so REF00 made a Manta-only call read "2 callers".
+    assert_eq!(ids(&out), ["HET", "NOCALL"]);
+    assert_eq!((c.records, c.kept, c.reference), (5, 2, 3));
+}
+
+#[test]
+fn a_sample_filter_or_filter_gives_no_vote() {
+    let input = [
+        SV_HEAD.to_owned(),
+        sv_rec("LOWQ", "PASS", "CT=3to5", "GT:GQ:FT", "0/1:30:LowQual"),
+        sv_rec("FTDOT", "PASS", "CT=3to5", "GT:GQ:FT", "0/1:30:."),
+        sv_rec("SHORTCOL", "PASS", "CT=3to5", "GT:GQ:FT", "0/1"),
+        sv_rec("SITELOW", "LowQual", "CT=3to5", "GT:FT", "0/1:PASS"),
+    ]
+    .concat();
+    let (out, c) = prep_text(&input, "delly");
+    assert_eq!(ids(&out), ["FTDOT", "SHORTCOL"]);
+    assert_eq!((c.sample_filter, c.filter), (1, 1));
+    let line = sv_rec("X", "PASS", "", "GT:FT", "1/1:LowQual");
+    let v: Vec<&str> = line.trim_end().split('\t').collect();
+    assert_eq!(
+        survivor_prep::verdict(&v, false),
+        Some(NoVote::SampleFilter)
+    );
+}
+
+#[test]
+fn cnvpytor_votes_by_its_quality_rule() {
+    let cnv = |id: &str, p1: &str, q0: &str, gt: &str| {
+        sv_rec(
+            id,
+            "PASS",
+            &format!("pytorP1={p1};pytorQ0={q0};pytorPN=0"),
+            "GT",
+            gt,
+        )
+    };
+    let input = [
+        SV_HEAD.to_owned(),
+        cnv("GOOD", "1e-08", "0.01", "./."),
+        cnv("NOISY", "0.5", "0", "./."),
+        cnv("MAPQ0", "1e-08", "0.9", "./."),
+        cnv("EDGE", "0.01", "0", "./."),
+        cnv("NAN", "nan", "0", "./."),
+        sv_rec("NOTAGS", "PASS", "SVLEN=-4000", "GT", "./."),
+    ]
+    .concat();
+    let (out, c) = prep_text(&input, "cnvpytor");
+    // ./. is how the table-made VCF writes every call: it keeps the vote.
+    assert_eq!(ids(&out), ["GOOD"]);
+    assert_eq!((c.kept, c.quality), (1, 5));
+    assert!(
+        c.to_string().ends_with("5 below CNVpytor's quality rule"),
+        "{c}"
+    );
+    // The rule is CNVpytor's own: another caller's records keep their vote.
+    let (out, c) = prep_text(&input, "delly");
+    assert_eq!(c.kept, 6, "{out}");
+    assert_eq!(
+        survivor_prep::verdict(&["c", "1", ".", "N", "<DEL>", ".", "PASS", "."], true),
+        Some(NoVote::Quality)
+    );
+}
+
+#[test]
+fn a_header_without_gt_or_samples_does_not_stop_it() {
+    // Sites only and no GT declared: SURVIVOR still gets a GT column.
+    let sites = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr20\t1000\tS1\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000\n";
+    let (out, c) = prep_text(sites, "tiddit");
+    assert_eq!(c.kept, 1);
+    assert_eq!(
+        out,
+        "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ttiddit\nchr20\t1000\tS1\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000\tGT\t./.\n"
+    );
+    // A sample column whose FORMAT has no GT keeps its vote, and the
+    // header gets no second GT line.
+    let no_gt = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tA\tB\nchr20\t1000\tC1\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=5000\tCN\t3\t2\n";
+    let (out, c) = prep_text(no_gt, "manta");
+    assert_eq!(c.kept, 1);
+    assert_eq!(out.matches("##FORMAT=<ID=GT").count(), 1);
+    // One sample column, named after the caller.
+    assert!(out.contains("\tFORMAT\tmanta\n"), "{out}");
+    assert!(out.ends_with("\tCN\t3\n"), "{out}");
+}
+
+#[test]
+fn survivor_prep_cli_writes_the_file_and_refuses_bad_input() {
+    let d = scratch("svprep");
+    let input = put(
+        &d,
+        "delly.vcf",
+        &[
+            SV_HEAD.to_owned(),
+            sv_rec("REF00", "PASS", "", "GT", "0/0"),
+            sv_rec("HET", "PASS", "", "GT", "0/1"),
+        ]
+        .concat(),
+    );
+    let out = d.join("delly.out.vcf").to_string_lossy().into_owned();
+    let run = |a: &[&str]| {
+        let argv: Vec<String> = a.iter().map(|s| (*s).to_owned()).collect();
+        let (mut o, mut e) = (Vec::new(), Vec::new());
+        let code = survivor_prep::cli(&argv, &mut o, &mut e);
+        (
+            code,
+            String::from_utf8(o).unwrap(),
+            String::from_utf8(e).unwrap(),
+        )
+    };
+    let (code, _, err) = run(&["--caller", "delly", &input, &out]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(ids(&std::fs::read_to_string(&out).unwrap()), ["HET"]);
+    assert!(
+        err.contains("og sv survivor-prep delly: 2 records, 1 vote;")
+            && err.contains("1 genotyped reference"),
+        "{err}"
+    );
+    let (code, stdout, _) = run(&["--caller", "delly", &input, "-"]);
+    assert_eq!((code, ids(&stdout)), (0, vec!["HET".to_owned()]));
+    let (code, _, err) = run(&[
+        "--caller",
+        "delly",
+        &d.join("none.vcf").to_string_lossy(),
+        &out,
+    ]);
+    assert!(code == 1 && err.starts_with("ERROR: cannot read "), "{err}");
+    let short = put(&d, "short.vcf", &format!("{SV_HEAD}chr20\t1000\tX\n"));
+    let bad_out = d.join("bad.vcf").to_string_lossy().into_owned();
+    let (code, _, err) = run(&["--caller", "delly", &short, &bad_out]);
+    assert!(
+        code == 1 && err.contains("line 4: a record needs at least 8 columns"),
+        "{err}"
+    );
+    assert!(!d.join("bad.vcf").exists() && !d.join("bad.vcf.part").exists());
+    assert_eq!(run(&["--caller", "a b", &input, &out]).0, 2);
+    assert_eq!(run(&["--caller", "delly", &input]).0, 2);
+    assert_eq!(run(&[&input, &out]).0, 2);
+    std::fs::remove_dir_all(d).unwrap();
+}
