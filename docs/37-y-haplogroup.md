@@ -134,7 +134,7 @@ Both tools put every man on his published line, and both go 7 levels below the p
 
 The outvote rule fired for one man (HG01583: one ancestral SNP, `BY37185`, outvoted). That placement is on the published line, 9 levels below it. No man was placed off his published line by the rule or for lack of it, so the data give no reason to change it, and it stays as it is. `Conflict` named a branch for 4 men, each with support 1 against 4 to 31 for the terminal branch. For three R1a men it was the same branch, `R-Y40`.
 
-The public-evidence workflow's `y-benchmark` job runs the step itself again (`scripts/37-y-haplogroup.sh`, with `setup.sh --yleaf-data`) on 6 of these men by default (input `y_samples`), and runs `og dev evidence y-bench` on its calls. Its gate fails when a tool puts fewer than 95% of the men on the published branch or below it. Its red control gives each tool's calls to the man half the list away, and that table must fail the gate.
+The public-evidence workflow's `y-benchmark` job runs the step itself again (`scripts/37-y-haplogroup.sh`, with `setup.sh --yleaf-data`) on 6 of these men by default (input `y_samples`), and runs `og dev evidence y-bench` on its calls. Its gate fails when a tool puts fewer than 95% of the men on the published branch or below it. Its red control gives each tool's calls to the man half the list away, and that table must fail the gate. Before it reads any CRAM, it refuses a `y_samples` list in which so many men share a line with that partner that the handed calls could still pass the gate.
 
 <details>
 <summary>The 58 men</summary>

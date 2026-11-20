@@ -818,11 +818,28 @@ jobs:
           export GENOME_DIR="$G" REF_FASTA=reference/chrY.fa
           read -ra want <<< "$(printf '%s' "$SAMPLES" | tr ',\r\n' '   ')"
           [ "${#want[@]}" -ge 3 ] || { echo "y_samples: name 3 men or more (the red control hands each man's calls to another)"; exit 1; }
+          # The red control hands each man the calls of the man half the list
+          # away. It can fail only when most of those pairs sit on different
+          # lines, so check that on the tree before any CRAM is read: each
+          # man's published branch, then his partner's against it.
+          TREE="${G}/reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/current_tree.json"
+          printf 'sample\tpublished\ttool\tcall\n' > "${D}/pub.tsv"
+          for s in "${want[@]}"; do
+            [[ "$s" =~ ^(HG|NA)[0-9]{5}$ ]] || { echo "y_samples: '${s}' is not a 1000 Genomes sample id"; exit 1; }
+            pub=$(awk -v s="$s" '$1 == s {print $3}' "${D}/published.txt")
+            [ -n "$pub" ] || { echo "${s}: no published call"; exit 1; }
+            printf '%s\t%s\tpublished\t\n' "$s" "$pub" >> "${D}/pub.tsv"
+          done
+          bin/og dev evidence y-bench "$TREE" "${D}/pub.tsv" "${D}/pub.out.tsv" 0 > /dev/null
+          awk -F'\t' -v OFS='\t' 'NR == 1 {print "sample", "published", "tool", "call"; next} {s[++n] = $1; p[n] = $2; b[n] = $5}
+            END {for (i = 1; i <= n; i++) print s[i], p[i], "partner", b[(i - 1 + int(n / 2)) % n + 1]}' "${D}/pub.out.tsv" > "${D}/partner.tsv"
+          bin/og dev evidence y-bench "$TREE" "${D}/partner.tsv" "${D}/partner.out.tsv" 0 > /dev/null
+          awk -F'\t' -v min="$Y_MIN" 'NR > 1 {n++; if ($7 == "exact" || $7 == "below" || $7 == "ancestor") {k++; print "y_samples: " $1 " (" $2 ") is on one line with his partner, " $6}}
+            END {if (k / n >= min) {printf "y_samples: %d of %d men share a line with the man whose calls the red control hands them; name men from different haplogroups\n", k, n; exit 1}}' "${D}/partner.out.tsv"
           # col FILE NAME: the value of column NAME in the one data row of FILE
           col() { awk -F'\t' -v n="$2" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} NR == 2 {print $c[n]}' "$1"; }
           printf 'sample\tpublished\ttool\tcall\n' > "${D}/calls.tsv"
           for s in "${want[@]}"; do
-            [[ "$s" =~ ^(HG|NA)[0-9]{5}$ ]] || { echo "y_samples: '${s}' is not a 1000 Genomes sample id"; exit 1; }
             pub=$(awk -v s="$s" '$1 == s {print $3}' "${D}/published.txt")
             url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
             [ -n "$pub" ] && [ -n "$url" ] || { echo "${s}: no published call or no 30x CRAM"; exit 1; }
