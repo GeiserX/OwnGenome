@@ -1,9 +1,10 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    TELOMERE_HUNTER — Telomere length estimation from WGS BAM
+    TELOMERE_HUNTER — relative telomere content from a WGS BAM (TelomereHunter2)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    Estimates telomere length via GC-corrected telomeric reads per million.
-    Higher tel_content values = longer telomeres. Provides biological age baseline.
+    tel_content: intratelomeric reads per million reads with 48-52% GC. A
+    higher value means more telomeric sequence. It is a relative research
+    measure for comparing samples from one platform, not an age.
 
     WARNING: Reads the entire BAM (~30-40 GB). Takes 30-60 minutes.
 
@@ -19,7 +20,7 @@ process TELOMERE_HUNTER {
 
     input:
     tuple val(meta), path(bam), path(bai)
-    path(cytoband)  // UCSC GRCh38 chromosome bands (--cytoband) or []
+    path(cytoband)  // UCSC GRCh38 chromosome bands: --cytoband, or the copy in assets/reference
 
     output:
     tuple val(meta), path("${meta.id}"), emit: telomere_results
@@ -29,23 +30,29 @@ process TELOMERE_HUNTER {
     task.ext.when == null || task.ext.when
 
     script:
-    // Without -b TelomereHunter classifies reads by its own hg19 bands;
-    // workflows/bam_analysis.nf warns when --cytoband is not set.
-    // --plotNone: the Bioconda build's plots fail (its R has no dplyr, and its
-    // PyPDF2 is written for Python 3); the summary does not need them.
-    def band_arg = cytoband ? "-b ${cytoband}" : ''
+    // The bands are always given: workflows/bam_analysis.nf passes the copy in
+    // assets/reference when --cytoband is not set.
+    // ulimit: TelomereHunter2 writes one BAM per contig and merges them at
+    // once; a BAM with decoy contigs needs more than the 1,024 open files a
+    // container gets by default. Raising the soft limit to the hard one needs
+    // no privilege, under Docker or Singularity.
+    // --plotNone: nothing in the pipeline reads its plots.
+    // It has no --version: its own version is the "TelomereHunter2 <v>" line
+    // of --help.
     """
-    telomerehunter \\
+    ulimit -n "\$(ulimit -Hn)" 2>/dev/null || true
+    telomerehunter2 \\
         -ibt ${bam} \\
         -o ./ \\
         -p ${meta.id} \\
+        -c ${task.cpus} \\
         --plotNone \\
-        ${band_arg}
+        -b ${cytoband}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         telomerehunter: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-        telomerehunter_reported: \$( { telomerehunter --version 2>&1 || true; } | awk '!v && match(\$0, /[0-9]+\\.[0-9]+(\\.[0-9]+)*/) { v = substr(\$0, RSTART, RLENGTH) } END { print (v != "" ? v : "unknown") }')
+        telomerehunter_reported: \$( { telomerehunter2 --help 2>&1 || true; } | awk '\$1 == "TelomereHunter2" && \$2 ~ /^[0-9]/ { v = \$2; exit } END { print (v != "" ? v : "unknown") }')
     END_VERSIONS
     """
 
