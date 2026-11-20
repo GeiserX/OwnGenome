@@ -98,6 +98,14 @@ const STANDARD_INFO: [(&str, &str); 7] = [
     ),
 ];
 
+/// CNVpytor's quality rule, the defaults of `--max-eval` and `--max-q0`: a
+/// call counts when its e-value (`pytorP1`) is below [`MAX_EVAL`] and its
+/// share of MAPQ 0 reads (`pytorQ0`) below [`MAX_Q0`]. Step 22's
+/// `og sv survivor-prep --caller cnvpytor` applies the same two numbers.
+pub const MAX_EVAL: f64 = 0.01;
+/// See [`MAX_EVAL`].
+pub const MAX_Q0: f64 = 0.5;
+
 /// The INFO keys an added record keeps, in this order.
 const KEPT: [&str; 4] = ["END", "SVTYPE", "CIPOS", "CIEND"];
 
@@ -530,8 +538,8 @@ fn opts(argv: &[String]) -> Result<Opts, u8> {
         sex,
         par_bed: given("--par-bed"),
         cnvpytor: given("--cnvpytor"),
-        max_eval: float("--max-eval", 0.01)?,
-        max_q0: float("--max-q0", 0.5)?,
+        max_eval: float("--max-eval", MAX_EVAL)?,
+        max_q0: float("--max-q0", MAX_Q0)?,
         min_overlap: float("--min-overlap", 0.5)?,
     })
 }

@@ -90,7 +90,6 @@ sys.path.insert(0, BIN)
 import live_results  # noqa: E402
 import owngenome_live  # noqa: E402
 import owngenome_live_family  # noqa: E402
-import pedigree_svg  # noqa: E402
 import run_headroom  # noqa: E402
 import run_state  # noqa: E402
 
@@ -244,6 +243,7 @@ def frame_key(st):
 
 def replay(root, held, drop_hook=None, og=OG):
     """(frames of DEMO-001, the family page's state, the app) with the clock at each message."""
+    os.environ["OG"] = og  # the family plugin the server loads runs og (OG, else bin/og): this one
     app = owngenome_live.App()
     cfg = owngenome_live.configure(["--root", root, "--state-dir", os.path.join(root, ".owngenome-live"),
                                     "--eta-cores", "16", "--eta-box", "demo", "--quiet"], app)
@@ -352,9 +352,11 @@ def unroot(v):
     return v
 
 
-def family_json(root, index):
-    """family.json as bin/owngenome_live_family.py serves it, its links relative to runs/DEMO-FAMILY/."""
-    out = owngenome_live_family.family_page(FAMILY, os.path.join(root, FAMILY))
+def family_json(root, index, og=OG):
+    """family.json as bin/owngenome_live_family.py serves it, its links relative to runs/DEMO-FAMILY/: og puts the
+    members side by side from each one's summary.json."""
+    out = owngenome_live_family.family_page(FAMILY, os.path.join(root, FAMILY),
+                                            {"summaries": {n: os.path.join(root, n) for n in os.listdir(root)}}, root, og)
     by = {r["name"]: r for r in index["runs"]}
     out["runs"] = {p["sample"]: {k: by[p["sample"]][k] for k in ("url", "state", "planned", "done", "attention", "results")}
                    for p in out["state"].get("members") or [] if p["sample"] in by}
@@ -363,15 +365,6 @@ def family_json(root, index):
         r["child"] = owngenome_live.child_of(index.get("families"), name)
         if r["child"] and (by[name].get("levels") or {}).get("act"):
             r["attention"] = None
-    seq = [p["sample"] for p in out["state"].get("members") or [] if p.get("sequenced")]
-    sums = {}
-    for name in seq:
-        try:
-            with open(os.path.join(root, name, "summary.json")) as f:
-                sums[name] = json.load(f)
-        except OSError:
-            sums[name] = None
-    out["side_by_side"] = owngenome_live_family.side_by_side(seq, sums)
     return relink(out)
 
 
@@ -487,12 +480,11 @@ def write_site(out, root, frames, fam, og=OG):
     with open(os.path.join(fd, "index.html"), "w") as f:
         f.write(run_page(FAMILY, plugin_js, "family.html"))
     write_json(os.path.join(fd, "frames.json"), {"interval_ms": INTERVAL_MS, "frames": [{"t": fam["t"], "state": fam["state"]}]})
-    write_json(os.path.join(fd, "family.json"), family_json(root, fam["index"]))
+    write_json(os.path.join(fd, "family.json"), family_json(root, fam["index"], og))
     famdir, ffiles = os.path.join(out, "family", FAMILY), os.path.join(root, FAMILY)
     os.makedirs(famdir)
-    order, members, _ = pedigree_svg.load(ffiles)
-    with open(os.path.join(famdir, "pedigree.svg"), "w") as f:
-        f.write(pedigree_svg.draw(order, members, FAMILY))
+    with open(os.path.join(famdir, "pedigree.svg"), "wb") as f:
+        f.write(owngenome_live_family.draw(ffiles, FAMILY, og))
     for name in (fam["state"]["plugins"].get("family") or {}).get("files") or []:
         shutil.copy(os.path.join(ffiles, name), os.path.join(famdir, name))
     return drawn

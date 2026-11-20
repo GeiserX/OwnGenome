@@ -80,9 +80,11 @@ The `1000` parameter is the bin size in base pairs (must be divisible by 100). U
 - `${SAMPLE}_cnvs.vcf.gz` (+ `.tbi`) — normalized VCF with `SVTYPE=DEL/DUP`, `END`, `SVLEN`, `GT`, and `CN`
 
 ## Filtering
+One quality rule reads CNVpytor's calls everywhere in the pipeline: e-value (column 5, `pytorP1` in the VCF) below 0.01 and `q0` (column 9, `pytorQ0`) below 0.5. Step 5 adds only those calls to AnnotSV's input (`og sv add-callers`), and in step 22 only those vote in the SV consensus (`og sv survivor-prep`).
+
 ```bash
-# Keep confident CNVs (e-value in col 5 < 0.05, size in col 3 > 1 kb)
-awk -F'\t' '$5 < 0.05 && $3 > 1000' ${SAMPLE}_cnvs.txt
+# The calls steps 5 and 22 use (e-value in col 5 < 0.01, q0 in col 9 < 0.5)
+awk -F'\t' '$5 < 0.01 && $9 < 0.5' ${SAMPLE}_cnvs.txt
 ```
 The first call is often a low-`level` artifact spanning the chromosome-start N gap (`pN` near 1.0); the `pN`/`q0` columns let you drop such regions.
 

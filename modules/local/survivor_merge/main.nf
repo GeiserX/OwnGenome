@@ -2,8 +2,11 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     SURVIVOR_MERGE — SV consensus: the calls two or more callers agree on
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    SURVIVOR_PREP   each caller's PASS (or unfiltered) records as plain VCF,
-                    one sample column named after the caller (bcftools)
+    SURVIVOR_PREP   the calls each caller votes with, as plain VCF, one sample
+                    column named after the caller (og sv survivor-prep): no
+                    record whose FILTER or sample FT is not PASS, none whose
+                    genotype is reference only (0/0, 0|0, 0, 0/.), and for
+                    CNVpytor none that fails step 05's e-value and q0 rule
     SURVIVOR_MERGE  `SURVIVOR merge LIST 1000 2 1 1 0 50`: both breakpoints
                     within 1,000 bp, same type and strands, >= 50 bp, kept
                     when 2+ callers support it; SUPP and SUPP_VEC say which
@@ -30,15 +33,10 @@ process SURVIVOR_PREP {
     script:
     // SURVIVOR names its output columns after the input samples: three
     // columns all named after the sample would be one name three times.
+    // og (bin/) reads the gzip input itself; scripts/22-survivor-merge.sh
+    // runs the same verb.
     """
-    bcftools view -f PASS,. ${vcf} | awk -v s=${caller} 'BEGIN { FS = OFS = "\\t" }
-        /^##/ { print; next }
-        /^#CHROM/ {
-            if (NF < 10) { print "##FORMAT=<ID=GT,Number=1,Type=String,Description=\\"Genotype\\">"; sites = 1; print \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, "FORMAT", s }
-            else print \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, s
-            next
-        }
-        { if (sites) print \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, "GT", "./."; else print \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10 }' > ${caller}.vcf
+    og sv survivor-prep --caller ${caller} ${vcf} ${caller}.vcf
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
