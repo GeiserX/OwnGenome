@@ -229,7 +229,7 @@ It writes DEMO-001 from a fixed seed with `og dev demo-sample` (`bin/og`, which 
 
 The **Demo pictures** workflow ([`.github/workflows/demo-pictures.yml`](https://github.com/GeiserX/OwnGenome/blob/main/.github/workflows/demo-pictures.yml)) retakes them on `ubuntu-latest`, by hand or on a pull request that changes `tests/demo/`, `rust/crates/og-dev/src/demo/`, `og dev pictures` (`rust/crates/og-dev/src/pictures.rs`, `rust/crates/og-browser/src/`) or the workflow. It takes the pictures in the runner's Google Chrome and returns them as the `demo-pictures` artifact. The workflow writes nothing to the repository.
 
-Look at the pictures, copy them into `docs/images/`, and update the alt text where the cards changed. A new report card that the generator does not feed yet stops the script with its name; add its input file to `og dev demo-sample`, in `rust/crates/og-dev/src/demo/`.
+Look at the pictures, copy them into `docs/images/`, and update the alt text where the cards changed. The text check reads the text of each page, not its pixels, so look at the genome map in the two live-site pictures (`demo-live-site.png` and `demo-live-phone.png`) by eye before you commit them. A new report card that the generator does not feed yet stops the script with its name; add its input file to `og dev demo-sample`, in `rust/crates/og-dev/src/demo/`.
 
 ## The Rust jobs
 

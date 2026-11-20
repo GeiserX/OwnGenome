@@ -101,7 +101,7 @@ The [Renovate dry run](https://github.com/GeiserX/OwnGenome/blob/main/.github/wo
 - a package name carries a `:` or `@`;
 - `docs/versions.md` does not hold exactly the images of `versions.env`, or `conf/containers.config` holds one it does not;
 - a tool would get a different update in one file than in another;
-- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, the screenshot script's packages, Aldy, the docs build's Python) is not detected in every place the text pins it;
+- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, Aldy, the docs build's Python) is not detected in every place the text pins it;
 - a lookup failed, or a dependency was skipped for any reason other than a rule that disables it.
 
 The lookup job's summary lists every dependency with the update Renovate would propose, or why it proposes none. The full debug log is the `renovate-dry-run-log` artifact. A second job, `versions-doc`, fails when `docs/versions.md` is not what `scripts/ci/gen-versions-doc.sh` writes from `versions.env`.
