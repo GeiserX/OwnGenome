@@ -84,8 +84,8 @@ nextflow run main.nf \
 #                                                only when it agrees with T1K (docs/08-hla-typing.md)
 #    With pharmcat, PGX_CONSENSUS gives PharmCAT the HLA types of hla_typing and a CYP2D6 call only when
 #    pypgx and cyrius agree (docs/36-pgx-consensus.md); PharmCAT then waits for those BAM steps.
-#    telomere_hunter (a default tool) takes --cytoband <cytoBand.hg38.txt> for GRCh38 bands; without it,
-#    TelomereHunter uses its own hg19 bands and the run logs a warning
+#    telomere_hunter (a default tool) gets GRCh38 bands: --cytoband <cytoBand.hg38.txt>, or without it
+#    the copy the repository ships (assets/reference/cytoBand.hg38.txt)
 #    An unknown name in --tools stops the run.
 #    --pedigree pedigree.tsv                   + --somalier_sites: the family workflow over the samplesheet rows
 #                                                it names (two or more, each with a gVCF; docs/multi-sample.md)

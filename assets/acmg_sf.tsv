@@ -1,5 +1,6 @@
 # acmg_sf.tsv: the ACMG SF v3.3 secondary-findings genes and the reporting rule of each
-# (bin/collect_summary.py acmg_sf_tier). One row per gene, 84 rows. Source: Lee et al., ACMG SF v3.3
+# (og summary collect, rust/crates/og-summary/src/collect/acmg.rs). One row per gene, 84 rows.
+# Source: Lee et al., ACMG SF v3.3
 # list for reporting of secondary findings in clinical exome and genome sequencing, Genet Med
 # 2025;27(8):101454 (PMID 40568962, doi:10.1016/j.gim.2025.101454), Table 1 and its footnotes, read
 # 2026-10-27. HGNC ids from rest.genenames.org on 2026-10-27; GRCh38 positions from Ensembl.
@@ -8,14 +9,21 @@
 #   inheritance     AD, AR, SD (semidominant) or XL, as Table 1 gives it
 #   report_if       when a P/LP variant (ClinVar, or a rare HIGH-impact record) is a secondary finding:
 #                     any             one variant is enough
-#                     biallelic       two variants: a homozygote, or two different variants even when
-#                                     their phase is unknown (Table 1 footnote a); a called deletion
-#                                     of the gene (AnnotSV, step 35's copy number) counts as one of the
-#                                     two unless read-backed phase puts it on the variant's copy
-#                                     (bin/collect_summary.py two_hits); so it does for hemizygous
+#                     biallelic       both copies of the gene hit: a homozygote, or two different
+#                                     variants even when their phase is unknown (Table 1 footnote a;
+#                                     reported as possibly biallelic). Two variants that read-backed
+#                                     phase puts on one copy (a "|" GT and the same PS) are one copy
+#                                     and are not reported; a "|" GT with no PS, or a half call such
+#                                     as 1|., is phase unknown. A combined allele of step 06 counts
+#                                     once with its parts, and a record with no alt copy called counts
+#                                     nothing. A called deletion of the gene (AnnotSV, step 35's copy
+#                                     number) counts as one of the two unless read-backed phase puts
+#                                     it on the variant's copy (og-summary two_hits); so it does for
+#                                     hemizygous
 #                     hom_variant     only a variant of the variants column, homozygous
-#                     hemizygous      a hemizygous or homozygous variant, or two heterozygous ones; a
-#                                     single heterozygous variant is not reported
+#                     hemizygous      a hemizygous or homozygous variant, or two heterozygous ones
+#                                     counted as for biallelic; a single heterozygous variant is not
+#                                     reported
 #                     het_female_too  any variant, heterozygous females included
 #   variants        report_if hom_variant: the only variants that count, as chrom:pos:ref:alt (GRCh38)
 #                   and a name; "." for every other gene
