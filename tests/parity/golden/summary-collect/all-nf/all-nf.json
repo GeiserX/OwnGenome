@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-19 23:58 UTC",
+ "generated_utc": "2026-11-20 10:24 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -12627,7 +12627,9 @@
       "low_confidence": false,
       "rule": "P and LP (2 variants)",
       "rule_note": null,
-      "severity": null
+      "severity": null,
+      "pair": "biallelic",
+      "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
      },
      {
       "gene": "BRCA1",
@@ -12636,6 +12638,7 @@
       "significance": "Pathogenic",
       "stars": 3,
       "low_confidence": false,
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
       "rule": "All P and LP",
       "rule_note": null,
       "severity": null
@@ -12647,6 +12650,7 @@
       "significance": "Pathogenic",
       "stars": 0,
       "low_confidence": false,
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
       "rule": "All hemi, het, homozygous P and LP",
       "rule_note": null,
       "severity": null
@@ -12669,7 +12673,9 @@
       "ad": "15,15",
       "rule": "P and LP (2 variants)",
       "rule_note": null,
-      "severity": null
+      "severity": null,
+      "pair": "biallelic",
+      "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
      },
      {
       "gene": "MYBPC3",
