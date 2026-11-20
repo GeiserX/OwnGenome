@@ -2265,7 +2265,9 @@ def viral_body(d):
 MEI_NOTE = ("Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by "
             "MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are "
             "insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is "
-            "not proof of absence: short reads find an SVA's edges, not its body. Every call: mei/<sample>_mei.tsv.")
+            "not proof of absence: short reads find an SVA's edges, not its body. Call filtered out: MEGAnE called "
+            "an insertion there but flagged it (LC is low confidence), so it is not a finding, and not proof of "
+            "absence either. Every call: mei/<sample>_mei.tsv.")
 
 
 def mei_lines(d):

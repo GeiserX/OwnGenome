@@ -13,15 +13,11 @@ scripts/12-mito-haplogroup.sh	SC2016	'{ echo ">chrM"; dd if="$1" bs=1 skip="$2" 
 scripts/12-mito-haplogroup.sh	SC2017	_ "$REF_FASTA_C" "$MOFF" "$((MLEN + (MLEN + MLB - 1) / MLB * (MLW - MLB)))" "$(cpath "$FASTA")" "$KEEP" \
 scripts/14-imputation-prep.sh	SC2016	bash -euo pipefail -c '
 scripts/15-duphold.sh	SC2001	-v "/genome/${SAMPLE}/$(echo "$MANTA_VCF" | sed "s|${SAMPLE_DIR}/||")" \
-scripts/18-cnvpytor.sh	SC2028	echo " awk -F'\t' '\$5 < 0.05 && \$3 > 1000' ${OUTPUT_DIR}/${SAMPLE}_cnvs.txt"
 scripts/19-delly.sh	SC2028	echo " bcftools query -f '%INFO/SVTYPE\n' ${OUTPUT_DIR}/${SAMPLE}_sv.vcf.gz | sort | uniq -c"
 scripts/20-mtoolbox.sh	SC2028	echo " bcftools query -f '%POS\t%REF\t%ALT\t[%AF]\n' -i 'FILTER=\"PASS\"' ${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz | awk '\$4 < 0.95'"
 scripts/22-survivor-merge.sh	SC2005	echo "$(cpath "${IN_DIR}/${name}.vcf")" >> "${IN_DIR}/sv_files.txt"
 scripts/22-survivor-merge.sh	SC2016	'bcftools sort "$1" -Oz -o "$2.tmp" && mv "$2.tmp" "$2" && bcftools index -f -t "$2"' \
 scripts/22-survivor-merge.sh	SC2016	'bcftools sort "$1" -Oz -o "$2.tmp" && mv "$2.tmp" "$2" && bcftools index -f -t "$2"' \
-scripts/22-survivor-merge.sh	SC2016	bcftools view -f PASS,. "$1" | awk -v s="$3" '\''BEGIN { FS = OFS = "\t" }
-scripts/22-survivor-merge.sh	SC2016	run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
-scripts/22-survivor-merge.sh	SC2016	{ if (sites) print $1, $2, $3, $4, $5, $6, $7, $8, "GT", "./."; else print $1, $2, $3, $4, $5, $6, $7, $8, $9, $10 }'\'' > "$2"' \
 scripts/29-mutect2-somatic.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%AF]\n' -i 'FILTER=\"PASS\"' \\"
 scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/AM_pathogenicity\t%INFO/AM_class\n' -i 'INFO/AM_class=\"likely_pathogenic\"' ${OUTPUT_FILE} | head"
 scripts/30-vcfanno.sh	SC2028	echo " bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/SpliceAI\n' -i 'INFO/SpliceAI!=\".\"' ${OUTPUT_FILE} | head"

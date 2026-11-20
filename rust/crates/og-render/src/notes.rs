@@ -175,7 +175,9 @@ pub const MEI_NOTE: &str = "Alu, L1 and SVA copies the genome carries and the re
     genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and \
     harmless; the catalog rows are insertions known to cause disease. Not callable: too few \
     reads in that window to tell. Not seen is not proof of absence: short reads find an \
-    SVA's edges, not its body. Every call: mei/<sample>_mei.tsv.";
+    SVA's edges, not its body. Call filtered out: MEGAnE called an insertion there but \
+    flagged it (LC is low confidence), so it is not a finding, and not proof of absence \
+    either. Every call: mei/<sample>_mei.tsv.";
 pub const MCA_NOTE: &str = "Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a \
     share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. \
     In a UK Biobank study they became more common with age and went with a higher risk of a \

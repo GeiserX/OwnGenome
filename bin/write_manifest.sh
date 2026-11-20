@@ -8,7 +8,10 @@
 #   run      written_utc, written_by, git_commit, og_tree_hash (the rust/ tree
 #            the og binary in bin/.og was built from, or "not built"),
 #            pipeline_version (the OwnGenome release: the version in
-#            nextflow.config's manifest block), declared_sex
+#            nextflow.config's manifest block), declared_sex, intervals (the
+#            regions the run called, INTERVALS as run-all.sh passes it to
+#            --intervals; no row for a whole-genome run, nor for step 29's
+#            genome and chip)
 #   version  every NAME=VALUE line of versions.env
 #   image    each *_IMAGE reference and the digest Docker resolved it to
 #            ("not pulled" when the image is not on this machine)
@@ -77,6 +80,17 @@ if [ ! -r "${PGP_ROOT}/nextflow.config" ]; then
 fi
 [ -z "$release" ] || row run pipeline_version "$release"
 [ -z "$DECLARED_SEX" ] || row run declared_sex "$DECLARED_SEX"
+# The regions the run was limited to (INTERVALS, run-all.sh's --intervals), on
+# one line with single spaces, so a tab or newline in the value cannot break
+# the row. og summary collect reads it and marks the genome-wide sections
+# partial. No row when the run called the whole genome, nor for genome or
+# chip: step 29 reads the same INTERVALS, and those two are its whole genome
+# and its CHIP genes, not regions the run was limited to.
+read -r -d '' -a regions <<< "${INTERVALS:-}" || true
+case "${regions[*]:-}" in
+  ''|genome|chip) ;;
+  *) row run intervals "${regions[*]}" ;;
+esac
 
 # versions.env as written (comments and blank lines dropped)
 while IFS= read -r line || [ -n "$line" ]; do
