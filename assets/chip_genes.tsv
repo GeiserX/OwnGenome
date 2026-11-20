@@ -12,7 +12,7 @@
 gene	truncating	missense	note	pmids
 DNMT3A	all	R882	The most common CHIP gene. R882 is the hotspot of DNMT3A in acute myeloid leukaemia; other missense changes are listed, not counted.	25426837;21067377
 TET2	all	none	Second most common CHIP gene. Truncating changes only; missense changes are listed, not counted.	25426837;19474426
-ASXL1	all	none	Third most common CHIP gene. Truncating changes only.	25426837;19388938
+ASXL1	exons:12-13	none	Third most common CHIP gene. Truncating changes in the last two exons (12 and 13 here, 11 and 12 in the older transcript numbering), where the CHIP studies count them; earlier ones are listed, not counted.	25426837;19388938
 JAK2	none	V617F	V617F only, the change behind most myeloproliferative neoplasms.	25426837;15858187
 TP53	all	102-292	Missense changes count in the DNA-binding core domain, residues 102 to 292.	25426837;8023157
 PPM1D	exons:6-6	none	Truncating changes in the last exon (6), where the mosaic and clonal ones cluster.	23242139;29954749

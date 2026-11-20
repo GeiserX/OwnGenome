@@ -114,6 +114,43 @@ fn an_empty_folder_lists_every_step_and_every_line() {
     assert_eq!(lines, expected);
 }
 
+/// Step 25's table on a run with the panel: `note` is each score's
+/// Percentile_Note, and no score has a percentile.
+fn raw_prs(d: &Dir, notes: [&str; 2]) {
+    d.put(
+        "S/prs/S_prs_summary.tsv",
+        format!(
+            "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\t\
+             Percentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check\t\
+             Percentile_Note\tInput\n\
+             CAD\tPGS000018\t0.5\t100\t120\t83.3\tNA\tEUR\t0\t0\t\t\t{}\tvcf\n\
+             T2D\tPGS000014\t0.1\t90\t100\t90.0\tNA\tEUR\t0\t0\t\t\t{}\tvcf\n",
+            notes[0], notes[1]
+        ),
+    );
+}
+
+#[test]
+fn withheld_percentiles_are_not_called_a_missing_panel() {
+    let w = "percentile withheld: the input lists variants only";
+    let d = Dir::new("post-prs-withheld");
+    raw_prs(&d, [w, w]);
+    let v = summary(&d);
+    assert!(matches!(
+        at(&v, &["sections", "prs", "data", "adjusted"]),
+        Value::Bool(false)
+    ));
+    let lines = texts(at(&v, &["not_assessed"]));
+    assert!(lines.contains(&PRS_WITHHELD.to_owned()), "{lines:?}");
+    assert!(!lines.contains(&PRS_NOT_ADJUSTED.to_owned()), "{lines:?}");
+    // No note on any score: the panel was not used, the line says so.
+    let d = Dir::new("post-prs-no-panel");
+    raw_prs(&d, ["", ""]);
+    let lines = texts(at(&summary(&d), &["not_assessed"]));
+    assert!(lines.contains(&PRS_NOT_ADJUSTED.to_owned()), "{lines:?}");
+    assert!(!lines.contains(&PRS_WITHHELD.to_owned()), "{lines:?}");
+}
+
 #[test]
 fn a_failed_step_says_so_under_not_run() {
     let d = Dir::new("post-failed");

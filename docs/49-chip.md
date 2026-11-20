@@ -50,7 +50,7 @@ With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only w
 |---|---|---|
 | DNMT3A | truncating anywhere; missense at R882 | 25426837, 21067377 |
 | TET2 | truncating anywhere | 25426837, 19474426 |
-| ASXL1 | truncating anywhere | 25426837, 19388938 |
+| ASXL1 | truncating in the last two exons, 12 and 13 (11 and 12 in the older transcript numbering of the CHIP studies) | 25426837, 19388938 |
 | JAK2 | V617F | 25426837, 15858187 |
 | TP53 | truncating anywhere; missense in the DNA-binding core domain, residues 102 to 292 | 25426837, 8023157 |
 | PPM1D | truncating in the last exon (6) | 23242139, 29954749 |
@@ -68,13 +68,18 @@ With `run-all.sh`: `TOOLS=...,chip`. It is opt-in, so a run lists step 49 only w
 
 | Status | Rule |
 |---|---|
-| `chip` | passed FilterMutectCalls, in the gene's class, VAF under 35%, at least 3 reads with the change |
-| `likely_germline` | VAF 35% or more. An inherited variant sits near 50% or 100%, and without a matched normal sample the two cannot be told apart |
+| `chip` | passed FilterMutectCalls, in the gene's class, VAF from 2% to under 35%, at least 3 reads with the change |
+| `likely_germline` | VAF 35% or more. An inherited variant sits near 50% or 100%, and without a matched normal sample it cannot be told apart from a large clone |
 | `filtered` | FilterMutectCalls did not pass it; its filters are in the `note` column |
 | `low_support` | fewer than 3 reads with the change |
+| `low_vaf` | VAF under 2%, the VAF that defines CHIP (Steensma et al., PMID 25931582). Not counted |
 | `other_change` | a protein change outside the gene's class |
 
-Synonymous, intronic and UTR changes are left out.
+The rules are tested in that order, so a call is `low_vaf` only when it passed the filters and has 3 reads. Synonymous, intronic and UTR changes are left out.
+
+A `chip` row is a possible finding, not a diagnosis, and its `note` starts with `possible clonal haematopoiesis (not a diagnosis)`, then the class rule it matched. CHIP itself is a clinical term: it also needs a normal blood count and no blood cancer, which a genome cannot show.
+
+5. A `chip` call whose reads also fit an inherited heterozygous variant keeps its status and gets one more sentence in its `note`: `10 of 30 reads also fit an inherited heterozygous variant`. The test is a binomial count at 50%: the reads fit when at least 1 in 100 inherited heterozygous variants at that depth would show as few reads with the change, or fewer. At 20x that is 5 reads of 20 and up (25%), at 30x 9 of 30 and up (30%), at 40x 13 of 40 and up (33%). From 60x the fit starts at the 35% cut, so no counted call gets the sentence there. These calls stay counted, because a real clone of 25% to 35% looks the same, and the step's log line counts them apart: `2 CHIP calls in 13 genes (possible clonal haematopoiesis, not a diagnosis; 1 of them also fits an inherited variant; ...)`.
 
 ## The read-support limit
 
@@ -121,7 +126,8 @@ Not measured on a whole genome. Mutect2 reads about 35 kb of the BAM, which take
 
 ## Notes
 
-- A `chip` row is a finding worth showing a haematologist, together with a blood count. It does not mean a blood cancer, and the risks the studies report are averages over many people.
-- Tumour-only calling cannot prove a change is acquired. The VAF rule removes most inherited variants, but a change at 35% or more is never counted, and a real large clone there is missed too.
+- A `chip` row is a possible finding worth showing a haematologist, together with a blood count. It does not mean a blood cancer, and the risks the studies report are averages over many people.
+- Tumour-only calling cannot prove a change is acquired. The VAF rule removes most inherited variants, but a change at 35% or more is never counted, and a real large clone there is missed too. A counted call with the germline-fit sentence may be inherited: a test of a second tissue (a cheek swab or hair) or of a parent tells the two apart.
+- A clone under 2% is not CHIP by its definition, so a call under 2% is `low_vaf` and not counted. Such a call needs 3 reads with the change, so more than 150 reads over the site: it shows only where the depth is far above a usual 30x genome.
 - **U2AF1 on the default reference.** GRCh38 added to the short arm of chr21 a near copy of the U2AF1 locus that real genomes do not have, and the no-ALT analysis set keeps it. Reads from U2AF1 then fit both copies equally well and get mapping quality 0. Miller et al. 2022 (PMID 35041928) found that GRCh38 pipelines missed U2AF1 mutations for this reason, and that they were found again once the copy was masked. This step counts depth and Mutect2 reads only from mapping quality 20 up, so on the default reference expect U2AF1 to show `too_shallow` or `partly_covered` in `chip_depth.tsv`, or a read-support limit far above the other genes'. Either way, no call at S34 or Q157 does not mean there is none. The fix is the masked reference, at the same coordinates: `setup.sh --masked-reference` builds it, with the false copies set to N as FixItFelix (Behera et al. 2023, PMID 36810122) and GIAB do, and a sample realigned to it gets its U2AF1 reads back ([the masked reference](realignment.md#the-masked-reference)). On chr21 of GIAB's HG002, step 16b reads U2AF1 on the masked reference and not on the default one (CI case `fixitfelix-chr21-1`); this step has not been measured on a whole genome either way.
 - Steps 29 and 49 call the same genes in two ways: step 29 calls gene bodies and leaves the calls unread, step 49 calls the coding exons and reads them.

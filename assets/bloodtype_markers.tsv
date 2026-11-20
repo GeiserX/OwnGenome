@@ -2,6 +2,13 @@
 # processes) reads, GRCh38 (NCBI no-ALT analysis set), as a BED with extra columns: start is
 # 0-based, end 1-based, so samtools bedcov reads this file as it is (comment and header lines removed).
 #
+# Licence: what this table takes from RBCeq2 is used under RBCeq2's MIT licence, Copyright 2025
+#   Australian Red Cross Lifeblood; its full notice is assets/licences/RBCeq2-LICENSE.txt. The
+#   system, antigen and allele names follow the ISBT nomenclature: International Society of Blood
+#   Transfusion (ISBT) Blood Group Database, https://blooddatabase.isbtweb.org. No row was read
+#   from that database or its API. Positions and rsids from dbSNP and Ensembl are open data with
+#   no restriction on use.
+#
 # kind site: one variant that defines a blood group antigen. ref and alt are the VCF alleles
 #   (left-aligned, + strand); ref_means and alt_means are what each allele gives. The variants
 #   and their antigens are the ones the ISBT allele tables define, as packaged by RBCeq2 2.4.4

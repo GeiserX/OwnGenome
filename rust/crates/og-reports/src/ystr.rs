@@ -18,9 +18,17 @@
 //! reference copies (halves rounded up) plus GB / motif length, by floor
 //! division, so GB -2 on 11 copies of a 4 bp motif is `10.2` (ten repeats
 //! and two bases). Parts are summed; a span marker is one region; the
-//! panel's offset is added last. Confidence: high (HipSTR's haploid filters
-//! pass and 10 reads or more), low (the note says which filter failed), no
-//! call, not callable.
+//! panel's offset is added last, which puts the count on FamilyTreeDNA's
+//! scale. A marker with no offset keeps the reference's scale, and its note
+//! says so. Confidence: high (HipSTR's haploid filters pass, 10 reads or
+//! more, and at least 70% of the reads show the called length), low (the
+//! note says which test failed), no call, not callable.
+//!
+//! The read support comes from MALLREADS, HipSTR's most likely length per
+//! read. HipSTR's own filters allow 15% of the reads with stutter and 15%
+//! with a flank indel, so a clean call has at least 70% of its reads at the
+//! called length. A call whose record has no MALLREADS is not high: nothing
+//! shows that its reads agree.
 //!
 //! What changes on purpose: a motif length under 1, reference copies that
 //! are negative or not finite, and an order that is not a whole number are
@@ -38,6 +46,11 @@ const MIN_Q: f64 = 0.9;
 const MAX_STUTTER: f64 = 0.15;
 const MAX_FLANK: f64 = 0.15;
 const FLANK: i128 = 10;
+/// The share of reads that must show the called length for a high call.
+const MIN_SUPPORT: f64 = 0.7;
+/// The note of a count with no offset to FamilyTreeDNA's scale.
+pub const REFERENCE_SCALE: &str =
+    "on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker";
 
 pub const TSV_COLUMNS: [&str; 10] = [
     "order",
@@ -390,6 +403,16 @@ fn part_call(fmt: &HashMap<String, String>) -> Result<PartCall, String> {
     if dp < MIN_READS {
         problems.push(format!("{dp} reads, fewer than {MIN_READS}"));
     }
+    match read_support(get("MALLREADS"), bp) {
+        None => {
+            problems.push("no per-read lengths (MALLREADS) to show that the reads agree".to_owned())
+        }
+        Some((at, all)) if (at as f64) < MIN_SUPPORT * all as f64 => problems.push(format!(
+            "{at} of {all} reads show the called length, fewer than {}%",
+            (MIN_SUPPORT * 100.0).round()
+        )),
+        Some(_) => {}
+    }
     Ok(PartCall {
         bp,
         dp,
@@ -398,6 +421,24 @@ fn part_call(fmt: &HashMap<String, String>) -> Result<PartCall, String> {
         q,
         problems,
     })
+}
+
+/// MALLREADS (`bp|reads;bp|reads`): the reads at length `bp` and all the
+/// reads; `None` when the field is missing, empty or unreadable.
+fn read_support(field: Option<&str>, bp: i128) -> Option<(i128, i128)> {
+    let (mut at, mut all) = (0i128, 0i128);
+    for item in field?.split(';') {
+        let (len, n) = item.split_once('|')?;
+        let (len, n) = (crate::int(len)?, crate::int(n)?);
+        if n < 0 {
+            return None;
+        }
+        all += n;
+        if len == bp {
+            at += n;
+        }
+    }
+    (all > 0).then_some((at, all))
 }
 
 /// Python's `divmod` on ints: the quotient rounded down.
@@ -535,6 +576,10 @@ pub fn marker_row(
         );
     }
     row[3] = count_text(ref_sum, bp_sum, period, m.offset);
+    let mut notes = notes;
+    if m.offset.is_none() {
+        notes.push(REFERENCE_SCALE.to_owned());
+    }
     row[4] = if problems.is_empty() { "high" } else { "low" }.into();
     row[5] = dps.iter().min().map_or(String::new(), ToString::to_string);
     row[6] = sts.iter().max().map_or(String::new(), ToString::to_string);
@@ -675,30 +720,74 @@ mod tests {
     #[test]
     fn part_calls() {
         let f = |s: &str| -> HashMap<String, String> {
-            s.split(';')
+            s.split(',')
                 .map(|kv| {
                     let (k, v) = kv.split_once('=').unwrap();
                     (k.into(), v.into())
                 })
                 .collect()
         };
-        let p = part_call(&f("GT=1;GB=-4;Q=0.95;DP=30;DSTUTTER=6;DFLANKINDEL=0")).unwrap();
+        let p = part_call(&f(
+            "GT=1,GB=-4,Q=0.95,DP=30,DSTUTTER=6,DFLANKINDEL=0,MALLREADS=-4|24;0|6",
+        ))
+        .unwrap();
         assert_eq!(p.problems, ["6 of 30 reads with stutter"]);
-        let p = part_call(&f("GT=1;GB=0;Q=0.5;DP=5;DSTUTTER=0;DFLANKINDEL=0")).unwrap();
+        let p = part_call(&f(
+            "GT=1,GB=0,Q=0.5,DP=5,DSTUTTER=0,DFLANKINDEL=0,MALLREADS=0|5",
+        ))
+        .unwrap();
         assert_eq!(
             p.problems,
             ["posterior 0.5 below 0.9", "5 reads, fewer than 10"]
         );
+        let clean = "GT=1,GB=4,Q=0.99,DP=20,DSTUTTER=0,DFLANKINDEL=0";
+        assert!(
+            part_call(&f(&format!("{clean},MALLREADS=4|14;0|6")))
+                .unwrap()
+                .problems
+                .is_empty()
+        );
         assert_eq!(
-            part_call(&f("GT=.;GB=.;FILTER=LowQ")).err().unwrap(),
+            part_call(&f("GT=.,GB=.,FILTER=LowQ")).err().unwrap(),
             "HipSTR made no genotype (LowQ)"
         );
         assert_eq!(
-            part_call(&f("GT=0/1;GB=0/4")).err().unwrap(),
+            part_call(&f("GT=0/1,GB=0/4")).err().unwrap(),
             "two lengths on the Y chromosome (GB 0/4)"
         );
-        assert_eq!(part_call(&f("GT=0;GB=x")).err().unwrap(), "unreadable GB x");
+        assert_eq!(part_call(&f("GT=0,GB=x")).err().unwrap(), "unreadable GB x");
         assert!(py_min(&[f64::NAN, 0.5]).is_nan());
+    }
+
+    /// Red first: every read-quality filter passes, yet most reads show
+    /// another length, so the call is not high.
+    #[test]
+    fn red_first_read_quality_alone_is_not_high() {
+        let f = |s: &str| -> HashMap<String, String> {
+            s.split(',')
+                .map(|kv| {
+                    let (k, v) = kv.split_once('=').unwrap();
+                    (k.into(), v.into())
+                })
+                .collect()
+        };
+        let clean = "GT=1,GB=4,Q=0.99,DP=20,DSTUTTER=0,DFLANKINDEL=0";
+        assert_eq!(
+            part_call(&f(&format!("{clean},MALLREADS=4|13;0|7")))
+                .unwrap()
+                .problems,
+            ["13 of 20 reads show the called length, fewer than 70%"]
+        );
+        assert_eq!(
+            part_call(&f(clean)).unwrap().problems,
+            ["no per-read lengths (MALLREADS) to show that the reads agree"]
+        );
+        assert_eq!(read_support(Some("4|14;0|6"), 4), Some((14, 20)));
+        assert_eq!(read_support(Some("-4|3;0|15"), 0), Some((15, 18)));
+        assert_eq!(read_support(Some("."), 0), None);
+        assert_eq!(read_support(Some("0|0"), 0), None);
+        assert_eq!(read_support(Some("0|-1;4|5"), 4), None);
+        assert_eq!(read_support(None, 0), None);
         assert_eq!(py_min(&[0.5, f64::NAN]), 0.5);
     }
 }

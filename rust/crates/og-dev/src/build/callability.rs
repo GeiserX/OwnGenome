@@ -442,7 +442,10 @@ pub fn build(work: &Path, repo: &Path) -> Result<(String, String), BuildError> {
          # 'no finding' there needs a reading of its own. Step 16b measures each gene on chr1-22, X and Y; the\n\
          # report lists the ones it could not read. Written by scripts/ci/build-callability.sh, which says how the\n\
          # rows and the owners are chosen; rebuild it there, do not edit it by hand. start is 0-based and end\n\
-         # 1-based, as in a BED file; an ALT-only gene has its ALT scaffold as chrom and '.' as start and end.\n",
+         # 1-based, as in a BED file; an ALT-only gene has its ALT scaffold as chrom and '.' as start and end.\n\
+         # Sources and terms: GIAB CMRG v1.00 and genome stratifications v3.6, from NIST, not subject to\n\
+         # US copyright (notice and changes: assets/licences/NIST-GIAB-NOTICE.txt); GENCODE 50, open\n\
+         # access; HGNC ids and the NCBI GRCh38 assembly report, no restriction on use.\n",
     );
     let _ = writeln!(text, "# {summary}.");
     text.push_str("gene\thgnc_id\tchrom\tstart\tend\treasons\towner\n");
@@ -582,6 +585,37 @@ mod tests {
             "Genes: 6 (CMRG 3, segdup 1, false_duplication 1, collapsed 1, ALT-only 1); with an owner: 3"
         );
         assert!(text.contains(&format!("\n# {summary}.\n")));
+    }
+
+    #[test]
+    fn the_header_names_each_source_and_its_terms() {
+        let dir = std::env::temp_dir().join(format!("og-callability-terms-{}", std::process::id()));
+        let (work, repo) = fixture(&dir);
+        let (text, _) = build(&work, &repo).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        let header: String = text
+            .lines()
+            .take_while(|l| l.starts_with("# "))
+            .map(|l| &l[2..])
+            .collect::<Vec<_>>()
+            .join(" ");
+        for want in [
+            "GIAB CMRG v1.00 and genome stratifications v3.6, from NIST, not subject to US copyright",
+            "(notice and changes: assets/licences/NIST-GIAB-NOTICE.txt)",
+            "GENCODE 50, open access",
+            "HGNC ids and the NCBI GRCh38 assembly report, no restriction on use",
+        ] {
+            assert!(
+                header.contains(want),
+                "{want:?} not in the header: {header}"
+            );
+        }
+        let notice = fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/licences/NIST-GIAB-NOTICE.txt"
+        ))
+        .unwrap();
+        assert!(notice.contains("works of NIST employees are not subject to copyright protection"));
     }
 
     #[test]

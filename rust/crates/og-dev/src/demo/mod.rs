@@ -21,7 +21,8 @@
 //! `og pgx cpic-report` (steps 36 and 27), `og prs table` (25),
 //! `og qc sample` and `og qc sex-loss` (33), `og ancestry-fine report`
 //! (26b), `og paraphase table` (35b), `og couple screen` (39),
-//! `og traits table` (42) and `og ancient report` (44). The other tables are
+//! `og traits table` (42), `og ancient report` (44) and
+//! `og locityper report` (53). The other tables are
 //! written in their writers' columns, with the values those writers give for
 //! the made-up inputs named in each function. Each part lives in the file of
 //! its report chapter: [`qc`], [`clinical`], [`clinical_clinvar`], [`pgx`],

@@ -558,6 +558,41 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked --no-fail-fast
 
+      # The output contract keeps every stable row of the newest 1.x release
+      # (docs/output-contract.md, "How CI holds it"). Release tags live on the
+      # upstream repository, so a run on a fork reads them there too. Before
+      # the first 1.x tag there is nothing to compare with; after it, a tag
+      # that cannot be listed, fetched or read fails the step. The control
+      # runs first: a baseline with a stable row this contract lacks must fail.
+      - name: The contract keeps every stable row of the newest 1.x release
+        env:
+          RELEASES: https://github.com/GeiserX/OwnGenome.git
+          MAJOR: '1'   # the release line this branch keeps; the 2.0 change sets 2
+        run: |
+          contract=../assets/output_contract.tsv
+          planted="${RUNNER_TEMP}/contract-planted.tsv"
+          log="${RUNNER_TEMP}/contract-baseline-red.log"
+          { cat "$contract"; printf 'file\t{sample}/gone/{sample}_gone.tsv\t-\t-\tbash\ttsv\tstable\t-\t-\n'; } > "$planted"
+          if cargo run --locked -q -p og -- dev contract --contract "$contract" --baseline "$planted" > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: a stable row that is gone since the baseline passed"
+            exit 1
+          fi
+          cat "$log"
+          grep -F 'FAIL BREAKING: the stable file {sample}/gone/{sample}_gone.tsv' "$log"
+          echo "Control: a stable row that is gone since the baseline failed."
+          refs=$(git ls-remote --tags --refs "$RELEASES") || { echo "ERROR: could not list the tags of ${RELEASES}"; exit 1; }
+          tag=$(printf '%s\n' "$refs" | sed -n "s|^[0-9a-f]*[[:space:]]*refs/tags/\(v${MAJOR}\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p" | sort -V | tail -n 1)
+          if [ -z "$tag" ]; then
+            echo "No ${MAJOR}.x release tag on ${RELEASES} yet: no release contract to compare with."
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 "$RELEASES" "refs/tags/${tag}"
+          base="${RUNNER_TEMP}/contract-${tag}.tsv"
+          git show "FETCH_HEAD:assets/output_contract.tsv" > "$base"
+          echo "Baseline: the contract of ${tag}"
+          cargo run --locked -q -p og -- dev contract --contract "$contract" --baseline "$base"
+
       # The browser checks of og-browser (tests/browser/README.md) ran in
       # cargo test above, in the runner's Chrome. Two controls: a page error
       # planted in the clean page must fail its test, and with no Chrome the

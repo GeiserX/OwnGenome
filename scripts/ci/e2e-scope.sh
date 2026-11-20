@@ -21,9 +21,11 @@
 #            `rows`). Nothing when no path is in the e2e scope. Every shard
 #            case when a path is shared wiring (FULL below). Otherwise the
 #            smoke cases, every case whose own file or table row changed,
-#            every case with a glob that matches a changed path, and the
-#            cases those need (the needs column of e2e-case-times.tsv,
-#            followed through). Base cases are never printed: whenever a case
+#            every case with a glob that matches a changed path, every case
+#            with a glob that matches bin/og when a path under rust/ (og's
+#            sources, OG_SOURCES below) changed, and the cases those need
+#            (the needs column of e2e-case-times.tsv, followed through).
+#            Base cases are never printed: whenever a case
 #            runs, the base leg runs all of them. The reason for each pick
 #            goes to stderr.
 #
@@ -43,9 +45,8 @@ export LC_ALL=C
 
 # The paths the e2e cases exercise. A pull request that changes none of them
 # runs no case. The push paths of e2e.yml are the same list (e2e-plan checks).
-SCOPE_DIRS=(scripts modules workflows bin conf assets tests/e2e .github/actions)
+SCOPE_DIRS=(scripts modules workflows bin conf assets rust tests/e2e .github/actions)
 SCOPE_FILES=(tests/fixtures/VERSION main.nf nextflow.config nextflow_schema.json versions.env .github/workflows/e2e.yml
-  rust/crates/og-dev/src/fixture.rs rust/crates/og-dev/src/traits_sources.rs
   # The committed fixtures the cases read (their rows name them too).
   tests/fixtures/annotsv/class45.sh tests/fixtures/consumer_export/sites.tsv.gz
   tests/fixtures/families/stub_families.tsv tests/fixtures/pharmcat/refblocks.g.vcf tests/fixtures/sv/cnvpytor.vcf.in
@@ -66,6 +67,11 @@ FULL=(main.nf nextflow.config nextflow_schema.json versions.env assets/steps.tsv
 # Run on every pull request that runs any case: the bash steps and the
 # Nextflow pipeline from the fixture's FASTQ, and the parity check of the two.
 SMOKE=(nextflow-from-fastq-1-bash nextflow-from-fastq-2-nextflow)
+
+# og's sources. The cases run og through bin/og, which runs the binary built
+# from these, so a change here picks every case whose row has a glob that
+# matches bin/og, as a change to bin/og itself does.
+OG_SOURCES=('rust/*')
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -160,7 +166,7 @@ in_list() {
 }
 
 select_cases() {
-  local changed=$1 rowsf=${2:-/dev/null} p c globs g full="" inscope="" picked out gl
+  local changed=$1 rowsf=${2:-/dev/null} p c globs g full="" inscope="" og_src="" picked out gl
   [ -f "$changed" ] || die "select: no file ${changed}"
   [ -e "$rowsf" ] || die "select: no file ${rowsf}"
   check > /dev/null
@@ -170,6 +176,7 @@ select_cases() {
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     in_list "$p" "${scope_globs[@]}" && inscope=1
+    [ -z "$og_src" ] && in_list "$p" "${OG_SOURCES[@]}" && og_src=$p
     if in_list "$p" "${FULL[@]}"; then full=$p; break; fi
   done < "$changed"
   [ -s "$rowsf" ] && inscope=1
@@ -199,6 +206,11 @@ select_cases() {
           if [[ $p == $g ]]; then printf '%s\truns %s\n' "$c" "$p"; continue 3; fi
         done
       done < "$changed"
+      [ -n "$og_src" ] || continue
+      for g in "${gl[@]}"; do
+        # shellcheck disable=SC2053  # g is a glob on purpose
+        if [[ bin/og == $g ]]; then printf '%s\truns og, built from %s\n' "$c" "$og_src"; continue 2; fi
+      done
     done < <(rows_of "$PATHS")
   )
   # Keep only real cases outside the base stage, then add their needs.

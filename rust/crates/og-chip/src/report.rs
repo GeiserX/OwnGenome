@@ -10,10 +10,14 @@
 //!
 //! Statuses, in the order they are tested:
 //! - `likely_germline`: VAF [`GERMLINE_VAF`] or more (an inherited variant
-//!   sits near 50% or 100%, and a tumour-only call cannot tell);
+//!   sits near 50% or 100%, and a tumour-only call cannot tell it from a
+//!   large clone);
 //! - `filtered`: FilterMutectCalls did not pass it;
 //! - `low_support`: fewer than [`MIN_ALT_READS`] reads with the change;
-//! - `chip`: in the table's classes;
+//! - `low_vaf`: VAF under [`CHIP_MIN_VAF`], the 2% that defines CHIP;
+//! - `chip`: in the table's classes. The note says it is a possible finding,
+//!   not a diagnosis, and adds a germline-fit sentence when its reads fit an
+//!   inherited heterozygous variant ([`fits_inherited`]);
 //! - `other_change`: a protein change outside them.
 //!
 //! A base counts once per gene, even when the depth file lists it twice.
@@ -39,8 +43,10 @@
 //! [`CALLABLE_DEPTH`] reads or more, and the share where a clone at the
 //! stated limit shows its reads.
 //!
-//! The calls table is the Python's, byte for byte; the depth table and the
-//! summary line differ on purpose since the per-base limit (issue #411).
+//! The calls table differs from the Python's on purpose since issue #411:
+//! the 2% floor, the notes of `chip` and `likely_germline` rows, and the
+//! ASXL1 row of the table. The depth table and the summary line differ on
+//! purpose since the per-base limit.
 
 use crate::binom::{detection_limit_over, finite_mean, readable_at};
 use crate::prepare::{attr, columns};
@@ -55,8 +61,42 @@ use std::collections::{BTreeSet, HashMap};
 
 /// At or above this VAF a call is read as a possible inherited variant.
 pub const GERMLINE_VAF: f64 = 0.35;
-/// CHIP is defined from a VAF of 2% (Steensma et al. 2015, PMID 25931582).
+/// CHIP is defined from a VAF of 2% (Steensma et al. 2015, PMID 25931582):
+/// a call under it is `low_vaf`, not counted.
 pub const CHIP_MIN_VAF: f64 = 0.02;
+/// A `chip` call whose alt reads are this likely or more under an inherited
+/// heterozygous variant (one-sided, `P(X <= alt)` with `X ~ Binomial(depth,
+/// 0.5)`) gets the germline-fit note: 9 or 10 of 30 reads fit, 6 of 46 do
+/// not.
+pub const GERMLINE_FIT_P: f64 = 0.01;
+/// What a `chip` row's note starts with: the step finds a possible clone,
+/// it does not diagnose CHIP.
+pub const CHIP_LABEL: &str = "possible clonal haematopoiesis (not a diagnosis)";
+
+/// `P(X <= alt)` for `X ~ Binomial(depth, 0.5)`, summed in log space so a
+/// deep base neither overflows nor underflows. 1 when `alt >= depth`.
+pub fn het_lower_tail(alt: u64, depth: u64) -> f64 {
+    if alt >= depth {
+        return 1.0;
+    }
+    let n = depth as f64;
+    // ln P(X = i), from ln P(X = 0) = n ln(1/2) by the ratio (n - i) / (i + 1).
+    let mut l = n * 0.5f64.ln();
+    let mut logs = Vec::with_capacity(alt as usize + 1);
+    for i in 0..=alt {
+        logs.push(l);
+        l += ((n - i as f64) / (i as f64 + 1.0)).ln();
+    }
+    let top = logs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let sum: f64 = logs.iter().map(|x| (x - top).exp()).sum();
+    (top + sum.ln()).exp().min(1.0)
+}
+
+/// Whether `alt` of `depth` reads fit an inherited heterozygous variant:
+/// [`het_lower_tail`] at [`GERMLINE_FIT_P`] or more.
+pub fn fits_inherited(alt: u64, depth: u64) -> bool {
+    depth > 0 && het_lower_tail(alt, depth) >= GERMLINE_FIT_P
+}
 
 /// The calls table's columns.
 pub const OUT_COLUMNS: [&str; 15] = [
@@ -427,7 +467,7 @@ pub fn classify(
                 (
                     "likely_germline",
                     format!(
-                        "VAF {}: near an inherited 50% or 100%, not counted",
+                        "VAF {}: at or above the 35% cut, where an inherited variant (near 50% or 100%) and a large clone look the same without a matched normal sample; not counted",
                         fixed(v, 2)
                     ),
                 )
@@ -438,8 +478,27 @@ pub fn classify(
                     "low_support",
                     format!("{alt_reads} reads with the change, under {MIN_ALT_READS}"),
                 )
+            } else if let Some(v) = vaf.filter(|v| *v < CHIP_MIN_VAF) {
+                (
+                    "low_vaf",
+                    format!(
+                        "VAF {}: under the 2% VAF that defines CHIP, not counted",
+                        fixed(v, 3)
+                    ),
+                )
             } else if !cls.is_empty() {
-                ("chip", why)
+                let mut note = format!("{CHIP_LABEL}: {why}");
+                // The reads the table shows: alt_reads of the depth column.
+                if let Some(d) = depth.filter(|d| d.is_finite() && *d >= 1.0)
+                    && alt_reads >= 0
+                    && fits_inherited(alt_reads as u64, d as u64)
+                {
+                    note.push_str(&format!(
+                        "; {alt_reads} of {} reads also fit an inherited heterozygous variant",
+                        d as u64
+                    ));
+                }
+                ("chip", note)
             } else {
                 ("other_change", why)
             };
@@ -834,10 +893,22 @@ pub fn report(files: &Files, sample: &str) -> Result<String, Error> {
     write_atomic(&files.out, tsv(&OUT_COLUMNS, &rows).as_bytes())?;
     write_atomic(&files.depth_out, tsv(&DEPTH_COLUMNS, &depth).as_bytes())?;
     let n = rows.iter().filter(|r| r[12] == "chip").count();
+    let fit = rows
+        .iter()
+        .filter(|r| r[12] == "chip" && r[14].contains("also fit an inherited"))
+        .count();
     let other = rows.len() - n;
     let s = |k: usize| if k == 1 { "" } else { "s" };
+    let fit = if fit == 0 {
+        String::new()
+    } else {
+        format!(
+            "{fit} of them also fit{} an inherited variant; ",
+            if fit == 1 { "s" } else { "" }
+        )
+    };
     Ok(format!(
-        "{sample}: {n} CHIP call{} in {} genes ({other} other protein change{} listed, not counted)\n{summary}\n",
+        "{sample}: {n} CHIP call{} in {} genes (possible clonal haematopoiesis, not a diagnosis; {fit}{other} other protein change{} listed, not counted)\n{summary}\n",
         s(n),
         table.len(),
         s(other)

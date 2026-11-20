@@ -159,11 +159,14 @@ workflow CLINICAL {
                     .map { _id, meta, vcf, kind, pgs -> [meta, vcf, kind, pgs] },
                 ch_ancestry_ref
             )
+            // With the genotypes pgsc_calc scored: og prs table withholds
+            // the percentiles when they hold no reference calls.
             PRS_SUMMARY(
                 PRS.out.results
                     .map { meta, res, kind -> [meta.id, meta, res, kind] }
                     .join(ch_sample_pgs)
-                    .map { _id, meta, res, kind, pgs -> [meta, res, kind, pgs] },
+                    .join(PRS_SCORE_SITES.out.vcf.map { meta, target, _kind -> [meta.id, target] })
+                    .map { _id, meta, res, kind, pgs, target -> [meta, res, kind, pgs, target] },
                 panel_name
             )
             ch_prs_scores       = PRS_SUMMARY.out.summary

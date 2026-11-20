@@ -17,6 +17,12 @@
 # 0/0 instead of a missing site. Without it, only your variant sites are
 # scored and the summary's Input column says vcf.
 #
+# A site the genotypes leave out adds nothing to a score's sum. When under
+# one in five of the genotyped positions is a reference call (0/0), the input
+# lists variants only: each score keeps its raw sum, its percentile is
+# withheld (Percentile_Note), and the step prints a NOTE. A chip VCF from
+# chip-to-vcf.sh lists its reference calls and keeps its percentiles.
+#
 # With the sample's sex, a score's chrX rows are scored too: pgsc_calc's
 # plink2 gets the sex with the genotypes. Without it they are left out (plink2
 # refuses chrX without a sex), and the summary's ChrX column says so.
@@ -389,7 +395,7 @@ run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
   /pgp-bin/og prs table \
     --sample "$SAMPLE" --results "$(cpath "${WORK}/results")" --sampleset "$SAMPLESET" \
     --scores "$(cpath "${WORK}/scores")" --input-kind "$INPUT_KIND" --sex "$SEX" \
-    ${ZERO[@]+"${ZERO[@]}"} ${ANC_ARGS[@]+"${ANC_ARGS[@]}"} --out "$(cpath "$RESULTS_FILE")"
+    --target "$(cpath "$TARGET")" ${ZERO[@]+"${ZERO[@]}"} ${ANC_ARGS[@]+"${ANC_ARGS[@]}"} --out "$(cpath "$RESULTS_FILE")"
 # This run's summary under its time too, so the next run keeps it; an earlier
 # summary of the same minute keeps its name and this one gets -2, -3...
 STAMP=$(date -r "$RESULTS_FILE" +%Y%m%d-%H%M)
@@ -418,9 +424,6 @@ rm -rf "${WORK}/work" "${WORK}/.nextflow"
 if awk -F'\t' 'NR > 1 && $6 + 0 < 50 {found = 1} END {exit !found}' "$RESULTS_FILE"; then
   echo "WARNING: under half of a score's variants were genotyped; that sum is not comparable to published distributions."
 fi
-if [ "$INPUT_KIND" = vcf ]; then
-  echo "NOTE: hom-ref sites are absent from this VCF, so the score is biased; not comparable to published distributions"
-fi
 
 echo ""
 echo "============================================"
@@ -436,9 +439,14 @@ echo "============================================"
 echo ""
 echo "IMPORTANT: a polygenic score is NOT diagnostic. It estimates relative genetic"
 echo "predisposition; lifestyle, environment and other genes are not captured."
-if $USE_PANEL; then
+if $USE_PANEL && awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next}
+    c["Percentile"] && $c["Percentile"] != "NA" {found = 1} END {exit !found}' "$RESULTS_FILE"; then
   echo "The percentile compares your score with the reference samples whose genetic"
   echo "ancestry is most similar to yours. See docs/25-prs.md."
+elif $USE_PANEL; then
+  echo "No percentile: the ancestry reference panel gave none for these scores (the"
+  echo "input lists variants only, or no score matched enough variants), so a raw sum"
+  echo "cannot be compared with anyone. See docs/25-prs.md."
 else
   echo "Raw score only: without the ancestry reference panel there is no percentile,"
   echo "and a raw sum cannot be compared with anyone (scripts/setup.sh --ancestry-panel)."

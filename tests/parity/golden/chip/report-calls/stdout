@@ -1,2 +1,2 @@
-S: 12 CHIP calls in 6 genes (13 other protein changes listed, not counted)
+S: 12 CHIP calls in 6 genes (possible clonal haematopoiesis, not a diagnosis; 2 of them also fit an inherited variant; 13 other protein changes listed, not counted)
 Read-support limit (median 30x over the CHIP genes' coding exons): in the median CHIP gene, a clone with a VAF of about 14% or more shows at least 3 reads with the change 8 times in 10, counted base by base. Mutect2 and its filters call fewer than that. Too few reads for any limit in 4 genes; the share of each one's coding bases read deep enough for that VAF: JAK2 0%, TET2 67%, PPM1D 0%, TP53 0%. CHIP starts at a VAF of 2%, so smaller clones are likely missed: no call here does not rule one out. Not a diagnosis.

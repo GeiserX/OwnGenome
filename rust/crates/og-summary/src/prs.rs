@@ -16,10 +16,15 @@
 //!   left out.
 //! - pgsc_calc's zero-match and below-threshold exits become rows, not
 //!   errors.
+//! - A score matched against genotypes that list variants only loses its
+//!   percentile (see [`Genotypes`]): every site such an input leaves out
+//!   adds nothing to the sum, so the sum leans away from the panel's sums.
 //!
 //! The table's columns are [`COLUMNS`], with [`EFFECT_COLUMNS`] before
-//! `Input` when any score has evaluations. Stdout has one line per score,
-//! which the e2e cases read.
+//! `Input` when any score has evaluations, and [`NOTE_COLUMN`] before
+//! `Input` when the genotypes were given (`--target`). Stdout has one line
+//! per score, which the e2e cases read, then the note on a variant-only
+//! input.
 
 use crate::args::{self, Kind, Opt};
 use crate::{basename, finish, float, is_file, join, text_lines, trunc, write_file};
@@ -50,6 +55,11 @@ pub const COLUMNS: [&str; 13] = [
 ];
 /// Written before Input when the score list names PGS Catalog evaluations.
 pub const EFFECT_COLUMNS: [&str; 2] = ["Evaluated_In", "Effect"];
+/// Written before Input when the genotypes pgsc_calc scored were given:
+/// why a score has no percentile when the panel gave it one.
+pub const NOTE_COLUMN: &str = "Percentile_Note";
+/// The note of a percentile withheld for an input that lists variants only.
+pub const WITHHELD: &str = "percentile withheld: the input lists variants only";
 
 /// Sex_Check of a sex-specific score.
 pub const SEX_APPLIES: &str = "applies";
@@ -58,7 +68,7 @@ pub const SEX_NOT_DECLARED: &str = "no sex declared";
 
 const USAGE: &str = "usage: og prs table --sample S --results DIR --sampleset NAME --scores DIR --input-kind {gvcf,vcf}
                     [--panel NAME] [--zero-matches] [--below-threshold LOG] [--sex {,male,female}]
-                    --out F [--ancestry-out F]
+                    [--target VCF] --out F [--ancestry-out F]
 ";
 
 const OPTS: &[Opt] = &[
@@ -71,6 +81,7 @@ const OPTS: &[Opt] = &[
     Opt("--zero-matches", Kind::Flag, false),
     Opt("--below-threshold", Kind::Value, false),
     Opt("--sex", Kind::Choice(&["", "male", "female"]), false),
+    Opt("--target", Kind::Value, false),
     Opt("--out", Kind::Value, true),
     Opt("--ancestry-out", Kind::Value, false),
 ];
@@ -99,11 +110,77 @@ pub struct Inputs<'a> {
     pub sex: &'a str,
     /// pgsc_calc ran with an ancestry panel.
     pub panel: bool,
+    /// The genotypes pgsc_calc scored, when the caller gave them.
+    pub genotypes: Option<Genotypes>,
 }
 
-/// One row of the table: the 15 cells of [`COLUMNS`] with
-/// [`EFFECT_COLUMNS`] before Input.
-pub type TableRow = [String; 15];
+/// One row of the table: the 16 cells of [`COLUMNS`] with
+/// [`EFFECT_COLUMNS`] and [`NOTE_COLUMN`] before Input.
+pub type TableRow = [String; 16];
+
+/// The called genotypes of the file pgsc_calc scored (the score positions,
+/// and with a panel the panel's), and how many of them are reference calls.
+///
+/// pgsc_calc drops a position the file leaves out from the score, so it adds
+/// nothing to the sum, as if no effect allele were there. When the file
+/// lists reference calls (genotypes from a gVCF, or a chip VCF:
+/// scripts/chip-to-vcf.sh writes every probe), a missing position is one
+/// that was not read, and the sum stays comparable. A variant-only VCF lists
+/// none, so every site where the sample matches the reference is missing,
+/// and a reference effect allele carried there adds nothing: its percentile
+/// would sit among the panel's complete genotypes as if it were one of them.
+/// The evidence is in the genotypes themselves, never in the input's name: a
+/// gVCF with no reference blocks over the sites is as blind as a variant-only
+/// VCF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Genotypes {
+    /// Records with a genotype whose every allele is called.
+    pub called: u64,
+    /// Of those, the records whose every allele is the reference (0/0, 0|0, 0).
+    pub hom_ref: u64,
+}
+
+impl Genotypes {
+    /// Counts the first sample's GT of each record of a VCF, gzipped or not.
+    pub fn read(path: &str) -> Result<Self, String> {
+        let mut g = Genotypes::default();
+        let mut lines = text_lines(path)?;
+        let mut line = String::new();
+        while lines
+            .read_line(&mut line)
+            .map_err(|e| format!("{path}: {e}"))?
+        {
+            if line.starts_with('#') {
+                continue;
+            }
+            let f: Vec<&str> = line.trim_end_matches(['\n', '\r']).split('\t').collect();
+            let (Some(format), Some(sample)) = (f.get(8), f.get(9)) else {
+                continue;
+            };
+            let Some(k) = format.split(':').position(|k| k == "GT") else {
+                continue;
+            };
+            let gt = sample.split(':').nth(k).unwrap_or("");
+            let alleles: Vec<&str> = gt.split(['/', '|']).collect();
+            if alleles.iter().any(|a| a.is_empty() || *a == ".") {
+                continue;
+            }
+            g.called += 1;
+            if alleles.iter().all(|a| *a == "0") {
+                g.hom_ref += 1;
+            }
+        }
+        Ok(g)
+    }
+
+    /// Whether the file lists reference calls: at least one called site in
+    /// five is 0/0, the rule step 26b applies to the panel's sites. A gVCF
+    /// or a chip VCF gives most score positions as 0/0; a variant-only VCF
+    /// gives none.
+    pub fn lists_reference(&self) -> bool {
+        self.called > 0 && self.hom_ref.saturating_mul(5) >= self.called
+    }
+}
 
 /// The ancestry rows of step 26: (key, value).
 pub type Ancestry = Vec<(String, String)>;
@@ -463,6 +540,7 @@ pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
         }
     }
     let below = matches!(i.outcome, Outcome::BelowThreshold(_));
+    let variants_only = i.genotypes.is_some_and(|g| !g.lists_reference());
     let mut rows = Vec::with_capacity(totals.len());
     for (pid, (t, label)) in &totals {
         let m = matched.get(pid).copied().unwrap_or(0);
@@ -481,6 +559,14 @@ pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
         // sample in, and only when that group is one the score was evaluated in.
         let g = group.get(pid).map_or("NA", String::as_str);
         let p = pct.get(pid).map_or("NA", String::as_str);
+        // A percentile the panel gave goes when the genotypes list variants
+        // only; the note says why. A score of the other sex has none anyway.
+        let note = if variants_only && p != "NA" && !below && check != SEX_NOT_APPLICABLE {
+            WITHHELD
+        } else {
+            ""
+        };
+        let p = if note.is_empty() { p } else { "NA" };
         let eff = if check == SEX_NOT_APPLICABLE || p == "NA" || below {
             String::new()
         } else {
@@ -498,6 +584,7 @@ pub fn table(i: &Inputs) -> Result<(Vec<TableRow>, Ancestry), String> {
             check.to_owned(),
             evaluated_in.join(";"),
             eff,
+            note.to_owned(),
             i.input_kind.to_owned(),
         ];
         let head: [String; 8] = if below {
@@ -583,6 +670,9 @@ fn line(r: &TableRow) -> String {
     if !r[13].is_empty() {
         extra.push_str(&format!(", effect in that group {}", r[13]));
     }
+    if !r[14].is_empty() {
+        extra.push_str(&format!(", {}", r[14]));
+    }
     if r[3] == "NA" {
         format!(
             "  {} ({}): no sum, under pgsc_calc's minimum overlap ({}% of {} variants matched)",
@@ -611,38 +701,47 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         None if a.flag("--zero-matches") => Outcome::ZeroMatches,
         None => Outcome::Scored,
     };
-    let inputs = Inputs {
-        results: a.text("--results"),
-        sampleset: a.text("--sampleset"),
-        scores: a.text("--scores"),
-        input_kind: a.text("--input-kind"),
-        outcome,
-        sex: a.text("--sex"),
-        panel: !a.text("--panel").is_empty(),
-    };
+    let target = a.get("--target").filter(|t| !t.is_empty());
     let mut run = || -> Result<(), String> {
-        let (rows, ancestry) = table(&inputs)?;
-        // A score list without evaluations gives the table its older columns.
-        let evaluated = rows.iter().any(|r| !r[12].is_empty());
-        let mut body = String::new();
-        let cols: Vec<&str> = if evaluated {
-            COLUMNS[..12]
-                .iter()
-                .chain(&EFFECT_COLUMNS)
-                .chain(&COLUMNS[12..])
-                .copied()
-                .collect()
-        } else {
-            COLUMNS.to_vec()
+        let inputs = Inputs {
+            results: a.text("--results"),
+            sampleset: a.text("--sampleset"),
+            scores: a.text("--scores"),
+            input_kind: a.text("--input-kind"),
+            outcome,
+            sex: a.text("--sex"),
+            panel: !a.text("--panel").is_empty(),
+            genotypes: target.map(Genotypes::read).transpose()?,
         };
+        let (rows, ancestry) = table(&inputs)?;
+        // A score list without evaluations gives the table its older
+        // columns; a call without --target, the columns before the note.
+        let evaluated = rows.iter().any(|r| !r[12].is_empty());
+        let noted = inputs.genotypes.is_some();
+        let keep = |k: usize| match k {
+            12 | 13 => evaluated,
+            14 => noted,
+            _ => true,
+        };
+        let mut body = String::new();
+        let cols: Vec<&str> = COLUMNS[..12]
+            .iter()
+            .chain(&EFFECT_COLUMNS)
+            .chain([&NOTE_COLUMN])
+            .chain(&COLUMNS[12..])
+            .enumerate()
+            .filter(|(k, _)| keep(*k))
+            .map(|(_, c)| *c)
+            .collect();
         body.push_str(&cols.join("\t"));
         body.push('\n');
         for r in &rows {
-            let cells: Vec<&str> = if evaluated {
-                r.iter().map(String::as_str).collect()
-            } else {
-                r[..12].iter().chain(&r[14..]).map(String::as_str).collect()
-            };
+            let cells: Vec<&str> = r
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| keep(*k))
+                .map(|(_, c)| c.as_str())
+                .collect();
             body.push_str(&cells.join("\t"));
             body.push('\n');
         }
@@ -667,6 +766,16 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         }
         for r in &rows {
             writeln!(out, "{}", line(r)).map_err(|e| e.to_string())?;
+        }
+        if let Some(g) = inputs.genotypes.filter(|g| !g.lists_reference()) {
+            writeln!(
+                out,
+                "NOTE: hom-ref sites are absent from this input ({} of {} genotyped positions are \
+                 reference calls), so a missing site adds nothing to the sum and the sums are \
+                 biased; not comparable to published distributions, and no percentile is given",
+                g.hom_ref, g.called
+            )
+            .map_err(|e| e.to_string())?;
         }
         Ok(())
     };

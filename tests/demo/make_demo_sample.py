@@ -1408,8 +1408,9 @@ def vntyper(d):
 def locityper(d, rng):
     """Step 53: what og locityper report writes for a made-up Locityper run
     that called every locus of assets/locityper_loci.bed with two HPRC panel
-    haplotypes, made-up qualities and read counts, and passed the authors'
-    filter (no warning, a weighted distance under 30, few unexplained reads)."""
+    haplotypes, made-up qualities and read counts, no warning and a small
+    weighted distance: the HLA and KIR loci pass the authors' filter, the
+    others (CYP2D6, FCGR) read uncalibrated, as og locityper report says."""
     panel = ["HG00438.1", "HG00733.2", "HG01891.1", "HG02257.2", "NA18906.1", "NA19240.2"]
     out = ["locus\tregion\tstatus\tgenotype\thaplotype_1\thaplotype_2\tquality\ttotal_reads\tunexplained_reads"
            "\tweighted_distance\twarnings\tfilter\treason\n"]
@@ -1422,7 +1423,10 @@ def locityper(d, rng):
             quality, total = round(rng.uniform(25, 60), 1), rng.randint(800, 4000)
             unexpl, dist = rng.randint(0, 30), round(rng.uniform(0.1, 3), 3)
             out.append("\t".join([name, f"{chrom}:{int(start) + 1}-{end}", "called", ",".join(haps), *haps,
-                                  f"{quality:.1f}", str(total), str(unexpl), f"{dist:.3f}", ".", "pass", "."]) + "\n")
+                                  f"{quality:.1f}", str(total), str(unexpl), f"{dist:.3f}", ".",
+                                  *(("pass", ".") if name.startswith(("HLA-", "KIR")) else
+                                    ("uncalibrated", "the authors calibrated this filter on HLA and KIR loci "
+                                                     "only; by its rule alone it passes"))]) + "\n")
     put(os.path.join(d, "locityper", f"{SAMPLE}_locityper.tsv"), "".join(out))
 
 

@@ -16,6 +16,11 @@
 //! 2025, Zenodo 15879519 README): no warning, a weighted distance of 30 or
 //! less, and fewer than 1000 or fewer than 20% unexplained reads.
 //!
+//! The authors calibrated that filter on HLA and KIR loci only. At an HLA
+//! (`HLA-...`) or KIR (`KIR...`) locus the filter reads pass or fail. At any
+//! other locus (CYP2D6, FCGR) it reads "uncalibrated", never a pass, and
+//! the reason says what the rule alone would give there.
+//!
 //! A locus Locityper did not finish is "not called", never a genotype. Exit
 //! 1 only when the BED cannot be read.
 //!
@@ -134,11 +139,34 @@ fn warnings_of(res: &Value) -> Result<Vec<String>, String> {
     }
 }
 
-/// The authors' filter: pass, or fail with the reasons.
+/// The authors' filter: pass, or fail with the reasons; at a locus they
+/// did not calibrate it on, uncalibrated with the reasons the rule alone
+/// gives (none when it would pass).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Filter {
     Pass,
     Fail(Vec<String>),
+    Uncalibrated(Vec<String>),
+}
+
+/// The start of the reason of an uncalibrated locus.
+pub const UNCALIBRATED: &str = "the authors calibrated this filter on HLA and KIR loci only";
+
+/// Whether the authors calibrated their filter on this locus: an HLA gene
+/// (`HLA-DRB1`, `HLA-DQB1`) or the KIR cluster or a KIR gene (`KIR`,
+/// `KIR2DL1`). Their benchmark covered those and nothing else.
+pub fn calibrated(locus: &str) -> bool {
+    locus.starts_with("HLA-") || locus.starts_with("KIR")
+}
+
+/// The filter of `locus`: the authors' rule where they calibrated it,
+/// "uncalibrated" elsewhere.
+fn filter_at(locus: &str, res: &Value, warns: &[String]) -> Filter {
+    match judge(res, warns) {
+        f if calibrated(locus) => f,
+        Filter::Fail(why) | Filter::Uncalibrated(why) => Filter::Uncalibrated(why),
+        Filter::Pass => Filter::Uncalibrated(Vec::new()),
+    }
 }
 
 fn judge(res: &Value, warns: &[String]) -> Filter {
@@ -224,6 +252,17 @@ impl LocusRow {
                 let (f, why) = match filter {
                     Filter::Pass => ("pass", None),
                     Filter::Fail(w) => ("fail", Some(w.join("; "))),
+                    Filter::Uncalibrated(w) if w.is_empty() => (
+                        "uncalibrated",
+                        Some(format!("{UNCALIBRATED}; by its rule alone it passes")),
+                    ),
+                    Filter::Uncalibrated(w) => (
+                        "uncalibrated",
+                        Some(format!(
+                            "{UNCALIBRATED}; by its rule alone it fails: {}",
+                            w.join("; ")
+                        )),
+                    ),
                 };
                 vec![
                     locus.clone(),
@@ -317,7 +356,7 @@ pub fn row_for(name: &str, region: &str, gt_dir: &str, exit_code: i64) -> LocusR
         Ok(w) => w,
         Err(e) => return not_called(format!("res.json.gz cannot be read: {e}")),
     };
-    let filter = judge(&res, &warnings);
+    let filter = filter_at(name, &res, &warnings);
     let get = |k| pycompat::value::get(&res, k).ok().flatten();
     LocusRow::Called {
         locus: name.into(),
@@ -385,8 +424,25 @@ fn report(gt_dir: &str, loci: &str, exit_code: i64, out: &str) -> Outcome {
             )
         })
         .count();
+    let uncalibrated = rows
+        .iter()
+        .filter(|r| {
+            matches!(
+                r,
+                LocusRow::Called {
+                    filter: Filter::Uncalibrated(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    let outside = if uncalibrated > 0 {
+        format!(", {uncalibrated} uncalibrated (outside HLA and KIR)")
+    } else {
+        String::new()
+    };
     Ok(format!(
-        "{called} of {} loci called, {pass} pass the authors' filter\n",
+        "{called} of {} loci called, {pass} pass the authors' filter{outside}\n",
         rows.len()
     ))
 }

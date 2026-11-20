@@ -1,7 +1,10 @@
-# Require owner review for infrastructure and automation changes
+# Routing only: GitHub asks the owner to review a pull request that touches
+# these paths. main takes changes through a pull request whose required
+# checks pass; it needs no approving review, so nothing here blocks a merge.
 .github/            @GeiserX
 versions.env        @GeiserX
 scripts/setup.sh    @GeiserX
 scripts/run-all.sh  @GeiserX
 scripts/validate-setup.sh @GeiserX
 .coderabbit.yaml    @GeiserX
+assets/output_contract.tsv @GeiserX
