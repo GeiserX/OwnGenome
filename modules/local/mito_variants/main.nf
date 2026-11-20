@@ -14,7 +14,8 @@
        the median autosomal depth, read from MOSDEPTH's summary and
        global distribution with the awk of scripts/20-mtoolbox.sh. Without
        mosdepth in --tools the depth is 0 and the filter marks nothing, as
-       step 20 does without step 16b's output.
+       step 20 does without step 16b's output: the task warns, and
+       MITO_VARIANTS_ANNOTATE writes the '# numt' line that says so.
 
     MITO_VARIANTS_ANNOTATE, after it, annotates each call with its ClinVar
     record and gnomAD v3.1's chrM sites (og mito annotate), as step 20's
@@ -93,7 +94,7 @@ process MITO_VARIANTS {
         echo "Median autosomal coverage: \${AUTOSOMAL_COVERAGE} (from \${DEPTH_FILES})"
     else
         AUTOSOMAL_COVERAGE=0
-        echo "mosdepth is not in --tools: NuMTFilterTool runs at depth 0 and marks nothing"
+        echo "WARNING: mosdepth is not in --tools: NuMTFilterTool runs at the default depth 0 and marks nothing" >&2
     fi
     gatk NuMTFilterTool \\
         -R ${reference} \\
@@ -133,7 +134,9 @@ process MITO_VARIANTS {
     it) and gnomAD v3.1's chrM sites (AF_hom, AF_het, max_hl, from
     --gnomad_mito, the file GNOMAD_MITO_URL in versions.env names), into
     <id>_chrM_annotated.tsv. A file not given is named in the table's header
-    and its columns are '.', as step 20 does without it.
+    and its columns are '.', as step 20 does without it. Without mosdepth in
+    --tools MITO_VARIANTS had no autosomal depth for the NuMT filter, so the
+    table gets the '# numt' line (--numt-default), as step 20 writes it.
 
     Equivalent to: stage 6 of scripts/20-mtoolbox.sh
 */
@@ -159,8 +162,10 @@ process MITO_VARIANTS_ANNOTATE {
     script:
     def cv = clinvar ? "--clinvar ${clinvar}" : ''
     def gn = gnomad ? "--gnomad ${gnomad}" : ''
+    // MITO_VARIANTS gets mosdepth's output exactly when mosdepth is in --tools.
+    def numt = (params.tools ?: '').toString().split(',').collect { it.trim() }.contains('mosdepth') ? '' : '--numt-default'
     """
-    og mito annotate --vcf ${vcf} ${cv} ${gn} --out ${meta.id}_chrM_annotated.tsv
+    og mito annotate --vcf ${vcf} ${cv} ${gn} ${numt} --out ${meta.id}_chrM_annotated.tsv
 
     printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
     """
