@@ -240,7 +240,7 @@ Call the sample again with step 3 to get the gVCF. Imputation (step 14) is not n
 - A raw sum is NOT a percentile. Without the panel there is no percentile at all.
 - A percentile is NOT a probability. Being at the 90th percentile does not mean a 90% chance of the condition.
 - They are NOT comparable across conditions.
-- The percentile compares you with the reference samples most similar to you, not with your own family or community. For a group the panel represents poorly, the percentile is less reliable; the ancestry table says when the population match is low-confidence.
+- The percentile compares you with the reference samples most similar to you, not with your own family or community. For a group the panel represents poorly, the percentile is less reliable; the ancestry table says when the population match is low-confidence. When your ancestry sits between two groups (each at a probability of 0.2 or more in [step 26](26-ancestry.md#interpreting-results)), the step prints a note that names both groups and says the percentile ranks you among one of them only, and the report reads the ancestry match as low-confidence. A percentile among a group your ancestry does not match is off: people from a reference group whose mean sits 0.5 standard deviations away from their own get percentiles far from uniform.
 - They are NOT stable across scoring file versions. A new harmonised file is a new baseline.
 
 ## Limitations
@@ -249,6 +249,7 @@ Call the sample again with step 3 to get the gVCF. Imputation (step 14) is not n
 - A score captures only the genetic component. Lifestyle, environment, and family history are often more predictive.
 - Breast cancer and prostate cancer are scored for everyone, but get a percentile only for the sex they were built for, or when no sex was given.
 - The test fixture is a few slices of one genome: its sums, match rates and percentiles show the code paths work, not what a real genome gives. Real percentiles, and the time and memory of the four new scores on a whole genome, have to come from a real run.
+- The percentile itself is pgsc_calc's: `og prs table` reports it and does not compute it. A unit test proves the report keeps it calibrated. It simulates 1,000 people from one group's allele frequencies, ranks each among 2,000 reference people of the group the way pgsc_calc does (scipy's `percentileofscore`), and requires the percentiles `og prs table` reports to be uniform (Kolmogorov-Smirnov p > 0.01). The same people against a reference moved by 0.5 standard deviations must fail that check. The test does not prove that pgsc_calc's own percentile is calibrated on a real panel.
 - Chip data matches far fewer score variants than a genome; most scores then fall under pgsc_calc's 75% match rate and get no sum (see [Using chip data](chip-data-guide.md)).
 
 ## Notes
