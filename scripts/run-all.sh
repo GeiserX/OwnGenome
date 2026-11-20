@@ -132,6 +132,8 @@ fi
 mkdir -p "${S}/nextflow" "$LOG_DIR"
 GENOME_DIR="$G" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || echo "WARNING: could not write ${S}/run_manifest.tsv"
 STATUS="${LOG_DIR}/run_status.tsv"  # bin/collect_summary.py marks results older than this run stale
+# EVERYTHING=true can still refuse before Nextflow: keep the last run's status to put back then.
+[ -z "$EV" ] || [ ! -f "$STATUS" ] || cp "$STATUS" "${STATUS}.prev"
 printf '# run-all.sh: when this run started and how each step ended\nmeta\tstarted_epoch\t%s\nmeta\tstarted_utc\t%s\nmeta\tdeclared_sex\t%s\nmeta\tcommand\t%s\nmeta\tswitches\t%s\n' \
   "$(date +%s)" "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" "$SEX" "$RERUN_CMD" "${SWITCHES[*]}" > "$STATUS"
 # As run-all.sh ends, however it ends: a step still 'planned' did not finish, and the time is recorded
@@ -340,10 +342,17 @@ case "$LD" in /*) ;; *) LD="${G}/${LD}" ;; esac
 if [[ ",${T// /}," == *",locityper,"* ]]; then plan "53 Hard loci (Locityper)" locityper "$(if [ -z "$NOBAM" ]; then echo 'no BAM'; else need "${LD}/DONE"; fi)" \
   && NF+=(--locityper_data "$LD") && { [ -z "${LOCITYPER_BG_REGION:-}" ] || NF+=(--locityper_bg_region "$LOCITYPER_BG_REGION"); } || true; else KNOWN+=" locityper"; fi
 for t in ${T//,/ }; do [[ "${KNOWN} " == *" ${t} "* ]] || { echo "ERROR: unknown step '${t}' in TOOLS. Known:${KNOWN}" >&2; exit 2; }; done
+# Step 4b (GRIDSS=true) runs after the pipeline, and GRIDSS needs the classic BWA index beside the reference, which
+# setup.sh does not build: check it now, so the run stops here and not after hours of pipeline.
+if [ -n "$EV" ] && [ -n "$NOBAM" ]; then for e in amb ann bwt pac sa; do [ -f "${REF_FASTA}.${e}" ] || {
+  EVMISS+=("04b GRIDSS (GRIDSS=true): classic BWA index not installed: ${REF_FASTA#"$G"/}.${e}; install: bwa index (docs/04b-gridss.md)"); break; }; done; fi
 if [ "${#EVMISS[@]}" -gt 0 ]; then
-  { echo "ERROR: EVERYTHING=true runs every optional step, and ${#EVMISS[@]} cannot run (nothing started):"; printf '  %s\n' "${EVMISS[@]}"
-    echo "Install what is missing, or run without EVERYTHING=true to skip them."; } >&2; exit 2
+  { echo "ERROR: EVERYTHING=true runs every optional step, and ${#EVMISS[@]} cannot run (Nextflow did not start):"; printf '  %s\n' "${EVMISS[@]}"
+    echo "Install what is missing, or run without EVERYTHING=true to skip them."; } >&2
+  # Nothing ran: the last run's status stays as it was (or there is none), and no run-finished event goes out.
+  trap - EXIT; if [ -f "${STATUS}.prev" ]; then mv "${STATUS}.prev" "$STATUS"; else rm -f "$STATUS"; fi; exit 2
 fi
+rm -f "${STATUS}.prev"
 arg --cytoband "$(data_file cytoband || true)"; ! GEX=$(data_file gencode_exons) || NF+=(--gencode_exons "$GEX"); arg --delly_exclude "$(data_file delly_exclude || true)"; arg --manta_call_regions "${MANTA_CALL_REGIONS:-}"
 # Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): ClinVar with its index, and gnomAD's chrM sites.
 MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; then NF+=(--mito_clinvar "$MC"); fi; arg --gnomad_mito "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"

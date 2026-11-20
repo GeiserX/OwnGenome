@@ -5,7 +5,10 @@
 #                 --tools and listed as runs, with --kir true and --hla_qc
 #                 true, and the scripts of TIDDIT, GRIDSS, IMPUTATION, SOMATIC,
 #                 every EXTRA_CALLERS and BENCHMARK run after the pipeline
-#   no Yleaf      exit 2 before Nextflow, naming setup.sh --yleaf-data
+#   no Yleaf      exit 2 before Nextflow, naming setup.sh --yleaf-data, and
+#                 the last run's logs/run_status.tsv is left as it was
+#   no BWA index  exit 2 before Nextflow, naming the classic BWA index that
+#                 script 04b (GRIDSS) needs and bwa index
 #   female        still runs; the two Y steps are skipped (female sample)
 #   not HiFi      a BAM whose read groups are not PL:PACBIO skips Paraphase
 #                 and the run goes on
@@ -45,6 +48,9 @@ f "hla/IPD-IMGT-HLA_${HLA}/hla.dat" "reference/gencode.v${GC}.basic.genes.gtf" "
   "reference/ancient/aadr_${AADR_VERSION}/DONE" "reference/viral-${VIRAL_REF_VERSION}/viral_genomes.fa" \
   "reference/megane/GRCh38_no_alt_analysis_set.mk" "reference/megane/GRCh38_no_alt_analysis_set.mi" \
   "reference/mocha-${MOCHA_PANEL_VERSION}/DONE" "reference/locityper-${LOCITYPER_PANEL_VERSION}/DONE"
+# GRIDSS (script 04b) reads the classic BWA index beside the reference.
+BWAX="amb ann bwt pac sa"
+for e in $BWAX; do f "reference/GRCh38_no_alt_analysis_set.fasta.${e}"; done
 # Cyrius counts as installed when its stamp names this lock file and image (setup.sh --cyrius).
 if command -v sha256sum > /dev/null 2>&1; then LOCK=$(sha256sum "${SCRIPTS}/cyrius-constraints.txt"); else LOCK=$(shasum -a 256 "${SCRIPTS}/cyrius-constraints.txt"); fi
 mkdir -p "${G}/tools/cyrius-${CYRIUS_VERSION}"
@@ -78,10 +84,14 @@ if grep -qE $'^meta\tcommand\t.*TOOLS=' "$STATUS"; then fail "the recorded comma
 # Without Yleaf's tables: exit 2 before Nextflow, naming the install command.
 mv "${G}/reference/yleaf-${YLEAF_DATA_VERSION}" "${CASE_WORK}/yleaf-away"
 n=$(nfcalls)
+cp "$STATUS" "${CASE_WORK}/status-before"
 run_expect 2 no-yleaf env EVERYTHING=true "${SCRIPTS}/run-all.sh" sample1 male
 [ "$(nfcalls)" -eq "$n" ] || fail "nextflow started without Yleaf's tables"
-output_has no-yleaf 'ERROR: EVERYTHING=true runs every optional step, and 1 cannot run'
+output_has no-yleaf 'ERROR: EVERYTHING=true runs every optional step, and 1 cannot run \(Nextflow did not start\)'
 output_has no-yleaf '^  37 Y haplogroup \(Yleaf\): data not installed: reference/yleaf-.*; install: setup.sh --yleaf-data$'
+cmp -s "${CASE_WORK}/status-before" "$STATUS" || fail "a refused EVERYTHING=true run changed the last run's status:
+$(diff "${CASE_WORK}/status-before" "$STATUS")"
+[ ! -e "${STATUS}.prev" ] || fail "a refused EVERYTHING=true run left ${STATUS}.prev behind"
 
 # A female sample still runs without them: the Y steps are skipped for the sample, not for want of data.
 run_rc female env EVERYTHING=true IMPUTATION=true "${SCRIPTS}/run-all.sh" sample1 female
@@ -90,6 +100,13 @@ output_has female '^  37 Y haplogroup \(Yleaf\) +skipped +\(female sample: no Y 
 output_has female '^  45 Y-STR markers \(HipSTR\) +skipped +\(female sample: no Y chromosome\)$'
 if tools_arg | grep -qE '^y_(haplogroup|str)$'; then fail "a Y step reached --tools for a female sample: $(last)"; fi
 mv "${CASE_WORK}/yleaf-away" "${G}/reference/yleaf-${YLEAF_DATA_VERSION}"
+
+# Without the classic BWA index: GRIDSS (script 04b, after the pipeline) would fail hours in, so the run stops first.
+for e in $BWAX; do mv "${G}/reference/GRCh38_no_alt_analysis_set.fasta.${e}" "${CASE_WORK}/"; done
+run_expect 2 no-bwa env EVERYTHING=true "${SCRIPTS}/run-all.sh" sample1 male
+[ "$(nfcalls)" -eq $((n + 1)) ] || fail "nextflow started without the classic BWA index"
+output_has no-bwa '^  04b GRIDSS \(GRIDSS=true\): classic BWA index not installed: reference/GRCh38_no_alt_analysis_set\.fasta\.amb; install: bwa index \(docs/04b-gridss\.md\)$'
+for e in $BWAX; do mv "${CASE_WORK}/GRCh38_no_alt_analysis_set.fasta.${e}" "${G}/reference/"; done
 
 # A BAM that is not PacBio HiFi: og paraphase check-bam exits 3, and step 35b is a skip, not a stop.
 cat > "${CASE_WORK}/not-hifi" <<'HOOK'
