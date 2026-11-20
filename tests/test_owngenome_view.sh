@@ -12,8 +12,9 @@
 #   3. it picks Manta's diploid SVs before step 22's consensus;
 #   4. the server answers on 127.0.0.1, and refuses a foreign Host and a
 #      request a proxy forwarded (403);
-#   5. a reversed locus stops it with exit 2 before it serves;
-#   6. it needs no python3: every run has a python3 that fails first on PATH.
+#   5. it logs each request on stderr and closes each connection;
+#   6. a reversed locus stops it with exit 2 before it serves;
+#   7. it needs no python3: every run has a python3 that fails first on PATH.
 # Needs curl and the network once (igv.js). Without og the test is skipped
 # with a note; with OG_REQUIRED set, the skip is a failure.
 set -euo pipefail
@@ -107,6 +108,32 @@ status() {
 status "the page is served" 200 "${base}/"
 status "a foreign Host is refused" 403 -H 'Host: attacker.example' "${base}/config.json"
 status "a forwarded request is refused" 403 -H 'X-Forwarded-For: 203.0.113.9' "${base}/config.json"
+
+# --- 4b. it logs each request and closes each connection ----------------------------------
+# A handler that blocks on the log keeps its socket open: the client still
+# gets the answer (Content-Length), but the server runs out of descriptors.
+logged=""
+for _ in $(seq 1 20); do
+  if grep -qF '"GET /config.json HTTP/1.1" 200 -' "${WORK}/server.log"; then logged=1; break; fi
+  sleep 0.5
+done
+if [ -n "$logged" ]; then pass "each request is logged on stderr"; else
+  fail "no request was logged: $(cat "${WORK}/server.log")"
+fi
+closed=""
+if exec 3<> "/dev/tcp/127.0.0.1/${PORT}"; then
+  printf 'GET /config.json HTTP/1.1\r\nHost: 127.0.0.1:%s\r\n\r\n' "$PORT" >&3
+  # Read to the end of the stream, at most 10 s. A timeout ends the loop too
+  # (and with status 1 when a partial line was read, on some bash), so the
+  # time it took is what tells the two apart.
+  start=$SECONDS
+  while IFS= read -r -t 10 _ <&3; do :; done
+  [ $((SECONDS - start)) -lt 9 ] && closed=1
+  exec 3<&-
+fi
+if [ -n "$closed" ]; then pass "the server closes the connection after the answer"; else
+  fail "the connection was still open 10 s after the answer"
+fi
 kill "$SERVER" 2> /dev/null || true
 wait "$SERVER" 2> /dev/null || true
 SERVER=""

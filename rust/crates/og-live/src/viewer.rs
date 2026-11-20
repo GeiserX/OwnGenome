@@ -36,8 +36,8 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -897,11 +897,24 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     );
     let _ = writeln!(out, "Press Ctrl-C to stop it.");
     let _ = out.flush();
+    // The request log goes through `err`, which the caller may hold locked
+    // (og's main holds stderr's lock while a verb runs). A handler thread
+    // that wrote to stderr itself would wait on that lock forever, before it
+    // closes its connection. So the handlers send their lines here, and
+    // this thread, the one that owns `err`, writes them.
+    let (tx, rx) = mpsc::channel::<String>();
     let shared = Arc::new(Shared {
         routes: routes(&cfg, assets, igv_js),
-        log: Some(Box::new(|line: &str| eprintln!("{line}"))),
+        log: Some(Box::new(move |line: &str| {
+            let _ = tx.send(line.to_owned());
+        })),
     });
-    serve(listener, shared, Arc::new(AtomicBool::new(false)));
+    let server = thread::spawn(move || serve(listener, shared, Arc::new(AtomicBool::new(false))));
+    for line in rx {
+        let _ = writeln!(err, "{line}");
+        let _ = err.flush();
+    }
+    let _ = server.join();
     0
 }
 

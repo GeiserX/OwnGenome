@@ -6,9 +6,9 @@ bin/owngenome_live_viewer.py, imports are kept: sample_files, build_config,
 send_file and LIVE_CSP, and what they call. That plugin, and this file with
 it, go when the live site's server moves to og.
 
-The local viewer (og) picks Manta's diploid SVs before step 22's consensus
-and refuses a reversed locus. The live site's viewer keeps step 22's
-consensus first until then; it never takes a locus from the command line.
+Both viewers pick Manta's diploid SVs before step 22's consensus. The local
+viewer (og) also refuses a reversed locus; the live site's viewer never takes
+a locus from the command line.
 """
 
 import os
@@ -68,7 +68,7 @@ def sample_files(sample_dir, sample):
         return next((p for p in (os.path.join(sample_dir, n) for n in names) if os.path.isfile(p)), None)
     return (first(f"aligned/{sample}_sorted.bam", f"aligned/{sample}_sorted.cram"),
             first(f"vcf/{sample}.vcf.gz"),
-            first(f"sv_merged/{sample}_sv_consensus.vcf.gz", "manta/results/variants/diploidSV.vcf.gz"))
+            first("manta/results/variants/diploidSV.vcf.gz", f"sv_merged/{sample}_sv_consensus.vcf.gz"))
 
 
 def build_config(sample, fasta, reads=None, vcf=None, sv_vcf=None, locus=None):
