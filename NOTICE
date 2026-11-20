@@ -1,0 +1,95 @@
+OwnGenome
+=========
+
+OwnGenome is free software under the GNU General Public License, version 3
+or (at your option) any later version (GPL-3.0-or-later). The full text is
+in LICENSE.
+
+Third-party data
+----------------
+
+The repository ships some data that comes, in whole or in part, from third
+parties. Each file below names its source in its own header, or in the file
+named beside it. assets/SOURCES.tsv records the source, version, licence and
+header of every data file the repository ships; `og dev licences check`, run
+by the Lint workflow, fails when a file under assets/ has no row there, when
+a file lacks the header its row names, or when this file does not name a
+third-party row. The licence texts these sources ask us to keep are in
+assets/licences/.
+
+assets/acmg_sf.tsv
+    ACMG SF v3.3 secondary-findings genes: Lee et al., Genet Med
+    2025;27(8):101454, doi:10.1016/j.gim.2025.101454, Table 1. The gene list
+    is facts; the table_text column holds short cited quotations of a
+    factual reporting rule.
+
+assets/bloodtype_markers.tsv
+    Blood-group variants as packaged by RBCeq2 2.4.4 (database v2.5.1),
+    Copyright 2025 Australian Red Cross Lifeblood, MIT licence
+    (assets/licences/RBCeq2-LICENSE.txt). Names follow the ISBT nomenclature.
+
+assets/callability_genes.tsv
+    NIST Genome in a Bottle CMRG v1.00 and GRCh38 stratifications v3.6, not
+    subject to US copyright (assets/licences/NIST-GIAB-NOTICE.txt);
+    GENCODE 50, open access.
+
+assets/carrier_genes.tsv
+    Gene spans from GENCODE release 50, open access. Gene lists from Gregg et
+    al., Genet Med 2021, ACOG Committee Opinions 690 and 691, and Orphadata
+    (en_product6 and en_product9_ages of 2026-06-23), CC BY 4.0,
+    https://www.orphadata.com.
+
+assets/chip_genes_grch38.bed
+    Gene records of GENCODE release 50, open access, no restriction on use.
+
+assets/licences/
+    The licence texts of the sources in this list, each under its own terms.
+
+assets/locityper_loci.bed
+    Timofey Prodanov, Locityper loci database,
+    https://doi.org/10.5281/zenodo.15879519, CC BY 4.0. Changed: six loci
+    kept, two joined.
+
+assets/ownhealth/genome-facts.v1.json
+assets/ownhealth/sensitive_genes.tsv
+    Copied byte for byte from OwnHealth, https://github.com/GeiserX/OwnHealth,
+    under its licence, AGPL-3.0 (assets/ownhealth/VENDORED.tsv names the
+    commit and the sha256 of each file).
+
+assets/par_grch38.bed
+    The GRCh38 pseudoautosomal regions of the Genome Reference Consortium,
+    https://www.ncbi.nlm.nih.gov/grc/human (docs/03-variant-calling.md). The
+    file has no header because its readers take every line as an interval.
+
+assets/parascopy_models_v1.7.txt
+    Timofey Prodanov, Parascopy precomputed data,
+    https://doi.org/10.5281/zenodo.15019940, CC BY 4.0. Changed: only the
+    model regions are kept, one per line, overlapping copies merged.
+
+assets/reference/cytoBand.hg38.txt
+    UCSC Genome Browser chromosome bands for hg38, freely usable for any
+    purpose. Credit: the UCSC Genome Browser Group, University of
+    California, Santa Cruz (assets/reference/README.md).
+
+assets/sv_rule_regions.tsv
+    TRExplorer catalog, Copyright (c) 2024 Broad Institute, MIT licence
+    (assets/licences/TRExplorer-LICENSE.txt); GENCODE, open access; HGNC and
+    NCBI assembly regions, no restriction on use.
+
+assets/ystr_panel.tsv
+    The marker order, names and panels of FamilyTreeDNA's Y-111 test,
+    reproduced only so that counts line up with FamilyTreeDNA results; no
+    FamilyTreeDNA text is copied. FamilyTreeDNA is a trademark of Gene by
+    Gene, Ltd., which does not endorse this table. Regions from
+    HipSTR-references (MIT); motifs from NIST STRBase.
+
+tests/fixtures/consumer_export/sites.tsv.gz
+    23andMe v5 site list from 23andme2vcf, Copyright (c) 2015 Rob Long, MIT
+    licence (assets/licences/23andme2vcf-LICENSE.txt); NCBI dbSNP b157, no
+    restriction on use (tests/fixtures/consumer_export/README.md).
+
+The og binaries
+---------------
+
+The og binaries also link third-party code. Each release ships their notices
+in THIRD-PARTY-LICENSES.txt, written by `og dev licences notices`.
