@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 # og-leg: OG_REQUIRED
 """og family (step 38 and the Nextflow FAMILY workflow) on synthetic
-pedigrees, somalier tables and joint VCFs, and the pedigree rules other
-Python tools still import from bin/family_report.py.
-
-Without og (OG unset) only check 2 runs, on bin/family_report.py.
-With OG naming the og binary, every check runs.
+pedigrees, somalier tables and joint VCFs. With OG naming the og binary,
+every check runs; without it none does.
 
 Checks:
   1. prepare: a trio with a grandparent named but not sequenced writes
@@ -14,8 +11,8 @@ Checks:
      (no header, an unknown column, a female father, a person who is their
      own parent, a loop, a second row, a sex the samplesheet contradicts, a
      gVCF whose sample is another, fewer than two sequenced samples);
-  2. the expected relatedness of parent and child, full and half siblings,
-     grandparent, first cousins and partners;
+  2. (the expected relatedness of each relation is og-pedigree's cargo test
+     expected_relatedness);
   3. check: somalier numbers that fit the trio pass; the same numbers with
      two names swapped in the pedigree exit 1 and name the pair; too few
      sites is not_checked, not a pass and not a stop; a first-degree pair
@@ -32,6 +29,7 @@ Checks:
 Run: OG=rust/target/release/og python3 tests/test_family_report.py
 """
 import gzip
+import json
 import os
 import subprocess
 import sys
@@ -40,8 +38,6 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OG = os.environ.get("OG", "")
 PAR = os.path.join(REPO, "assets", "par_grch38.bed")
-sys.path.insert(0, os.path.join(REPO, "bin"))
-import family_report as fr  # noqa: E402
 
 FAILS = []
 
@@ -140,25 +136,6 @@ def test_prepare():
                       "--gvcf", "kid=" + gvcf(d, "a.g.vcf.gz", "kid"), "--gvcf", "dad=" + gvcf(d, "b.g.vcf.gz", "HG003"))
         check("prepare stops on a gVCF whose sample is another, with the rename command",
               rc == 2 and "holds the sample HG003, not 'dad'" in out and "bcftools reheader" in out, out)
-
-
-def test_kinship():
-    ped = {
-        "gp": (None, None), "gm": (None, None),
-        "f": ("gp", "gm"), "u": ("gp", "gm"), "m": (None, None), "w": (None, None),
-        "a": ("f", "m"), "b": ("f", "m"), "h": ("f", "w"), "c": ("u", "w2"), "w2": (None, None),
-    }
-    members = {k: {"father": v[0], "mother": v[1], "sex": None, "partner": None} for k, v in ped.items()}
-    members["m"]["partner"] = "f"
-    phi = fr.kinship_table(members)
-    cases = [("a", "f", 0.5, "parent-child"), ("a", "b", 0.5, "full siblings"), ("a", "h", 0.25, "half siblings"),
-             ("a", "gp", 0.25, "second degree"), ("a", "c", 0.125, "third degree"), ("f", "m", 0.0, "partners"),
-             ("m", "w", 0.0, "unrelated")]
-    for x, y, want, label in cases:
-        got = 2 * phi(x, y)
-        lab = fr.declared_relationship(x, y, members, got)
-        check("expected relatedness of %s and %s is %.3f, %s (got %.3f, %s)" % (x, y, want, label, got, lab),
-              abs(got - want) < 1e-9 and lab == label)
 
 
 PAIRS_HEAD = ("#sample_a\tsample_b\trelatedness\tibs0\tibs2\tconcordance\thets_a\thets_b\thets_ab\tshared_hets"
@@ -413,11 +390,11 @@ def test_families_file():
                   rc == 0 and [r["sample"] for r in rows] == want, out + str(rows))
             check("%s's pedigree has the pedigree columns, no family column" % fam,
                   rows and list(rows[0]) == ["sample", "sex", "father", "mother", "partner"], str(rows[:1]))
-        rows, errors = fr.read_pedigree(os.path.join(d, "family_a", "pedigree.tsv"))
-        members, more = fr.build_members(rows, {}, "x")
-        check("the written pedigree reads back: child_a's parents are father_a and mother_a",
-              not errors + more and (members["child_a"]["father"], members["child_a"]["mother"]) == ("father_a", "mother_a"),
-              str(errors + more))
+        p = subprocess.run([OG, "live", "family", "state", os.path.join(d, "family_a")], capture_output=True, text=True)
+        st = json.loads(p.stdout) if p.returncode == 0 else {}
+        kid = next((m for m in st.get("members") or [] if m["sample"] == "child_a"), {})
+        check("the written pedigree reads back (og live family state): child_a's parents are father_a and mother_a",
+              "error" not in st and (kid.get("father"), kid.get("mother")) == ("father_a", "mother_a"), p.stdout + p.stderr)
 
         # a file without the column gives the same members.tsv as before the column existed
         args = ["prepare", "--pedigree", os.path.join(REPO, "assets", "pedigree.example.tsv"), "--out-dir",
@@ -560,10 +537,9 @@ def test_plan():
 
 
 if __name__ == "__main__":
-    test_kinship()
     if not OG:
-        print("skip: OG is not set (OG=rust/target/release/og): only the kinship check ran")
-        sys.exit(1 if FAILS or os.environ.get("OG_REQUIRED") else 0)
+        print("skip: OG is not set (OG=rust/target/release/og): no check ran")
+        sys.exit(1 if os.environ.get("OG_REQUIRED") else 0)
     test_prepare()
     test_check()
     test_report()
