@@ -516,6 +516,8 @@ mei-report	no-chrom-line	mei/nochrom.vcf,mei/sites.tsv,mei/depth.tsv	--sample S 
 mei-report	not-megane	mei/not-megane.vcf,mei/sites.tsv,mei/depth.tsv	--sample S --vcf not-megane.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
 mei-report	bad-depth	mei/fktn.vcf,mei/sites.tsv,mei/depth-bad.tsv	--sample S --vcf fktn.vcf --sites sites.tsv --depth depth-bad.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
 mei-report	bad-catalog	mei/fktn.vcf,mei/sites-bad.tsv,mei/depth.tsv	--sample S --vcf fktn.vcf --sites sites-bad.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	-	bytes	PYTHON_IMAGE
+mei-report	filtered	gen:mei-filtered.sh,mei/sites.tsv,mei/depth.tsv	--sample S --vcf filtered.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
+mei-report	filtered-pass	gen:mei-filtered.sh,mei/sites.tsv,mei/depth.tsv	--sample S --vcf filtered-pass.vcf --sites sites.tsv --depth depth.tsv --out-calls c.tsv --out-sites s.tsv	c.tsv,s.tsv	bytes	PYTHON_IMAGE
 mei-annotsv-input	calls	mei/classes.vcf	--sample S --vcf classes.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
 mei-annotsv-input	annotsv-ids	mei/fktn.vcf	--sample S --vcf fktn.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
 mei-annotsv-input	empty	mei/empty.vcf	--sample S --vcf empty.vcf --out in.vcf	in.vcf	bytes	PYTHON_IMAGE
