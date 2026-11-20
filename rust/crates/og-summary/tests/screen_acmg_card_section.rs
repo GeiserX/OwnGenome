@@ -24,10 +24,7 @@ fn repo() -> PathBuf {
 }
 
 fn scratch(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "og-screen-acmg-{name}-{}",
-        std::process::id()
-    ));
+    let d = std::env::temp_dir().join(format!("og-screen-acmg-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -151,16 +148,21 @@ fn a_run_without_step_23_gets_the_card_from_the_clinvar_hits() {
     assert_eq!(at(card, &["high_impact_checked"]), &Value::Bool(false));
     let note = s(at(card, &["high_impact_note"]));
     assert!(
-        note.starts_with("Rare HIGH-impact variants were not screened: step 23 (clinical filter) did not run")
-            && note.contains("not in ClinVar"),
+        note.starts_with(
+            "Rare HIGH-impact variants were not screened: step 23 (clinical filter) did not run"
+        ) && note.contains("not in ClinVar"),
         "{note}"
     );
 
     // The run status gives step 23's reason; a failed step 23 is named.
-    let skip = "skipped (needs VEP, data not installed: vep_cache/homo_sapiens/116_GRCh38/info.txt)";
+    let skip =
+        "skipped (needs VEP, data not installed: vep_cache/homo_sapiens/116_GRCh38/info.txt)";
     for (word, want) in [
         (skip, format!("step 23 (clinical filter) was {skip}")),
-        ("failed (exit 1)", "step 23 (clinical filter) failed (exit 1)".to_owned()),
+        (
+            "failed (exit 1)",
+            "step 23 (clinical filter) failed (exit 1)".to_owned(),
+        ),
     ] {
         put(
             &sd.join("logs/run_status.tsv"),
@@ -193,9 +195,14 @@ fn the_section_follows_step_06_and_is_never_a_not_run_line_of_its_own() {
         Value::Array(a) => a.iter().map(s).collect(),
         x => panic!("{x:?}"),
     };
-    assert!(not_run.contains(&"ClinVar screen (step 06 failed)"), "{not_run:?}");
     assert!(
-        !not_run.iter().any(|l| l.starts_with("ACMG secondary findings")),
+        not_run.contains(&"ClinVar screen (step 06 failed)"),
+        "{not_run:?}"
+    );
+    assert!(
+        !not_run
+            .iter()
+            .any(|l| l.starts_with("ACMG secondary findings")),
         "{not_run:?}"
     );
 }
@@ -211,7 +218,11 @@ fn parity_folders(d: &Path) -> PathBuf {
         .expect("bash runs");
     assert!(st.success(), "{} failed", script.display());
     for f in ["cb_vep.vcf.gz", "cb_vep.vcf.gz.tbi"] {
-        std::fs::copy(repo().join("tests/parity/inputs/summary-collect").join(f), d.join(f)).unwrap();
+        std::fs::copy(
+            repo().join("tests/parity/inputs/summary-collect").join(f),
+            d.join(f),
+        )
+        .unwrap();
     }
     d.join("assets")
 }
@@ -241,7 +252,9 @@ fn agreement(with: &Value, without: &Value) -> Vec<String> {
     // (a) every ClinVar row without VEP, unchanged with VEP.
     for r in &without_cv {
         if !with_cv.contains(r) {
-            bad.push(format!("(a) ClinVar row without VEP not in the card with VEP: {r:?}"));
+            bad.push(format!(
+                "(a) ClinVar row without VEP not in the card with VEP: {r:?}"
+            ));
         }
     }
     // (a') a ClinVar row only with VEP is one (c) explains.
@@ -250,8 +263,10 @@ fn agreement(with: &Value, without: &Value) -> Vec<String> {
         .flat_map(|l| rows(with, l))
         .map(|r| gene_variant(&r))
         .collect();
-    let not_without: Vec<(String, String)> =
-        rows(without, "not_reported").iter().map(gene_variant).collect();
+    let not_without: Vec<(String, String)> = rows(without, "not_reported")
+        .iter()
+        .map(gene_variant)
+        .collect();
     for r in &with_cv {
         if !without_cv.contains(r) {
             let gv = gene_variant(r);
@@ -259,7 +274,9 @@ fn agreement(with: &Value, without: &Value) -> Vec<String> {
             // A row whose fields grew (a two-hit line) is the same row.
             let same = without_cv.iter().any(|w| gene_variant(w) == gv);
             if !(moved || same) {
-                bad.push(format!("(a) ClinVar row only with VEP, not explained: {r:?}"));
+                bad.push(format!(
+                    "(a) ClinVar row only with VEP, not explained: {r:?}"
+                ));
             }
         }
     }
@@ -281,7 +298,9 @@ fn agreement(with: &Value, without: &Value) -> Vec<String> {
         let stays = not_with.contains(&r);
         let joined = reported_with.contains(&gv) && high_genes.contains(&gv.0);
         if !(stays || joined) {
-            bad.push(format!("(c) not reported without VEP, neither kept nor joined: {r:?}"));
+            bad.push(format!(
+                "(c) not reported without VEP, neither kept nor joined: {r:?}"
+            ));
         }
     }
     bad
@@ -313,7 +332,11 @@ fn without_the_clinical_vcf_the_card_loses_only_what_the_high_impact_source_brin
             continue;
         }
         let (w, n) = (at(wsec, &["data"]), at(nsec, &["data"]));
-        assert_eq!(at(n, &["high_impact_checked"]), &Value::Bool(false), "{name}");
+        assert_eq!(
+            at(n, &["high_impact_checked"]),
+            &Value::Bool(false),
+            "{name}"
+        );
         assert!(
             s(at(n, &["high_impact_note"])).contains("did not run")
                 || s(at(n, &["high_impact_note"])).contains("wrote no clinical VCF"),

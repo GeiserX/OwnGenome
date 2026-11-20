@@ -88,9 +88,10 @@ impl AcmgCard {
             Some(Err(e)) => (None, Some(NoHighImpact::Unreadable(e.clone()))),
             None => (
                 None,
-                Some(i.step23.map_or(NoHighImpact::NotRun, |r| {
-                    NoHighImpact::Step23(r.to_owned())
-                })),
+                Some(
+                    i.step23
+                        .map_or(NoHighImpact::NotRun, |r| NoHighImpact::Step23(r.to_owned())),
+                ),
             ),
         };
         let mut v = acmg::acmg_sf(&acmg::Inputs {
