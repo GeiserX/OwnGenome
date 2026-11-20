@@ -51,6 +51,10 @@ mkdir -p "$OUTPUT_DIR"
 # more only, the bases at 10x or more per gene (the same command as the
 # MOSDEPTH module). The genes with no position on chr1-22, X or Y (ALT-only)
 # are left out of the BED; the report reads them from the table.
+# No --fast-mode here: without it mosdepth counts the bases where the two mates
+# of a pair overlap once, not twice, and does not count the bases of a deletion
+# in the CIGAR. With it, a short-insert pair or a deletion lifts bases to 10x
+# that fewer than 10 fragments read, and a gene reads as read when it was not.
 callability_pass() {
   local work="${OUTPUT_DIR}/callability.part"
   rm -rf "$work"
@@ -63,7 +67,6 @@ callability_pass() {
     mosdepth \
       --by "/genome/${SAMPLE}/mosdepth/callability.part/genes.bed" \
       --mapq 20 \
-      --fast-mode \
       --no-per-base \
       --threads "${THREADS}" \
       --thresholds 10 \
@@ -92,7 +95,8 @@ fi
 # mosdepth flags:
 #   --by 500        Window size for per-region coverage (500bp bins; WGS default)
 #   --by <BED>      Capture BED for on-target coverage (WES; set CAPTURE_BED env var)
-#   --fast-mode     Use faster algorithm (does NOT skip per-base output by itself)
+#   --fast-mode     Skip the CIGAR and the mate-overlap correction: faster, and fine
+#                   for these depth summaries (the gene pass above runs without it)
 #   --no-per-base   Omit the large per-base BED (saves ~3-5 GB per WGS sample)
 #   --threads       Decompression threads (mosdepth uses 1 main + N decompression)
 #   --thresholds    Report fraction of bases at these coverage thresholds
