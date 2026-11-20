@@ -283,7 +283,7 @@ report_problems() {
     || { echo "og report render failed"; return; }
   # The block's rows as GENE<TAB>TEXT.
   sed -n '/^## PGx copy number$/,/^$/p' "${d}/report.txt" | sed -n 's/^  \([^ ]*\)  *\(.*\)$/\1\t\2/p' > "${d}/block.tsv"
-  ! grep -F 'could not be read' "${d}/report.txt"
+  grep -qF 'could not be read' "${d}/report.txt" && echo "a report section could not be read"
   cut -f1 "${d}/block.tsv" | sort | uniq -c | awk '$1 > 1 { print $2 ": " $1 " rows in the copy-number block" }'
   while IFS= read -r g; do
     if [ "$g" = GSTT1 ]; then

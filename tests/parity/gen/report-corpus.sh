@@ -543,6 +543,7 @@ smut consumer-reasons '.sections.consumer_export.data.no_call_reasons = {"zeta":
   | .sections.consumer_export.data.from_reference_blocks = 1234 | .sections.consumer_export.data.file_ancestrydna = "S_ancestry.txt"'
 smut consumer-stale '.sections.consumer_export.state = "stale" | .sections.consumer_export.note = "older export"
   | .sections.consumer_export.data.no_call_reasons = {} | .sections.consumer_export.data.sites = 0'
+# shellcheck disable=SC2016  # jq's $k, not the shell's
 smut sv-stale 'reduce ("manta", "delly", "sv_consensus", "annotsv") as $k (.; .sections[$k].state = "stale"
   | .sections[$k].note = "why: <b>&'"'"'\"")'
 smut sv-mixed '.sections.manta.state = "failed" | .sections.manta.note = "manta failed" | .sections.delly.state = "missing"
