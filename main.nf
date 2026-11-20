@@ -1081,6 +1081,8 @@ workflow {
         def common = params.chip_common_sites   // the contamination estimate FilterMutectCalls reads
         def chip_common       = common ? file(common, checkIfExists: true) : []
         def chip_common_index = common ? file("${common}.tbi", checkIfExists: true) : []
+        if (!common) log.warn "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate and another person's DNA in the sample can pass as a small clone (docs/49-chip.md)."
+        else if (!germ) log.warn "chip: --chip_common_sites without --chip_germline_resource: FilterMutectCalls has no population frequency to weigh the contamination estimate by, so it changes few calls (docs/49-chip.md)."
         ch_vcf
             .map { meta, _vcf, _idx -> [meta.id, meta] }
             .join(ch_bam.map { meta, _bam, _bai -> [meta.id, true] }, remainder: true)

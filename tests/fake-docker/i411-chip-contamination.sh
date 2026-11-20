@@ -4,7 +4,8 @@
 # site of that VCF (not only inside the CHIP exons), CalculateContamination, then
 # FilterMutectCalls with --contamination-table and --tumor-segmentation.
 # Without the VCF, or without its .tbi, there is no estimate and the log says
-# so. The Nextflow CHIP_MUTECT2 runs the same commands: its script block, run
+# so; with it but without gnomAD's germline resource the log warns that the
+# estimate changes few calls. The Nextflow CHIP_MUTECT2 runs the same commands: its script block, run
 # here with a fake gatk, passes the table when it gets --chip_common_sites and
 # not without it; main.nf hands it the file, and run-all.sh passes the VCF
 # under somatic/ to the pipeline only with its .tbi.
@@ -61,6 +62,16 @@ awk '/ CalculateContamination / { c = NR } / FilterMutectCalls / { f = NR } END 
   || fail "FilterMutectCalls ran before CalculateContamination"
 output_lacks chip-common 'no contamination estimate'
 output_has chip-common 'contamination estimate: common sites '
+output_has chip-common 'WARNING: the contamination estimate without gnomAD'
+# With gnomAD's germline resource too: Mutect2 reads it and the warning goes.
+printf 'placeholder\n' > "${G}/somatic/af-only-gnomad.hg38.vcf.gz"
+printf 'placeholder\n' > "${G}/somatic/af-only-gnomad.hg38.vcf.gz.tbi"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 chip-common-gnomad "${SCRIPTS}/49-chip.sh" sample1
+docker_log_has '^run image=[^ ]*gatk.* Mutect2 .*--germline-resource /genome/somatic/af-only-gnomad\.hg38\.vcf\.gz' "Mutect2 did not get gnomAD"
+docker_log_has "^run image=[^ ]*gatk.* FilterMutectCalls .*--contamination-table ${C}_contamination\\.table" "FilterMutectCalls with gnomAD did not get the contamination table"
+output_lacks chip-common-gnomad 'without gnomAD'
+rm -f "${G}/somatic/af-only-gnomad.hg38.vcf.gz" "${G}/somatic/af-only-gnomad.hg38.vcf.gz.tbi"
 
 # The VCF without its .tbi is not used.
 rm -f "${COMMON}.tbi"
@@ -119,6 +130,12 @@ if grep -qE 'GetPileupSummaries|CalculateContamination|--contamination-table' "$
   fail "CHIP_MUTECT2 estimated contamination without --chip_common_sites"
 fi
 grep -q 'no --chip_common_sites' "${NFW}/out.txt" || fail "CHIP_MUTECT2 without common sites does not say it has no estimate"
+# main.nf warns on the console (a task's stderr stays in its work directory)
+# without the common sites, and with them but without gnomAD.
+grep -qF 'if (!common) log.warn "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate' "${REPO_ROOT}/main.nf" \
+  || fail "main.nf does not warn when chip runs without --chip_common_sites"
+grep -qF 'else if (!germ) log.warn "chip: --chip_common_sites without --chip_germline_resource' "${REPO_ROOT}/main.nf" \
+  || fail "main.nf does not warn when the contamination estimate runs without gnomAD"
 # main.nf hands the module the file and its index, in the order of its inputs.
 grep -qF 'def chip_common       = common ? file(common, checkIfExists: true) : []' "${REPO_ROOT}/main.nf" \
   || fail "main.nf does not read --chip_common_sites"

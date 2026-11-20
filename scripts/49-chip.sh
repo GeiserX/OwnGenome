@@ -94,7 +94,9 @@ FILTER=(gatk FilterMutectCalls -R "${REF_FASTA_C}" -V "$(cpath "${P}_unfiltered.
 # small clone. CalculateContamination estimates that share from the reads at
 # every site of the common-sites VCF, across the genome: the CHIP exons hold
 # only 8 of its 59,295 sites, too few for an estimate. FilterMutectCalls then
-# marks the calls contamination explains.
+# marks the calls contamination explains. It weighs each allele by its
+# population frequency, which Mutect2 takes from gnomAD: without gnomAD the
+# estimate changes few calls.
 rm -f "${P}_contamination.table" "${P}_segments.table"
 if [ -f "$COMMON_VCF" ] && [ -f "${COMMON_VCF}.tbi" ]; then
   echo "  contamination estimate: common sites ${COMMON_VCF}"
@@ -103,6 +105,9 @@ if [ -f "$COMMON_VCF" ] && [ -f "${COMMON_VCF}.tbi" ]; then
   run_in --cpus 2 --memory 4g "$GATK_IMAGE" gatk CalculateContamination -I "$(cpath "${P}_pileups.table")" \
     --tumor-segmentation "$(cpath "${P}_segments.table")" -O "$(cpath "${P}_contamination.table")"
   FILTER+=(--contamination-table "$(cpath "${P}_contamination.table")" --tumor-segmentation "$(cpath "${P}_segments.table")")
+  if [ ! -f "$GNOMAD_VCF" ] || [ ! -f "${GNOMAD_VCF}.tbi" ]; then
+    echo "  WARNING: the contamination estimate without gnomAD's germline resource: FilterMutectCalls has no population frequency to weigh it by, so it changes few calls (docs/49-chip.md)."
+  fi
 else
   echo "  no common-sites VCF (${COMMON_VCF}): no contamination estimate, so another person's DNA in the sample can pass as a small clone (docs/49-chip.md says how to install it)."
 fi
