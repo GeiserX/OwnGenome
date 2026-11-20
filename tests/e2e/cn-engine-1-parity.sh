@@ -7,8 +7,10 @@
 # fixture's header, at full depth and at an eighth of it. For each BAM:
 #   - step 46 of this tree and of the old tree write the same lpa table, byte
 #     for byte;
-#   - step 41 of this tree and of the old tree write the same RhD row and the
-#     same RhD evidence rows (other systems may change after the engine);
+#   - step 41 of this tree and of the old tree write the same RhD row (its
+#     phenotype, genotype and confidence; step 41's notes are not the
+#     engine's) and the same RhD evidence rows (other systems may change
+#     after the engine);
 #   - step 35's HBA block (bedcov all MAPQ and MAPQ >= 1, then the verdict)
 #     writes the same table through og cn as the old hba_copy_number.py
 #     does.
@@ -110,7 +112,9 @@ for V in full thin; do
   done
   # Step 41: the header and the RhD rows only; other systems are not the engine's.
   for f in bloodtype evidence; do
-    for d in "$NEW" "$OLDO"; do awk -F'\t' 'NR == 1 || $1 == "RhD"' "${d}/${f}.tsv" > "${d}/${f}.rhd.tsv"; done
+    for d in "$NEW" "$OLDO"; do
+      awk -F'\t' -v OFS='\t' -v f="$f" 'NR == 1 || $1 == "RhD" {if (f == "bloodtype") NF = 4; print}' "${d}/${f}.tsv" > "${d}/${f}.rhd.tsv"
+    done
     check_ge "${V}: RhD rows in this tree's ${f} table" "$(($(wc -l < "${NEW}/${f}.rhd.tsv") - 1))" 1
   done
   for f in lpa bloodtype.rhd evidence.rhd hba; do
