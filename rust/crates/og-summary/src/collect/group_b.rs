@@ -144,6 +144,21 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
     };
     let clinical_vcf = clinical_vcf_at.as_ref().map(|(v, _)| ClinicalVcf::read(v));
     // The card follows step 06: it needs the hits, not step 23.
+    let step23 = folder
+        .run
+        .as_ref()
+        .and_then(|r| r.steps.get("23"))
+        .map(String::as_str);
+    // A clinical VCF older than this run, with step 23 not ok in it, is an
+    // earlier run's: the card says so, as the clinical section goes stale.
+    let earlier_vcf = match (&folder.run, &clinical_vcf_at) {
+        (Some(run), Some((p, _))) if step23 != Some("ok") => run
+            .started_epoch
+            .zip(pycompat::mtime::mtime(p).ok())
+            .filter(|&(started, m)| super::model::is_stale(m, started))
+            .and_then(|(_, m)| super::time::utc_minute(m)),
+        _ => None,
+    };
     let acmg_sf: Read = match &hits {
         None => Ok(None),
         Some(h) => AcmgCard::read(&acmg_card::Inputs {
@@ -151,11 +166,8 @@ pub fn read(input: &Input, folder: &Folder) -> Vec<Section> {
             hits: h,
             clinical: clinical_vcf.as_ref(),
             deletions: &deletions,
-            step23: folder
-                .run
-                .as_ref()
-                .and_then(|r| r.steps.get("23"))
-                .map(String::as_str),
+            step23,
+            earlier_vcf,
         })
         .and_then(|c| with_mtime(&h.path, h.rel.clone(), Data::AcmgSf(c))),
     };

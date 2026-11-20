@@ -9,7 +9,10 @@
 //! verdicts are [`acmg::acmg_sf`]'s, the one function the clinical section
 //! also calls: with the clinical VCF when it is there and readable, without
 //! it otherwise. Without it the card says `high_impact_checked: false` and
-//! `high_impact_note` names why and what that can miss.
+//! `high_impact_note` names why and what that can miss. With a clinical
+//! VCF left by an earlier run (step 23 not ok in this run, the VCF older
+//! than the run's start) the card reads it and its `high_impact_note` says
+//! the HIGH-impact source is from that earlier run.
 
 use super::acmg::{self, ClinicalVcf};
 use super::clinvar::HitsVcf;
@@ -59,14 +62,27 @@ impl NoHighImpact {
 }
 
 /// What the card reads: the step 06 hits, the clinical VCF when step 23
-/// left one, the deletions of the two-hit rule, and step 23's result word
-/// from the run status.
+/// left one, the deletions of the two-hit rule, step 23's result word
+/// from the run status, and the clinical VCF's file date when it is from
+/// an earlier run.
 pub struct Inputs<'a> {
     pub assets: &'a str,
     pub hits: &'a HitsVcf,
     pub clinical: Option<&'a Result<ClinicalVcf, String>>,
     pub deletions: &'a DeletionInputs,
     pub step23: Option<&'a str>,
+    /// The clinical VCF's file date (UTC minute) when step 23 was not ok in
+    /// this run and the VCF was written before the run started.
+    pub earlier_vcf: Option<String>,
+}
+
+/// `high_impact_note` for a card that read a clinical VCF of an earlier run.
+pub fn earlier_note(date: &str, step23: Option<&str>) -> String {
+    let result = step23.filter(|r| !r.is_empty()).unwrap_or("not run");
+    format!(
+        "Rare HIGH-impact variants come from the clinical VCF of an earlier run ({date}); step \
+         23 (clinical filter) was {result} in this run."
+    )
 }
 
 /// The data of the `acmg_sf` section.
@@ -100,10 +116,20 @@ impl AcmgCard {
             clinical,
             deletions: i.deletions,
         })?;
-        if let (Value::Object(m), Some(why)) = (&mut v, missing)
-            && m.get("high_impact_checked") == Some(&Value::Bool(false))
-        {
-            m.insert("high_impact_note".into(), Value::Str(why.note()));
+        if let Value::Object(m) = &mut v {
+            let checked = m.get("high_impact_checked").cloned();
+            match (missing, &i.earlier_vcf) {
+                (Some(why), _) if checked == Some(Value::Bool(false)) => {
+                    m.insert("high_impact_note".into(), Value::Str(why.note()));
+                }
+                (None, Some(date)) if checked == Some(Value::Bool(true)) => {
+                    m.insert(
+                        "high_impact_note".into(),
+                        Value::Str(earlier_note(date, i.step23)),
+                    );
+                }
+                _ => {}
+            }
         }
         Ok(AcmgCard(v))
     }

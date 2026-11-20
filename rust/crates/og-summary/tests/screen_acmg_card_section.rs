@@ -386,3 +386,61 @@ fn without_the_clinical_vcf_the_card_loses_only_what_the_high_impact_source_brin
         "no row moved from not reported to reported with VEP: the folders no longer test rule (c)"
     );
 }
+
+/// A clinical VCF left by an earlier run (step 23 not ok in this run, the
+/// VCF written before the run started) is still read, and the card says
+/// its HIGH-impact source is from that earlier run. With step 23 ok in
+/// this run, or a VCF of this run, the card has no such note.
+#[test]
+fn a_clinical_vcf_of_an_earlier_run_is_named_in_the_card() {
+    let d = scratch("earlier");
+    let assets = parity_folders(&d);
+    let mut names: Vec<_> = std::fs::read_dir(&d)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.join("clinvar/S_clinvar_hits.vcf").is_file() && p.join("clinical").is_dir())
+        .collect();
+    names.sort();
+    let dir = names
+        .into_iter()
+        .find(|p| {
+            let secs = sections_b(p, &assets);
+            s(at(&secs, &["acmg_sf", "state"])) == "ok"
+                && at(&secs, &["acmg_sf", "data", "high_impact_checked"]) == &Value::Bool(true)
+        })
+        .expect("a parity folder with a readable clinical VCF");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let status = |started: u64, step23: &str| {
+        put(
+            &dir.join("logs/run_status.tsv"),
+            &format!("meta\tstarted_epoch\t{started}\nstep\t06\tok\nstep\t23\t{step23}\n"),
+        );
+        sections_b(&dir, &assets)
+    };
+    // The run started after the VCF was written, and step 23 failed in it.
+    let secs = status(now + 3600, "failed (exit 1)");
+    let card = at(&secs, &["acmg_sf", "data"]);
+    assert_eq!(at(card, &["high_impact_checked"]), &Value::Bool(true));
+    let note = s(at(card, &["high_impact_note"]));
+    assert!(
+        note.starts_with(
+            "Rare HIGH-impact variants come from the clinical VCF of an earlier run ("
+        ) && note.ends_with("step 23 (clinical filter) was failed (exit 1) in this run."),
+        "{note}"
+    );
+    assert_eq!(s(at(&secs, &["clinical", "state"])), "stale");
+    // Step 23 ok in this run, or a VCF written after the run started (the
+    // generator dates its files in 2021, so a run of 1970 is before them):
+    // no note.
+    for (started, step23) in [(now + 3600, "ok"), (1, "failed (exit 1)")] {
+        let secs = status(started, step23);
+        assert!(
+            get(at(&secs, &["acmg_sf", "data"]), "high_impact_note").is_none(),
+            "{started} {step23}: {secs:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
