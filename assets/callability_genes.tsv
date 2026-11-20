@@ -3,6 +3,9 @@
 # report lists the ones it could not read. Written by scripts/ci/build-callability.sh, which says how the
 # rows and the owners are chosen; rebuild it there, do not edit it by hand. start is 0-based and end
 # 1-based, as in a BED file; an ALT-only gene has its ALT scaffold as chrom and '.' as start and end.
+# Sources and terms: GIAB CMRG v1.00 and genome stratifications v3.6, from NIST, not subject to
+# US copyright (notice and changes: assets/licences/NIST-GIAB-NOTICE.txt); GENCODE 50, open
+# access; HGNC ids and the NCBI GRCh38 assembly report, no restriction on use.
 # Genes: 1572 (CMRG 273, segdup 1276, false_duplication 22, collapsed 50, ALT-only 19); with an owner: 61.
 gene	hgnc_id	chrom	start	end	reasons	owner
 OR4F5	HGNC:14825	chr1	65418	71585	segdup	.
