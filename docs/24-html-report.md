@@ -145,7 +145,7 @@ A step that is skipped or fails leaves the previous run's output on disk. When `
 A section with no file whose step is recorded `failed` in `logs/run_status.tsv` says **Failed**, with the step, in both reports (the CYP2D6 rows too), and is listed under Steps Not Run with "(step N failed)". A section whose step never ran still says **Not run**.
 
 <figure markdown="span">
-  ![The step 24 HTML report: the contents on the left, the header, the Quality chapter with the quality control and variant calling cards, then the Clinical chapter's ClinVar screening card with its caveat and the chart of hits by review stars](images/demo-html-report.png){ loading=lazy }
+  ![The step 24 HTML report: the contents on the left, the header, the Quality chapter with the quality control, hard-to-read genes and variant calling cards, then the Clinical chapter's ClinVar screening card with its caveat and the chart of hits by review stars](images/demo-html-report.png){ loading=lazy }
   <figcaption>The report for DEMO-001, an invented sample. Every number is made up. The picture stops above the ClinVar hits table, the first table that names genes, so the rest of the chapters and the disclaimer are not shown.</figcaption>
 </figure>
 
