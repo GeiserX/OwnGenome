@@ -772,3 +772,216 @@ fn mixed_reads_the_two_most_probable_groups() {
     );
 }
 
+// --- percentile calibration ----------------------------------------------------
+//
+// og prs table reports the percentile pgsc_calc gave: the rank of the
+// sample's sum among the sums of the reference group it was placed in. For
+// people drawn from that group's own allele frequencies the reported
+// percentiles must then be uniform from 0 to 100. These tests simulate the
+// genotypes, compute the percentile the way pgsc_calc's ancestry step does
+// (scipy's percentileofscore among the group's reference sums, pgscatalog-utils
+// _ancestry/tools.py), write it into a pgsc_calc output folder with the panel's
+// own rows beside the sample's, and read back what og prs table reports.
+
+/// splitmix64: the same simulated people on every run.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// Uniform in [0, 1).
+    fn unit(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / (1u64 << 53) as f64
+    }
+}
+
+/// Score sites in the simulation.
+const SITES: usize = 200;
+
+/// One reference group's effect-allele frequencies, and the score's weights.
+struct Group {
+    freq: Vec<f64>,
+    weight: Vec<f64>,
+}
+
+impl Group {
+    fn new(rng: &mut Rng) -> Group {
+        Group {
+            freq: (0..SITES).map(|_| 0.05 + 0.9 * rng.unit()).collect(),
+            weight: (0..SITES).map(|_| rng.unit() - 0.5).collect(),
+        }
+    }
+
+    /// The sum of one person of the group: two alleles at each site, each the
+    /// effect allele at the group's frequency.
+    fn person(&self, rng: &mut Rng) -> f64 {
+        self.freq
+            .iter()
+            .zip(&self.weight)
+            .map(|(p, w)| {
+                let dose = u8::from(rng.unit() < *p) + u8::from(rng.unit() < *p);
+                w * f64::from(dose)
+            })
+            .sum()
+    }
+}
+
+/// scipy's `percentileofscore(reference, x)` (kind "rank").
+fn percentile_of(reference: &[f64], x: f64) -> f64 {
+    let left = reference.iter().filter(|r| **r < x).count();
+    let right = reference.iter().filter(|r| **r <= x).count();
+    let plus1 = usize::from(right > left);
+    (left + right + plus1) as f64 * 50.0 / reference.len() as f64
+}
+
+/// The p-value of a Kolmogorov-Smirnov test of `u` against the uniform
+/// distribution on [0, 1] (Kolmogorov's limit with Stephens' small-sample
+/// correction). A percentile is a rank among `reference` people, a sample
+/// of the group itself, so the test is the two-sample one: its size is
+/// n * reference / (n + reference). `None` for a known uniform.
+fn ks_uniform(u: &mut [f64], reference: Option<usize>) -> f64 {
+    u.sort_by(f64::total_cmp);
+    let n = u.len() as f64;
+    let d = u
+        .iter()
+        .enumerate()
+        .map(|(i, x)| ((i + 1) as f64 / n - x).max(x - i as f64 / n))
+        .fold(0.0, f64::max);
+    let size = reference.map_or(n, |r| n * r as f64 / (n + r as f64));
+    let l = (size.sqrt() + 0.12 + 0.11 / size.sqrt()) * d;
+    if l < 0.2 {
+        return 1.0; // the series is 1 to many digits there, and converges slowly
+    }
+    let p: f64 = (1..=100i32)
+        .map(|k| {
+            let sign = if k % 2 == 1 { 2.0 } else { -2.0 };
+            let k = f64::from(k);
+            sign * (-2.0 * k * k * l * l).exp()
+        })
+        .sum();
+    p.clamp(0.0, 1.0)
+}
+
+/// What og prs table reports for each person: pgsc_calc's panel run is
+/// written with the person's sum and percentile among `reference`, the
+/// panel's own rows after it, and read back.
+fn reported(tag: &str, people: &[f64], reference: &[f64]) -> Vec<f64> {
+    let d = Dir::new(tag);
+    formatted(
+        &d,
+        "pgs",
+        "PGS000001",
+        "Simulated trait",
+        SITES,
+        "0\tleft out",
+        "",
+        "",
+    );
+    d.put(
+        "res/sample/match/sample_summary.csv",
+        format!("dataset,accession,match_status,count\nsample,PGS000001,matched,{SITES}\n"),
+    );
+    d.put(
+        "res/sample/score/sample_popsimilarity.txt.gz",
+        "sampleset\tFID\tIID\tRF_P_AFR\tRF_P_EUR\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\n\
+         sample\tS\tS\t0.02\t0.98\tEUR\tFalse\tFalse\n",
+    );
+    let head = "sampleset\tFID\tIID\tPGS\tSUM\tZ_MostSimilarPop\tpercentile_MostSimilarPop\tZ_norm1\tZ_norm2\n";
+    let row = |set: &str, id: &str, x: f64| {
+        format!(
+            "{set}\t{id}\t{id}\tPGS000001\t{x:.6}\t0\t{}\t0\t0\n",
+            percentile_of(reference, x)
+        )
+    };
+    let panel: String = reference
+        .iter()
+        .take(20)
+        .enumerate()
+        .map(|(k, x)| row("reference", &format!("R{k}"), *x))
+        .collect();
+    let (res, scores) = (d.path("res"), d.path("pgs"));
+    people
+        .iter()
+        .map(|x| {
+            d.put(
+                "res/sample/score/sample_pgs.txt.gz",
+                format!("{head}{}{panel}", row("sample", "S", *x)),
+            );
+            let inputs = Inputs {
+                results: &res,
+                sampleset: "sample",
+                scores: &scores,
+                input_kind: "gvcf",
+                outcome: Outcome::Scored,
+                sex: "",
+                panel: true,
+                genotypes: None,
+            };
+            let (rows, _) = table(&inputs).unwrap();
+            assert_eq!(rows[0][7], "EUR");
+            rows[0][6].parse::<f64>().unwrap()
+        })
+        .collect()
+}
+
+/// The KS p-value of what og prs table reports for 1,000 people of one
+/// group, scored against 2,000 reference people of the group whose sums are
+/// moved by `shift` standard deviations.
+fn calibration(tag: &str, shift: f64) -> f64 {
+    let mut rng = Rng(0x2026_1120);
+    let group = Group::new(&mut rng);
+    let mut reference: Vec<f64> = (0..2000).map(|_| group.person(&mut rng)).collect();
+    let people: Vec<f64> = (0..1000).map(|_| group.person(&mut rng)).collect();
+    let n = reference.len() as f64;
+    let mean = reference.iter().sum::<f64>() / n;
+    let sd = (reference.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+    for x in &mut reference {
+        *x += shift * sd;
+    }
+    let mut u: Vec<f64> = reported(tag, &people, &reference)
+        .iter()
+        .map(|p| p / 100.0)
+        .collect();
+    ks_uniform(&mut u, Some(reference.len()))
+}
+
+#[test]
+fn percentiles_of_people_from_the_reference_group_are_uniform() {
+    let p = calibration("prs-calibrated", 0.0);
+    assert!(p > 0.01, "KS p = {p}");
+}
+
+#[test]
+fn a_reference_group_half_a_standard_deviation_off_fails_the_check() {
+    // The same people against a reference whose mean sits 0.5 SD higher, as
+    // when a person is ranked among a group their ancestry does not match:
+    // the check must see it.
+    let p = calibration("prs-shifted", 0.5);
+    assert!(p < 0.01, "KS p = {p}");
+}
+
+#[test]
+fn the_ks_test_reads_known_samples() {
+    // An evenly spread sample is uniform; one squeezed into the lower half is not.
+    let mut even: Vec<f64> = (0..1000).map(|i| (f64::from(i) + 0.5) / 1000.0).collect();
+    assert!((ks_uniform(&mut even, None) - 1.0).abs() < 1e-9);
+    let mut low: Vec<f64> = (0..1000).map(|i| f64::from(i) / 2000.0).collect();
+    assert!(ks_uniform(&mut low, None) < 1e-6);
+    // D = 0.05 over 1,000 values: p 0.013 against a known uniform, 0.15
+    // against a reference of 1,000 people (the two-sample test).
+    let mut off: Vec<f64> = (0..1000)
+        .map(|i| (f64::from(i) + 0.5) / 1000.0 * 0.95)
+        .collect();
+    let (known, sampled) = (
+        ks_uniform(&mut off.clone(), None),
+        ks_uniform(&mut off, Some(1000)),
+    );
+    assert!((0.01..0.016).contains(&known), "{known}");
+    assert!((0.13..0.18).contains(&sampled), "{sampled}");
+}
