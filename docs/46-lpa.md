@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Estimates how many kringle IV type 2 (KIV-2) repeats the LPA gene carries on both chromosomes together, from read depth, with a 95% interval. Beside the count it reads the KIV-2 4925G>A splice variant, which lowers the Lp(a) made from the chromosome that carries it. The report's Lp(a) section puts that count beside the two common LPA risk variants that [step 42](42-traits.md) reads, rs10455872 and rs3798220, and flags a genetically high Lp(a) when either points that way. Opt-in.
+Estimates how many kringle IV type 2 (KIV-2) repeats the LPA gene carries on both chromosomes together, from read depth, with a 95% interval for read sampling only. Beside the count it reads the KIV-2 4925G>A splice variant, which lowers the Lp(a) made from the chromosome that carries it. The report's Lp(a) section puts that count beside the two common LPA risk variants that [step 42](42-traits.md) reads, rs10455872 and rs3798220, and flags a genetically high Lp(a) when either points that way. Opt-in.
 
 It is a research estimate, not a diagnostic test. The test that counts is a blood Lp(a) measurement.
 
@@ -65,7 +65,7 @@ N = 14 x M / D - 2      (KIV-2 repeats on both chromosomes)
 
 GRCh38's own six units on each chromosome give M = D and N = 12.
 
-The 95% interval comes from how much the depth varies between exons: the relative standard error is sqrt(cv_KIV2² / 14 + cv_single² / 15), where cv is each group's coefficient of variation of the per-exon depth, applied to N + 2 on the log scale. It covers sampling noise only, not a bias of an aligner or a library.
+The 95% interval comes from how much the depth varies between exons: the relative standard error is sqrt(cv_KIV2² / 14 + cv_single² / 15), where cv is each group's coefficient of variation of the per-exon depth, applied to N + 2 on the log scale. It covers read sampling only: it treats the exons as independent, and it leaves out any bias of an aligner or a library, which moves every exon of the block together. The table's `message` says so: `about N KIV-2 repeats in total over both copies (95% interval for read sampling, LOW to HIGH; aligner or library bias not included)`, then the class reading. The `ci95_low` and `ci95_high` columns keep their names.
 
 The class compares that interval with the range of most people: about 70% of the 1000 Genomes samples had 30 to 45 KIV-2 copies with DRAGEN's caller (Behera et al. 2024; mean 37.5 in Europeans, 35.7 in Africans, 44.6 in East Asians).
 

@@ -42,7 +42,7 @@ fetches() { grep -cE "^(curl|wget) [^ ]*/${GTF//./\\.} " "$FAKE_DOCKER_LOG" || t
 
 # --- 1. one fetch, both files ---------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
-FAKE_DOWNLOAD_DIR="$SERVED" run_expect 0 setup "${SCRIPTS}/setup.sh" "$GENOME_DIR"
+FAKE_DOWNLOAD_DIR="$SERVED" run_expect 3 setup "${SCRIPTS}/setup.sh" "$GENOME_DIR"
 [ "$(fetches)" -eq 1 ] || fail "setup.sh downloaded ${GTF} $(fetches) times, expected once"
 [ -s "$GENES" ] || fail "setup.sh wrote no ${GENES}"
 [ -s "$EXONS" ] || fail "setup.sh wrote no ${EXONS}"
@@ -65,7 +65,7 @@ touch -t 202001010000 "$GENES"
 run_rc validate-missing "${SCRIPTS}/validate-setup.sh" sample1
 output_has validate-missing "GENCODE ${REL} exons \(steps 06 and 17 skip their cDNA read check without them\) not found at: ${EXONS//./\\.}"
 : > "$FAKE_DOCKER_LOG"
-FAKE_DOWNLOAD_DIR="$SERVED" run_expect 0 setup-again "${SCRIPTS}/setup.sh" "$GENOME_DIR"
+FAKE_DOWNLOAD_DIR="$SERVED" run_expect 3 setup-again "${SCRIPTS}/setup.sh" "$GENOME_DIR"
 [ "$(fetches)" -eq 1 ] || fail "the second setup.sh downloaded ${GTF} $(fetches) times, expected once"
 [ "$(cat "$EXONS" 2>/dev/null)" = "$want" ] || fail "the second setup.sh did not rebuild the exon BED"
 [ -z "$(find "$GENES" -newer "${SERVED}/MD5SUMS")" ] || fail "the second setup.sh rewrote the gene file it already had"

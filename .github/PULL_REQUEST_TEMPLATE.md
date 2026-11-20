@@ -14,7 +14,7 @@
 
 - [ ] Relevant scripts/docs stay in sync
 - [ ] Image tags and data versions changed only in `versions.env`; a new doc page is in the `zensical.toml` nav
-- [ ] `shellcheck` passes for changed shell scripts
+- [ ] `shellcheck` reports nothing new for added or changed shell scripts, under `tests/` too
 - [ ] Smoke-test assumptions were checked for changed pipeline contracts
 - [ ] No personal paths, hostnames, or sample-specific defaults were introduced
 - [ ] No secrets or credentials were committed

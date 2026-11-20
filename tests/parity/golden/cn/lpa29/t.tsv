@@ -1,0 +1,11 @@
+metric	value
+status	estimated
+kiv2_copies	29.3
+ci95_low	23.8
+ci95_high	35.8
+class	typical
+kiv2_depth	65.36
+flank_depth	29.28
+mapq0_share	0.900
+message	about 29 KIV-2 repeats in total over both copies (95% interval for read sampling, 23.8 to 35.8; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)
+advice	A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.

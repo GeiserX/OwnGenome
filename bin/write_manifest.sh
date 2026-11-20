@@ -42,8 +42,14 @@ validate_sample "$SAMPLE"
 
 OUT="${GENOME_DIR}/${SAMPLE}/run_manifest.tsv"
 mkdir -p "${GENOME_DIR}/${SAMPLE}"
-TMP="${OUT}.tmp"
-: > "$TMP"
+# Each writer builds its manifest in a temporary file of its own beside the
+# manifest, then renames it over run_manifest.tsv. A run and a report script
+# can write one sample's manifest at the same time: with one shared temporary
+# name they truncated and appended to each other's file, and the rename left
+# a manifest with rows missing or repeated. A rename within one folder is
+# atomic, so a reader sees one writer's whole manifest, the last one's.
+TMP=$(mktemp "${OUT}.XXXXXX")
+trap 'rm -f "$TMP"' EXIT
 row() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$TMP"; }
 
 row run written_utc "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"

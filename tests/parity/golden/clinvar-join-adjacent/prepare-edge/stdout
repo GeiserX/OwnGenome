@@ -1,0 +1,51 @@
+##fileformat=VCFv4.2
+##contig=<ID=c01,length=450>
+##contig=<ID=c02,length=450>
+##contig=<ID=c03,length=450>
+##contig=<ID=c04,length=450>
+##contig=<ID=c05,length=450>
+##contig=<ID=c06,length=450>
+##contig=<ID=c07,length=450>
+##contig=<ID=c08,length=450>
+##contig=<ID=c09,length=450>
+##contig=<ID=c10,length=450>
+##contig=<ID=c11,length=450>
+##contig=<ID=c12,length=450>
+##contig=<ID=c13,length=450>
+##contig=<ID=c14,length=450>
+##contig=<ID=c15,length=450>
+##contig=<ID=c16,length=450>
+##contig=<ID=c17,length=450>
+##contig=<ID=c18,length=450>
+##contig=<ID=c19,length=450>
+##contig=<ID=c20,length=450>
+##contig=<ID=c21,length=450>
+##contig=<ID=c22,length=450>
+##contig=<ID=c23,length=450>
+##contig=<ID=c24,length=450>
+##contig=<ID=c25,length=450>
+##contig=<ID=c26,length=450>
+##contig=<ID=c27,length=450>
+##contig=<ID=c28,length=450>
+##contig=<ID=c29,length=450>
+##contig=<ID=c30,length=450>
+##contig=<ID=c31,length=450>
+##contig=<ID=c32,length=450>
+##contig=<ID=lc,length=450>
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+##INFO=<ID=PGP_JOIN_SEQ,Number=1,Type=String,Description="Step 06, temporary: the reference bases under REF">
+##INFO=<ID=PGP_JOINED_FROM,Number=1,Type=String,Description="Step 06: the combined allele of these two neighbouring sample records, CHROM:POS:REF:ALT joined by |">
+##INFO=<ID=PGP_PART_OF,Number=1,Type=String,Description="Step 06: this hit is part of a combined allele that also matched ClinVar, CHROM:POS:REF:ALT (several joined by |)">
+##INFO=<ID=PGP_ONE_ALLELE,Number=1,Type=String,Description="Step 06: this hit and the one named, CHROM:POS:REF:ALT, are in one gene and can be one allele, but no combined ClinVar record matched: check ClinVar for one">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+##a header line among the records
+##INFO=<ID=PGP_JOIN_SEQ,Number=1,Type=String,Description="Step 06, temporary: the reference bases under REF">
+##INFO=<ID=PGP_JOINED_FROM,Number=1,Type=String,Description="Step 06: the combined allele of these two neighbouring sample records, CHROM:POS:REF:ALT joined by |">
+##INFO=<ID=PGP_PART_OF,Number=1,Type=String,Description="Step 06: this hit is part of a combined allele that also matched ClinVar, CHROM:POS:REF:ALT (several joined by |)">
+##INFO=<ID=PGP_ONE_ALLELE,Number=1,Type=String,Description="Step 06: this hit and the one named, CHROM:POS:REF:ALT, are in one gene and can be one allele, but no combined ClinVar record matched: check ClinVar for one">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+c02	303	.	TNNNNT	ANNNNC	.	PASS	PGP_JOIN_SEQ=.;PGP_JOINED_FROM=c02:303:T:A|c02:308:T:C	GT:GQ:DP	0/1:0:0

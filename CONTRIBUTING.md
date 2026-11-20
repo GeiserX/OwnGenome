@@ -26,7 +26,7 @@ Before implementing a new step, open an issue to discuss it. Include:
 1. Fork the repository and create a feature branch
 2. Follow the conventions below
 3. Test your changes on at least one sample
-4. Ensure `shellcheck` passes on all scripts
+4. Ensure `shellcheck` reports nothing new on the shell scripts you add or change. CI checks every tracked shell script, under `scripts/`, `tests/` and elsewhere. Only the findings listed in `tests/shellcheck-baseline.txt`, which were there before, still pass. Never add a line to it
 5. Ensure no personal data leaks: `grep -r '/mnt/user\|internal-host\|/home/' scripts/ docs/`
 6. Open a PR with a clear description of what changed and why
 

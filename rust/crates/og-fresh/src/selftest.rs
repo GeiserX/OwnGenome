@@ -536,6 +536,34 @@ pub fn run(out: &mut dyn Write) -> u8 {
         "an answer in an unexpected shape is an error row, not a crash",
     );
 
+    // --unreachable-warns: an upstream that did not answer is a warning,
+    // anything else still fails the run, and without the flag both fail.
+    let rc_of = |errors: &[LookupError], warns: bool| {
+        let mut r = Report::default();
+        for (i, e) in errors.iter().enumerate() {
+            r.db_error(&format!("lookup {i}"), e);
+        }
+        crate::cli::finish(
+            &r,
+            &["databases"],
+            warns,
+            None,
+            &mut std::io::sink(),
+            &mut std::io::sink(),
+        )
+    };
+    let down = LookupError::Unreachable("https://upstream.invalid/x: no answer".into());
+    let gone = LookupError::Failed("https://upstream.invalid/y: HTTP 404".into());
+    check(
+        rc_of(std::slice::from_ref(&down), true) == 0
+            && rc_of(std::slice::from_ref(&down), false) == 1,
+        "an upstream that did not answer warns only under --unreachable-warns",
+    );
+    check(
+        rc_of(&[down.clone(), gone.clone()], true) == 1 && rc_of(&[gone], true) == 1,
+        "a wrong answer still fails under --unreachable-warns",
+    );
+
     // The rows for data releases, on stubbed answers: a newer upstream is
     // behind, the same one is current, and an answer without the version is
     // an error row, never "current".
@@ -698,7 +726,7 @@ pub fn run(out: &mut dyn Write) -> u8 {
         let g = gh.lock().expect("fake github");
         let n = mine(&g).len();
         check(
-            matches!(&lost, Err(LookupError::Failed(m)) if m.contains("HTTP 502")) && n == 1,
+            matches!(&lost, Err(LookupError::Unreachable(m)) if m.contains("HTTP 502")) && n == 1,
             &format!(
                 "a create whose answer is lost fails the run and is not sent twice ({n} issue(s))"
             ),

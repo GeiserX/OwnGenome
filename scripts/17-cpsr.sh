@@ -71,7 +71,8 @@ CPSR_ID=$(sh "${PGP_ROOT}/bin/cpsr_sample_id" "$SAMPLE")
 
 # ACMG secondary findings (genes outside CPSR's cancer panels, such as cardiac
 # and metabolic ones) are reported unless CPSR_SECONDARY_FINDINGS=false: some
-# people do not want to learn about them.
+# people do not want to learn about them. run-all.sh reads the same switch and
+# passes --cpsr_secondary_findings false to the Nextflow module.
 CPSR_EXTRA=()
 case "${CPSR_SECONDARY_FINDINGS:-true}" in
   true) CPSR_EXTRA+=(--secondary_findings) ;;

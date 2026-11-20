@@ -285,6 +285,7 @@ param	tools	-	-	-	-	stable	-	-
 param	vep_cache	-	-	-	-	stable	-	-
 param	vep_cache_cpsr	-	-	-	-	stable	-	-
 param	pcgr_data	-	-	-	-	stable	-	-
+param	cpsr_secondary_findings	-	-	-	-	stable	-	-
 param	pypgx_bundle	-	-	-	-	stable	-	-
 param	cadd_snv	-	-	-	-	stable	-	-
 param	cadd_snv_index	-	-	-	-	stable	-	-
@@ -408,6 +409,7 @@ switch	TOOLS	-	-	-	-	stable	-	-
 switch	KIR	-	-	-	-	experimental	-	-
 switch	HLA_QC	-	-	-	-	experimental	-	-
 switch	HPO	-	-	-	-	experimental	-	-
+switch	CPSR_SECONDARY_FINDINGS	-	-	-	-	stable	-	-
 switch	REF_FASTA	-	-	-	-	stable	-	-
 switch	EH_CATALOG	-	-	-	-	stable	-	-
 switch	MANTA_CALL_REGIONS	-	-	-	-	stable	-	-

@@ -6,7 +6,7 @@
 # GRCh38 no-ALT BAM of DeepVariant's case study, written again under the
 # fixture's header, at full depth and at an eighth of it. For each BAM:
 #   - step 46 of this tree and of the old tree write the same lpa table, byte
-#     for byte;
+#     for byte, once the old message is put in today's wording;
 #   - step 41 of this tree and of the old tree write the same RhD row (its
 #     phenotype, genotype and confidence; step 41's notes are not the
 #     engine's) and the same RhD evidence rows (other systems may change
@@ -117,7 +117,13 @@ for V in full thin; do
     done
     check_ge "${V}: RhD rows in this tree's ${f} table" "$(($(wc -l < "${NEW}/${f}.rhd.tsv") - 1))" 1
   done
-  for f in lpa bloodtype.rhd evidence.rhd hba; do
+  # Step 46's message names what its interval covers since the old tree
+  # (CHANGELOG, LPA KIV-2 message); the numbers and every other row stay the
+  # old tree's. Write the old message in today's words, then compare bytes.
+  sed -E '/^message\t/s/ in total \(95% interval ([0-9.]+) to ([0-9.]+)\)/ in total over both copies (95% interval for read sampling, \1 to \2; aligner or library bias not included)/' \
+    "${OLDO}/lpa.tsv" > "${OLDO}/lpa.now.tsv"
+  cp "${NEW}/lpa.tsv" "${NEW}/lpa.now.tsv"
+  for f in lpa.now bloodtype.rhd evidence.rhd hba; do
     check "${V}: the ${f} table is the old tree's, byte for byte" cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv"
     cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv" || diff "${OLDO}/${f}.tsv" "${NEW}/${f}.tsv" | head -20
   done

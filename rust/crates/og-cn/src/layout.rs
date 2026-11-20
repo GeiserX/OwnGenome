@@ -219,8 +219,11 @@ fn lpa(row: &Locus, b: &Block) -> Table {
                     lo = fixed(l, 1);
                     hi = fixed(h, 1);
                     class = b.class.map_or(".", |c| c.as_str()).to_owned();
+                    // The interval comes from the spread of the per-exon
+                    // depths alone (exons read as independent), so it says
+                    // read sampling; the count sums both copies of chr6.
                     format!(
-                        "about {} KIV-2 repeats in total (95% interval {lo} to {hi}): {}",
+                        "about {} KIV-2 repeats in total over both copies (95% interval for read sampling, {lo} to {hi}; aligner or library bias not included): {}",
                         fixed(est, 0),
                         b.reading
                     )
@@ -382,4 +385,67 @@ pub fn interval_line(row: &Locus, b: &Block) -> Vec<String> {
         f2(b.estimate),
         reason(b),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::Catalog;
+    use crate::engine::Class;
+
+    fn lpa_row() -> Locus {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bin/cn_loci.tsv");
+        let c = Catalog::load(path).expect("bin/cn_loci.tsv loads");
+        c.loci["LPA_KIV2"].clone()
+    }
+
+    fn get<'a>(rows: &'a [(String, String)], k: &str) -> &'a str {
+        rows.iter().find(|r| r.0 == k).map_or("", |r| r.1.as_str())
+    }
+
+    /// The KIV-2 interval comes only from the spread of the per-exon
+    /// depths, so it covers read sampling and nothing else, and the count
+    /// is the total over both copies of chromosome 6: the message says
+    /// both, and the column names stay as they were.
+    #[test]
+    fn lpa_message_says_read_sampling_and_both_copies() {
+        let row = lpa_row();
+        let mut b = Block::empty();
+        b.status = Status::Called;
+        b.estimate = Some(37.4);
+        b.ci95 = Some((31.0, 46.5));
+        b.class = Some(Class::Typical);
+        b.target_depth = Some(290.0);
+        b.control_depth = Some(31.0);
+        b.mapq0_share = Some(0.1);
+        b.reading = "within the usual range".to_owned();
+        let (rows, line) = table(&row, &b);
+        let msg = get(&rows, "message");
+        assert_eq!(
+            msg,
+            "about 37 KIV-2 repeats in total over both copies (95% interval for read sampling, \
+             31.0 to 46.5; aligner or library bias not included): within the usual range"
+        );
+        assert!(msg.contains("read sampling"), "{msg}");
+        assert!(msg.contains("over both copies"), "{msg}");
+        assert!(line.contains(msg), "{line}");
+        let keys: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "status",
+                "kiv2_copies",
+                "ci95_low",
+                "ci95_high",
+                "class",
+                "kiv2_depth",
+                "flank_depth",
+                "mapq0_share",
+                "message",
+                "advice"
+            ]
+        );
+        assert_eq!(get(&rows, "ci95_low"), "31.0");
+        assert_eq!(get(&rows, "ci95_high"), "46.5");
+    }
 }
