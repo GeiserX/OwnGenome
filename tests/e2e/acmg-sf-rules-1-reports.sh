@@ -104,9 +104,18 @@ check "without step 23 the card is ok with the 84 rules" \
 check "and says the HIGH-impact source was not screened" \
   jq -e '.sections.acmg_sf.data | .high_impact_checked == false and (.high_impact_note | startswith("Rare HIGH-impact variants were not screened"))' "${NC}/summary.json"
 # shellcheck disable=SC2016  # a jq program: $f and $n are jq variables
+# pair and phase are the gene's verdict, not the row's: a HIGH-impact row of
+# the gene in the full run can change which pair it names (the same rule as
+# rust/crates/og-summary/tests/screen_acmg_card_section.rs).
 check "every ClinVar row of the card without step 23 is in the full run's card, unchanged" \
   jq -en --slurpfile f "$SUM" --slurpfile n "${NC}/summary.json" \
-  '($n[0].sections.acmg_sf.data.clinvar_hits - $f[0].sections.acmg_sf.data.clinvar_hits) | length == 0'
+  '$f[0].sections.acmg_sf.data as $F
+   | [$F.high_impact[]?.gene] as $hg
+   | [$F.clinvar_hits[] | del(.pair, .phase)] as $own
+   | [$n[0].sections.acmg_sf.data.clinvar_hits[] as $r
+      | select(($F.clinvar_hits | index([$r])) == null)
+      | select(($hg | index([$r.gene])) == null or ($own | index([$r | del(.pair, .phase)])) == null)]
+   | length == 0'
 rm -rf "${NC}/${SAMPLE}/clinvar"
 "${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "${NC}/${SAMPLE}" --assets "${REPO}/assets" \
   --out "${NC}/control.json" > /dev/null 2>&1
