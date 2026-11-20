@@ -198,7 +198,62 @@ pub struct Gene {
     pub hgnc_id: String,
     pub reasons: Vec<String>,
     pub owner: Option<String>,
+    /// The owner's step and whether it ran, for an owner [`owner_step`] knows.
+    pub owner_run: Option<OwnerRun>,
     pub reading: Reading,
+}
+
+/// The step that calls an owned gene, and whether it ran for this sample.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnerRun {
+    pub step: &'static str,
+    pub ran: bool,
+}
+
+impl OwnerRun {
+    fn status(&self) -> &'static str {
+        if self.ran { "ran" } else { "not run" }
+    }
+}
+
+/// The step behind an owner of `assets/callability_genes.tsv` and the file
+/// that step writes in the sample folder (`{s}` the sample) when it ran.
+/// Parascopy's answer is its catalog tables, `paralogs/{s}_<table>_copy_number.tsv`
+/// other than step 35's HBA table and step 35b's Paraphase table, which share
+/// the folder. `None` for an owner this list does not know.
+fn owner_step(owner: &str) -> Option<(&'static str, &'static str)> {
+    Some(match owner {
+        "parascopy" => ("35", "paralogs/{s}_<table>_copy_number.tsv"),
+        "pypgx" => ("32", "pypgx/{s}_pypgx_summary.tsv"),
+        "cn_loci:HBA" => ("35", "paralogs/{s}_hba_copy_number.tsv"),
+        "cn_loci:CYP21A2" => ("35", "paralogs/{s}_cyp21a2_psv.tsv"),
+        "cn_loci:HP" | "cn_loci:CCL3L1" | "cn_loci:LCE3BC" => ("35", "paralogs/{s}_cn_dosage.tsv"),
+        "cn_loci:LPA_KIV2" => ("46", "lpa/{s}_lpa_kiv2.tsv"),
+        "cn_loci:RHD" => ("41", "bloodtype/{s}_bloodtype.tsv"),
+        _ => return None,
+    })
+}
+
+/// Whether the owner's step wrote its file in `dir`, the sample folder.
+fn owner_ran(owner: &str, dir: &std::path::Path, s: &str) -> Option<OwnerRun> {
+    let (step, file) = owner_step(owner)?;
+    let ran = if owner == "parascopy" {
+        let (head, tail) = (format!("{s}_"), "_copy_number.tsv");
+        std::fs::read_dir(dir.join("paralogs")).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                let n = e.file_name();
+                let n = n.to_string_lossy();
+                n.len() > head.len() + tail.len()
+                    && n.starts_with(&head)
+                    && n.ends_with(tail)
+                    && !["hba", "paraphase"].contains(&&n[head.len()..n.len() - tail.len()])
+                    && e.path().is_file()
+            })
+        })
+    } else {
+        dir.join(file.replace("{s}", s)).is_file()
+    };
+    Some(OwnerRun { step, ran })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -305,6 +360,14 @@ impl Callability {
         // a chromosome that has rows means another catalog wrote the table.
         let contigs: std::collections::HashSet<&str> =
             rows[1..].iter().map(|c| c[0].as_str()).collect();
+        // The table is <sample folder>/mosdepth/ (bash) or coverage/ (Nextflow)
+        // <s>_callability.bed.gz: the owner steps write into the same folder.
+        let folder = std::path::Path::new(table)
+            .parent()
+            .and_then(|p| p.parent());
+        let sample = name.strip_suffix("_callability.bed.gz");
+        let mut runs: std::collections::HashMap<&str, Option<OwnerRun>> =
+            std::collections::HashMap::new();
         let mut genes = Vec::with_capacity(catalog.len());
         for r in catalog {
             let reading = if r.start == "." || !contigs.contains(r.chrom.as_str()) {
@@ -328,11 +391,20 @@ impl Callability {
                     Reading::NotRead(share)
                 }
             };
+            let owner = (r.owner != ".").then(|| r.owner.clone());
+            let owner_run = match (&owner, folder, sample) {
+                (Some(o), Some(dir), Some(s)) => runs
+                    .entry(r.owner.as_str())
+                    .or_insert_with(|| owner_ran(o, dir, s))
+                    .clone(),
+                _ => None,
+            };
             genes.push(Gene {
                 gene: r.gene.clone(),
                 hgnc_id: r.hgnc_id.clone(),
                 reasons: r.reasons.split(',').map(str::to_owned).collect(),
-                owner: (r.owner != ".").then(|| r.owner.clone()),
+                owner,
+                owner_run,
                 reading,
             });
         }
@@ -354,6 +426,11 @@ impl Callability {
                             ("hgnc_id", Value::Str(g.hgnc_id.clone()))
                         };
                         let mut m = vec![("gene", Value::Str(g.gene.clone())), who];
+                        if owned {
+                            let run = g.owner_run.as_ref();
+                            m.push(("owner_step", opt_str(run.map(|r| r.step))));
+                            m.push(("owner_status", opt_str(run.map(OwnerRun::status))));
+                        }
                         if !owned {
                             m.push((
                                 "reasons",
