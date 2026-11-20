@@ -317,7 +317,7 @@ fn the_abo_insertion_counts_after_a_reference_or_other_record() {
         &[line("chr9", 133257521, "T", ".", ".", "0/0"), ins("0/1")],
         Some(depth(&d, 2.0, &HashMap::new())),
     );
-    assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "high"]);
+    assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "low"]);
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn a_shorter_reference_record_leaves_a_deletion_marker_to_the_reads() {
             ("absent".to_owned(), None, String::new())
         );
         let t = run(&d, &recs, Some(depth(&d, 2.0, &HashMap::new())));
-        assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "high"], "{r}");
+        assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "low"], "{r}");
         // The deletion after it still counts, in either order.
         let del = line("chr9", 133255669, "CG", "C", "PASS", "0/1");
         for recs in [[r.clone(), del.clone()], [del.clone(), r.clone()]] {
@@ -539,4 +539,205 @@ fn incompatible_null_alt_dosages_are_no_call_in_both_readers() {
             }
         }
     }
+}
+
+/// A one-sample VCF record at the marker `name` with these FORMAT keys and values.
+fn recf(name: &str, fmt: &str, smp: &str) -> String {
+    let m = &read_markers(&markers()).unwrap()[name];
+    format!(
+        "{}\t{}\t.\t{}\t{}\t50\tPASS\t.\t{fmt}\t{smp}\n",
+        m.chrom, m.pos, m.ref_, m.alt
+    )
+}
+
+#[test]
+fn a_call_under_the_gq_and_dp_floor_lowers_confidence() {
+    let d = dir("weak");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    // KEL c.578C>T 0/1 with GQ 0 and one read: K+k+ still, at confidence low.
+    let t = run(&d, &[recf("KEL_578", "GT:GQ:DP", "0/1:0:1")], reads());
+    assert_eq!(t["Kell"][0], "K+k+ Kp(a-b+) Js(a-b+)");
+    assert_eq!(t["Kell"][2], "low");
+    assert!(
+        t["Kell"][3].contains("KEL c.578C>T: weak call (GQ 0 under 20, DP 1 under 8)"),
+        "{}",
+        t["Kell"][3]
+    );
+    let ev = std::fs::read_to_string(d.join("e.tsv")).unwrap();
+    let row = ev.lines().find(|l| l.contains("\tKEL_578\t")).unwrap();
+    assert!(row.ends_with("GQ 0 under 20, DP 1 under 8"), "{row}");
+    // The same call with GQ 20 and 8 reads, at the floors, stays high.
+    let t = run(&d, &[recf("KEL_578", "GT:GQ:DP", "0/1:20:8")], reads());
+    assert_eq!(
+        t["Kell"][..3],
+        ["K+k+ Kp(a-b+) Js(a-b+)", "K/k Kpb/Kpb Jsb/Jsb", "high"]
+    );
+    // A gVCF reference block with GQ 3 at a site: low too.
+    let t = run(&d, &[recf("JK_838", "GT:GQ:MIN_DP", "0/0:3:20")], reads());
+    assert_eq!(t["Kidd"][..3], ["Jk(a+b-)", "Jka/Jka", "low"]);
+}
+
+#[test]
+fn a_vcf_with_no_chr9_record_reads_abo_not_assessed_without_a_bam() {
+    let d = dir("nochr9");
+    // A VCF with records elsewhere, none on chr9, and no BAM: ABO is not
+    // assessed, not O; Kell, with its record, is read.
+    let t = run(&d, &[rec("KEL_578", "0/1")], None);
+    assert_eq!(t["ABO"][..3], ["not assessed", ".", "not assessed"]);
+    assert!(t["ABO"][3].contains("no VCF record at any of its 5 sites and no BAM"));
+    assert!(t["ABO"][3].contains("chr9"));
+    assert_eq!(t["Kell"][0], "K+k+ Kp(a-b+) Js(a-b+)");
+    // One ABO record is enough to read the others as the reference.
+    let t = run(&d, &[rec("ABO_802", "0/0")], None);
+    assert_eq!(t["ABO"][..3], ["O", "O.01/O.01", "medium"]);
+    // A VCF with no record at all is no error: every system not assessed,
+    // and RhD not determined (it needs the BAM).
+    let t = run(&d, &[], None);
+    assert_eq!(t["ABO"][0], "not assessed");
+    assert_eq!(t["Vel"][0], "not assessed");
+    assert_eq!(t["RhD"][0], "not determined");
+    // With reads the reads decide, as before.
+    let t = run(&d, &[], Some(depth(&d, 2.0, &HashMap::new())));
+    assert_eq!(t["ABO"][..3], ["O", "O.01/O.01", "high"]);
+}
+
+#[test]
+fn a_phased_gata_box_goes_on_the_chromosome_the_vcf_gives() {
+    let d = dir("duffy-phase");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    let duffy = |fy: &str, gata: &str| {
+        let t = run(
+            &d,
+            &[recf("FY_GATA", "GT:PS", gata), recf("FY_125", "GT:PS", fy)],
+            reads(),
+        );
+        t["Duffy"].clone()
+    };
+    // On the Fya chromosome: Fya silenced on red cells, Fyb expressed.
+    let r = duffy("0|1:7", "1|0:7");
+    assert_eq!(r[..3], ["Fy(a-b+)", "FY*A GATA/FY*B", "high"]);
+    assert!(
+        r[3].contains("the VCF's phase puts it on the Fya chromosome"),
+        "{}",
+        r[3]
+    );
+    // On the Fyb chromosome.
+    let r = duffy("0|1:7", "0|1:7");
+    assert_eq!(r[..2], ["Fy(a+b-)", "FY*A/FY*B GATA"]);
+    assert!(r[3].contains("the VCF's phase puts it on the Fyb chromosome"));
+    // Two phase sets, or no phase: Fyb first, as before.
+    for (fy, gata) in [("0|1:7", "1|0:9"), ("0/1:.", "0/1:.")] {
+        let r = duffy(fy, gata);
+        assert_eq!(r[..2], ["Fy(a+b-)", "FY*A/FY*B GATA"], "{fy} {gata}");
+        assert!(r[3].contains("with no phase it is placed on the Fyb chromosome first"));
+    }
+}
+
+#[test]
+fn an_abo_a_allele_reads_low_and_o_or_b_keeps_its_confidence() {
+    let d = dir("abo-a-low");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    let t = run(&d, &[rec("ABO_261", "0/1")], reads());
+    assert_eq!(t["ABO"][..3], ["A1", "A1/O.01", "low"]);
+    assert!(t["ABO"][3].contains("an A allele is read from a c.261 insertion"));
+    let t = run(
+        &d,
+        &[
+            rec("ABO_261", "0/1"),
+            rec("ABO_803", "0/1"),
+            rec("ABO_796", "0/1"),
+        ],
+        reads(),
+    );
+    assert_eq!(t["ABO"][..3], ["B", "B/O.01", "high"]);
+    assert!(t["ABO"][3].contains("ABO alleles outside these five variants"));
+    assert!(!t["ABO"][3].contains("an A allele is read"));
+}
+
+#[test]
+fn rows_state_what_dna_cannot_check() {
+    let d = dir("limits");
+    let t = run(&d, &[], Some(depth(&d, 2.0, &HashMap::new())));
+    assert!(t["RhD"][3].contains("RHD-CE-D hybrids that keep exons 3 to 7"));
+    for system in [
+        "Vel",
+        "Langereis",
+        "Junior",
+        "H",
+        "Secretor",
+        "Kell",
+        "Kidd",
+    ] {
+        assert!(
+            t[system][3].contains("a null allele the table does not hold"),
+            "{system}: {}",
+            t[system][3]
+        );
+    }
+    assert!(!t["Lutheran"][3].contains("null allele"));
+    // Both deleted: D-, and no D+ limit to state.
+    let t = run(&d, &[], Some(depth(&d, 0.0, &HashMap::new())));
+    assert!(!t["RhD"][3].contains("RHD-CE-D hybrids"));
+}
+
+#[test]
+fn a_gvcf_block_that_reaches_a_marker_through_end_is_a_reference_call() {
+    let d = dir("block-end");
+    let m = read_markers(&markers()).unwrap()["JK_838"].clone();
+    let block = |gq: i64, end: i64| {
+        format!(
+            "{}\t{}\t.\tA\t<*>\t0\t.\tEND={end}\tGT:GQ:MIN_DP\t0/0:{gq}:20\n",
+            m.chrom,
+            m.pos - 10
+        )
+    };
+    // A block from ten bases before the marker to past it, GQ 3: a weak
+    // reference call, the same through the index and a full pass.
+    let recs = [block(3, m.pos + 5)];
+    assert_eq!(
+        site_both_ways(&d, &recs, "JK_838"),
+        ("called".to_owned(), Some(0), String::new())
+    );
+    // Without a BAM, Kidd is read from it (not "not assessed"), at low.
+    let t = run(&d, &recs, None);
+    assert_eq!(t["Kidd"][..3], ["Jk(a+b-)", "Jka/Jka", "low"]);
+    assert!(
+        t["Kidd"][3].contains("weak call (GQ 3 under 20)"),
+        "{}",
+        t["Kidd"][3]
+    );
+    // GQ 50: the block's call, and the null rows read as reference: medium.
+    let t = run(&d, &[block(50, m.pos + 5)], None);
+    assert_eq!(t["Kidd"][..3], ["Jk(a+b-)", "Jka/Jka", "medium"]);
+    // A block that ends before the marker says nothing about it.
+    let recs = [block(50, m.pos - 1)];
+    assert_eq!(site_both_ways(&d, &recs, "JK_838").0, "absent");
+    assert_eq!(run(&d, &recs, None)["Kidd"][0], "not assessed");
+}
+
+#[test]
+fn a_weak_abo_1061_call_is_named_and_h_minus_leaves_an_unread_abo_alone() {
+    let d = dir("abo-1061-bombay");
+    let reads = || Some(depth(&d, 2.0, &HashMap::new()));
+    // A weak c.1061delC call under an A allele is named in the note, once.
+    let t = run(
+        &d,
+        &[
+            rec("ABO_261", "0/1"),
+            recf("ABO_1061", "GT:GQ:DP", "0/0:3:30"),
+        ],
+        reads(),
+    );
+    assert_eq!(t["ABO"][2], "low");
+    assert!(
+        t["ABO"][3].contains("ABO c.1061delC: weak call (GQ 3 under 20)"),
+        "{}",
+        t["ABO"][3]
+    );
+    // Two FUT1 null copies on chr19 and no chr9 record, no BAM: H-, and
+    // ABO, not assessed, gets no note about its alleles.
+    let t = run(&d, &[rec("FUT1_01N36", "1/1")], None);
+    assert!(t["H"][0].starts_with("H-"), "{}", t["H"][0]);
+    assert_eq!(t["ABO"][0], "not assessed");
+    assert!(!t["ABO"][3].contains("no FUT1 (H-)"), "{}", t["ABO"][3]);
 }

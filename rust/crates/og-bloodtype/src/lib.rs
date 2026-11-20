@@ -24,7 +24,7 @@
 //! the top.
 //!
 //! What changes on purpose: the VCF is read through its `.tbi` or `.csi`
-//! (318 positions, not the whole file), the catalog is read and the RHD row
+//! (271 positions, not the whole file), the catalog is read and the RHD row
 //! assessed once, a rule site missing from the table is an `ERROR:` line,
 //! not a traceback, and each output is written whole or not at all.
 

@@ -18,8 +18,9 @@
 # Input:  vcf/<sample>.vcf.gz; the reference (REF_FASTA) with its .fai;
 #         aligned/<sample>_sorted.bam with its .bai
 #         (ALIGN_DIR as for the other BAM steps), optional: without it RhD is
-#         not determined and sites the VCF has no record for are read as
-#         reference with confidence medium.
+#         not determined, sites the VCF has no record for are read as
+#         reference with confidence medium, and a system with no record at
+#         any of its sites is not assessed.
 # Output: bloodtype/<sample>_bloodtype.tsv           one row per system
 #         bloodtype/<sample>_bloodtype_evidence.tsv  what the VCF and the reads said per site
 #         bloodtype/<sample>_bloodtype_depth.tsv     samtools bedcov over the sites and RHD (with a BAM)
