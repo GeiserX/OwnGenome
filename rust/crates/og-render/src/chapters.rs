@@ -152,9 +152,38 @@ pub type TextFn = fn(&Summary) -> Result<Vec<String>, Malformed>;
 /// A section's HTML part: its cards, none when the section is left out.
 pub type HtmlFn = fn(&Summary) -> Result<HtmlPart, Malformed>;
 
-/// The writers of section `sid`, or `None` for a section not ported yet,
-/// which both reports leave out. One arm per section, a blank line apart, so
-/// the units that port the others each change their own line.
+/// Where a report finds each section's writers: [`writer`] for the reports
+/// a run writes, another table in a test that plants a fault.
+pub type WriterFn = fn(&str) -> Option<(TextFn, HtmlFn)>;
+
+/// A part of a report that could not be written: the section's anchor (or
+/// `charts`, `terms`), and why. The rest of the report is still written,
+/// and the part says why in place of its result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failed {
+    pub part: String,
+    pub why: String,
+}
+
+/// Runs one part of a report: its error, or a panic inside it, comes back
+/// as the error that part shows, so one bad part never stops the report.
+pub fn guarded<T>(f: impl FnOnce() -> Result<T, Malformed>) -> Result<T, Malformed> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(p) => {
+            let msg = p
+                .downcast_ref::<&str>()
+                .map(|m| (*m).to_owned())
+                .or_else(|| p.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "no message".to_owned());
+            Err(Malformed(format!("internal error: {msg}")))
+        }
+    }
+}
+
+/// The writers of section `sid`, or `None` for an anchor no section has.
+/// One arm per section, a blank line apart, so the units that change one
+/// section each change their own line.
 pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
     match sid {
         "qc" => Some((sections::qc::text, sections::qc::html)),
@@ -173,7 +202,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "exomiser" => Some((sections::exomiser::text, sections::exomiser::html)),
 
-        "structural-variants" => None,
+        "structural-variants" => Some((sections::structural::text, sections::structural::html)),
 
         "mei" => Some((sections::mei::text, sections::mei::html)),
 
@@ -187,7 +216,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "chip" => Some((sections::chip::text, sections::chip::html)),
 
-        "mosaic" => None,
+        "mosaic" => Some((sections::sex_loss::text, sections::sex_loss::html)),
 
         "mosaic-mca" => Some((sections::mocha::text, sections::mocha::html)),
 
@@ -232,7 +261,7 @@ pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
 
         "viral" => Some((sections::viral::text, sections::viral::html)),
 
-        "consumer-export" => None,
+        "consumer-export" => Some((sections::consumer::text, sections::consumer::html)),
 
         _ => None,
     }

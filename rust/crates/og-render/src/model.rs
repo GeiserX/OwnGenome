@@ -165,6 +165,11 @@ impl Summary {
         })
     }
 
+    /// summary.json as read, for what reads it whole (the search index).
+    pub fn root(&self) -> &Value {
+        &self.root
+    }
+
     /// `s[key]`.
     pub fn need(&self, key: &str) -> Result<&Value, Malformed> {
         need(&self.root, key, "summary")

@@ -69,5 +69,8 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = true
 codegen-units = 1
-panic = "abort"
+# unwind, not abort: og report render catches a panic inside one section, so
+# that section says it could not be written and the rest of the report is
+# still written (a panic anywhere else still ends og with an error).
+panic = "unwind"
 strip = true

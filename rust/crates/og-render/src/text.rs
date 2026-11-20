@@ -2,7 +2,7 @@
 //! its question, then the steps that did not run, what no step assesses,
 //! the manifest line and the disclaimer.
 
-use crate::chapters::{CHAPTERS, Sec, writer};
+use crate::chapters::{CHAPTERS, Failed, Sec, WriterFn, guarded, writer};
 use crate::model::{Malformed, State, Summary, py};
 use crate::notes::stale_note;
 use crate::sections::run;
@@ -67,12 +67,27 @@ fn unreadable(sec: &Sec, why: &Malformed) -> Vec<String> {
 
 /// The text report of one summary.
 pub fn report(s: &Summary) -> Result<String, Malformed> {
+    report_using(s, writer).map(|(text, _)| text)
+}
+
+/// The text report of one summary with the section writers of `writers`,
+/// and the sections that could not be written. A section whose data cannot
+/// be read, or whose writer stops on an internal error, says so in its
+/// block, and the rest of the report is still written.
+pub fn report_using(s: &Summary, writers: WriterFn) -> Result<(String, Vec<Failed>), Malformed> {
+    let mut failed = Vec::new();
     let mut lines = run::text_head(s)?;
     for (n, chapter) in CHAPTERS.iter().enumerate() {
         let mut body = Vec::new();
         for sec in chapter.sections {
-            if let Some((text, _)) = writer(sec.id) {
-                body.extend(text(s).unwrap_or_else(|why| unreadable(sec, &why)));
+            if let Some((text, _)) = writers(sec.id) {
+                body.extend(guarded(|| text(s)).unwrap_or_else(|why| {
+                    failed.push(Failed {
+                        part: sec.id.to_owned(),
+                        why: why.to_string(),
+                    });
+                    unreadable(sec, &why)
+                }));
             }
         }
         if !body.is_empty() {
@@ -109,5 +124,5 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
     lines.push(rule);
     let mut out = lines.join("\n");
     out.push('\n');
-    Ok(out)
+    Ok((out, failed))
 }
