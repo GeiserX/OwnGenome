@@ -10,7 +10,8 @@
 //!    the clinical VCF, collected as it is and again without `clinical/`.
 //!    Without step 23 the card may lose only what the HIGH-impact source
 //!    brings: (a) every ClinVar row of the card without VEP is in the card
-//!    with VEP, unchanged; (b) every gene reported without VEP is reported
+//!    with VEP, unchanged, but for the gene's `pair` and `phase` when a
+//!    HIGH-impact row of its gene joined it; (b) every gene reported without VEP is reported
 //!    with VEP; (c) a row not reported without VEP stays as it is, or is
 //!    reported with VEP because a HIGH-impact row of its gene joined it.
 
@@ -249,9 +250,22 @@ fn agreement(with: &Value, without: &Value) -> Vec<String> {
         .collect();
     let with_cv = rows(with, "clinvar_hits");
     let without_cv = rows(without, "clinvar_hits");
-    // (a) every ClinVar row without VEP, unchanged with VEP.
+    // (a) every ClinVar row without VEP, unchanged with VEP. `pair` and
+    // `phase` are the gene's verdict, not the row's: a HIGH-impact row of
+    // the gene can change which pair it names.
+    let own = |r: &Value| match r {
+        Value::Object(m) => {
+            let mut m = m.clone();
+            m.shift_remove("pair");
+            m.shift_remove("phase");
+            Value::Object(m)
+        }
+        v => v.clone(),
+    };
     for r in &without_cv {
-        if !with_cv.contains(r) {
+        let regated =
+            high_genes.contains(&gene_variant(r).0) && with_cv.iter().any(|w| own(w) == own(r));
+        if !with_cv.contains(r) && !regated {
             bad.push(format!(
                 "(a) ClinVar row without VEP not in the card with VEP: {r:?}"
             ));
