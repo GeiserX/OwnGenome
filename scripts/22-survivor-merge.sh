@@ -17,6 +17,11 @@
 # callers' inversions and translocations and count as votes for an event GRIDSS
 # never typed.
 #
+# A caller votes only with the calls it makes: og sv survivor-prep drops a
+# record whose FILTER or sample FT is not PASS, or whose genotype is reference
+# only (0/0, 0|0, 0, 0/.), and for CNVpytor a call that fails step 05's quality
+# rule (e-val < 0.01, q0 < 0.5). A no-call (./.) and a sites-only record vote.
+#
 # SUPP counts callers that agree, not independent proof: Manta and Delly both
 # read split and paired reads, so they share alignment errors. AnnotSV (step 05)
 # annotates the callers' own calls; the reports join SUPP onto them.
@@ -43,7 +48,9 @@ echo "============================================"
 echo ""
 
 # CNVpytor's own table, when step 18 left no VCF: one DEL or DUP record per
-# CNV, with a sample column, so SURVIVOR reads it as it reads the others.
+# CNV, with a sample column, so SURVIVOR reads it as it reads the others. The
+# e-value (column 5), q0 (9) and pN (10) go into INFO under the names CNVpytor's
+# VCF uses, so its quality rule reads both inputs the same.
 CNV_TXT="${S}/cnvpytor/${SAMPLE}_cnvs.txt"
 CNV_VCF="${S}/cnvpytor/${SAMPLE}_cnvs.vcf.gz"
 if [ ! -f "$CNV_VCF" ] && [ -f "$CNV_TXT" ]; then
@@ -53,14 +60,17 @@ if [ ! -f "$CNV_VCF" ] && [ -f "$CNV_TXT" ]; then
     echo "##INFO=<ID=SVTYPE,Number=1,Type=String,Description=\"Type of structural variant\">"
     echo "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position\">"
     echo "##INFO=<ID=SVLEN,Number=1,Type=Integer,Description=\"SV length\">"
+    echo "##INFO=<ID=pytorP1,Number=1,Type=Float,Description=\"e-value (t-test, whole region), column 5 of the CNVpytor table\">"
+    echo "##INFO=<ID=pytorQ0,Number=1,Type=Float,Description=\"Fraction of reads with mapping quality 0, column 9 of the CNVpytor table\">"
+    echo "##INFO=<ID=pytorPN,Number=1,Type=Float,Description=\"Fraction of N bases, column 10 of the CNVpytor table\">"
     echo "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">"
     awk '{printf "##contig=<ID=%s,length=%s>\n", $1, $2}' "${REF_FASTA}.fai"
     printf '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n' "$SAMPLE"
-    awk '$1 == "deletion" || $1 == "duplication" {
+    awk -F'\t' '$1 == "deletion" || $1 == "duplication" {
       split($2, a, ":"); split(a[2], b, "-")
       t = ($1 == "duplication") ? "DUP" : "DEL"
       len = (t == "DEL") ? -(b[2] - b[1]) : b[2] - b[1]
-      printf "%s\t%s\t.\tN\t<%s>\t.\tPASS\tSVTYPE=%s;END=%s;SVLEN=%d\tGT\t./.\n", a[1], b[1], t, t, b[2], len
+      printf "%s\t%s\t.\tN\t<%s>\t.\tPASS\tSVTYPE=%s;END=%s;SVLEN=%d;pytorP1=%s;pytorQ0=%s;pytorPN=%s\tGT\t./.\n", a[1], b[1], t, t, b[2], len, $5, $9, $10
     }' "$CNV_TXT"
   } > "${IN_DIR}/cnvpytor_txt.vcf"
   run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
@@ -85,22 +95,14 @@ for c in "${CALLERS[@]}"; do
     echo "  [--] ${name}: no ${vcf#"$S"/}"
     continue
   fi
-  # PASS (or unfiltered) records as plain text, which SURVIVOR reads, with
-  # one sample column named after the caller: SURVIVOR names its output
-  # columns after the input samples, and three columns all named after the
-  # sample would be one name three times.
-  run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
-    bcftools view -f PASS,. "$1" | awk -v s="$3" '\''BEGIN { FS = OFS = "\t" }
-      /^##/ { print; next }
-      /^#CHROM/ {
-        if (NF < 10) { print "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">"; sites = 1; print $1, $2, $3, $4, $5, $6, $7, $8, "FORMAT", s }
-        else print $1, $2, $3, $4, $5, $6, $7, $8, $9, s
-        next
-      }
-      { if (sites) print $1, $2, $3, $4, $5, $6, $7, $8, "GT", "./."; else print $1, $2, $3, $4, $5, $6, $7, $8, $9, $10 }'\'' > "$2"' \
-    _ "$(cpath "$vcf")" "$(cpath "${IN_DIR}/${name}.vcf")" "$name"
+  # The calls that vote, as plain text, which SURVIVOR reads, with one
+  # sample column named after the caller: SURVIVOR names its output columns
+  # after the input samples, and three columns all named after the sample
+  # would be one name three times. og prints what it left out.
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" \
+    /pgp-bin/og sv survivor-prep --caller "$name" "$(cpath "$vcf")" "$(cpath "${IN_DIR}/${name}.vcf")"
   n=$(grep -vc '^#' "${IN_DIR}/${name}.vcf" || true)
-  echo "  [OK] ${name}: ${n} PASS records (${vcf#"$S"/})"
+  echo "  [OK] ${name}: ${n} calls that vote (${vcf#"$S"/})"
   echo "$(cpath "${IN_DIR}/${name}.vcf")" >> "${IN_DIR}/sv_files.txt"
   USED+=("$name")
 done

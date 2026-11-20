@@ -4,6 +4,8 @@
 
 Keeps the structural variants (SVs) that two or more callers agree on. SURVIVOR merge pairs two calls when both of their breakpoints lie within 1,000 bp of each other, their SV type and strands agree, and the event is at least 50 bp long. Each consensus record says how many callers support it and which. That is caller agreement, not validation (see Why).
 
+A caller votes only with the calls it makes (see [Which records vote](#which-records-vote)): a record the caller genotyped as reference, or filtered, is not a second caller.
+
 ## Why
 
 Individual SV callers each have distinct biases and false-positive profiles:
@@ -14,18 +16,19 @@ Individual SV callers each have distinct biases and false-positive profiles:
 
 An SV that two callers report is less likely to be one caller's artefact. Agreement is not independent proof, though. Manta and Delly both read split and paired reads from the same alignment, so a misaligned read cluster both of them see can reach the consensus. Only CNVpytor reads a different signal, depth, and its breakpoints are coarse (see Limitations).
 
-The step used to bin calls by chromosome, `int(POS/1000)` and SV type. That split one deletion called at positions 999 and 1001 over two bins, and counted two deletions of very different size that start in one bin as agreement. SURVIVOR compares both breakpoints, so neither happens: the e2e case `tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` runs both situations on the synthetic three-caller set in `tests/fixtures/sv/`.
+The step used to bin calls by chromosome, `int(POS/1000)` and SV type. That split one deletion called at positions 999 and 1001 over two bins, and counted two deletions of very different size that start in one bin as agreement. SURVIVOR compares both breakpoints, so neither happens: the e2e case `tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` runs both situations on the synthetic three-caller set in `tests/fixtures/sv/`. The e2e case `tests/e2e/sv-merge-votes.sh` runs the records that must not vote on the same set.
 
 ## Tool
 
 - **SURVIVOR** 1.0.7 (Jeffares et al., Nat Commun 2017), `SURVIVOR merge`
-- **bcftools** for the PASS filter before the merge and the sorted, indexed output
+- **og** (`og sv survivor-prep`) for the records each caller votes with
+- **bcftools** for the sorted, indexed output
 
 Not chosen: `truvari collapse`, which also compares sequence similarity. It would need a comparison run against SURVIVOR on real calls first.
 
 ## Docker Image
 
-- `SURVIVOR_IMAGE` (the merge), `BCFTOOLS_IMAGE` (filter, sort, index)
+- `SURVIVOR_IMAGE` (the merge), `BCFTOOLS_IMAGE` (runs `og` for the records that vote; sort, index)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
@@ -53,11 +56,26 @@ The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `mant
 
 ## What the Script Does Internally
 
-1. Turns CNVpytor's table into a VCF when step 18 left no VCF
-2. Writes each caller's PASS (or unfiltered) records as plain VCF under `sv_merged/inputs/`, with one sample column named after the caller. SURVIVOR names its output columns after the input samples, so three inputs that all name the sample would give one name three times
+1. Turns CNVpytor's table into a VCF when step 18 left no VCF. Each record carries the table's e-value, `q0` and `pN` under the INFO names CNVpytor's own VCF uses (`pytorP1`, `pytorQ0`, `pytorPN`)
+2. Writes the records each caller votes with (below) as plain VCF under `sv_merged/inputs/`, with one sample column named after the caller (`og sv survivor-prep --caller NAME IN OUT`, which prints how many records it left out and why). SURVIVOR names its output columns after the input samples, so three inputs that all name the sample would give one name three times
 3. Runs `SURVIVOR merge inputs/sv_files.txt 1000 2 1 1 0 50`: maximum breakpoint distance 1,000 bp, support from 2 callers, same type, same strands, no size-scaled distance, minimum size 50 bp
 4. Checks that SURVIVOR wrote a VCF (it exits 0 when it cannot open an input), then sorts, compresses and indexes it
 5. Prints the count, and the count per type and caller combination
+
+### Which records vote
+
+SURVIVOR counts a caller as support for every record of its input. A record goes in only when it is a call the caller makes:
+
+| Record | Votes | Why |
+|---|---|---|
+| FILTER `PASS` or `.`, genotype with an ALT allele (`0/1`, `1/1`, `1`) | yes | a call |
+| genotype `./.`, or no `GT`, or a sites-only VCF | yes | nothing says the call is absent; the VCF made from CNVpytor's table writes `./.` for every call |
+| FILTER other than `PASS` or `.` (Delly's `LowQual`) | no | the caller filtered it |
+| sample filter `FT` other than `PASS` or `.` (Delly's per-sample `LowQual`) | no | the caller filtered it for this sample |
+| genotype with a called allele and no ALT (`0/0` phased or not, haploid `0`, `0/.`) | no | the caller tested the site and found the reference |
+| a CNVpytor call with e-value (`pytorP1`) 0.01 or more, `q0` (`pytorQ0`) 0.5 or more, or either value missing | no | CNVpytor's quality rule, the one step 5 applies when it adds CNVpytor's calls ([step 18](18-cnvpytor.md#filtering)) |
+
+Delly genotypes every site it reports, so a PASS Delly record with `0/0` is common. Before this rule, such a record next to a Manta call read as two callers.
 
 ## Output
 
@@ -65,7 +83,7 @@ The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `mant
 |---|---|
 | `${SAMPLE}_sv_consensus.vcf.gz` | Consensus SVs supported by 2+ callers, with `SUPP` and `SUPP_VEC` in INFO |
 | `${SAMPLE}_sv_consensus.vcf.gz.tbi` | Tabix index |
-| `inputs/sv_files.txt`, `inputs/<caller>.vcf` | The PASS records SURVIVOR read, in `SUPP_VEC` order |
+| `inputs/sv_files.txt`, `inputs/<caller>.vcf` | The records each caller voted with, which SURVIVOR read, in `SUPP_VEC` order |
 
 All output is written to `${GENOME_DIR}/${SAMPLE}/sv_merged/`.
 
@@ -101,7 +119,7 @@ docker run --rm -v "${GENOME_DIR}:/genome" "${BCFTOOLS_IMAGE}" \
 
 - Single-caller SVs are discarded even if they are real. If you suspect a specific SV, check the individual caller outputs directly.
 - CNVpytor's calls are depth-only and their breakpoints are coarse (its bin size), so a CNVpytor call often lies more than 1 kb from the Manta or Delly breakpoint of the same event and does not pair with it.
-- The CNVpytor VCF made from its table carries no genotype and no quality.
+- The CNVpytor VCF made from its table carries no genotype (`./.`); its e-value and `q0` come from the table.
 - A breakend (BND) record pairs with a breakend, an inversion (INV) or a translocation (TRA) of another caller: SURVIVOR 1.0.7 lets a BND match those two types. That includes a lone Manta inversion junction of 1 Mb or more, which step 4 keeps as its two breakends instead of a whole-span inversion.
 
 ## Notes
