@@ -93,9 +93,14 @@ pub fn read_pypgx(path: &str) -> Result<HashMap<String, PypgxCall>, PyErr> {
     Ok(out)
 }
 
-/// A diplotype pypgx actually called.
+/// A diplotype pypgx actually called. `Indeterminate` is no call, in any
+/// case and in any form: pypgx writes it for a gene it could not call,
+/// step 32 writes it for CYP2D6 when the depth check fails, and a
+/// diplotype with an Indeterminate allele (`*1/Indeterminate`) names no
+/// diplotype either.
 pub fn pypgx_called(diplotype: &str) -> bool {
-    !matches!(diplotype, "" | "FAILED" | "N/A" | "Not called")
+    let d = strip(diplotype, None);
+    !matches!(d, "" | "FAILED" | "N/A" | "Not called") && !lower(d).contains("indeterminate")
 }
 
 // --- step 36 -------------------------------------------------------------
@@ -405,6 +410,26 @@ mod tests {
             ("Valproate", "valproate"),
         ];
         assert_eq!(got, want.map(|(a, b)| (a.to_owned(), b.to_owned())));
+    }
+
+    #[test]
+    fn indeterminate_is_no_pypgx_call() {
+        for d in ["*1/*4", " *1/*1 ", "Reference/rs9923231"] {
+            assert!(pypgx_called(d), "{d}");
+        }
+        for d in [
+            "",
+            "FAILED",
+            "N/A",
+            "Not called",
+            "Indeterminate",
+            "indeterminate",
+            " INDETERMINATE ",
+            "*1/Indeterminate",
+            "Indeterminate/Indeterminate",
+        ] {
+            assert!(!pypgx_called(d), "{d}");
+        }
     }
 
     #[test]
