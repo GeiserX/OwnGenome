@@ -157,6 +157,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev stub-http [args]
   og dev steps-check [args]
   og dev traits-sources [args]
+  og dev pictures take|live|check|same-sample [args]
   og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
 ";
 
