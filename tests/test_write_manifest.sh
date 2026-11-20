@@ -233,5 +233,73 @@ else
   fi
 fi
 
+# 5. The Nextflow side: HTML_REPORT (modules/local/html_report/main.nf) writes
+# the same row from --intervals. Its def turns params.intervals into one line
+# with single spaces; its task script writes the row. No Nextflow here: the
+# script's two intervals lines run in bash, Groovy's escapes undone and the
+# value the def would hand them put in, and must write the row section 3
+# wants. Red control: a copy of the module without the printf line writes no
+# row. HTML_REPORT_MODULE overrides the module (to show the check red on a
+# module that has no row).
+MOD=${HTML_REPORT_MODULE:-${REPO}/modules/local/html_report/main.nf}
+# nf_rows MODULE VALUE: the rows the module's intervals lines write for VALUE.
+nf_rows() {
+  local d
+  d=$(mktemp -d "${T}/nf.XXXXXX")
+  # The lines from intervals='${intervals}' to the printf of the row, as bash
+  # sees them: \$ is $, \\ is \ (any other escape is refused).
+  # shellcheck disable=SC2016  # the dollar signs are awk's and the script's
+  if ! awk -v val="$2" '
+    index($0, "intervals='"'"'${intervals}'"'"'") { on = 1 }
+    on {
+      line = $0
+      sub(/\$\{intervals\}/, val, line)
+      out = ""
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (c == "\\") {
+          nxt = substr(line, i + 1, 1)
+          if (nxt != "\\" && nxt != "$") { print "unexpected Groovy escape \\" nxt > "/dev/stderr"; exit 1 }
+          out = out nxt; i++
+        } else out = out c
+      }
+      print out
+      if (index($0, "printf") && index($0, "run\\\\tintervals")) { found = 1; exit }
+    }
+    END { exit !found }' "$1" > "${d}/block.sh"; then
+    echo "no intervals lines"
+    return
+  fi
+  (cd "$d" && S="$d" bash -euo pipefail "${d}/block.sh") 2> "${d}/err" || { echo "the lines failed: $(cat "${d}/err")"; return; }
+  [ ! -e "${d}/run_manifest.tsv" ] || awk -F'\t' '$1 == "run" && $2 == "intervals"' "${d}/run_manifest.tsv"
+}
+def=$(grep -E "^[[:space:]]*def intervals = " "$MOD" || true)
+if [[ "$def" == *"params.intervals"* && "$def" == *"split(/\\s+/).join(' ')"* ]]; then
+  ok "HTML_REPORT reads --intervals onto one line with single spaces"
+else
+  bad "HTML_REPORT has no def intervals that puts params.intervals on one line: '${def}'"
+fi
+rows=$(nf_rows "$MOD" "chr1:1-1000000 chr2:1-1000000")
+if [ "$rows" = "$want" ]; then
+  ok "HTML_REPORT writes the run intervals row write_manifest.sh writes"
+else
+  bad "HTML_REPORT wrote '${rows//$'\t'/ }', want '${want//$'\t'/ }'"
+fi
+rows=$(nf_rows "$MOD" "")
+if [ -z "$rows" ]; then
+  ok "HTML_REPORT without --intervals writes no row"
+else
+  bad "HTML_REPORT without --intervals wrote '${rows//$'\t'/ }'"
+fi
+# Red control: the module without the printf line of the row.
+sed '/printf .run\\\\tintervals/d' "$MOD" > "${T}/html_report_norow.nf"
+if grep -q 'run\\\\tintervals' "${T}/html_report_norow.nf"; then
+  bad "control: could not drop the printf line from the module copy"
+elif [ "$(nf_rows "${T}/html_report_norow.nf" "chr1:1-1000000 chr2:1-1000000")" != "$want" ]; then
+  ok "control: the module without the printf line does not write the row"
+else
+  bad "control: the module without the printf line still wrote a row; the check above cannot fail"
+fi
+
 echo "${fails} failure(s)"
 [ "$fails" -eq 0 ]
