@@ -31,14 +31,17 @@ NEW=202103040506.07  # after it
 NEWER=202103040507.00
 
 # The helper modules of bin/collect_summary.py, as they were when the
-# collector was last the summary's writer.
+# collector was last the summary's writer. NO_ORACLE=1 leaves them out:
+# og-summary's tests read the folders alone (tests/screen_acmg_card_section.rs).
 HELPERS=7c1470bc50933f48a1a0dde3c0e0b2b87bc48718
-git -C "$root" cat-file -e "${HELPERS}^{commit}" 2> /dev/null \
-  || git -C "$root" fetch -q --depth=1 origin "$HELPERS"
-mkdir -p pymods
-for m in pgx_outside_calls clip_check annotsv_postfilter paraphase_report traits_report; do
-  git -C "$root" show "${HELPERS}:bin/${m}.py" > "pymods/${m}.py"
-done
+if [ "${NO_ORACLE:-}" != 1 ]; then
+  git -C "$root" cat-file -e "${HELPERS}^{commit}" 2> /dev/null \
+    || git -C "$root" fetch -q --depth=1 origin "$HELPERS"
+  mkdir -p pymods
+  for m in pgx_outside_calls clip_check annotsv_postfilter paraphase_report traits_report; do
+    git -C "$root" show "${HELPERS}:bin/${m}.py" > "pymods/${m}.py"
+  done
+fi
 
 mkdir -p assets
 for a in acmg_sf.tsv carrier_genes.tsv paralog_loci.tsv; do

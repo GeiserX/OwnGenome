@@ -119,7 +119,7 @@ Paths to clinical and population genetics reference data.
 | `--annotsv_annotations` | none | AnnotSV annotation directory (contains Annotations_Human/), built once with AnnotSV's INSTALL_annotations.sh. Required by annotsv: the AnnotSV image ships no annotation data. |
 | `--delly_exclude` | none | Optional Delly exclude map, passed as `delly sr -x` (for example Delly's excludeTemplates/human.hg38.excl.tsv). |
 | `--manta_call_regions` | none | Optional bgzipped BED of the regions Manta calls on, passed as `configManta.py --callRegions`; its .tbi must sit beside it. For example chr1-22, X and Y, which keeps Manta off the ALT, decoy and unplaced contigs. |
-| `--cytoband` | none | Optional UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y; scripts/setup.sh installs it), passed as `telomerehunter -b`. Without it TelomereHunter uses its own hg19 bands. |
+| `--cytoband` | none | UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y), passed as `telomerehunter2 -b`. Without it the run passes the copy the repository ships, `assets/reference/cytoBand.hg38.txt` (the file scripts/setup.sh installs). |
 | `--somalier_sites` | none | somalier's GRCh38 sites VCF (sites.hg38.vcf.gz; scripts/setup.sh installs it under reference/somalier/). Required by sample_qc. |
 | `--verifybamid2_panel` | none | Folder holding VerifyBamID2's marker panel, the .UD, .mu and .bed files of one prefix (scripts/setup.sh installs the 1000 Genomes 100k GRCh38 panel under reference/verifybamid2/). Required by sample_qc. |
 | `--freemix_warn` | `0.03` | VerifyBamID2's FREEMIX (estimated share of reads from another person) above which sample_qc reports possible contamination. A warning only; it never stops the run. |

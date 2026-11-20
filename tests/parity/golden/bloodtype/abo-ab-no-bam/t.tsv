@@ -1,0 +1,56 @@
+system	phenotype	genotype	confidence	note
+Kell	K+k- Kp(a-b+) Js(a-b+)	K/null Kpb/null Jsb/null	medium	null allele: KEL c.246T>A x1; each null copy is placed with k, Kpb, Jsb first, the alleles the ISBT table finds it with (phase is not read); a null allele the table does not hold (one of two or more variants, or a large deletion) goes unseen; sites with no VCF record read as reference (no BAM depth to confirm them); lacks k, carried by most people (high prevalence)
+ABO	A2B	A2/B	low	A1 or A2 rests on ABO c.1061delC, a deletion in a run of C: short-read calls are less reliable here; an A allele is read from a c.261 insertion with neither c.802G>A nor c.803G>C, so an O allele that keeps c.261 (a non-deletional O) or a weak A subgroup also reads A; ABO alleles outside these five variants (weak A and B subgroups, cis-AB, O alleles other than O.01 and O.02) are not assessed; A and B on different chromosomes assumed (no phase); sites with no VCF record read as reference (no BAM depth to confirm them)
+RhD	not determined	.	not determined	needs the BAM: the common RhD-negative allele (RHD*01N.01) deletes the whole RHD gene, which a VCF does not show
+RhCE	not assessed	.	not assessed	no VCF record at any of its 2 sites and no BAM: a VCF that does not cover chr1 would read as the reference
+Duffy	Fy(a+b-)	FY*A/FY*B GATA	medium	c.-67T>C (GATA box) stops Duffy expression on red cells only; with no phase it is placed on the Fyb chromosome first, where it usually lies (FY*02N.01); sites with no VCF record read as reference (no BAM depth to confirm them)
+Kidd	not assessed	.	not assessed	no VCF record at any of its 41 sites and no BAM: a VCF that does not cover chr18 would read as the reference
+MNS	not assessed	.	not assessed	no VCF record at any of its 2 sites and no BAM: a VCF that does not cover chr4 would read as the reference
+Lutheran	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr19 would read as the reference
+Diego	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+Dombrock	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr12 would read as the reference
+Colton	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr7 would read as the reference
+Vel	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr1 would read as the reference
+Langereis	not assessed	.	not assessed	no VCF record at any of its 36 sites and no BAM: a VCF that does not cover chr2 would read as the reference
+Junior	not assessed	.	not assessed	no VCF record at any of its 23 sites and no BAM: a VCF that does not cover chr4 would read as the reference
+H	not assessed	.	not assessed	no VCF record at any of its 34 sites and no BAM: a VCF that does not cover chr19 would read as the reference
+Secretor	not assessed	.	not assessed	no VCF record at any of its 14 sites and no BAM: a VCF that does not cover chr19 would read as the reference
+HPA-1	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-2	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-3	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-4	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-5	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr5 would read as the reference
+HPA-6	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-7	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-8	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-9	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-10	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-11	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-12	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr22 would read as the reference
+HPA-13	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr5 would read as the reference
+HPA-14	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-15	HPA-15(a+b-)	15a/15a	high	lacks HPA-15b: a platelet antigen a person lacks can raise antibodies in a pregnancy (against the baby's platelets: fetal and neonatal alloimmune thrombocytopenia, FNAIT) or after a transfusion (post-transfusion purpura, refractoriness to platelet transfusions)
+HPA-16	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-17	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-18	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr5 would read as the reference
+HPA-19	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-20	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-21	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-22	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-23	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-24	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-25	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr5 would read as the reference
+HPA-26	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-27	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-28	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-29	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-30	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-31	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr3 would read as the reference
+HPA-32	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-33	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-34	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HPA-35	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr17 would read as the reference
+HNA-1	not assessed	.	not assessed	no VCF record at any of its 6 sites and no BAM: a VCF that does not cover chr1 would read as the reference
+HNA-3	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr19 would read as the reference
+HNA-4	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr16 would read as the reference
+HNA-5	not assessed	.	not assessed	no VCF record at any of its 1 site and no BAM: a VCF that does not cover chr16 would read as the reference

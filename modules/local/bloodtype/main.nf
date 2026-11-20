@@ -15,8 +15,10 @@
                        wrote further right in a repeat meets its marker; then
                        og bloodtype report on that file and the depth, reading
                        the marker sites through its index; without a BAM
-                       ([] in its place) RhD is not determined and sites with
-                       no VCF record are read as reference (confidence medium)
+                       ([] in its place) RhD is not determined, sites with
+                       no VCF record are read as reference (confidence medium),
+                       and a system with no record at any of its sites is not
+                       assessed
 
     Equivalent to: scripts/41-bloodtype.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

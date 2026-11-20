@@ -12,8 +12,8 @@
 //!   1. the table and the code agree (`og bloodtype check-markers`); a table
 //!      missing a rule's site fails the check
 //!   2. nothing planted, reads everywhere: the reference alleles at
-//!      confidence high; without the BAM the same calls at medium, and RhD
-//!      not determined
+//!      confidence high; without the BAM a system with no VCF record at any
+//!      of its sites is not assessed, and RhD not determined
 //!   3. ABO: A1, A2, B, AB, O.02, and markers that do not add up
 //!   4. RhD from depth: two copies, one, none, the RHD pseudogene, a hybrid
 //!      gene, low flank depth
@@ -519,14 +519,9 @@ fn s02_nothing_planted() {
     c.eq("Kell high", r.cf("Kell").as_str(), "high");
     let nobam = T(report(&[], NO_BAM));
     c.eq(
-        "without the BAM, ABO is still O",
-        nobam.ph("ABO").as_str(),
-        "O",
-    );
-    c.eq(
-        "without the BAM, confidence medium",
-        nobam.cf("ABO").as_str(),
-        "medium",
+        "without the BAM and with no ABO record, ABO is not assessed",
+        (nobam.ph("ABO"), nobam.cf("ABO")),
+        ("not assessed".into(), "not assessed".into()),
     );
     c.eq(
         "without the BAM, RhD is not determined",
@@ -585,9 +580,9 @@ fn s03_abo() {
         &d2,
     );
     c.eq(
-        "A1B",
+        "A1B, low: no variant shows the A allele",
         (ab.ph("ABO"), ab.cf("ABO")),
-        ("A1B".into(), "high".into()),
+        ("A1B".into(), "low".into()),
     );
     c.eq(
         "the A1 or A2 caveat is in the note",

@@ -9,6 +9,13 @@
 #      or "not made" line. Control: the same render without the assets
 #      mount (what generate-report.sh did before it mounted assets/) fails
 #      the same checks.
+#   1b. No step 23 (a run without the VEP cache): og summary collect on the
+#       sample's step 06, 05 and 35 outputs with no clinical/ folder still
+#       writes the ACMG card (sections.acmg_sf) with the 84 rules, says the
+#       HIGH-impact source was not screened, and keeps every ClinVar row the
+#       full run's card has. Control: without step 06's hits the section is
+#       not run. The reports still read the card from the clinical section
+#       until they move to sections.acmg_sf.
 #   2. Nextflow: HTML_REPORT on the sample's ClinVar hits and clinical VCF,
 #      with the two assets staged as main.nf stages them, applies the rules,
 #      and its carrier list equals the bash one. Control: the same task
@@ -74,6 +81,46 @@ if [ -s "${CTL}/report.txt" ] && ! report_ok "${CTL}/report.txt"; then CT=red; e
 check_eq "control: the text check fails without assets/" "$CT" red
 if [ -s "${CTL}/summary.json" ] && ! summary_ok "${CTL}/summary.json" > /dev/null; then CS=red; else CS=green; fi
 check_eq "control: the summary check fails without assets/" "$CS" red
+
+# --- 1b. bash, no step 23 ----------------------------------------------------------
+# card JSON: the ACMG card of a summary.json, or null.
+card() { jq -c '.sections.acmg_sf' "$1" 2> /dev/null; }
+check "the full run's card is ok and screened the HIGH-impact records" \
+  jq -e '.sections.acmg_sf | .state == "ok" and .data.genes_on_list == 84 and .data.high_impact_checked == true' "$SUM"
+NC="${CASE_TMP}/no-step23"
+rm -rf "$NC"
+mkdir -p "${NC}/${SAMPLE}"
+for d in clinvar annotsv sv_merged paralogs; do
+  [ ! -d "${SD}/${d}" ] || cp -R "${SD}/${d}" "${NC}/${SAMPLE}/"
+done
+"${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "${NC}/${SAMPLE}" --assets "${REPO}/assets" \
+  --out "${NC}/summary.json" > "${NC}/collect.log" 2>&1
+check_eq "og summary collect without clinical/ exits 0" "$?" 0
+echo "  card without step 23: $(card "${NC}/summary.json" | cut -c1-300)"
+check_eq "without step 23 the clinical section is not run" \
+  "$(jq -r '.sections.clinical.state' "${NC}/summary.json" 2> /dev/null)" missing
+check "without step 23 the card is ok with the 84 rules" \
+  jq -e '.sections.acmg_sf | .state == "ok" and .data.genes_on_list == 84 and (.data | has("unavailable") | not)' "${NC}/summary.json"
+check "and says the HIGH-impact source was not screened" \
+  jq -e '.sections.acmg_sf.data | .high_impact_checked == false and (.high_impact_note | startswith("Rare HIGH-impact variants were not screened"))' "${NC}/summary.json"
+# shellcheck disable=SC2016  # a jq program: $f and $n are jq variables
+# pair and phase are the gene's verdict, not the row's: a HIGH-impact row of
+# the gene in the full run can change which pair it names (the same rule as
+# rust/crates/og-summary/tests/screen_acmg_card_section.rs).
+check "every ClinVar row of the card without step 23 is in the full run's card, unchanged" \
+  jq -en --slurpfile f "$SUM" --slurpfile n "${NC}/summary.json" \
+  '$f[0].sections.acmg_sf.data as $F
+   | [$F.high_impact[]?.gene] as $hg
+   | [$F.clinvar_hits[] | del(.pair, .phase)] as $own
+   | [$n[0].sections.acmg_sf.data.clinvar_hits[] as $r
+      | select(($F.clinvar_hits | index([$r])) == null)
+      | select(($hg | index([$r.gene])) == null or ($own | index([$r | del(.pair, .phase)])) == null)]
+   | length == 0'
+rm -rf "${NC}/${SAMPLE}/clinvar"
+"${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "${NC}/${SAMPLE}" --assets "${REPO}/assets" \
+  --out "${NC}/control.json" > /dev/null 2>&1
+check_eq "control: without step 06's hits the card is not run" \
+  "$(jq -r '.sections.acmg_sf.state' "${NC}/control.json" 2> /dev/null)" missing
 
 # --- 2. Nextflow --------------------------------------------------------------------
 if ! command -v nextflow >/dev/null; then fail "nextflow is not on PATH"; finish; fi

@@ -770,7 +770,7 @@ fn the_tar_deletion_and_the_rbm8a_allele_give_the_tar_line() {
         .filter(|x| s(at(x, &["gene"])) == "RBM8A")
         .collect();
     assert_eq!(tw.len(), 1);
-    assert_eq!(s(at(tw[0], &["verdict"])), "biallelic");
+    assert_eq!(s(at(tw[0], &["verdict"])), "possibly biallelic");
     let lines = carrier::lines(&D::new(&c, "carrier")).unwrap();
     let line: Vec<&String> = lines
         .iter()
