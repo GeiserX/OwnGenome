@@ -13,7 +13,6 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | IPD-IMGT/HLA release (step 8) | `HLA_DB_RELEASE` in `scripts/lib/common.sh` | Renovate, from the `v<x.y.z>-alpha` tags of `ANHIG/IMGTHLA` |
 | pgsc_calc (steps 25 and 26) | `PGSC_CALC_VERSION` in `versions.env`, copied into `conf/containers.config` | Renovate, after approval on the dependency dashboard. `PGSC_CALC_SHA256`, `PGSC_CALC_NF_SCHEMA` and the `PGSC_*_IMAGE` lines move with it by hand ([PRS](25-prs.md#maintenance)) |
 | Python of the docs build | `python-version` in `docs.yml` | Renovate, after approval on the dependency dashboard |
-| Python packages of the screenshot script | the `==` pins in `tests/demo/retake-screenshots.sh` | Renovate |
 | Aldy, the alternative CYP2D6 caller | its version in [Cyrius](21-cyrius.md), in the prose and the `pip install` line | Renovate |
 | GitHub Actions (`uses:` lines) | the workflows | Dependabot, monthly |
 | Zensical, the docs site builder | `docs/requirements-docs.txt` | Dependabot, monthly |
