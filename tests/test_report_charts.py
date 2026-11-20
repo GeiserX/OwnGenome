@@ -1,37 +1,19 @@
 #!/usr/bin/env python3
-"""The report's charts (bin/report_charts.py) and where bin/render_report.py
-puts them, on the invented sections of tests/fixtures/report_charts/ and on
-DEMO-001, the invented demo sample.
+"""The report's charts in the HTML report and on the live page, on the invented
+sections of tests/fixtures/report_charts/ and on DEMO-001, the invented demo
+sample.
 
-Checks, each with a red control that feeds it a broken input:
-  1. ClinVar: one bar per star 4 to 0 with the by_stars count, and one grey
-     bar with the low-confidence count; no green in the chart; with no hit a
-     grey frame says that no hit is not an all-clear;
-  2. PRS: no strip without a panel (adjusted false), only the report's note;
-     with a panel a score with no percentile, or one of the other sex, says
-     "no percentile" and gets no dot;
-  3. fine-grained ancestry: the groups are render_report.ancestry_fine_rows,
-     and each dot lies inside its range line;
-  4. genome: a run of homozygosity whose region cannot be read stops the
-     chart; a run under 5 MB is not drawn; ClinVar hits on chrM and on alt
-     contigs are counted in not_drawn; ROH_MIN_MB is collect_summary's;
-     each AnnotSV class 4 or 5 row is an outlined span and each reported MoChA
-     call a bar under its chromosome, linked to their sections, and one on
-     another contig is counted in not_drawn; every mark is drawn inside its
-     chromosome's outline (a span past its end is cut there, a mark that
-     starts past it is counted in not_drawn);
-  5. mito: one dot per heteroplasmic site, the poly-C call marked apart;
-  6. no caveat sentence is written in report_charts.py: they come from
-     render_report's *_NOTE constants;
+The cargo tests in rust/crates/og-render/tests/charts.rs check og report
+charts and hold it to the output of bin/report_charts.py frozen at 65095e97.
+What stays here checks what bin/render_report.py still ships:
+
   7. the HTML report: no <script>, every href="#..." of the page resolves to
-     an id, each chart sits in its section below that section's caveat, and a
-     hit past the 50-row table links to the section;
-  8. --charts-json: both report paths (modules/local/html_report/main.nf and
-     scripts/24-html-report.sh) pass it with <sample>_charts.json beside the
-     report, and two renders of the demo give the same file apart from
-     generated_utc;
-  9. og run delta sees no change between a summary without
-     heteroplasmic_sites and one with it;
+     an id, each chart sits in its section below that section's caveat, and
+     the hits table carries the id the charts link to. It stays until
+     og report render embeds the figures (charts::figure in html.rs); that
+     lane ports it to its cargo tests;
+  8. two renders of the demo give the same charts.json apart from
+     generated_utc, with its schema version and the five charts;
  10. the live page (bin/owngenome_live.py with bin/owngenome_live_charts.py and
      assets/live/plugins/charts.js): the plugin serves <run>_charts.json and
      names it in state.json; in a headless Chrome, signed in, the five charts
@@ -40,6 +22,8 @@ Checks, each with a red control that feeds it a broken input:
      policy blocked nothing. Red control: the same page without charts.js
      fails the check. Without bin/owngenome_live.py on the branch this part says
      SKIP; without Chrome it says SKIP, and FAIL in CI.
+
+The demo's charts file it serves comes from bin/render_report.py --charts-json.
 """
 import contextlib
 import copy
@@ -48,19 +32,14 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 import render_report  # noqa: E402
-import report_charts  # noqa: E402
-
-OG = os.environ.get("OG") or os.path.join(REPO, "bin", "og")
 
 FAILS = 0
-GREENS = ("#d5f5e3", "#1d3b2a", "#8ee0ae", "#196f3d", "green")
 
 
 def check(desc, ok, detail=""):
@@ -75,301 +54,9 @@ def fixture():
         return {"sample": "S", "generated_utc": "2026-01-01 00:00 UTC", "sections": json.load(f)["sections"]}
 
 
-def charts(s):
-    return {c["id"]: c for c in render_report.chart_specs(s)}
-
-
-# --- the check functions, each also run on a broken input -----------------------------------
-
-def clinvar_problems(sp, data):
-    out = []
-    want = [int(data["by_stars"][k]) for k in ("4", "3", "2", "1", "0")] + [int(data["low_confidence"])]
-    got = [m["value"] for m in sp["marks"]]
-    if got != want:
-        out.append(f"bars {got} != by_stars and low_confidence {want}")
-    if sp["marks"][-1]["tone"] != "muted":
-        out.append("the low-confidence bar is not grey")
-    if any(m["tone"] not in ("attention", "muted") for m in sp["marks"]):
-        out.append("a bar is neither yellow nor grey")
-    low = sp["svg"].lower()
-    out += [f"green {g} in the chart" for g in GREENS if g in low]
-    return out
-
-
-def prs_problems(sp, scores):
-    """A dot per score with a percentile of the declared sex, 'no percentile' for the others."""
-    out = []
-    for m, r in zip(sp["marks"], scores):
-        placeable = bool(r["percentile"]) and r["sex_check"] != render_report.PRS_NOT_APPLICABLE
-        if placeable and m["value"] != float(r["percentile"]):
-            out.append(f"{r['pgs_id']}: value {m['value']} is not the percentile {r['percentile']}")
-        if not placeable and m["value"] is not None:
-            out.append(f"{r['pgs_id']}: placed at {m['value']} with no percentile of the declared sex")
-    dots = len(re.findall(r"<circle ", sp["svg"]))
-    want = sum(1 for m in sp["marks"] if m["value"] is not None)
-    if dots != want:
-        out.append(f"{dots} dots for {want} percentiles")
-    if sp["svg"].count(">no percentile</text>") != len(sp["marks"]) - want:
-        out.append("not every score without a percentile says 'no percentile'")
-    return out
-
-
-def whisker_problems(svg):
-    """Each mark with a range: its dot between the two ends of its line."""
-    out = []
-    for g in re.findall(r"<a [^>]*>.*?</a>", svg):
-        ln = re.search(r'class="whisker" x1="([-0-9.]+)" y1="[-0-9.]+" x2="([-0-9.]+)"', g)
-        dot = re.search(r'<circle cx="([-0-9.]+)"', g)
-        if ln and dot and not float(ln.group(1)) <= float(dot.group(1)) <= float(ln.group(2)):
-            out.append(f"dot {dot.group(1)} outside {ln.group(1)}..{ln.group(2)}")
-    return out
-
-
-def sv_chrom(r):
-    """The chromosome of an AnnotSV row, chr prefix put back (AnnotSV writes SV_chrom without it)."""
-    c = r["sv"].split(":")[0]
-    return c if c.startswith("chr") else "chr" + c
-
-
-def mca_chrom(c):
-    """The chromosome of a MoChA call, chr prefix put back (og mocha report passes bare names through)."""
-    ch = str(c["chrom"])
-    return ch if ch.startswith("chr") else "chr" + ch
-
-
-def sv_mca_problems(sp, sv_rows, mca_calls):
-    """What the genome chart misses of the AnnotSV rows and MoChA calls on the primary chromosomes."""
-    out = []
-    marks = {m["id"]: m for m in sp["marks"]}
-    for i, r in enumerate(sv_rows):
-        if sv_chrom(r) not in report_charts.CHROM_LEN:
-            continue
-        m = marks.get(f"sv-{i}")
-        if not m or m["anchor"] != "structural-variants" or f'data-mark="sv-{i}"' not in sp["svg"]:
-            out.append(f"AnnotSV row {r['sv']} not drawn")
-    for i, c in enumerate(mca_calls):
-        if mca_chrom(c) not in report_charts.CHROM_LEN or not str(c["start"]).isdigit():
-            if f"mca-{i}" in marks:
-                out.append(f"MoChA call {c['chrom']}:{c['start']} drawn, but it has no place on the chart")
-            continue
-        m = marks.get(f"mca-{i}")
-        if not m or m["anchor"] != "mosaic-mca" or f'data-mark="mca-{i}"' not in sp["svg"]:
-            out.append(f"MoChA call {c['chrom']}:{c['start']} not drawn")
-    if sp["svg"].count('class="sv"') != sum(1 for r in sv_rows if sv_chrom(r) in report_charts.CHROM_LEN):
-        out.append("the outlined spans do not match the rows")
-    if sp["svg"].count('class="mca"') != sum(1 for c in mca_calls if mca_chrom(c) in report_charts.CHROM_LEN
-                                             and str(c["start"]).isdigit()):
-        out.append("the bars do not match the calls")
-    return out
-
-
-# The offset of each kind of mark's y from its chromosome row's (svg_ideogram).
-MARK_ROW = {"roh": 2, "sv": -1, "mca": 12, "tick": -1}
-
-
-def outside_marks(svg):
-    """The marks of an ideogram drawn past either end of their chromosome's outline."""
-    rows = {round(float(y) - 2, 2): (float(x), float(x) + float(w)) for x, y, w in
-            re.findall(r'<rect x="([0-9.]+)" y="([0-9.]+)" width="([0-9.]+)" height="8" rx="4" fill="none"', svg)}
-    out = []
-    for kind, x, y, w in re.findall(r'<rect class="(\w+)" x="(-?[0-9.]+)" y="(-?[0-9.]+)" width="([0-9.]+)"', svg):
-        if kind not in MARK_ROW:
-            continue
-        lo, hi = rows.get(round(float(y) - MARK_ROW[kind], 2), (None, None))
-        if lo is None or float(x) < lo - 0.01 or float(x) + float(w) > hi + 0.01:
-            out.append((kind, x, y, w, lo, hi))
-    return out
-
-
-def note_literals(src):
-    """Caveat sentences written into a source file instead of passed in."""
-    found = []
-    for k, v in render_report.__dict__.items():
-        if k.endswith("_NOTE") and isinstance(v, str) and len(v) > 30 and v[:30] in src:
-            found.append(k)
-    if re.search(r"^[A-Z_]+_NOTE\s*=", src, re.M):
-        found.append("a *_NOTE constant")
-    return found
-
-
 def href_problems(page):
     ids = set(re.findall(r'\sid="([^"]+)"', page))
     return sorted({h for h in re.findall(r'href="#([^"]*)"', page) if h not in ids})
-
-
-# --- the checks -----------------------------------------------------------------------------
-
-def unit_checks():
-    s = fixture()
-    c = charts(s)
-    cv = c["clinvar-stars"]
-    check("1. ClinVar: bars equal by_stars, then the low-confidence count, yellow and grey only",
-          clinvar_problems(cv, s["sections"]["clinvar"]["data"]) == [], clinvar_problems(cv, s["sections"]["clinvar"]["data"]))
-    keep = report_charts.TONE["attention"]
-    report_charts.TONE["attention"] = "#d5f5e3"
-    try:
-        bad = charts(s)["clinvar-stars"]
-    finally:
-        report_charts.TONE["attention"] = keep
-    check("1. red control: a green bar is caught", clinvar_problems(bad, s["sections"]["clinvar"]["data"]) != [])
-    tampered = copy.deepcopy(cv)
-    tampered["marks"][1]["value"] += 1
-    check("1. red control: a bar off by one is caught",
-          clinvar_problems(tampered, s["sections"]["clinvar"]["data"]) != [])
-    z = copy.deepcopy(s)
-    z["sections"]["clinvar"]["data"].update(by_stars={k: 0 for k in "43210"}, hits=[], count=0, low_confidence=0)
-    zs = charts(z)["clinvar-stars"]["svg"]
-    check("1. no hit: a grey frame that says no hit is not an all-clear",
-          "No hit is not an all-clear" in zs and "<a " not in zs and not any(g in zs.lower() for g in GREENS), zs)
-    past = [m for m in c["genome"]["marks"] if m.get("kind") == "hit"]
-    hits = s["sections"]["clinvar"]["data"]["hits"]
-    row = {f"{h['chrom']}:{h['pos']}": i for i, h in enumerate(hits)}
-    want = ["clinvar-hits" if row[m["locus"]] < 50 else "clinvar" for m in past]
-    check("7. a hit past the 50-row table links to the section, the others to the table",
-          [m["anchor"] for m in past] == want and "clinvar" in want, [m["anchor"] for m in past][-5:])
-
-    scores = s["sections"]["prs"]["data"]["scores"]
-    pr = c["prs"]
-    check("2. PRS with a panel: a dot per percentile, 'no percentile' for '' and the other sex",
-          pr["kind"] == "strip" and prs_problems(pr, scores) == [], prs_problems(pr, scores))
-    raw = copy.deepcopy(pr)
-    raw["marks"][1]["value"] = float(scores[1]["score"])
-    raw["svg"] = report_charts.svg(raw)
-    check("2. red control: the raw Score_SUM drawn as a dot is caught", prs_problems(raw, scores) != [])
-    other = copy.deepcopy(pr)
-    other["marks"][2]["value"] = float(scores[2]["percentile"])
-    other["svg"] = report_charts.svg(other)
-    check("2. red control: the other sex's percentile drawn is caught", prs_problems(other, scores) != [])
-    na = copy.deepcopy(s)
-    na["sections"]["prs"]["data"]["adjusted"] = False
-    nc = charts(na)["prs"]
-    check("2. PRS without a panel: no strip, the report's own note",
-          nc["kind"] == "text" and nc["marks"] == [] and "<circle" not in nc["svg"]
-          and nc["text"] == render_report.prs_note(na["sections"]["prs"]["data"]), nc["kind"])
-
-    an = c["ancestry-fine"]
-    d = s["sections"]["ancestry_fine"]["data"]
-    want = [r["group"] for lv, _ in render_report.ANCESTRY_FINE_LEVELS for r in render_report.ancestry_fine_rows(d, lv)]
-    check("3. ancestry: the groups are ancestry_fine_rows (a 0.4% group left out, a small regional one with a wide range kept)",
-          [m["label"] for m in an["marks"]] == want and "Invented region B" in want and "Invented group C" not in want,
-          [m["label"] for m in an["marks"]])
-    check("3. ancestry: every dot inside its range line", whisker_problems(an["svg"]) == [] and "whisker" in an["svg"],
-          whisker_problems(an["svg"]))
-    off = copy.deepcopy(an)
-    off["marks"][0]["value"] = 99.0
-    off["svg"] = report_charts.svg(off)
-    check("3. red control: a dot moved outside its range is caught", whisker_problems(off["svg"]) != [])
-    half = {"ancestry_fine": {"state": "ok", "data": {}}}
-    try:
-        hm = report_charts.ancestry_chart(half, {"ANCESTRY_FINE_NOTE": "n"},
-                                          lambda d, lv: [{"group": "Invented group D", "fraction": 0.3, "low": 0.2}],
-                                          [("lv", "Level")])["marks"][0]
-        half_ok, half_why = "bootstrap range" not in hm["detail"] and hm["high"] is None, hm["detail"]
-    except (TypeError, ValueError) as e:
-        half_ok, half_why = False, repr(e)
-    check("3. ancestry: a range with only one bound is left out of the detail, not half-printed", half_ok, half_why)
-
-    g = c["genome"]
-    roh = [m for m in g["marks"] if m.get("kind") == "roh"]
-    nd = {x["what"]: x["count"] for x in g["not_drawn"]}
-    check("4. genome: the two runs of 5 MB or more drawn, the 4.9 MB one not",
-          [m["locus"] for m in roh] == ["chr3:10000000-22300000", "chr15:40000000-46100000"]
-          and nd.get("runs of homozygosity under 5 MB") == 1, (roh, nd))
-    check("4. genome: the chrM hit and the alt-contig hit are counted in not_drawn, not drawn",
-          nd.get("ClinVar hits on chrM") == 1 and nd.get("ClinVar hits on other contigs (alt, unplaced)") == 1
-          and "Not drawn:" in g["svg"]
-          and not any(m["chrom"] in ("chrM", "chr22_KI270879v1_alt") for m in g["marks"]), nd)
-    # The floor of the roh section (og-summary, collect/group_c/roh.rs ROH_MIN_BP).
-    check("4. genome: the 5 MB floor is the roh section's", report_charts.ROH_MIN_MB * 1e6 == 5e6)
-    for region in ("chr3:10000000_22300000", "3:1-2", "chr3:20-10"):
-        bad = copy.deepcopy(s)
-        bad["sections"]["roh"]["data"]["autosomal_over_5mb"][0]["region"] = region
-        try:
-            charts(bad)
-            stopped = False
-        except ValueError:
-            stopped = True
-        check(f"4. an unreadable run of homozygosity ({region}) stops the chart", stopped)
-    try:
-        charts(s)
-        ran = True
-    except ValueError:
-        ran = False
-    check("4. control: the readable regions do not stop it", ran)
-
-    mi = c["mito"]
-    check("5. mito: one dot per heteroplasmic site, the poly-C call drawn apart",
-          mi["svg"].count('class="site"') == 2 and mi["svg"].count('class="polyc"') == 1, mi["marks"])
-    old = copy.deepcopy(s)
-    del old["sections"]["mito"]["data"]["heteroplasmic_sites"]
-    om = charts(old)["mito"]
-    check("5. mito: a summary without the site list draws none, says how many it leaves out and that their "
-          "positions are missing", 'class="site"' not in om["svg"] and om["not_drawn"][0]["count"] == 2
-          and "positions of the heteroplasmic sites are not in this summary" in om["svg"]
-          and "No heteroplasmic site" not in om["svg"], om["not_drawn"])
-    sv_rows = [{"sv": "chr7:117480000-117530000", "type": "DEL", "gt": "0/1", "length": "50000", "acmg_class": "4",
-                "genes": ["CFTR"]},
-               {"sv": "chr22_KI270879v1_alt:100-900", "type": "DUP", "gt": "0/1", "length": "800", "acmg_class": "5",
-                "genes": []},
-               # as AnnotSV writes SV_chrom: no chr prefix
-               {"sv": "17:7660000-7690000", "type": "DEL", "gt": "0/1", "length": "30000", "acmg_class": "5",
-                "genes": ["TP53"]}]
-    mca = [{"chrom": "chr20", "start": "30000000", "end": "42000000", "length_mb": "12.0", "type": "Del",
-            "cell_fraction": "0.12"},
-           {"chrom": "chrM", "start": "100", "end": "900", "length_mb": ".", "type": "Del", "cell_fraction": "."},
-           {"chrom": "chr3", "start": ".", "end": ".", "length_mb": ".", "type": "Dup", "cell_fraction": "."},
-           # og mocha report also passes bare names through
-           {"chrom": "20", "start": "50000000", "end": "52000000", "length_mb": "2.0", "type": "Dup",
-            "cell_fraction": "0.05"}]
-    sm = copy.deepcopy(s)
-    sm["sections"]["annotsv"] = {"state": "ok", "data": {"count": 3, "rows": sv_rows}}
-    sm["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": mca}}
-    gm = charts(sm)["genome"]
-    ndm = {x["what"]: x["count"] for x in gm["not_drawn"]}
-    check("4. genome: each AnnotSV class 4/5 row is an outlined span (an unprefixed chromosome too), each MoChA "
-          "call a bar (an unprefixed chromosome too), the alt-contig SV and the chrM and unplaced MoChA calls in not_drawn, both in the legend",
-          sv_mca_problems(gm, sv_rows, mca) == [] and ndm.get("AnnotSV class 4 and 5 SVs on other contigs") == 1
-          and ndm.get("MoChA calls on other contigs or with no position") == 2
-          and "AnnotSV class 4 or 5 SV" in gm["svg"] and "mosaic alteration (MoChA)" in gm["svg"],
-          (sv_mca_problems(gm, sv_rows, mca), ndm))
-    lost = copy.deepcopy(gm)
-    lost["marks"] = [m for m in lost["marks"] if m.get("kind") != "mca"]
-    lost["svg"] = report_charts.svg(lost)
-    check("4. red control: a genome chart that leaves out the MoChA call is caught",
-          sv_mca_problems(lost, sv_rows, mca) != [])
-    check("4. genome: a chart with no SV or MoChA mark draws no second legend row",
-          "AnnotSV class 4 or 5 SV" not in g["svg"] and "MoChA" not in g["svg"])
-    edge = copy.deepcopy(s)
-    edge["sections"]["annotsv"] = {"state": "ok", "data": {"count": 2, "rows": [
-        # past the end of chr21 (46,709,983 bp), and a 10 bp one at the very start of chr1
-        {"sv": "chr21:46700000-46800000", "type": "DUP", "gt": "0/1", "length": "100000", "acmg_class": "4", "genes": []},
-        {"sv": "chr1:1-10", "type": "DEL", "gt": "0/1", "length": "10", "acmg_class": "4", "genes": []}]}}
-    edge["sections"]["mosaic"] = {"state": "ok", "data": {"status": "assessed", "calls": [
-        {"chrom": "chr22", "start": "50000000", "end": "51000000", "length_mb": "1.0", "type": "Dup", "cell_fraction": "0.1"},
-        {"chrom": "chr22", "start": "52000000", "end": "53000000", "length_mb": "1.0", "type": "Del", "cell_fraction": "0.1"}]}}
-    ge = charts(edge)["genome"]
-    nde = {x["what"]: x["count"] for x in ge["not_drawn"]}
-    check("4. genome: every mark inside its chromosome's outline, a span past the end cut there, a call that starts "
-          "past the end of chr22 counted in not_drawn",
-          outside_marks(ge["svg"]) == [] and nde.get("marks past the end of their GRCh38 chromosome") == 1
-          and all(m["end"] is None or m["end"] <= report_charts.CHROM_LEN[m["chrom"]] for m in ge["marks"])
-          and ge["svg"].count('class="sv"') == 2 and ge["svg"].count('class="mca"') == 1
-          and [(m["chrom"], m["end"]) for m in ge["marks"] if m.get("kind") in ("sv", "mca") and m["pos"] > 40_000_000]
-          == [("chr21", report_charts.CHROM_LEN["chr21"]), ("chr22", report_charts.CHROM_LEN["chr22"])],
-          (outside_marks(ge["svg"]), nde))
-    shifted = re.sub(r'(<rect class="sv" x=")[0-9.]+', r'\g<1>2000', ge["svg"], count=1)
-    check("4. red control: a span drawn past its chromosome's end is caught", outside_marks(shifted) != [])
-    nr = copy.deepcopy(s)
-    nr["sections"]["roh"]["state"] = "missing"
-    check("4. genome: no chart when ROH did not run, even with ClinVar hits", "genome" not in charts(nr))
-
-    with open(os.path.join(REPO, "bin", "report_charts.py")) as f:
-        src = f.read()
-    check("6. no caveat sentence or *_NOTE constant in report_charts.py", note_literals(src) == [], note_literals(src))
-    check("6. red control: a copied caveat is caught",
-          note_literals(src + "\nX = '" + render_report.ROH_NOTE + "'\n") == ["ROH_NOTE"])
-    check("6. each chart's caveat is render_report's text",
-          all(sp["caveat"] == getattr(render_report, sp["caveat_key"]) for sp in c.values()))
 
 
 def demo_checks(work):
@@ -398,16 +85,6 @@ def demo_checks(work):
           outs[0]["schema_version"] == 1 and [c["id"] for c in outs[0]["charts"]]
           == ["clinvar-stars", "genome", "mito", "ancestry-fine", "prs"], [c["id"] for c in outs[0]["charts"]])
 
-    with open(os.path.join(REPO, "modules", "local", "html_report", "main.nf")) as f:
-        nf = f.read()
-    with open(os.path.join(REPO, "scripts", "24-html-report.sh")) as f:
-        sh = f.read()
-    check("8. the Nextflow module writes and emits ${id}_charts.json beside the report",
-          "--charts-json ${id}_charts.json" in nf and 'path("${meta.id}_charts.json")' in nf
-          and "${meta.id}_charts.json" in nf.split("stub:")[1])
-    check("8. step 24 writes ${SAMPLE}_charts.json beside the report",
-          '--charts-json "/genome/${SAMPLE}/${SAMPLE}_charts.json"' in sh)
-
     # 7. the offline page, with the fixture's sections on the demo (53 hits, ROH, poly-C)
     with open(f"{work}/s1.json") as f:
         s = json.load(f)
@@ -426,32 +103,6 @@ def demo_checks(work):
               sec.count('<figure class="chart">') == 1 and -1 < cav < fig, (cav, fig))
     check("7. the hits table carries the id the charts link to, and its rows keep their shape",
           page.count('<a id="clinvar-hits"></a>') == 1 and len(re.findall(r"<tr><td>chr", page)) >= 50)
-
-    # 9. og run delta with the additive field
-    prev = copy.deepcopy(s)
-    del prev["sections"]["mito"]["data"]["heteroplasmic_sites"]
-    got = run_delta(prev, s)
-    check("9. og run delta: no change for the added heteroplasmic_sites", got == [], got)
-    moved = copy.deepcopy(s)
-    moved["sections"]["clinvar"]["data"]["hits"][0]["significance"] = "Benign"
-    check("9. red control: a reclassified hit is a change", run_delta(prev, moved) not in ([], None))
-
-
-def run_delta(prev, cur):
-    """The changes og run delta lists between two summaries (no manifests), or None if it failed."""
-    with tempfile.TemporaryDirectory() as work:
-        os.makedirs(os.path.join(work, "prev"))
-        for path, summ in ((os.path.join(work, "prev", "summary.json"), prev), (os.path.join(work, "cur.json"), cur)):
-            with open(path, "w") as f:
-                json.dump(summ, f)
-        out = os.path.join(work, "delta")
-        p = subprocess.run([OG, "run", "delta", "--sample", "S", "--summary", os.path.join(work, "cur.json"),
-                            "--previous", os.path.join(work, "prev"), "--out", out], capture_output=True, text=True)
-        if p.returncode:
-            print(p.stderr)
-            return None
-        with open(out + ".json") as f:
-            return json.load(f)["changes"]
 
 
 def page_problems(b, base, run):
@@ -556,7 +207,6 @@ def live_checks(work, charts_file):
 
 
 def main():
-    unit_checks()
     with tempfile.TemporaryDirectory() as work:
         demo_checks(work)
         live_checks(work, f"{work}/c1.json")

@@ -22,6 +22,7 @@ step	label	tool	recorded	processes	sections	upstream	hours	hours_from	hours_low	
 03c	Strelka2		yes			02				
 03d	Octopus		yes			02	4	estimate		
 04	Manta	manta	yes	MANTA	manta	02	0.68	measured	0.3666	
+04a	TIDDIT		yes			02				
 04b	GRIDSS		yes			02	8	estimate		
 05	AnnotSV	annotsv	yes	ANNOTSV	annotsv	15,19,18	0.03	measured	0.0166	
 06	ClinVar screen	clinvar	yes	CLINVAR_SCREEN,CLINVAR_CDNA_CHECK	clinvar,carrier	03	0.02	measured	0.0083	clinvar_file_date
