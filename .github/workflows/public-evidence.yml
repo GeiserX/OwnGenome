@@ -41,7 +41,7 @@ name: Public evidence
 #                      tool puts fewer than Y_MIN of the men on the
 #                      published branch or below it; the same calls handed
 #                      to other men are the red control and must fail it.
-#                      The full 60-man table is in docs/37-y-haplogroup.md.
+#                      The full 58-man table is in docs/37-y-haplogroup.md.
 #
 # It runs by hand only (workflow_dispatch). Public repo: the GitHub-hosted
 # runner is free here.
@@ -73,7 +73,7 @@ on:
         type: boolean
         default: true
       y_samples:
-        description: "1000 Genomes men for the y-benchmark job, separated by spaces or commas (3 or more; the docs table has 60)"
+        description: "1000 Genomes men for the y-benchmark job, separated by spaces or commas (3 or more, from different haplogroups: the red control hands each man's calls to another; the docs table has 58)"
         type: string
         default: HG01890 HG02588 NA18952 HG01583 HG00530 HG00107
 
