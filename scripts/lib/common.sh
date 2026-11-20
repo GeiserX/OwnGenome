@@ -957,6 +957,10 @@ scatter_beds() {
 # in the memory the container engine has (`info`'s MemTotal, to the nearest
 # GB; at least 1), with a NOTE on stderr that says so. Four 8 GB units do
 # not fit a 16 GB engine, and the kernel kills a container that runs out.
+# The rounding is on purpose: a VM given 16 GB reports a little less, and
+# two units should still run there. So the units' limits may exceed the
+# reported memory by up to half a GB; a limit is a ceiling, not what a unit
+# uses.
 # When the engine does not say, THREADS alone counts.
 scatter_jobs() {
   local gb=$1 jobs mem have fit
