@@ -1,5 +1,6 @@
 //! A live page that cannot load its data says so, in a headless Chrome. A small demo site built from
-//! assets/live (the home page, DEMO-001, the child DEMO-003 and the family DEMO-FAMILY) is served by a stub
+//! assets/live (the home page, the adults DEMO-001 and DEMO-002, the child DEMO-003 and the family DEMO-FAMILY)
+//! is served by a stub
 //! that can answer one path with an error, with no answer at all, with a given body or after a delay, with
 //! the live site's Content-Security-Policy.
 //!
@@ -12,8 +13,10 @@
 //!   says child. The control: DEMO-003, a real child with good files, still reads "Results about a child".
 //! - frames.json held 15 s: the wire, run health and re-check panels say they wait for the run's data,
 //!   never that there is nothing; once the frames arrive the replay shows its steps and the dated re-check.
+//!   DEMO-002, whose state has no re-check and no numbers, then reads "No re-check yet" and "No numbers yet.".
 //!
-//! Each case was red on main before the fix (the PR says where). Without Chrome the test says SKIP, and
+//! Each case was red on main before the fix (the PR says where); the DEMO-002 check is red when the re-check
+//! panel keeps its waiting line after a state with no re-check. Without Chrome the test says SKIP, and
 //! fails in CI.
 
 use og_browser::{Browser, Scratch, Value, chrome_or_skip, js_str, repo_root};
@@ -33,6 +36,7 @@ const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; st
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
 const UNREAD: &str = "This page could not read this run's data, so it shows nothing yet.";
 const WAITING: &str = "Waiting for the run's data.";
+const NO_RECHECK: &str = "No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).";
 const BANNER: &str = "Database re-check of 2026-01-02T11:05:40Z: ClinVar 2026-01 is newer than the one this run used.";
 
 /// How the stub answers one path.
@@ -269,6 +273,13 @@ fn demo_site(dir: &Path) {
         &frames_with(&recheck),
         Some(results),
     );
+    run_page(
+        dir,
+        "DEMO-002",
+        "index.html",
+        &frames_with("{}"),
+        Some(results),
+    );
     let child = r#"{"family": {"kind": "member", "child": true, "families": [{"name": "DEMO-FAMILY", "url": "../DEMO-FAMILY/"}]}}"#;
     let acts = r#"{"schema_version": 1, "sample": "DEMO-003", "chapters": [], "note": null,
         "findings": [{"id": "act-1", "level": "act", "card": "clinical", "title": "A result to act on"}]}"#;
@@ -286,6 +297,23 @@ fn demo_site(dir: &Path) {
             "plan": [], "reports": []}, "runs": {}}"#,
     )
     .unwrap();
+}
+
+/// Open `url` from a blank page and wait until it is the document shown, so no check reads the page before it
+/// (`Browser::go` returns once the navigation starts).
+fn visit(b: &mut Browser, url: &str) {
+    b.go("about:blank").unwrap();
+    assert!(
+        b.wait("location.href === 'about:blank'", Duration::from_secs(10))
+            .is_some(),
+        "about:blank never opened"
+    );
+    b.go(url).unwrap();
+    let at = format!("location.href === {}", js_str(url));
+    assert!(
+        b.wait(&at, Duration::from_secs(20)).is_some(),
+        "{url} never opened"
+    );
 }
 
 fn text(v: Option<Value>) -> String {
@@ -331,7 +359,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
 
     // The person page: results.json at 500, then an OK answer through Try again.
     stub.set("/runs/DEMO-001/results.json", Answer::Status(500));
-    b.go(&stub.url("/runs/DEMO-001/")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-001/"));
     let said = text(b.wait(&failed_box("results-failed"), secs(20)));
     check(
         "person: results.json at 500 says 'The results could not be loaded.' with Try again",
@@ -352,7 +380,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
         drawn,
     );
     // An OK answer from the start draws as before.
-    b.go(&stub.url("/runs/DEMO-001/?ok")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-001/?ok"));
     let ok = text(b.wait(
         "document.querySelector('#results section.sec h2') && [document.querySelector('#results section.sec h2').textContent, \
          !!document.getElementById('results-failed')].join('|')",
@@ -370,7 +398,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
         ("aborted (offline)", Answer::Abort),
     ] {
         stub.set("/runs.json", a);
-        b.go(&stub.url("/")).unwrap();
+        visit(&mut b, &stub.url("/"));
         let said = text(b.wait(&failed_box("home-failed"), secs(20)));
         let kept = text(
             b.eval("String(document.querySelectorAll('#home ul.runs li a').length)")
@@ -400,7 +428,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
 
     // The family page: family.json answers 200 {}, then the family through Try again.
     stub.set("/runs/DEMO-FAMILY/family.json", Answer::Json("{}"));
-    b.go(&stub.url("/runs/DEMO-FAMILY/")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-FAMILY/"));
     let said = text(b.wait(
         "(function () { var m = document.getElementById('family'); var t = m.innerText.replace(/\\s+/g, ' ').trim(); \
          return m.querySelector('button') ? t : ''; }())",
@@ -427,7 +455,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
     // A run whose state and results cannot be read: the gate stays closed and names no role.
     stub.set("/runs/DEMO-001/frames.json", Answer::Status(500));
     stub.set("/runs/DEMO-001/results.json", Answer::Status(500));
-    b.go(&stub.url("/runs/DEMO-001/?unread")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-001/?unread"));
     let page = text(b.wait(
         "document.getElementById('report-gate') && JSON.stringify([document.querySelector('#report-gate h1').textContent, \
          document.querySelector('#report-gate .lede').textContent, /child/i.test(document.body.innerText), \
@@ -442,7 +470,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
     );
     stub.set("/runs/DEMO-001/frames.json", Answer::File);
     stub.set("/runs/DEMO-001/results.json", Answer::File);
-    b.go(&stub.url("/runs/DEMO-003/")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-003/"));
     let child = text(b.wait(
         "document.getElementById('report-gate') && document.querySelector('#report-gate h1').textContent",
         secs(20),
@@ -456,7 +484,7 @@ fn a_page_that_cannot_load_its_data_says_so() {
     // frames.json held 15 s: the panels wait, then the finished replay draws its steps and the re-check.
     stub.set("/runs/DEMO-001/frames.json", Answer::Hold(secs(15)));
     let t0 = Instant::now();
-    b.go(&stub.url("/runs/DEMO-001/?held")).unwrap();
+    visit(&mut b, &stub.url("/runs/DEMO-001/?held"));
     let panels = "JSON.stringify([document.getElementById('found').innerText.trim(), \
          (document.querySelector('[data-plugin=\"ops\"] p') || {}).textContent || '', \
          (document.querySelector('[data-plugin=\"recheck\"] p') || {}).textContent || ''])";
@@ -487,6 +515,19 @@ fn a_page_that_cannot_load_its_data_says_so() {
         "held: once the frames arrive, the finished replay shows its steps and the dated re-check",
         arrived == format!("[2,{}]", js_str(BANNER)),
         arrived,
+    );
+
+    // An adult whose first state has no re-check and no run numbers: the panels then say so.
+    visit(&mut b, &stub.url("/runs/DEMO-002/"));
+    let none = text(b.wait(
+        "document.documentElement.dataset.pgpFrame && JSON.stringify([(document.querySelector('[data-plugin=\"ops\"] p') || {}).textContent, \
+         (document.querySelector('[data-plugin=\"recheck\"] p') || {}).textContent])",
+        secs(20),
+    ));
+    check(
+        "open: a first state with no re-check and no numbers reads 'No numbers yet.' and 'No re-check yet' instead of waiting",
+        none == format!("[\"No numbers yet.\",{}]", js_str(NO_RECHECK)),
+        none,
     );
 
     drop((b, stub));
