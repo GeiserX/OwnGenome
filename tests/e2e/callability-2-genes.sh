@@ -147,17 +147,16 @@ check "Nextflow: its HTML report has the section with that count" grep -qF \
   "Not read, and no other step calls them (${N_N}): " "${CASE_TMP}/report/${SAMPLE}/${SAMPLE}_report.html"
 
 # --- 3. an owned gene says whether its own step ran ------------------------------------
-# owner_ran SAMPLE_DIR SAMPLE OWNER: "ran" when the owner's step wrote its file there
-# (docs/16b-mosdepth.md), by a shell test of the files, not the collector's code
+# owner_ran SAMPLE_DIR SAMPLE OWNER GENE: "ran" when the owner's step wrote the gene's file
+# there (docs/16b-mosdepth.md), by a shell test of the files, not the collector's code. A
+# Parascopy gene's file is its own table, named in assets/paralog_loci.tsv.
 owner_ran() {
-  local d=$1 s=$2 f
+  local d=$1 s=$2 f t
   case $3 in
     parascopy)
-      for f in "${d}/paralogs/${s}"_*_copy_number.tsv; do
-        case ${f##*/} in "${s}_hba_copy_number.tsv" | "${s}_paraphase_copy_number.tsv") continue ;; esac
-        [ -f "$f" ] && { echo ran; return; }
-      done
-      echo "not run"; return ;;
+      t=$(awk -F'\t' -v g="$4" '/^#/ {next} !c {for (i = 1; i <= NF; i++) if ($i == "table") c = i; next}
+        {n = split($2, a, ","); for (i = 1; i <= n; i++) if (a[i] == g) {print $c; exit}}' "${REPO}/assets/paralog_loci.tsv")
+      f="paralogs/${s}_${t:-none}_copy_number.tsv" ;;
     pypgx) f="pypgx/${s}_pypgx_summary.tsv" ;;
     cn_loci:HBA) f="paralogs/${s}_hba_copy_number.tsv" ;;
     cn_loci:CYP21A2) f="paralogs/${s}_cyp21a2_psv.tsv" ;;
@@ -178,7 +177,7 @@ B_OWN=$(owned "$OWN_JSON")
 check_ge "bash: owned genes not read are listed" "$(printf '%s\n' "$B_OWN" | grep -c .)" 1
 B_BAD=$(printf '%s\n' "$B_OWN" | while IFS=$'\t' read -r g o st; do
   [ -n "$g" ] || continue
-  w=$(owner_ran "${GENOME_DIR}/${SAMPLE}" "$SAMPLE" "$o")
+  w=$(owner_ran "${GENOME_DIR}/${SAMPLE}" "$SAMPLE" "$o" "$g")
   [ "$st" = "$w" ] || echo "${g} (${o}): ${st}, the files say ${w}"
 done)
 echo "bash, owned genes by status: $(printf '%s\n' "$B_OWN" | cut -f3 | sort | uniq -c | tr -s ' \n' ' ')"
