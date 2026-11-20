@@ -97,7 +97,7 @@ Pipeline helpers (the steps run these):
   og family plan|prepare|check|report|segments [args]
   og family ibd [args]
   og consumer build-sites|export|check [args]
-  og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+  og ancestry-fine panel-map|check-map|sample-bed|chroms|report [args]
   og ancestry-fine freqs [args]
   og ancestry-fine project [args]
   og ancestry-fine paint [args]
@@ -185,7 +185,7 @@ const OWN_HELP: &[&str] = &[
     "qc sex-loss",
     "report render",
     "couple screen|genes",
-    "ancestry-fine panel-map|check-map|order|sample-bed|chroms|report|simulate",
+    "ancestry-fine panel-map|check-map|freqs|sample-bed|chroms|report|simulate",
     "archaic table|strict|genotypes|report",
     "vntyper report",
     "locityper report",
