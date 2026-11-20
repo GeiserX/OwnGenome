@@ -812,7 +812,7 @@ fn a_homozygous_call_inside_a_deletion_is_hemizygous() {
         Some(&del("0/1", None)),
     );
     let c = carrier_of(&d);
-    let item: Vec<&Value> = list(at(&c, &["carriers"]))
+    let item: Vec<&Value> = list(at(&c, &["hom_or_hemizygous"]))
         .iter()
         .filter(|x| s(at(x, &["gene"])) == "MUTYH")
         .collect();
@@ -836,7 +836,7 @@ fn a_homozygous_call_inside_a_deletion_is_hemizygous() {
             Some(&del("0/1", None)),
         );
         let c = carrier_of(&d);
-        list(at(&c, &["carriers"]))
+        list(at(&c, &["hom_or_hemizygous"]))
             .iter()
             .find(|x| s(at(x, &["gene"])) == "MUTYH")
             .map(|x| s(at(x, &["genotype"])).to_owned())
@@ -923,8 +923,13 @@ fn both_reports_print_the_two_hit_line_and_the_hemizygous_genotype() {
     let (txt, html) = reports(&collect(&d));
     assert!(txt.contains("Biallelic: MUTYH"));
     assert!(html.contains("Biallelic: MUTYH"));
-    assert!(html.contains("hemizygous (called homozygous inside DEL"));
-    assert!(txt.contains("hemizygous (called homozygous inside DEL"));
+    // The hit has no unchanged copy, so the summary lists it apart from the
+    // carriers (hom_or_hemizygous); the two-hit line still names it.
+    assert!(
+        html.replace("&gt;", ">")
+            .contains("chr1:45336000 G>A hemizygous")
+    );
+    assert!(txt.contains("chr1:45336000 G>A hemizygous"));
     assert!(txt.contains("biallelic with DEL chr1:45335000-45337000"));
     assert!(html.contains("biallelic with DEL chr1:45335000-45337000"));
 }
