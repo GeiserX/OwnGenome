@@ -8,7 +8,6 @@
   check-map    panel-map's table passes; one Oceanian put back as reference
                and painting reference, a short row, a flag other than 0 or 1
                and a table with no reference person each stop it
-  order        the column of each group in a supervised ADMIXTURE .Q
   sample-bed   the .bed code of each genotype (ALT is the .bim's A1), chr22 in
                the VCF meets 22 in the .bim, the .P.in and .ped rows of the
                kept SNVs, and the bootstrap draws only blocks that hold SNVs
@@ -89,12 +88,6 @@ def run_all(tmp):
                        ("empty", header)):
         write(os.path.join(tmp, f"{name}.tsv"), text)
         expect(f"check-map: stops on the {name} table", og("check-map", "--map", os.path.join(tmp, f"{name}.tsv")).returncode, 1)
-
-    # --- order ----------------------------------------------------------------------
-    write(os.path.join(tmp, "ref.pop"), "EUR\nEUR\nAFR\nEAS\nAFR\n")
-    write(os.path.join(tmp, "ref.3.Q"), "1 0 0\n0.99 0.01 0\n0 0 1\n0 1 0\n0 0.02 0.98\n")
-    r = og("order", "--pop", os.path.join(tmp, "ref.pop"), "--q", os.path.join(tmp, "ref.3.Q"))
-    expect("order: each column is the group whose people fill it", r.stdout, "EUR,EAS,AFR\n")
 
     # --- sample-bed -----------------------------------------------------------------
     write(os.path.join(tmp, "ref.bim"), "".join(f"22\t22:{p}\t0\t{p}\t{alt}\t{ref}\n" for p, ref, alt in

@@ -1203,11 +1203,13 @@ install_fine_maps() {
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
 #                +prune); sites.tsv (chrN, position, REF, ALT) and positions.tsv;
 #   maps/        chrN.map (Beagle) and chrN.rfmix.map (RFMix's column order);
-#   model/       ref.bed of the reference individuals on the SNVs left after LD
-#                pruning (r2 above 0.1 within 500 kb removed); for each level
-#                (continent, region) the group allele frequencies of a supervised
-#                ADMIXTURE run, <level>.P, with their column order in levels.tsv;
-#                and paint_map.tsv, the reference individuals RFMix paints with.
+#   model/       ref.bim, ref.fam and ref.geno: the reference individuals' genotypes
+#                at the SNVs left after LD pruning (r2 above 0.1 within 500 kb
+#                removed); for each level (continent, region) each group's allele
+#                frequencies, <level>.P, counted by og ancestry-fine freqs (the
+#                maximum a supervised ADMIXTURE run climbs to), with their column
+#                order in levels.tsv; and paint_map.tsv, the reference individuals
+#                RFMix paints with.
 # ANCESTRY_FINE_REGIONS (a BED file) keeps only those regions, and
 # ANCESTRY_FINE_EXCLUDE (sample ids) leaves people out of the panel: the e2e
 # case uses both, for the fixture's slices and the two people of its
@@ -1219,7 +1221,7 @@ install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
   local regions=${ANCESTRY_FINE_REGIONS:-} exclude=${ANCESTRY_FINE_EXCLUDE:-} smap=${ANCESTRY_FINE_SAMPLE_MAP:-}
   local thin=${ANCESTRY_FINE_THIN:-2kb}
-  local v c e level col k order rstamp="" pstamp mstamp tmp chroms=""
+  local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
   echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
@@ -1346,46 +1348,29 @@ install_ancestry_fine_panel() {
   install_fine_maps "$dir" "$chroms" || return 1
 
   # model/: redone when samples.tsv or the panel changes.
-  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") admixture=${ADMIXTURE_IMAGE}"
+  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") freqs=og"
   if [ "$(cat "${dir}/model/DONE" 2>/dev/null)" != "$mstamp" ]; then
     tmp="${dir}/model/tmp"
     rm -rf "$tmp" "${dir}/model/DONE"
     mkdir -p "$tmp"
     awk -F'\t' 'NR > 1 && $5 == 1 {print $1}' "${dir}/samples.tsv" > "${tmp}/ref.txt"
-    echo "  model: LD pruning on $(wc -l < "${tmp}/ref.txt" | tr -d ' ') reference individuals, then ADMIXTURE's group frequencies..."
+    echo "  model: LD pruning on $(wc -l < "${tmp}/ref.txt" | tr -d ' ') reference individuals, then each group's allele frequencies..."
     # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
     if ! run_in --rw "$dir" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
           for c in $4; do bcftools view -S "$2" -Ou "$1/$c.vcf.gz" | bcftools +prune -m 0.1 -w 500kb -Ob -o "$3/$c.bcf"; done
           for c in $4; do echo "$3/$c.bcf"; done > "$3/bcfs.txt"
           bcftools concat -f "$3/bcfs.txt" -Oz -o "$3/adm.vcf.gz"' \
           _ "$(cpath "${dir}/panel")" "$(cpath "${tmp}/ref.txt")" "$(cpath "$tmp")" "$chroms" \
-       || ! run_in --rw "$dir" "$PLINK2_IMAGE" plink2 --vcf "$(cpath "${tmp}/adm.vcf.gz")" --make-bed \
-              --set-all-var-ids '@:#' --threads "$THREADS" --out "$(cpath "${tmp}/ref")" > "${tmp}/plink2.log" 2>&1; then
-      tail -n 20 "${tmp}/plink2.log" 2>/dev/null || true
-      echo "[WARN] Could not make the reference's ADMIXTURE input"
+       || ! fit=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine freqs \
+              --vcf "$(cpath "${tmp}/adm.vcf.gz")" --samples "$(cpath "${dir}/samples.tsv")" --out "$(cpath "$tmp")"); then
+      echo "[WARN] Could not count the reference groups' allele frequencies"
       return 1
     fi
-    : > "${tmp}/levels.tsv"
-    for v in continent:3 region:4; do
-      level=${v%:*} col=${v#*:}
-      awk -F'\t' -v c="$col" 'NR == FNR {if (FNR > 1) g[$1] = $c; next} {print g[$2]}' "${dir}/samples.tsv" "${tmp}/ref.fam" > "${tmp}/ref_${level}.pop"
-      k=$(sort -u "${tmp}/ref_${level}.pop" | grep -cv '^-\{0,1\}$' || true)
-      for e in bed bim fam; do ln -sf "ref.${e}" "${tmp}/ref_${level}.${e}"; done
-      # shellcheck disable=SC2016  # $1 to $4 belong to the inner sh
-      if ! run_in --rw "$dir" "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && admixture --supervised -j"$4" "ref_$2.bed" "$3" > "admixture_$2.log" 2>&1' \
-            _ "$(cpath "$tmp")" "$level" "$k" "$THREADS" \
-         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine order \
-              --pop "$(cpath "${tmp}/ref_${level}.pop")" --q "$(cpath "${tmp}/ref_${level}.${k}.Q")"); then
-        tail -n 20 "${tmp}/admixture_${level}.log" 2>/dev/null || true
-        echo "[WARN] ADMIXTURE could not estimate the frequencies of the ${level} groups"
-        return 1
-      fi
-      mv "${tmp}/ref_${level}.${k}.P" "${tmp}/${level}.P"
-      printf '%s\t%s\t%s\n' "$level" "$k" "$order" >> "${tmp}/levels.tsv"
-    done
+    echo "  model: ${fit}"
     awk -F'\t' -v OFS='\t' 'NR > 1 && $6 == 1 {print $1, $3}' "${dir}/samples.tsv" > "${tmp}/paint_map.tsv"
-    for e in ref.bed ref.bim ref.fam continent.P region.P levels.tsv paint_map.tsv; do mv -f "${tmp}/${e}" "${dir}/model/${e}"; done
-    rm -rf "$tmp"
+    for e in ref.bim ref.fam ref.geno continent.P region.P levels.tsv paint_map.tsv; do mv -f "${tmp}/${e}" "${dir}/model/${e}"; done
+    # ref.bed: ADMIXTURE's input of an older install, read by nothing now.
+    rm -rf "$tmp" "${dir}/model/ref.bed"
     echo "$mstamp" > "${dir}/model/DONE"
   fi
   echo "[OK] fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b): ${dir} ($(wc -l < "${dir}/model/ref.bim" | tr -d ' ') SNVs for ADMIXTURE, $(wc -l < "${dir}/model/paint_map.tsv" | tr -d ' ') painting references)"
