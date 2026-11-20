@@ -470,10 +470,11 @@
     var folds = {};
     Array.prototype.forEach.call(main.querySelectorAll('details[data-child]'), function (x) { folds[x.getAttribute('data-child')] = x.open; });
     var y = window.scrollY;
-    main.textContent = '';
+    // The page is built first and replaces the shown one only once it is whole: a redraw that throws keeps it.
     var page = el('section', { 'class': 'family-page', 'data-plugin': 'family', 'aria-label': 'Family ' + f.state.name });
     if (f.state.error) {
       add(page, el('p', {}, f.state.error));
+      main.textContent = '';
       add(main, page);
       root.setAttribute('data-pgp-status', 'ready');
       return;
@@ -499,6 +500,7 @@
     add(page, top);
     add(page, related(f), couples(f), children(f), sideBySide(f));
     if ((f.state.plan || []).length || f.state.reports.length) { add(page, more(f)); }
+    main.textContent = '';
     add(main, page);
     Array.prototype.forEach.call(main.querySelectorAll('details[data-child]'), function (x) {
       var k = x.getAttribute('data-child');
