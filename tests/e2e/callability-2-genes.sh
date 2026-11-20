@@ -11,6 +11,9 @@
 #      section, and the genes it lists as not read with no owner are as many
 #      as a query of assets/callability_genes.tsv and the per-gene table
 #      gives (awk, not the report's code).
+#   3. an owned gene not read says whether its own step ran: on the base case's
+#      folder, collected again, each owner_status is what a shell test of that
+#      step's files says; on HTML_REPORT run alone, with no owner output, none ran.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
@@ -142,5 +145,48 @@ check_eq "Nextflow: HTML_REPORT's summary lists the genes the catalog query give
   "$(listed "${CASE_TMP}/report/${SAMPLE}/summary.json")" "ok ${N_N}"
 check "Nextflow: its HTML report has the section with that count" grep -qF \
   "Not read, and no other step calls them (${N_N}): " "${CASE_TMP}/report/${SAMPLE}/${SAMPLE}_report.html"
+
+# --- 3. an owned gene says whether its own step ran ------------------------------------
+# owner_ran SAMPLE_DIR SAMPLE OWNER: "ran" when the owner's step wrote its file there
+# (docs/16b-mosdepth.md), by a shell test of the files, not the collector's code
+owner_ran() {
+  local d=$1 s=$2 f
+  case $3 in
+    parascopy)
+      for f in "${d}/paralogs/${s}"_*_copy_number.tsv; do
+        case ${f##*/} in "${s}_hba_copy_number.tsv" | "${s}_paraphase_copy_number.tsv") continue ;; esac
+        [ -f "$f" ] && { echo ran; return; }
+      done
+      echo "not run"; return ;;
+    pypgx) f="pypgx/${s}_pypgx_summary.tsv" ;;
+    cn_loci:HBA) f="paralogs/${s}_hba_copy_number.tsv" ;;
+    cn_loci:CYP21A2) f="paralogs/${s}_cyp21a2_psv.tsv" ;;
+    cn_loci:HP | cn_loci:CCL3L1 | cn_loci:LCE3BC) f="paralogs/${s}_cn_dosage.tsv" ;;
+    cn_loci:LPA_KIV2) f="lpa/${s}_lpa_kiv2.tsv" ;;
+    cn_loci:RHD) f="bloodtype/${s}_bloodtype.tsv" ;;
+    *) echo "unknown owner"; return ;;
+  esac
+  if [ -f "${d}/${f}" ]; then echo ran; else echo "not run"; fi
+}
+# owned SUMMARY_JSON: "gene<TAB>owner<TAB>owner_status" of each owned gene not read
+owned() { jq -r '.sections.callability.data.not_read_owned[] | [.gene, .owner, (.owner_status // "none")] | @tsv' "$1"; }
+# bash: collected now, so a later case's files cannot differ from what the collector saw
+OWN_JSON="${CASE_TMP}/owned-bash.json"
+"${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "${GENOME_DIR}/${SAMPLE}" \
+  --assets "${REPO}/assets" --out "$OWN_JSON" --only a > /dev/null
+B_OWN=$(owned "$OWN_JSON")
+check_ge "bash: owned genes not read are listed" "$(printf '%s\n' "$B_OWN" | grep -c .)" 1
+B_BAD=$(printf '%s\n' "$B_OWN" | while IFS=$'\t' read -r g o st; do
+  [ -n "$g" ] || continue
+  w=$(owner_ran "${GENOME_DIR}/${SAMPLE}" "$SAMPLE" "$o")
+  [ "$st" = "$w" ] || echo "${g} (${o}): ${st}, the files say ${w}"
+done)
+echo "bash, owned genes by status: $(printf '%s\n' "$B_OWN" | cut -f3 | sort | uniq -c | tr -s ' \n' ' ')"
+check_eq "bash: each owned gene's owner_status is what its step's files say" "$B_BAD" ""
+# Nextflow: HTML_REPORT got no owner step's output, so no owned gene's step ran
+N_OWN=$(owned "${CASE_TMP}/report/${SAMPLE}/summary.json")
+check_ge "Nextflow: owned genes not read are listed" "$(printf '%s\n' "$N_OWN" | grep -c .)" 1
+check_eq "Nextflow: with no owner step's output, each owned gene reads not run" \
+  "$(printf '%s\n' "$N_OWN" | cut -f3 | sort -u)" "not run"
 
 finish
