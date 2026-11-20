@@ -1,10 +1,9 @@
-"""validate.py: an in-process JSON Schema check for three Python test files.
+"""validate.py: an in-process JSON Schema check for one Python test file.
 
 The check CI and the e2e cases run is `og dev schema SCHEMA DOC`
 (rust/crates/og-dev/src/schema.rs). This module stays only because
-tests/test_collect_summary.py, tests/test_hla_report.py and
-tests/test_render_report.py call validate(schema, doc) in-process, in the
-unit-tests job, which has no og. It goes when those tests move to Rust.
+tests/test_collect_summary.py calls validate(schema, doc) in-process, in
+the unit-tests job, which has no og. It goes when that test moves to Rust.
 
 It follows og dev schema's rules: the keywords tests/schema/summary.schema.json
 uses (type, enum, required, properties, additionalProperties as a schema, true
