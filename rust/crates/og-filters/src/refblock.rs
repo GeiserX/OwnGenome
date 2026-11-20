@@ -15,6 +15,13 @@
 //! lowest over the span. A summary goes to stderr; exit 2 on unreadable
 //! input.
 //!
+//! The same floor holds for every record the filter passes on: a reference
+//! call (GT all 0, a one-base block record or a `RefCall`) with GQ below
+//! `--min-gq`, or no GQ, is left out, so PharmCAT reads the position as
+//! missing instead of a confident 0/0 (issue #411, pgx-07). A variant call
+//! passes whatever its GQ. stderr counts them and names those at PharmCAT
+//! positions.
+//!
 //! Fixes against the Python, each with a golden in `tests/parity`:
 //! - when the expanded stream had a record at a filled position that was
 //!   not a one-base reference block, the Python wrote that record and then
@@ -91,6 +98,9 @@ pub struct Targets {
     chroms: Vec<(String, Vec<Target>)>,
     index: HashMap<String, usize>,
     pub count: usize,
+    /// Every PharmCAT position, one base or longer: its gene (`?` without
+    /// one).
+    genes: HashMap<(String, i128), String>,
 }
 
 impl Targets {
@@ -121,6 +131,7 @@ pub fn read_positions(path: &str) -> Result<Targets, RefblockError> {
         chroms: Vec::new(),
         index: HashMap::new(),
         count: 0,
+        genes: HashMap::new(),
     };
     let mut number = 0;
     for line in lines_of(path)? {
@@ -134,13 +145,18 @@ pub fn read_positions(path: &str) -> Result<Targets, RefblockError> {
             continue;
         }
         let ref_ = c[3];
-        if crate::chars(ref_) == 1 && c[4].split(',').all(|a| crate::chars(a) == 1) {
-            continue;
-        }
         let gene = c
             .get(7)
             .and_then(|info| info.split(';').find_map(|kv| kv.strip_prefix("PX=")))
             .unwrap_or_default();
+        if let Ok(pos) = pycompat::num::parse_int(c[1]) {
+            t.genes
+                .entry((c[0].to_owned(), pos))
+                .or_insert_with(|| if gene.is_empty() { "?" } else { gene }.to_owned());
+        }
+        if crate::chars(ref_) == 1 && c[4].split(',').all(|a| crate::chars(a) == 1) {
+            continue;
+        }
         let start = int_at(path, number, "POS", c[1])?;
         let len = i128::try_from(crate::chars(ref_)).unwrap_or(i128::MAX);
         let target = Target {
@@ -185,6 +201,26 @@ pub fn block(alt: &str, filter: &str, gt: &str, gq: Option<i128>, min_gq: i128) 
         }
         _ => Block::NotConfident,
     }
+}
+
+/// Whether a record is a reference call (GT all 0, one sample) below
+/// `min_gq`, or without a GQ: not confident enough to reach PharmCAT as 0/0.
+/// A record without a sample column or a GT is not a reference call.
+pub fn weak_reference(line: &str, min_gq: i128) -> bool {
+    let c: Vec<&str> = line.trim_end_matches(['\n', '\r']).split('\t').collect();
+    let (Some(keys), Some(vals)) = (c.get(8), c.get(9)) else {
+        return false;
+    };
+    let fmt: HashMap<&str, &str> = keys.split(':').zip(vals.split(':')).collect();
+    let Some(gt) = fmt.get("GT") else {
+        return false;
+    };
+    if !gt.split(['/', '|']).all(|a| a == "0") {
+        return false;
+    }
+    fmt.get("GQ")
+        .and_then(|g| pycompat::num::parse_int(g).ok())
+        .is_none_or(|gq| gq < min_gq)
 }
 
 /// What the gVCF shows over one target.
@@ -360,12 +396,16 @@ struct Fill {
     label: String,
 }
 
-/// What [`run`] wrote: the labels of the records it filled, and the
-/// positions where it kept the stream's own record instead.
+/// What [`run`] wrote: the labels of the records it filled, the positions
+/// where it kept the stream's own record instead, and the reference calls
+/// below the GQ floor it left out (how many, and the labels of those at
+/// PharmCAT positions).
 #[derive(Debug, Default)]
 pub struct Outcome {
     pub filled: Vec<String>,
     pub kept: Vec<String>,
+    pub weak: usize,
+    pub weak_at: Vec<String>,
 }
 
 /// Fills the expanded VCF from `input` into `out`.
@@ -488,6 +528,15 @@ pub fn run(
             // kept instead of it, so one position never gets two records.
             continue;
         }
+        if weak_reference(&line, min_gq) {
+            // A reference call below the floor: left out, so PharmCAT reads
+            // the position as missing, as it reads a ./. block.
+            outcome.weak += 1;
+            if let Some(gene) = targets.genes.get(&(c[0].to_owned(), key.1)) {
+                outcome.weak_at.push(format!("{gene} {}:{}", c[0], key.1));
+            }
+            continue;
+        }
         out.write_all(line.as_bytes()).map_err(w)?;
         open_line = !line.ends_with('\n');
         kept_key = Some(key);
@@ -529,6 +578,17 @@ pub fn cli(argv: &[String]) -> u8 {
                 "{PREFIX}: {} of {n} PharmCAT positions longer than one base called 0/0 from reference blocks with GQ >= {min_gq}{list}; the others stay as the gVCF has them (a variant call, or missing)",
                 o.filled.len()
             );
+            if o.weak > 0 {
+                let at = if o.weak_at.is_empty() {
+                    "; none at a PharmCAT position".to_owned()
+                } else {
+                    format!("; at PharmCAT positions: {}", o.weak_at.join(", "))
+                };
+                eprintln!(
+                    "{PREFIX}: {} reference calls with GQ below {min_gq} (or none) left out, so PharmCAT reads them as missing{at}",
+                    o.weak
+                );
+            }
             0
         }
         Err(e) => {

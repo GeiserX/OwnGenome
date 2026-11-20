@@ -282,14 +282,27 @@ fn the_fixture_fills_five_and_leaves_four() {
         filled_keys.iter().all(|k| at.get(k) == Some(&1)),
         "one record at each filled position (the one-base record is replaced)"
     );
+    // The GQ 10 block's one-base records are reference calls below the GQ
+    // 20 floor: left out, so PharmCAT reads them as missing (issue #411,
+    // pgx-07; tests/i411_refblock_gq.rs).
+    let weak = |r: &Vec<String>| r[9].starts_with("0/0:10:");
     let kept: Vec<&Vec<String>> = inp
         .iter()
-        .filter(|r| !filled_keys.contains(&key(r)))
+        .filter(|r| !filled_keys.contains(&key(r)) && !weak(r))
         .collect();
     let passed: Vec<&Vec<String>> = outr.iter().filter(|r| r[7] != "PGX_REFBLOCK").collect();
     assert_eq!(
         passed, kept,
         "every other record passes unchanged and in order"
+    );
+    assert!(
+        inp.iter().any(&weak) && !outr.iter().any(weak),
+        "the GQ 10 block reaches the stream and is left out of the output"
+    );
+    assert!(
+        err.contains("reference calls with GQ below 20 (or none) left out")
+            && err.contains("CYP2C9 chr10:94949161"),
+        "stderr counts them and names the PharmCAT position among them: {err}"
     );
     assert!(
         at.contains_key(&("chr2".to_owned(), 233_760_234))

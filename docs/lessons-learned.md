@@ -531,6 +531,11 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 - **Why:** PharmCAT 3.4.0's preprocessor does not read a one-base 0/0 record as a call at a position whose REF or ALT is longer than one base. It sets the record aside with FILTER `PCATxINDEL` (or `PCATxREF` for a two-base substitution) and lists the position as missing; where PharmCAT's REF is longer than one base, the matcher then discards it.
 - **Fix:** `og pgx refblock-fill` (was `bin/pgx_refblock_fill.py`) writes PharmCAT's own record (its ID, REF and ALT) as 0/0 at each such position when every base of the span lies in reference blocks with GQ 20 or more and nothing else overlaps it. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
 
+### A low-quality reference call reached PharmCAT as a confident 0/0
+- **Failed:** a one-base reference block with GQ 5 at CYP2C19 rs4244285 (the \*2 position) reached PharmCAT as 0/0, so the sample read as "not \*2" when the data could not tell. A DeepVariant `RefCall` record with a low GQ did the same.
+- **Why:** `bcftools convert --gvcf2vcf` writes a 0/0 record for every base of a block, whatever its GQ, and the GQ 20 floor of `og pgx refblock-fill` held only for the 0/0 records it writes itself at positions longer than one base. Every other reference call passed through unchecked.
+- **Fix:** `og pgx refblock-fill` leaves out every reference call (GT all 0) below GQ 20, or without a GQ, so PharmCAT reads the position as missing. A variant call passes whatever its GQ. The step log counts them and names those at PharmCAT positions. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
+
 ### PharmCAT reads MT-RNR1 only as an outside call
 - **Failed:** MT-RNR1 (aminoglycoside-induced hearing loss) was No Result on every sample, although step 20 calls chrM with Mutect2 at high depth.
 - **Why:** PharmCAT 3.4.0 has no MT-RNR1 allele definition for its matcher, so chrM records in its VCF input are never matched for the gene. It lists MT-RNR1 among the genes it prefers as an outside call, and its own MT-RNR1 test passes the gene that way.
