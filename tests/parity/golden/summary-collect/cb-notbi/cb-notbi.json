@@ -1,0 +1,434 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-19 23:00 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "clinvar": {
+   "title": "ClinVar screen",
+   "step": "06",
+   "state": "ok",
+   "source": "clinvar/S_clinvar_hits.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "count": 8,
+    "by_stars": {
+     "4": 0,
+     "3": 2,
+     "2": 3,
+     "1": 1,
+     "0": 2
+    },
+    "hits": [
+     {
+      "stars": 4,
+      "chrom": "chr7",
+      "pos": 117559590,
+      "ref": "ATCT",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "CFTR",
+      "significance": "Pathogenic",
+      "review_status": "practice guideline",
+      "combined_allele": ".",
+      "dp": 30,
+      "gq": 15,
+      "low_confidence": true,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 3,
+      "chrom": "chr17",
+      "pos": 43057100,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "het",
+      "gene": "BRCA1,NBR2",
+      "significance": "Pathogenic",
+      "review_status": "reviewed by expert panel",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
+      "dp": 35,
+      "gq": 60,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 3,
+      "chrom": "chr6",
+      "pos": 26092913,
+      "ref": "G",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "HFE",
+      "significance": "Pathogenic",
+      "review_status": "reviewed by expert panel",
+      "combined_allele": ".",
+      "dp": 40,
+      "gq": 99,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 2,
+      "chrom": "chr1",
+      "pos": 45331556,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "het",
+      "gene": "MUTYH",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 30,
+      "gq": 50,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 2,
+      "chrom": "chr16",
+      "pos": 176700,
+      "ref": "G",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "HBA1",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 31,
+      "gq": 45,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 2,
+      "chrom": "chr5",
+      "pos": 70951946,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "hom",
+      "gene": "SMN1",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 31,
+      "gq": 45,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 1,
+      "chrom": "chr13",
+      "pos": 20189473,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "one copy, other copy not called ref (1/.)",
+      "gene": "GJB2",
+      "significance": "Likely pathogenic",
+      "review_status": "criteria provided, single submitter",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A",
+      "dp": 5,
+      "gq": 40,
+      "low_confidence": true,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 1,
+      "chrom": "chr3",
+      "pos": 15645186,
+      "ref": "G",
+      "alt": "C",
+      "genotype": "het",
+      "gene": "BTD",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, conflicting classifications",
+      "combined_allele": ".",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 0,
+      "chrom": "chr2",
+      "pos": 100,
+      "ref": "A",
+      "alt": "G",
+      "genotype": "het",
+      "gene": ".",
+      "significance": ".",
+      "review_status": ".",
+      "combined_allele": ".",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     },
+     {
+      "stars": 0,
+      "chrom": "chrX",
+      "pos": 101398000,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "1",
+      "gene": "GLA",
+      "significance": "Pathogenic",
+      "review_status": "no assertion criteria provided",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false
+     }
+    ],
+    "low_confidence": 2,
+    "call_floor": {
+     "GQ": 20,
+     "DP": 8
+    },
+    "frequency": {
+     "source": null,
+     "note": "vep/S_vep.vcf.gz has no .tbi index",
+     "common_af": 0.01
+    }
+   }
+  },
+  "carrier": {
+   "title": "Carrier list",
+   "step": "06",
+   "state": "ok",
+   "source": "clinvar/S_clinvar_hits.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes_on_list": 3292,
+    "list": "assets/carrier_genes.tsv",
+    "carriers": [
+     {
+      "gene": "MUTYH",
+      "variant": "chr1:45331556 C>T",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "inheritance": "AR",
+      "condition": "MUTYH-related polyposis"
+     },
+     {
+      "gene": "HFE",
+      "variant": "chr6:26092913 G>A",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 3,
+      "inheritance": "AR",
+      "condition": "Symptomatic form of HFE-related hemochromatosis"
+     },
+     {
+      "gene": "CFTR",
+      "variant": "chr7:117559590 ATCT>A",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 4,
+      "inheritance": "AR",
+      "condition": "Cystic fibrosis"
+     },
+     {
+      "gene": "GJB2",
+      "variant": "chr13:20189473 C>T",
+      "genotype": "one copy, other copy not called ref (1/.)",
+      "significance": "Likely pathogenic",
+      "stars": 1,
+      "inheritance": "AR",
+      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A"
+     },
+     {
+      "gene": "BRCA1",
+      "variant": "chr17:43057100 C>T",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 3,
+      "inheritance": "AR",
+      "condition": "Fanconi anemia",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes"
+     },
+     {
+      "gene": "GLA",
+      "variant": "chrX:101398000 C>T",
+      "genotype": "hemizygous",
+      "significance": "Pathogenic",
+      "stars": 0,
+      "inheritance": "XL",
+      "condition": "Fabry disease",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record"
+     },
+     {
+      "gene": "HBA1",
+      "variant": "chr16:176700 G>A",
+      "genotype": "het",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "inheritance": "AR",
+      "condition": "Alpha-thalassemia"
+     },
+     {
+      "gene": "SMN1",
+      "variant": "chr5:70951946 C>T",
+      "genotype": "hom",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "inheritance": "AR",
+      "condition": "Spinal muscular atrophy"
+     }
+    ],
+    "set_aside": [
+     {
+      "gene": "BTD",
+      "variant": "chr3:15645186 G>C",
+      "genotype": "het",
+      "significance": "Pathogenic/Likely pathogenic",
+      "stars": 1,
+      "inheritance": "AR",
+      "condition": "Biotinidase deficiency",
+      "kind": "hypomorph",
+      "name": "p.Asp444His (p.Asp424His on NM_001370658.1), partial biotinidase deficiency"
+     }
+    ],
+    "two_hits": {
+     "genes": [],
+     "deletions_read": [
+      "step 35's HBA1/HBA2 count"
+     ],
+     "deletions_not_read": [
+      "AnnotSV (step 05): no table",
+      "step 35's interval table: none",
+      "Parascopy's SMN1 count: not resolved"
+     ]
+    }
+   }
+  },
+  "pharmcat": {
+   "title": "PharmCAT",
+   "step": "07",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpic": {
+   "title": "CPIC drug-gene recommendations",
+   "step": "27",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "pypgx": {
+   "title": "pypgx",
+   "step": "32",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cyrius": {
+   "title": "Cyrius (CYP2D6)",
+   "step": "21",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cpsr": {
+   "title": "Cancer predisposition (CPSR)",
+   "step": "17",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "clinical": {
+   "title": "Clinical variant filter",
+   "step": "23",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "slivar": {
+   "title": "Variant prioritization (slivar)",
+   "step": "31",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  }
+ },
+ "cyp2d6": {
+  "calls": {
+   "PharmCAT": null,
+   "pypgx": null,
+   "Cyrius": null
+  },
+  "agree": null,
+  "consensus": null,
+  "probable": null
+ }
+}

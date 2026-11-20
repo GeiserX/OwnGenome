@@ -14,7 +14,10 @@
 //! variant sits inside the deletion and is called homozygous (one copy is
 //! left, and it carries the variant), or both calls carry read-backed phase
 //! (a `|` GT and the same PS) on different copies. On the same copy (cis)
-//! they are no second hit; otherwise they are possibly in trans.
+//! they are no second hit; otherwise they are possibly in trans. A
+//! hypomorph called homozygous inside a deletion is only possibly
+//! biallelic: the call alone cannot say whether the deletion is real, and
+//! without it a homozygous hypomorph is no finding.
 //!
 //! The readers here take from step 05's and step 35's tables only what the
 //! rule needs. The AnnotSV and Parascopy sections themselves are read by
@@ -173,10 +176,24 @@ pub fn pair_phase(dl: &Deletion, v: &Variant) -> (Verdict, String) {
         });
     }
     if inside && v.copies >= 2 {
+        // Nothing here says whether the deletion is real and germline. A
+        // full loss of function called homozygous hits both copies either
+        // way; a hypomorph does so only together with a real deletion.
+        if let Some(a) = &v.allele {
+            return (
+                Verdict::PossiblyBiallelic,
+                format!(
+                    "a hypomorph ({a}) called homozygous inside a called deletion: biallelic (a \
+                     null plus the hypomorph) only if the deletion is real; confirm the deletion \
+                     (array or MLPA): without it this is a homozygous hypomorph, not a finding"
+                ),
+            );
+        }
         return (
             Verdict::Biallelic,
-            "the variant is called homozygous inside the deletion: it is hemizygous, on the one \
-             copy the deletion leaves"
+            "the variant is called homozygous inside the deletion: hemizygous on the copy the \
+             deletion leaves if the deletion is real, homozygous if not; both copies carry it \
+             either way"
                 .into(),
         );
     }
@@ -986,6 +1003,21 @@ mod tests {
         assert_eq!(e.verdict, Verdict::Biallelic);
         assert_eq!(e.genotype, "hemizygous");
         assert!(found.hemi.contains_key(&("G".to_owned(), v.key.clone())));
+    }
+
+    #[test]
+    fn homozygous_hypomorph_inside_a_deletion_is_only_possibly_biallelic() {
+        let mut v = var(150, "1/1", None);
+        v.allele = Some("c.-21G>A".into());
+        let found = two_hits(
+            std::slice::from_ref(&v),
+            &HashMap::from([("G".to_owned(), vec![del(None, None)])]),
+        );
+        let e = &found.entries["G"];
+        assert_eq!(e.verdict, Verdict::PossiblyBiallelic);
+        assert_eq!(e.genotype, "het", "the genotype is not turned hemizygous");
+        assert!(e.why.contains("only if the deletion is real"), "{}", e.why);
+        assert!(!found.hemi.contains_key(&("G".to_owned(), v.key.clone())));
     }
 
     #[test]
