@@ -230,8 +230,10 @@ fn key_text(v: Option<&str>) -> String {
 impl Pypgx {
     pub fn read(path: &str, s: &str) -> Result<Pypgx, String> {
         let rows = rows_or_note(path)?;
-        // A called gene is one whose diplotype steps 27 and 36 take as a
-        // call: `*1/Indeterminate`, one allele or several diplotypes are not.
+        // A called gene is one whose diplotype is a call by
+        // `og_steps::pgx_rules::is_call`, the rule of step 32's Status column
+        // and of step 36: `*1/Indeterminate`, one allele or several
+        // diplotypes are not.
         let called = rows
             .iter()
             .filter(|r| is_call(stripped(r, "Diplotype")))

@@ -1,6 +1,6 @@
 //! summary.json's pypgx block counts a gene as called only when its
-//! diplotype is a call by the rule steps 27 and 36 use
-//! (`og_steps::pgx_rules::is_call`): a diplotype with one `Indeterminate`
+//! diplotype is a call by `og_steps::pgx_rules::is_call`, the rule of
+//! step 32's Status column and of step 36: a diplotype with one `Indeterminate`
 //! allele, such as `*1/Indeterminate`, in any case, is no call, and so is
 //! one that names no two alleles or several diplotypes. A real call still
 //! counts (issue #411, pgx-06).
@@ -79,8 +79,8 @@ fn a_real_call_still_counts_beside_the_no_calls() {
 
 #[test]
 fn a_diplotype_the_steps_refuse_is_not_counted() {
-    // one allele, several diplotypes, and a missing allele are no call in
-    // steps 27 and 36, so the summary does not count them either
+    // one allele, several diplotypes, and a missing allele are no call by
+    // step 32's Status column and step 36, so the summary does not count them
     let p = read(
         "refused",
         &[
