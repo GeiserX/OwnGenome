@@ -117,6 +117,14 @@ env:
   # of picked cases runs fewer when they fit (scripts/ci/e2e-shards.sh count). The cases took 230
   # minutes in one job on 2026-11-02 (run 41390434697).
   E2E_SHARDS: 6
+  # Times that replace scripts/ci/e2e-case-times.tsv's for this run
+  # (scripts/ci/e2e-shards.sh). prs-3-panel-measure measures the 1000 Genomes
+  # panel only on a run dispatched on a branch other than main (measure_on in
+  # its file), where it took 2684 to 3452 s (median 2900, runs 44488552622,
+  # 44616213787 and 44790003535 on the geiresx fork); elsewhere it takes 0 s,
+  # as the table says. Without this its shard got a full share of other cases
+  # on top and finished last. Set here, so every job of a run splits alike.
+  E2E_SECONDS: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && 'prs-3-panel-measure=2900' || '' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -397,19 +405,24 @@ jobs:
           {
             echo "### E2E split: base and ${n} shards, $(wc -l < "${RUNNER_TEMP}/plan.tsv") shard cases"
             echo
+            if [ -n "${E2E_SECONDS:-}" ]; then echo "Seconds this run gives in place of the table's: ${E2E_SECONDS}"; echo; fi
             echo "| Job | Cases | Measured minutes |"
             echo "|---|---|---|"
-            awk -F'\t' 'FILENAME == ARGV[1] { if ($0 !~ /^#/) t[$1] = $3; next }
-                        FILENAME == ARGV[2] { n["base"]++; s["base"] += ($1 in t) ? t[$1] : 300; next }
-                        { n[$1]++; s[$1] += ($2 in t) ? t[$2] : 300 }
+            awk -F'\t' 'FILENAME == ARGV[1] { t[$1] = $2; next }
+                        FILENAME == ARGV[2] { n["base"]++; s["base"] += t[$1]; next }
+                        { n[$1]++; s[$1] += t[$2] }
                         END { printf "| base | %d | %.0f |\n", n["base"], s["base"] / 60
                               for (k = 1; k in n; k++) printf "| shard %d | %d | %.0f |\n", k, n[k], s[k] / 60 }' \
-              scripts/ci/e2e-case-times.tsv <(scripts/ci/e2e-shards.sh base) "${RUNNER_TEMP}/plan.tsv"
+              <(scripts/ci/e2e-shards.sh seconds) <(scripts/ci/e2e-shards.sh base) "${RUNNER_TEMP}/plan.tsv"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # og for the legs (rust/, docs/rust.md): built once, as scripts/setup.sh
   # --og builds it, and handed to each leg as the artifact og-e2e, so no leg
-  # pulls the build image or compiles.
+  # pulls the build image or compiles. Only og-linux-x86_64, the one the
+  # runners run (OG_ARCHES, rust/og.sh): Guard's rust job and the Rust
+  # workflow's images job still build all four on every pull request that
+  # changes rust/. The base leg sets up while this builds and waits for the
+  # artifact only before its first case.
   og:
     needs: e2e-scope
     if: >-
@@ -420,6 +433,9 @@ jobs:
         (github.event_name == 'workflow_dispatch' && inputs.job == 'e2e')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      OG_ARCHES: x86_64
+      OG_DARWIN_ARCHES: ''
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -443,14 +459,17 @@ jobs:
   # the artifact e2e-base; the shard legs start once it passed, unpack that
   # artifact at the same paths and run their own cases. A shard does not take
   # a runner before the base leg is done: in a busy queue, shards that start
-  # first and wait would hold runners the base legs of every run need. Both
+  # first and wait would hold runners the base legs of every run need. The
+  # base leg does not wait for the job og either: it frees its disk, sets up
+  # Docker, Java and Nextflow and pulls the images while og builds, and waits
+  # for the artifact og-e2e only then (step "Wait for og"). Both
   # jobs run the same steps (the YAML anchor leg-steps); matrix.job tells
   # them apart. Only the base leg saves the image cache. The checks are named
   # "e2e base" and "e2e shard N"; the required check is the job e2e below,
   # which sums them up.
   e2e-base:
-    needs: [e2e-scope, e2e-plan, og]
-    if: ${{ !cancelled() && needs.e2e-plan.result == 'success' && needs.og.result == 'success' }}
+    needs: [e2e-scope, e2e-plan]
+    if: ${{ !cancelled() && needs.e2e-plan.result == 'success' }}
     name: ${{ matrix.job == 'base' && 'e2e base' || format('e2e shard {0}', matrix.job) }}
     runs-on: ubuntu-latest
     # The base leg waits up to 75 minutes for a fixture a pull request bumps
@@ -464,23 +483,14 @@ jobs:
         job: [base]
     env:
       JOB: ${{ matrix.job }}
+      # The one og binary of the job og: rust/og.sh check --required and the
+      # cases' scripts/setup.sh ask for that one only.
+      OG_ARCHES: x86_64
+      OG_DARWIN_ARCHES: ''
     steps: &leg-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      # og from the job og, checked against this checkout's rust/, and the
-      # oracles bin/og's shadow mode runs (OG_SHADOW above).
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: og-e2e
-          path: bin/.og
-
-      - name: og and the shadow oracles
-        run: |
-          chmod 755 bin/.og/og-linux-*
-          rust/og.sh check --required
-          scripts/ci/oracle-diff.sh materialise
 
       # The same cases take about a third longer on some runners than on
       # others; the CPU line lets a timing claim name the hardware.
@@ -696,10 +706,55 @@ jobs:
           grep -qxE 'callability-1-catalog|cn-intervals-1-catalog|followups-ci-3-sv-rule-regions' "$list" && echo "data_catalogs=true" >> "$GITHUB_OUTPUT"
           echo "list=${list}" >> "$GITHUB_OUTPUT"
 
-      # Before the base outputs: the base leg pulled the same images.
+      # Before og and the base outputs, so the pulls overlap the wait for
+      # them. The base leg's cases would pull the same images first thing.
       - name: Pull the images the cases use
-        if: matrix.job != 'base'
         run: scripts/ci/e2e-run.sh --pull-images
+
+      # The artifact og-e2e of the job og, which the base leg did not wait
+      # for: a shard leg, which starts after the base leg passed, finds it at
+      # once. Stops the leg when the job og ended without it.
+      - name: Wait for og
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          t0=$(date +%s) done_at=""
+          while :; do
+            n=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?name=og-e2e" --jq '.total_count' 2> /dev/null) || n=""
+            if [ "${n:-0}" -gt 0 ]; then
+              echo "og-e2e is there after $(( $(date +%s) - t0 )) s of waiting" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?filter=latest&per_page=100" \
+                      --jq '.jobs[] | select(.name == "og") | "\(.status) \(.conclusion)"' 2> /dev/null) || state=""
+            case $state in
+              "completed success")
+                # The upload ends before the job does; give the listing a minute.
+                done_at=${done_at:-$(date +%s)}
+                if [ $(( $(date +%s) - done_at )) -gt 60 ]; then
+                  echo "::error::The job og passed, but this run has no og-e2e artifact."; exit 1
+                fi ;;
+              completed*) echo "::error::The job og ended ${state#completed }: the cases have no og."; exit 1 ;;
+            esac
+            if [ $(( $(date +%s) - t0 )) -gt 3600 ]; then
+              echo "::error::No og-e2e artifact after 60 minutes (job og: ${state:-not found})."; exit 1
+            fi
+            sleep 20
+          done
+
+      # og from the job og, checked against this checkout's rust/, and the
+      # oracles bin/og's shadow mode runs (OG_SHADOW above).
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: og-e2e
+          path: bin/.og
+
+      - name: og and the shadow oracles
+        run: |
+          chmod 755 bin/.og/og-linux-*
+          rust/og.sh check --required
+          scripts/ci/oracle-diff.sh materialise
 
       # The base leg uploads e2e-base only once its cases all passed, and this
       # leg starts only after it passed. A rerun of failed legs finds the
@@ -1130,6 +1185,8 @@ jobs:
         job: ${{ fromJSON(needs.e2e-plan.outputs.jobs) }}
     env:
       JOB: ${{ matrix.job }}
+      OG_ARCHES: x86_64
+      OG_DARWIN_ARCHES: ''
     steps: *leg-steps
 
   # The required check. Green when e2e-scope finds nothing to run; otherwise
