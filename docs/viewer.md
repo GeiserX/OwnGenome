@@ -45,6 +45,8 @@ Open it in a browser. To jump somewhere else, type a locus in igv.js's search bo
 
 The page is dark. Its heading names the sample. The line under it says what the tracks are, that the search box takes coordinates and not gene names, and that reads show at a few kilobases or less. igv.js draws its tracks on white, in a framed panel. On a narrow screen such as a phone, that panel scrolls sideways and the page keeps the width of the screen. If the viewer cannot start (the server stopped, or igv.js did not load), the page says what failed and what to check, and **Try again** loads it again. Screen readers announce that message.
 
+In a viewport at most 330 px tall, such as the map's reads panel, the viewer hides the service and orientation text to leave room for the tracks.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `OWNGENOME_VIEW_PORT` | `8765` | The port. The report's links use 8765, so keep it unless the port is taken. |
@@ -118,6 +120,8 @@ The server starts at once. How fast a view loads depends on the disk and the rea
 - in headless Chrome, igv.js starts on the config, the policy blocks nothing it needs, and it reads the BAM, its index, the reference and the VCF. A control with an empty igv.js must not reach that state.
 
 `rust/crates/og-browser/tests/rv_viewer_shell.rs`, in the same job, checks the page itself in headless Chrome, at 1440x900 and on a 390x844 phone, with igv.js started on a synthetic reference and VCF. The page is dark, one `h1` names the sample, one `main` holds the error box and igv.js, and the page says what search takes. On the phone the page is no wider than the screen. When `config.json` answers 500, the error box has `role="alert"`, says what failed and what to check, and offers Try again, which starts the viewer once the server answers. A stub serves the page with the policy of `og view serve`, and the test keeps that policy equal to og-live's.
+
+The browser checks also measure the contrast of the igv.js search input and variant track label. At 600x260 and 900x260, the variant track must fit without vertical scrolling.
 
 `tests/test_owngenome_view.sh` checks the script with `og`: igv.js is the release `versions.env` pins, with its sha256, and the script sets no pin of its own; it prints the address, picks Manta's SV VCF, refuses a foreign `Host`, a forwarded request and a reversed locus, and never calls `python3`.
 

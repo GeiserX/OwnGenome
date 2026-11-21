@@ -7,6 +7,8 @@
 //!
 //! - At 1440x900 and at 390x844 the page is dark: the root's colour scheme is dark and the body has an opaque
 //!   dark background (main's page had none, so the browser's white showed under the header).
+//! - The igv.js search input and variant track label have readable text on their backgrounds.
+//! - At the live map's short iframe height, the variant track fits without vertical scrolling.
 //! - On the 390 px phone, with igv.js started, the page is no wider than the screen: igv.js's own bar
 //!   scrolls inside its panel (on main it widened the page past 390 px).
 //! - The page has one h1, which names the sample, one main landmark holding the error box and igv.js, and a
@@ -14,7 +16,7 @@
 //! - When config.json answers 500, #error has role alert, names the failure, says what to check and offers
 //!   Try again; once the server answers again, Try again starts the viewer.
 //!
-//! Each check was red on main's two files (the PR says where). Without Chrome the test says SKIP, and fails
+//! The PR records the failing baseline for each check. Without Chrome the test says SKIP, and fails
 //! in CI. Set `OG_BROWSER_SHOTS` to a folder to save a screenshot of each view there.
 
 use og_browser::{Browser, Scratch, Value, chrome_or_skip, js_str, repo_root};
@@ -300,6 +302,11 @@ fn browser(chrome: &Path, profile: &Path, (w, h): (u32, u32), mobile: bool) -> B
         json::loads(&params).unwrap(),
     )
     .unwrap();
+    b.call(
+        "Emulation.setEmulatedMedia",
+        json::loads(r#"{"features":[{"name":"prefers-color-scheme","value":"dark"}]}"#).unwrap(),
+    )
+    .unwrap();
     b
 }
 
@@ -468,6 +475,83 @@ fn the_page_is_dark_with_one_heading_and_a_main_landmark() {
         "the page says what search takes and when reads show: {about}"
     );
     shot(&mut b, "desktop");
+}
+
+#[test]
+fn igv_search_and_track_label_have_readable_text() {
+    let Some(chrome) = chrome_or_skip("check the igv.js text contrast") else {
+        return;
+    };
+    let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "rv-viewer-contrast");
+    let (_stub, mut b) = open(&chrome, &scratch, "contrast", DESKTOP, false);
+    assert_eq!(text(b.eval(STATUS)), "ready");
+
+    let contrast = probe(
+        &mut b,
+        r#"JSON.stringify((() => {
+            const igv = document.querySelector('#igv').shadowRoot;
+            const search = igv.querySelector('.igv-search-input');
+            const track = Array.from(igv.querySelectorAll('.igv-track-label'))
+                .find(label => label.textContent === 'S small variants');
+            // The pinned igv.js styles both surfaces with opaque RGB backgrounds.
+            const luminance = rgb => {
+                const channels = rgb.match(/[\d.]+/g).slice(0, 3).map(channel => {
+                    const value = Number(channel) / 255;
+                    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+                });
+                return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+            };
+            const colors = element => {
+                const { color, backgroundColor } = getComputedStyle(element);
+                const fg = luminance(color);
+                const bg = luminance(backgroundColor);
+                return {
+                    color, backgroundColor,
+                    readable: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5
+                };
+            };
+            return { search: colors(search), track: colors(track) };
+        })())"#,
+    );
+    assert!(
+        ["search", "track"]
+            .iter()
+            .all(|key| get(get(&contrast, key), "readable") == &Value::Bool(true)),
+        "the search input and variant label must each have 4.5:1 text contrast: {contrast:?}"
+    );
+}
+
+#[test]
+fn the_tracks_fit_at_the_live_map_frame_height() {
+    let Some(chrome) = chrome_or_skip("check the viewer at the map iframe height") else {
+        return;
+    };
+    let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "rv-viewer-short");
+    let layouts = [600, 900].map(|width| {
+        let (_stub, mut b) = open(&chrome, &scratch, &width.to_string(), (width, 260), false);
+        assert_eq!(text(b.eval(STATUS)), "ready");
+        probe(
+            &mut b,
+            r#"JSON.stringify((() => {
+                const igv = document.querySelector('#igv');
+                const track = igv.shadowRoot.querySelector('.igv-viewport[data-track-type=variant]');
+                const rect = track.getBoundingClientRect();
+                return {
+                    width: innerWidth, height: innerHeight,
+                    panelTop: Math.ceil(igv.getBoundingClientRect().top),
+                    trackBottom: Math.ceil(rect.bottom),
+                    fits: rect.height > 0 && rect.bottom <= innerHeight
+                };
+            })())"#,
+        )
+    });
+    assert!(
+        layouts.iter().all(|layout| {
+            matches!(get(layout, "panelTop"), Value::Int(0..=60))
+                && get(layout, "fits") == &Value::Bool(true)
+        }),
+        "at the map iframe height, igv.js must start within 60 px and show the variant track: {layouts:?}"
+    );
 }
 
 #[test]

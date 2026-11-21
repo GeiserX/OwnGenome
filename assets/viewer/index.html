@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="data:,">
 <title>Genome viewer</title>
 <style>
   /* Dark only, in the live site's palette (assets/live/live.css). igv.js draws light tracks with dark text, so
-     they keep a white framed panel, which scrolls sideways on a narrow screen instead of widening the page. */
+     they keep a white framed panel, which scrolls sideways on a narrow screen instead of widening the page.
+     Set the dark scheme in CSS so igv.js keeps light defaults inside its shadow root. */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: #0e0f10; color: #f0efec; }
@@ -28,6 +28,11 @@
   #error button:focus-visible { outline: 2px solid #c8ab78; outline-offset: 2px; }
   #igv { max-width: 100%; overflow-x: auto; background: #fff; border: 1px solid rgba(255, 255, 255, .14); border-radius: 8px; }
   [data-pgp-status^="error"] #igv { display: none; }
+  /* The live map's reads panel is at most 330px tall, including its own heading. */
+  @media (max-height: 330px) {
+    header { padding-block: 4px; }
+    header p, main > p { display: none; }
+  }
 </style>
 </head>
 <body>
