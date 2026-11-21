@@ -2016,7 +2016,7 @@ fn cyp2c9_and_cyp3a5_inhibitors_give_a_note() {
     );
     assert!(
         cell(&r.rows, "CYP3A5", 4)
-            .starts_with("not computed: lopinavir, ritonavir inhibits CYP3A5")
+            .starts_with("not computed: lopinavir, ritonavir inhibit CYP3A5;")
             && !section(&r.rec).contains("Not in the inhibitor table"),
         "a boosted combination written 'lopinavir/ritonavir' is matched as both drugs"
     );

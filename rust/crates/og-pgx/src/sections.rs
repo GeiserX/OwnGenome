@@ -584,9 +584,14 @@ pub fn phenoconversion(
                 format!("CPIC gives no rule that converts the {gene} phenotype")
             };
             let inhibiting = hits.iter().map(|h| h.0).collect::<Vec<_>>().join(", ");
+            let verb = if hits.len() > 1 {
+                "inhibit"
+            } else {
+                "inhibits"
+            };
             column.insert(
                 gene,
-                format!("not computed: {inhibiting} inhibits {gene}; {why}"),
+                format!("not computed: {inhibiting} {verb} {gene}; {why}"),
             );
             let mut first = why.chars();
             let why_cap: String = first
