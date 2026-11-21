@@ -684,9 +684,16 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
 // --- CYP2D6 -----------------------------------------------------------------
 
 /// A diplotype that is a call: not a no-call text, two alleles, one call.
+/// An allele that is a no-call text (`*1/Indeterminate`), or any text that
+/// names Indeterminate, is no call either, so it can neither agree nor
+/// disagree with the other caller.
 pub fn is_call(diplotype: &str) -> bool {
     let d = strip(diplotype);
-    !no_call(d) && d.contains('/') && !d.contains(';')
+    !no_call(d)
+        && d.contains('/')
+        && !d.contains(';')
+        && !d.split('/').any(|a| no_call(strip(a)))
+        && !pycompat::text::lower(d).contains("indeterminate")
 }
 
 /// Equal up to the order of the two alleles.
@@ -1191,6 +1198,12 @@ mod tests {
     fn calls_and_diplotypes() {
         assert!(is_call(" *1/*2 "));
         assert!(!is_call("Indeterminate"));
+        assert!(!is_call(" indeterminate "));
+        assert!(!is_call("*1/Indeterminate"));
+        assert!(!is_call("Indeterminate/Indeterminate"));
+        assert!(!is_call("*1/indeterminate"));
+        assert!(!is_call("Indeterminate (CYP2D6 depth check)"));
+        assert!(!is_call("*1/"));
         assert!(!is_call("*1/*2;*1/*3"));
         assert!(!is_call("*1"));
         assert!(same_diplotype("*2/*1", "*1/ *2"));
