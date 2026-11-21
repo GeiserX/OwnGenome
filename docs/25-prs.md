@@ -179,7 +179,7 @@ The panel is pgsc_calc's 1000 Genomes database, `pgsc_1000G_v1.tar.zst` (`PGSC_P
 | Memory | 7.3 to 7.6 GB at the peak for the whole machine; the largest task, 6.9 to 7.1 GB (plink2 scoring the panel's own samples, and the panel's variant filter) |
 | Time | 20 to 30 minutes for the run, on 4 CPUs |
 
-That run scored PGS000018 alone and fits a 16 GB machine; the default scores need more ([Memory](#memory)). It does not fit the 14 GB of disk a GitHub-hosted runner guarantees, and the download alone outlasts the pull request test budget, so the panel stays opt-in (`setup.sh --ancestry-panel`), and the tests on every pull request project the fixture sample onto the PGS Catalog's 268 MB synthetic panel instead (`tests/e2e/prs-2-ancestry.sh`). The 1000 Genomes run above repeats on an E2E run dispatched on a branch other than main (or with `PGSC_MEASURE=1`): it adds about 40 minutes, which a dispatched run of main keeps for its other cases.
+That run scored PGS000018 alone and fits a 16 GB machine; the default scores need more ([Memory](#memory)). It does not fit the 14 GB of disk a GitHub-hosted runner guarantees, and its download takes 13 to 31 minutes on a runner, so the panel stays opt-in (`setup.sh --ancestry-panel`), and the tests on every pull request project the fixture sample onto the PGS Catalog's 268 MB synthetic panel instead (`tests/e2e/prs-2-ancestry.sh`). The 1000 Genomes run above repeats on an E2E run dispatched on a branch other than main and not traced (or with `PGSC_MEASURE=1`): it adds about 40 minutes, which a dispatched run of main keeps for its other cases.
 
 ## Interpreting Results
 

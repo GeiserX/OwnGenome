@@ -20,12 +20,12 @@
 #     match log, and its sum less the autosomal sum above equals plink2's
 #     --score of those rows on the same genotypes with the sex set.
 # Writes nothing other cases read; removes what it made. When case prs-3
-# measures (a run dispatched on a branch other than main) it also starts that
-# case's download of the 1000 Genomes panel in the background, so the 7.4 GB
-# arrive while cases prs-1 and prs-2 run.
+# measures (a run dispatched on a branch other than main, not traced) it
+# also starts that case's download of the 1000 Genomes panel in the
+# background, so the 7.4 GB arrive while cases prs-1 and prs-2 run.
 . "$(dirname "$0")/lib.sh"
 
-if [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ]; }; then
+if [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ] && [ "${E2E_TRACE:-false}" != true ]; }; then
   rm -f "${E2E_WORK}/panel-download.status"
   # Its own session, so the case's timeout does not stop it; it ends on its own.
   setsid nohup timeout 2700 bash "$(dirname "$0")/prs-3-panel-measure.sh" --download \
