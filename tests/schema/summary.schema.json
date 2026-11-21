@@ -55,6 +55,99 @@
      "type": "string"
     }
    }
+  },
+  "carrier_row": {
+   "type": "object",
+   "required": [
+    "gene",
+    "variant",
+    "genotype",
+    "zygosity",
+    "significance",
+    "stars",
+    "gq",
+    "dp",
+    "low_confidence",
+    "inheritance",
+    "condition"
+   ],
+   "properties": {
+    "gene": {
+     "type": "string"
+    },
+    "variant": {
+     "type": "string"
+    },
+    "genotype": {
+     "type": "string"
+    },
+    "zygosity": {
+     "enum": [
+      "het",
+      "hom",
+      "hemizygous",
+      "unknown"
+     ]
+    },
+    "significance": {
+     "type": "string"
+    },
+    "stars": {
+     "enum": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    "gq": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "dp": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "low_confidence": {
+     "type": "boolean"
+    },
+    "inheritance": {
+     "type": "string"
+    },
+    "condition": {
+     "type": "string"
+    },
+    "combined_allele": {
+     "type": "string"
+    },
+    "kind": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "hemizygous": {
+     "type": "string"
+    },
+    "pair": {
+     "enum": [
+      "two hits",
+      "possible two hits",
+      "possible two hits (low-confidence call)"
+     ]
+    },
+    "phase": {
+     "type": "string"
+    }
+   }
   }
  },
  "type": "object",
@@ -1400,6 +1493,90 @@
              "source",
              "reason"
             ]
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
+    "carrier": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "unavailable": {
+           "type": "string"
+          },
+          "genes_on_list": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "list": {
+           "type": "string"
+          },
+          "carriers": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "hom_or_hemizygous": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "set_aside": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "two_hits": {
+           "type": "object",
+           "properties": {
+            "genes": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "required": [
+               "gene",
+               "verdict",
+               "why",
+               "deletion",
+               "variant",
+               "genotype"
+              ],
+              "properties": {
+               "verdict": {
+                "enum": [
+                 "biallelic",
+                 "possibly biallelic",
+                 "possibly biallelic (low-confidence call)"
+                ]
+               }
+              }
+             }
+            },
+            "deletions_read": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            },
+            "deletions_not_read": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
            }
           }
          }

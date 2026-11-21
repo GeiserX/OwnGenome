@@ -375,7 +375,10 @@ fn line_of(key: &str, sm: &Summary) -> Result<Option<(Option<String>, bool)>, Ma
                 positive(&n)?,
             )
         }
-        "carrier" => (Some(first(sec::carrier::lines(&d)?)?), flag("carriers")),
+        "carrier" => (
+            Some(first(sec::carrier::lines(&d)?)?),
+            flag("carriers") || flag("hom_or_hemizygous"),
+        ),
         "couple" => (
             with_note(&sec::couple::lines(&d)?, COUPLE_NOTE),
             flag("shared") || flag("x_linked"),
@@ -1141,6 +1144,39 @@ mod tests {
         );
         assert_eq!(utc_seconds("2026-01-02 10:07:00"), None);
         assert_eq!(utc_seconds(""), None);
+    }
+
+    /// The carrier headline of a summary whose carrier section is `data`.
+    fn carrier_headline(data: &str) -> (String, &'static str) {
+        let sec = format!(r#"{{"state": "ok", "title": "Carrier list", "data": {data}}}"#);
+        let summary = og_render::model::Summary::parse(&format!(
+            r#"{{"databases": {{}}, "sections": {{"carrier": {sec}}}}}"#
+        ))
+        .unwrap();
+        let raw = pycompat::json::loads(&sec).unwrap();
+        headline("carrier", Some(&raw), &summary).unwrap()
+    }
+
+    #[test]
+    fn a_carrier_list_of_only_hom_or_hemizygous_rows_asks_for_attention() {
+        // A man with only a hemizygous GLA row: no carrier, but no unchanged
+        // copy either, so the headline asks for attention as the Python
+        // server's does (bin/owngenome_live.py, _h_carrier).
+        let gla = r#"{"gene": "GLA", "condition": "Fabry disease", "inheritance": "XL",
+            "variant": "chrX:101398000 C>T", "genotype": "hemizygous", "zygosity": "hemizygous",
+            "significance": "Pathogenic", "gq": 50, "dp": 30, "low_confidence": false}"#;
+        let only = carrier_headline(&format!(
+            r#"{{"genes_on_list": 3, "carriers": [], "hom_or_hemizygous": [{gla}], "set_aside": []}}"#
+        ));
+        assert_eq!(only.1, "attention", "{}", only.0);
+        assert!(only.0.contains("1 with no unchanged copy"), "{}", only.0);
+        let none = carrier_headline(
+            r#"{"genes_on_list": 3, "carriers": [], "hom_or_hemizygous": [], "set_aside": []}"#,
+        );
+        assert_eq!(none.1, "info", "{}", none.0);
+        // A summary written before the list existed reads as before.
+        let old = carrier_headline(r#"{"genes_on_list": 3, "carriers": [], "set_aside": []}"#);
+        assert_eq!(old.1, "info", "{}", old.0);
     }
 
     #[test]

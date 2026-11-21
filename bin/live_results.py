@@ -374,7 +374,7 @@ def a_carrier(S, s):
     if d.get("unavailable"):
         return {"lines": rr.carrier_lines(d), "attention": True}
     rows = [[c.get("gene"), c.get("variant"), c.get("genotype"), c.get("significance"), c.get("stars"),
-             c.get("inheritance"), c.get("condition")] for c in d.get("carriers") or []]
+             c.get("inheritance"), c.get("condition")] for c in (d.get("carriers") or []) + (d.get("hom_or_hemizygous") or [])]
     two = (d.get("two_hits") or {}).get("genes") or []
     return {"facts": [["Genes on the carrier list", d.get("genes_on_list")], ["Carrier findings", len(rows)],
                       ["Genes with two hits", ", ".join(g if isinstance(g, str) else g.get("gene", ".") for g in two)
@@ -833,7 +833,7 @@ def finding_rows(summary):
         return g if isinstance(g, str) else None
     sf_genes = {gene(x) for x in _items(sf.get("clinvar_hits")) if isinstance(x, dict)}
     car = _data(S, "carrier")
-    carrier_genes = {gene(c) for c in _items(car.get("carriers")) if isinstance(c, dict)}
+    carrier_genes = {gene(c) for c in _items(car.get("carriers")) + _items(car.get("hom_or_hemizygous")) if isinstance(c, dict)}
     th = car.get("two_hits") if isinstance(car.get("two_hits"), dict) else {}
     two_hit = {gene(g) for g in _items(th.get("genes"))} - {None}
     # 1. ACMG secondary findings: the gene's own reporting rule already said "report". The report's own
@@ -943,7 +943,8 @@ def finding_rows(summary):
                           "A ranking to bring to a clinical geneticist, not a diagnosis.", gene=x.get("gene"),
                           evidence=[["Score", x.get("exomiser_score")], ["Inheritance", x.get("moi")]]))
     # 7. Carriers: one changed copy in a gene of the carrier list, and the couple screen.
-    for c in _items(car.get("carriers")):
+    # A row with no unchanged copy (hom_or_hemizygous) takes the branch below that says it is not a carrier.
+    for c in _items(car.get("carriers")) + _items(car.get("hom_or_hemizygous")):
         with _Row(out, "carrier-list", "act"):
             if c.get("gene") in two_hit:
                 continue
