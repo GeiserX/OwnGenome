@@ -185,8 +185,17 @@ process PRS {
     // process.containerOptions of docs/hardware-requirements.md's shared-host
     // config). The task script drops their user and network flags. Quoted for
     // the shell.
+    // >>> user flag (tests/test_prs_runopts.sh applies this pattern)
+    // Each user flag goes here first, with its whole value: -u VALUE, -uVALUE,
+    // -u=VALUE, --user VALUE or --user=VALUE, where VALUE is a run of plain
+    // characters, quoted strings, and $(...) or `...` substitutions, which
+    // can hold spaces. The task script splits the options into words, so it
+    // would drop only the first word of such a value: a config's
+    // -u $(id -u):$(id -g) handed pgsc_calc a stray -g).
+    def user_flag = '(?<!\\S)(?:-u(?:=|\\s+)?|--user(?:=|\\s+))(?:\\$\\((?:[^()]|\\([^()]*\\))*\\)|`[^`]*`|\\x22[^\\x22]*\\x22|\\x27[^\\x27]*\\x27|\\$(?!\\()|[^\\s\\x22\\x27`$])+(?!\\S)'
+    // <<< user flag
     def outer_docker = [(nextflow.Global.session?.config?.docker as Map)?.runOptions, task.containerOptions]
-        .findAll { o -> o }.join(' ').replace("'", "'\\''")
+        .findAll { o -> o }.join(' ').replaceAll(user_flag, ' ').replace("'", "'\\''")
     // The sex for pgsc_calc's plink2 (--update-sex: the VCF's sample name, 1
     // male or 2 female), added to the ext.args its conf/modules.config gives
     // PLINK2_VCF at this release; the folder is mounted into its containers.
