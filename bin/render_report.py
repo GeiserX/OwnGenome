@@ -874,7 +874,7 @@ def annotsv_lines(d):
     """Step 05's class 4-5 lines, the same in both reports."""
     head = f"Class 4-5 SVs: {d['count']}"
     if d["count"]:
-        head += (f" (single caller: {str(d['single_caller']) + (f', not known: {m}' if (m := sum(x['support'] is None for x in d.get('rows') or [])) else '') if d['consensus'] else 'not known'}; deletions on exon edges: "
+        head += (f" (single caller: {str(d['single_caller']) + (f', not known: {m}' if (m := sum(x.get('support') is None for x in d.get('rows') or [])) else '') if d['consensus'] else 'not known'}; deletions on exon edges: "
                  f"{d['exon_edge'] if d['exon_edge_checked'] else 'not checked'}; common: {d['common']})")
     lines = [head]
     if d.get("downgraded"):

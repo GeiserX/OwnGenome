@@ -127,11 +127,11 @@ pub fn lines(d: &D<'_>) -> Result<Vec<String>, Malformed> {
         let single = if consensus {
             // The consensus ran, but a row it cannot tell has no support:
             // count those apart, so "single caller: 0" never reads as
-            // "every SV had two callers".
+            // "every SV had two callers". A row without the key counts too.
             let mut unknown = 0;
             if let Some(rows) = d.opt("rows")? {
                 for x in rows.items()? {
-                    if x.at("support")?.is_none() {
+                    if x.get("support")?.is_none_or(|v| v.is_none()) {
                         unknown += 1;
                     }
                 }

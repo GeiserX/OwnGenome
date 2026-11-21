@@ -190,3 +190,21 @@ fn sf_rows_without_an_annotsv_section_keep_the_old_reason() {
     );
     assert!(!txt.contains("cannot tell"), "{txt}");
 }
+
+/// A row with no `support` key (a summary written by hand, or an older
+/// one) counts as not known: the count line still comes out.
+#[test]
+fn a_row_without_a_support_key_counts_as_not_known() {
+    let s = Summary::parse(
+        r#"{"sections": {"annotsv": {"state": "ok", "data": {"count": 1, "consensus": 1,
+        "single_caller": 0, "exon_edge_checked": false, "exon_edge": 0, "common": 0,
+        "rows": [{"sv": "chr17:1-2", "type": "DEL", "acmg_class": 5, "genes": ["G"]}]}}}}"#,
+    )
+    .expect("a summary");
+    let lines =
+        annotsv::lines(&og_render::sections::clinvar::D::of(&s.section("annotsv"))).unwrap();
+    assert_eq!(
+        lines[0],
+        "Class 4-5 SVs: 1 (single caller: 0, not known: 1; deletions on exon edges: not checked; common: 0)"
+    );
+}
