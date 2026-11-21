@@ -26,7 +26,7 @@ use super::text::{self, gt_field};
 use super::two_hits::{DeletionInputs, Spans, Variant, gene_deletions, phase_haps, two_hits_with};
 use indexmap::IndexMap;
 use pycompat::json::Value;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// The section's data: the list, or why it could not be made.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,9 +86,10 @@ fn joined_keys(r: &[String]) -> Vec<VarKey> {
 /// copy) and why. `None` when fewer than two distinct alleles are left
 /// once a combined allele and its parts count once. The hets are counted
 /// twice, all of them and the confident ones alone: two hits when the
-/// confident ones prove it, the low-confidence word when only all of them
-/// do, and with phase unknown, possible two hits when the confident ones
-/// still count two copies.
+/// confident ones prove it; else possible two hits when the confident ones
+/// still count two copies of unknown phase, whatever a low-confidence call
+/// adds; else the low-confidence word when a pair needs a low-confidence
+/// call.
 fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
     // A combined allele and its parts count once, under the combined
     // allele, when its call is phased or at most one part is here; an
@@ -111,15 +112,22 @@ fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
     // A kept allele is firm when a call of it is confident: its own, or a
     // call folded into it (a part under its combined allele, or an unphased
     // combined allele under its first part), as the secondary-findings card
-    // counts it.
-    let mut firm: HashSet<&VarKey> = kept.iter().filter(|h| !h.low).map(|h| &h.key).collect();
+    // counts it. The confident count takes that call's GT and phase set: a
+    // phase only a low-confidence call gives proves nothing.
+    let mut firm: HashMap<&VarKey, &Het> = kept
+        .iter()
+        .filter(|h| !h.low)
+        .map(|h| (&h.key, *h))
+        .collect();
     for h in hets.iter().filter(|h| !h.joined.is_empty()) {
         if gone.contains(&h.key) {
-            if !h.low {
-                firm.extend(h.joined.iter().find(|k| present.contains(k)));
+            if !h.low
+                && let Some(k) = h.joined.iter().find(|k| present.contains(k))
+            {
+                firm.entry(k).or_insert(h);
             }
-        } else if hets.iter().any(|p| !p.low && h.joined.contains(&p.key)) {
-            firm.insert(&h.key);
+        } else if let Some(p) = hets.iter().find(|p| !p.low && h.joined.contains(&p.key)) {
+            firm.entry(&h.key).or_insert(p);
         }
     }
     // The copies a set of hets hits: the count, the proof of two copies if a
@@ -169,12 +177,17 @@ fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
         (n, proof, cis)
     };
     let (n, proof, cis) = count(&kept);
-    let sure: Vec<&Het> = kept
+    let sure: Vec<Het> = kept
         .iter()
-        .copied()
-        .filter(|h| firm.contains(&h.key))
+        .filter_map(|h| {
+            firm.get(&h.key).map(|c| Het {
+                gt: c.gt.clone(),
+                ps: c.ps.clone(),
+                ..(*h).clone()
+            })
+        })
         .collect();
-    let (n_firm, proof_firm, _) = count(&sure);
+    let (n_firm, proof_firm, _) = count(&sure.iter().collect::<Vec<_>>());
     // A pair that needs a low-confidence call is only possible until the
     // call is confirmed.
     let low = |why: String| {
@@ -190,6 +203,7 @@ fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
         .to_owned();
     match (proof_firm, proof, cis) {
         (Some(f), _, _) => Some((Some("two hits".to_owned()), f)),
+        (None, Some(_), _) if n_firm >= 2 => Some((Some("possible two hits".to_owned()), unknown)),
         (None, Some(p), _) => low(p),
         (None, None, _) if n >= 2 && n_firm >= 2 => {
             Some((Some("possible two hits".to_owned()), unknown))

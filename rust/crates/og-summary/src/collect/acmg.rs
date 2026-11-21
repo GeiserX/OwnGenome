@@ -441,7 +441,8 @@ struct Cand {
 /// One distinct variant of a gene as the verdict counts it: its alt
 /// copies, ploidy, GT and phase set, whether it stands for a combined
 /// allele and its parts, and the alt copies its confident calls give (`firm`:
-/// 0 when every call of it is below step 06's call floor, low confidence).
+/// 0 when every call of it is below step 06's call floor, low confidence),
+/// with the GT and phase set of the confident call that gives them.
 #[derive(Debug, Clone, PartialEq)]
 struct Allele {
     copies: usize,
@@ -450,6 +451,8 @@ struct Allele {
     ps: Option<String>,
     combined: bool,
     firm: usize,
+    firm_gt: String,
+    firm_ps: Option<String>,
 }
 
 impl Allele {
@@ -461,6 +464,18 @@ impl Allele {
             ps: None,
             combined: false,
             firm: 0,
+            firm_gt: String::new(),
+            firm_ps: None,
+        }
+    }
+
+    /// Count a confident call of this allele: the most copies one gives,
+    /// with that call's GT and phase set.
+    fn confirm(&mut self, copies: usize, gt: &str, ps: &Option<String>) {
+        if copies > self.firm {
+            self.firm = copies;
+            self.firm_gt = gt.to_owned();
+            self.firm_ps = ps.clone();
         }
     }
 
@@ -625,16 +640,23 @@ fn sf_verdicts(
     // that needs a low-confidence call is only possible until the call is
     // confirmed. A small allele no confident call gives drops out; one whose
     // confident calls give fewer copies than it counts loses its phase too,
-    // as that came from the low call. A deletion counts as it is: its pair
-    // is judged by `two_hits_with`.
+    // as that came from the low call; any other takes the GT and phase set
+    // of the confident call, so a phase only a low call gives proves
+    // nothing. A deletion counts as it is: its pair is judged by
+    // `two_hits_with`.
     let firm: IndexMap<AKey, Allele> = kept
         .iter()
         .filter(|(k, a)| !matches!(k, AKey::Small(_)) || a.firm > 0)
         .map(|(k, a)| {
             let mut f = a.clone();
-            if matches!(k, AKey::Small(_)) && a.firm < a.copies {
-                f.copies = a.firm;
-                f.ps = None;
+            if matches!(k, AKey::Small(_)) {
+                if a.firm < a.copies {
+                    f.copies = a.firm;
+                    f.ps = None;
+                } else {
+                    f.gt = a.firm_gt.clone();
+                    f.ps = a.firm_ps.clone();
+                }
             }
             (k.clone(), f)
         })
@@ -654,10 +676,11 @@ fn sf_verdicts(
          copy (cis)"
             .to_owned()
     };
-    // The best the evidence gives: a confident proof, then the deletion pair
+    // The best the evidence gives: a confident proof; then the deletion pair
     // when it is at least possibly biallelic (`two_hits_with` already lowers
-    // a pair on a low call), then a proof that needs a low call, then the
-    // copies counted with phase unknown.
+    // a pair on a low call); then, with no deletion pair, two confident
+    // copies of unknown phase; then the low word for a pair that needs a
+    // low call.
     let pair = (counted && n >= 2).then(|| {
         let del = deletion.map(|e| (e.verdict, format!("with {}: {}", e.deletion, e.why)));
         match (proof_firm, proof, del) {
@@ -1009,7 +1032,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 ..Allele::of(x.copies, p)
             });
         if !is_low(x) {
-            a.firm = a.firm.max(x.copies);
+            a.confirm(x.copies, &x.gt, &x.ps);
         }
     }
     for x in &folded {
@@ -1026,7 +1049,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         a.copies = a.copies.max(x.copies);
         a.combined = true;
         if !is_low(x) {
-            a.firm = a.firm.max(x.copies);
+            a.confirm(x.copies, &x.gt, &x.ps);
         }
     }
     for x in &svs {
@@ -1047,12 +1070,24 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         ),
     };
     let (dels, _, _) = gene_deletions(i.deletions, &spans);
+    // The confident call of a small allele whose own call is low, when it
+    // gives as many copies: a combined allele counts as confident when any
+    // call of it is, and its pair with a deletion then rests on that call's
+    // GT and phase set, not on the low call's.
+    let confirmed = |x: &Cand| {
+        alleles
+            .get(&x.gene)
+            .and_then(|a| a.get(&x.key))
+            .filter(|a| is_low(x) && a.firm >= x.copies)
+            .map(|a| (a.firm_gt.clone(), a.firm_ps.clone()))
+    };
     let mut seen = HashSet::new();
     let mut variants = Vec::new();
     for x in &own {
         let AKey::Small(k) = &x.key else { continue };
         let pseudo = rules[&x.gene].severity_kind(k) == Some("pseudodeficiency");
         if !pseudo && seen.insert((x.gene.clone(), k.clone())) {
+            let (gt, ps) = confirmed(x).unwrap_or_else(|| (x.gt.clone(), x.ps.clone()));
             variants.push(Variant {
                 gene: x.gene.clone(),
                 key: k.clone(),
@@ -1068,15 +1103,15 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 },
                 copies: x.copies,
                 ploidy: if x.ploidy == 0 { 2 } else { x.ploidy },
-                gt: x.gt.clone(),
-                ps: x.ps.clone(),
+                gt,
+                ps,
                 allele: None,
             });
         }
     }
     let low: HashSet<(String, Key)> = own
         .iter()
-        .filter(|x| is_low(x))
+        .filter(|x| is_low(x) && confirmed(x).is_none())
         .filter_map(|x| match &x.key {
             AKey::Small(k) => Some((x.gene.clone(), k.clone())),
             _ => None,

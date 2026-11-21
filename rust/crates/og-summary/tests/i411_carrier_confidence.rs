@@ -692,6 +692,10 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
         a.0, a.1, a.2, a.3
     );
     let combined = |q: &str| hit(b, "MUTYH", "GT:GQ:DP:PS", &format!("0|1:{q}:9"), &joined);
+    // The same combined allele, unphased and weak.
+    let combined_open = || hit(b, "MUTYH", "GT:GQ:DP", "0/1:5:4", &joined);
+    // A second alt allele at MUTYH_A's position, for a split call there.
+    let a2 = (a.0, a.1, a.2, "G");
     let del = || mutyh_deletion("1|0", Some("9"));
     let none = no_deletions;
     let p9 = Some("9");
@@ -822,6 +826,54 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
             vec![g(a, "0/1", None), w(b, "1/1", None)],
             mutyh_deletion("0/1", None),
             maybe,
+        ),
+        (
+            "R1 confident het + weak het in trans with it + confident unphased het",
+            vec![g(a, "0|1", p9), w(b, "1|0", p9), g(cc, "0/1", None)],
+            none(),
+            maybe,
+        ),
+        (
+            "R1b confident het + weak het in trans with it + confident het in another phase set",
+            vec![g(a, "0|1", p9), w(b, "1|0", p9), g(cc, "1|0", Some("7"))],
+            none(),
+            maybe,
+        ),
+        (
+            "R1c confident half call + weak half call at one position + confident het",
+            vec![g(a, "1/.", None), w(a2, "./1", None), g(cc, "0/1", None)],
+            none(),
+            maybe,
+        ),
+        (
+            "R2 weak unphased combined, confident part + unphased deletion",
+            vec![combined_open(), g(a, "0/1", None)],
+            mutyh_deletion("0/1", None),
+            maybe,
+        ),
+        (
+            "R3 weak phased combined, confident unphased part, third in trans by the weak phase",
+            vec![combined("5:4"), g(a, "0/1", None), g(cc, "1|0", p9)],
+            none(),
+            maybe,
+        ),
+        (
+            "R3d weak phased combined, confident unphased part, deletion in trans by the weak phase",
+            vec![combined("5:4"), g(a, "0/1", None)],
+            del(),
+            maybe,
+        ),
+        (
+            "R6 confident cis pair + weak het in trans",
+            vec![g(a, "0|1", p9), g(b, "0|1", p9), w(cc, "1|0", p9)],
+            none(),
+            low,
+        ),
+        (
+            "R7 deletion in cis with a confident het + weak het in trans",
+            vec![g(a, "1|0", p9), w(b, "0|1", p9)],
+            del(),
+            low,
         ),
         ("deletion alone", vec![], del(), None),
         ("nothing", vec![], none(), None),
