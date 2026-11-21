@@ -97,7 +97,7 @@ Pipeline helpers (the steps run these):
   og family plan|prepare|check|report|segments [args]
   og family ibd [args]
   og consumer build-sites|export|check [args]
-  og ancestry-fine panel-map|check-map|order|sample-bed|chroms|report [args]
+  og ancestry-fine panel-map|check-map|sample-bed|chroms|report [args]
   og ancestry-fine freqs [args]
   og ancestry-fine project [args]
   og ancestry-fine paint [args]
@@ -139,6 +139,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev fixture trim-pharmcat REPORT OUT [MAX]
   og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv
   og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf
+  og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN
   og dev renovate-check LOG
   og dev pharmcat diplotypes REPORT [--called|--called-lines]
   og dev nf-trace requests|attempts TRACE [options]
@@ -157,6 +158,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev stub-http [args]
   og dev steps-check [args]
   og dev traits-sources [args]
+  og dev pictures take|live|check|same-sample [args]
   og dev freshness [--out FILE] [--sections a,b] | --update-issue BODY --repo O/N | --self-test
 ";
 
@@ -185,7 +187,7 @@ const OWN_HELP: &[&str] = &[
     "qc sex-loss",
     "report render",
     "couple screen|genes",
-    "ancestry-fine panel-map|check-map|order|sample-bed|chroms|report|simulate",
+    "ancestry-fine panel-map|check-map|freqs|sample-bed|chroms|report|simulate",
     "archaic table|strict|genotypes|report",
     "vntyper report",
     "locityper report",
@@ -291,6 +293,10 @@ fn no_bam(tool: &str) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    // og is built with panic = "unwind" for the sections of og report
+    // render; a panic anywhere else still ends og at once, as abort did, so
+    // no worker thread can die quietly and leave a cut output.
+    og_render::chapters::abort_outside_guarded();
     // Refuse raw-byte scanner arguments before std::env::args can panic or
     // any path can be replaced with a different name. Other verbs retain
     // their existing argument handling.

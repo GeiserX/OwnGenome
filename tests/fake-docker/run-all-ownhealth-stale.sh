@@ -23,7 +23,7 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 #!/usr/bin/env bash
 case "${*:2}" in
   "cat /usr/local/share/ExpansionHunter/variant_catalog/grch38/variant_catalog.json") echo '[{"LocusId": "HTT"}]' ;;
-  *render_report.py*)
+  "/pgp-bin/og report render"*)
     [ ! -e "${GENOME_DIR}/sample1/facts/sample1_genome_facts.json" ] || touch "${CASE_WORK}/facts-seen-at-24"
     [ ! -e "${CASE_WORK}/fail-24" ] || { touch "${CASE_WORK}/render-failed"; exit 1; } ;;
 esac

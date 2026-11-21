@@ -3,7 +3,7 @@
     REPORTING — HTML Report Generation & MultiQC Aggregation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Produces two kinds of report:
-    1. Per-sample consolidated HTML report, rendered by bin/render_report.py
+    1. Per-sample consolidated HTML report, rendered by og report render
        as the bash report is (QC, sample identity and contamination, variant
        counts, ClinVar, PGx, CPIC, CPSR, clinical filter, slivar, ROH, mito
        haplogroup)

@@ -6,6 +6,11 @@
 # Octopus uses a haplotype-aware, reference-panel-free Bayesian genotype model.
 # Designed as a 5th caller for benchmarking alongside DeepVariant, GATK, FreeBayes,
 # and Strelka2, or as a potential FreeBayes replacement (faster, lower memory).
+#
+# Rerun: a finished VCF with its index, called with the same INTERVALS, BAM
+# (the same file content), reference and image, is kept (run-all.sh runs this
+# step on every invocation with EXTRA_CALLERS=octopus); delete it to call
+# again.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -30,15 +35,31 @@ for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
   fi
 done
 
-# Skip only a finished VCF (complete BGZF file with a VCF header); a file cut
-# short by a killed run is called again.
-if have_output "${OUTPUT_DIR}/${SAMPLE}.vcf.gz"; then
-  echo "Octopus output already exists, skipping."
+# A finished VCF is reused only when it is complete (a whole BGZF file with a
+# VCF header), its index is there, and it was called the way this run would
+# call it: RUN_FILE, written last, holds INTERVALS, the BAM's path, the
+# reference and the image on its first line, then the BAM's input_stamp (size,
+# modification time and the sha256 of its first and last MiB). A file cut
+# short by a killed run, a VCF without its .tbi, a VCF of other INTERVALS and
+# one called from another BAM, even under the same name, are called again.
+OUT="${OUTPUT_DIR}/${SAMPLE}.vcf.gz"
+RUN_FILE="${OUTPUT_DIR}/${SAMPLE}.run"
+RUN_DESC="INTERVALS=${INTERVALS:-} bam=${BAM} reference=${REF_FASTA} image=${OCTOPUS_IMAGE}"
+BAM_STAMP=$(input_stamp "$BAM")
+RUN_KEY="${RUN_DESC}
+${BAM_STAMP}"
+if have_output "$OUT" "${OUT}.tbi" && [ -f "$RUN_FILE" ] && [ "$(cat "$RUN_FILE")" = "$RUN_KEY" ]; then
+  echo "Octopus output already exists: ${OUT} (${RUN_DESC}, the same BAM), skipping."
   echo "Delete to re-run: rm -rf ${OUTPUT_DIR}"
   exit 0
 fi
+if [ -e "$OUT" ]; then
+  echo "Calling again: ${OUT} is unfinished, has no index or was not called with ${RUN_DESC} on this BAM."
+fi
 
 mkdir -p "$OUTPUT_DIR"
+# The index of an older VCF must never sit beside the new one.
+rm -f "$RUN_FILE" "${OUT}.tbi"
 
 # Restrict to specific regions if INTERVALS is set (e.g., INTERVALS=chr22 for testing).
 # Expanded as ${REGION_ARGS[@]+...}: bash before 4.4 calls an empty array
@@ -67,6 +88,17 @@ run_in -w "/genome/${SAMPLE}/vcf_octopus" --cpus "${THREADS}" --memory 16g \
     -o "/genome/${SAMPLE}/vcf_octopus/${SAMPLE}.vcf.gz" \
     --threads "${THREADS}" \
     ${REGION_ARGS[@]+"${REGION_ARGS[@]}"}
+
+# Octopus indexes a .vcf.gz it writes; index it here when it did not.
+if have_output "$OUT" && [ ! -s "${OUT}.tbi" ]; then
+  run_in --cpus 1 --memory 1g "$BCFTOOLS_IMAGE" \
+    bcftools index -f -t "/genome/${SAMPLE}/vcf_octopus/${SAMPLE}.vcf.gz"
+fi
+if ! have_output "$OUT" "${OUT}.tbi"; then
+  echo "ERROR: Octopus finished without a complete ${OUT} and its .tbi." >&2
+  exit 1
+fi
+printf '%s\n' "$RUN_KEY" > "$RUN_FILE"
 
 echo "=== Octopus complete ==="
 echo "VCF: ${OUTPUT_DIR}/${SAMPLE}.vcf.gz"

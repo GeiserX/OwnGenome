@@ -106,6 +106,102 @@ The header lines of the file record the gates, the mask, the sample's median chr
 
 The scan needs step 03's VCF (`${SAMPLE}/vcf/${SAMPLE}.vcf.gz`) and the current tree's tables and mask. Without them, the step says so in one line and writes the rest of its output as before.
 
+## How well it places
+
+We measured both placements against Y haplogroups other people published for the same men. The men are 58 men of the 1000 Genomes Project. Poznik et al. 2016 (Nature Genetics 48:593) published their haplogroups in `1000Y.sample_level_haplogroup_calls.ver5.txt` on the 1000 Genomes FTP; we use its column 3, the most derived known SNP the authors saw (`R1b-DF27`). The reads are each man's chrY from his 30x CRAM of the New York Genome Center (NYGC), the same file the public-evidence run reads.
+
+How the men were chosen, fixed before any result was seen. We take the men of that file who have a 30x CRAM, 1,233 of its 1,244. A man counts only when his published SNP sits on one branch of the current tree. Where YFull gives one SNP name to two branches (a recurrent mutation: `M356` is on `C-K98` and on `T-Y31540`), the clade letter of the published name settles it (`C5-M356` is `C-K98`). For each of the file's high-level haplogroups we take its most common published branches: one branch, two for a haplogroup of 10 men or more, three for 50 or more. Branches with the same count are taken in the sort order of their published name. From each branch we take its first man by ID. That gives 59 men in 35 haplogroups, from A0 to T. One branch was left out because its SNP is on two R branches (`R2-L294`). One man was left out because EBI serves a truncated CRAM index for him (HG03846, 4,096 bytes), and his branch had no other man.
+
+Each man ran through step 37's own commands: the two pileups with the step's flags, then Yleaf 4.1.7 with `-rp` on its pileup and `og y tree-place` on the other. `og dev evidence y-bench` then places the published SNP and each tool's call on YFull YTree 14.06.0. It names the call by what it is against the published branch:
+
+| Result | The tool's branch is |
+|---|---|
+| exact | the published branch |
+| below | below it: the same line, deeper |
+| ancestor only | above it, on its line |
+| sibling | on another line that splits off at the published branch's parent |
+| wrong | on a line that splits off higher |
+| no call, unknown name | no branch, or a name the tree cannot place |
+
+The published calls come from the ISOGG tree of 2014, which is much shallower than YFull's, so at 30x a correct call is nearly always "below". The benchmark checks the line down to the published branch. It cannot check the levels below it.
+
+| Tool | Men | Exact | Below | Ancestor only | Sibling | Wrong | No call | Unknown name | Published branch or below |
+|---|---|---|---|---|---|---|---|---|---|
+| Yleaf 4.1.7 | 58 | 1 | 57 | 0 | 0 | 0 | 0 | 0 | 58 of 58 (100.0%) |
+| og y tree-place | 58 | 1 | 57 | 0 | 0 | 0 | 0 | 0 | 58 of 58 (100.0%) |
+
+Both tools put every man on his published line, and both go 7 levels below the published branch on average (og 7.4, Yleaf 7.1). The two named the same branch for 44 men. For 13 more both are on one line, and og's branch is deeper for 12 of them (one to three levels). For one man, HG00530, they split into two sister branches below the published one: og's `O-K481` against Yleaf's `O-Y174537`, and og names `O-Y174537` in `Conflict` with support 1 against 4 for its own branch. The published call does not say which of the two is right.
+
+The outvote rule fired for one man (HG01583: one ancestral SNP, `BY37185`, outvoted). That placement is on the published line, 9 levels below it. No man was placed off his published line by the rule or for lack of it, so the data give no reason to change it, and it stays as it is. `Conflict` named a branch for 4 men, each with support 1 against 4 to 31 for the terminal branch. For three R1a men it was the same branch, `R-Y40`.
+
+The public-evidence workflow's `y-benchmark` job runs the step itself again (`scripts/37-y-haplogroup.sh`, with `setup.sh --yleaf-data`) on 6 of these men by default (input `y_samples`), and runs `og dev evidence y-bench` on its calls. Its gate fails when a tool puts fewer than 95% of the men on the published branch or below it. Its red control gives each tool's calls to the man half the list away, and that table must fail the gate. Before it reads any CRAM, it refuses a `y_samples` list in which so many men share a line with that partner that the handed calls could still pass the gate.
+
+<details>
+<summary>The 58 men</summary>
+
+| Man | Population | Published (Poznik et al. 2016), its branch on YFull 14.06.0 | Yleaf 4.1.7 | og y tree-place |
+|---|---|---|---|---|
+| HG01890 | ACB | `A0-L1038`, `A-L1035` | `A-L1035`, exact | `A-L1035`, exact |
+| HG02613 | GWD | `A1a-M31`, `A1a` | `A-Y32399`, 3 levels below | `A-Y32399`, 3 levels below |
+| HG02588 | GWD | `B-M181`, `B` | `B-Y311987*(xB-ZS382)`, 3 levels below | `B-ZS382`, 4 levels below |
+| HG00553 | PUR | `B2-M109`, `B-Y10267` | `B-C137898`, 7 levels below | `B-C137898`, 7 levels below |
+| NA18971 | JPT | `C1-P121`, `C-M8` | `C-Y161239`, 3 levels below | `C-Y161239`, 3 levels below |
+| HG03917 | BEB | `C3-Z1300`, `C-Z1300` | `C-F3777*(xC-F9966)`, 3 levels below | `C-F3777`, 3 levels below |
+| HG03850 | STU | `C5-P92`, `C-P92` | `C-Y33575*(xC-FT358545,C-FTB33293,C-Y82010,C-FTA79799)`, 5 levels below | `C-Y33575`, 5 levels below |
+| HG03228 | PJL | `C5-M356`, `C-K98` | `C-FT327336`, 2 levels below | `C-FT327336`, 2 levels below |
+| NA18952 | JPT | `D2-M179`, `D-M64.1` | `D-CTS2826`, 5 levels below | `D-CTS2826`, 5 levels below |
+| NA18966 | JPT | `D2-M125`, `D-M125` | `D-Y439573`, 2 levels below | `D-Y439573`, 2 levels below |
+| HG02461 | GWD | `E1a-L94`, `E-L94` | `E-Z5986*(xE-Z5987,E-Y478064,E-Z5989)`, 2 levels below | `E-FT333060`, 3 levels below |
+| HG01094 | PUR | `E1a-CTS2808`, `E-M132` | `E-FT296631`, 6 levels below | `E-FT296631`, 6 levels below |
+| HG01556 | CLM | `E1b-P252`, `E-U174` | `E-Z5968*(xE-FTA5825,E-Z5969,E-Z37526)`, 5 levels below | `E-Z5968`, 5 levels below |
+| HG01204 | PUR | `E1b-P277`, `E-M4254` | `E-FT295369`, 14 levels below | `E-FT295369`, 14 levels below |
+| HG02947 | ESN | `E1b-CTS8030`, `E-Z1704` | `E-Z37814`, 1 level below | `E-Z37814`, 1 level below |
+| NA19035 | LWK | `E2-M200`, `E-M200` | `E-Y25288`, 3 levels below | `E-Y25288`, 3 levels below |
+| HG02040 | KHV | `F-M213`, `F` | `F4`, 2 levels below | `F4`, 2 levels below |
+| NA20858 | GIH | `G1-L833`, `G-M342` | `G-Y262772*(xG-Y99680)`, 9 levels below | `G-Y262772`, 9 levels below |
+| NA19670 | MXL | `G2-CTS4803`, `G-CTS4803` | `G-S2784`, 5 levels below | `G-S2784`, 5 levels below |
+| HG02224 | IBS | `G2-L30`, `G-L30` | `G-PF3345*(xG-CTS342,G-Y46211,G-FTA56155,G-L497,G-Y507487,G-BY149069,G-Y65645,G-Z39367,G-BY1433)`, 8 levels below | `G-PF3345`, 8 levels below |
+| HG03809 | BEB | `H-M370`, `H-M69` | `H-Z34843*(xH-Y168231)`, 9 levels below | `H-Y166956`, 10 levels below |
+| HG02684 | PJL | `FH-M2713`, `H` | `H-PH1063`, 5 levels below | `H-M4771`, 6 levels below |
+| HG01583 | PJL | `H1-M52`, `H-M52` | `H-Z5885*(xH-Z4695,H-Z12600,H-FT282446,H-Y291749)`, 6 levels below | `H-FT167357`, 9 levels below |
+| HG04198 | ITU | `H2-Apt`, `H-Z13973` | `H-Z13969*(xH-Y373420)`, 3 levels below | `H-C116648`, 4 levels below |
+| HG00186 | FIN | `I1-L258`, `I-L258` | `I-Y131678`, 7 levels below | `I-Y131678`, 7 levels below |
+| HG00117 | GBR | `I1-L118`, `I1` | `I-Y172395`, 7 levels below | `I-Y172395`, 7 levels below |
+| HG01527 | IBS | `I2-CTS9183`, `I-CTS616` | `I-Y167082`, 9 levels below | `I-Y167082`, 9 levels below |
+| HG01101 | PUR | `I2-L160`, `I-L160` | `I-Y2181`, 9 levels below | `I-Y2181`, 9 levels below |
+| HG01069 | PUR | `J1-P58`, `J-P58` | `J-Z2289`, 18 levels below | `J-Z2289`, 18 levels below |
+| HG01253 | CLM | `J1-L321`, `J1` | `J-M10096`, 7 levels below | `J-M10096`, 7 levels below |
+| HG02236 | IBS | `J2-F4326`, `J-L26` | `J-Y33322*(xJ-Y87966)`, 18 levels below | `J-Y33322`, 18 levels below |
+| HG02690 | PJL | `J2-M241`, `J-M241` | `J-FT19136`, 11 levels below | `J-Z8372`, 10 levels below |
+| HG01412 | PUR | `J2-L397`, `J-L70` | `J-Z45235*(xJ-Y275293)`, 5 levels below | `J-Z45235`, 5 levels below |
+| HG03742 | ITU | `KxLT-M526`, `K2` | `K-Y28301`, 6 levels below | `K-Y28301`, 6 levels below |
+| HG02654 | PJL | `L1-M27`, `L-M27` | `L-Y28521*(xL-MF68713)`, 10 levels below | `L-FTA9535`, 12 levels below |
+| HG03672 | STU | `L1-L1307`, `L-L1307` | `L-Y35083*(xL-M5513,L-Y106928)`, 6 levels below | `L-Y35083`, 6 levels below |
+| HG02138 | KHV | `N-M2283`, `N-Z4762` | `N-Y24355*(xN-Y61250,N-Y65390,N-Y64234)`, 16 levels below | `N-Y24355`, 16 levels below |
+| HG00185 | FIN | `N1-Z1940`, `N-Z1940` | `N-Y141790`, 4 levels below | `N-Y141790`, 4 levels below |
+| HG00182 | FIN | `N1-CTS10035`, `N-Z1925` | `N-BY142665`, 9 levels below | `N-BY142665`, 9 levels below |
+| HG00580 | CHS | `O1-F589`, `O-M119` | `O-FT323420*(xO-MF37402)`, 11 levels below | `O-FT323420`, 11 levels below |
+| HG02396 | CDX | `O1-M119`, `O-M119` | `O-Z23482*(xO-Y252345)`, 18 levels below | `O-Y252345`, 19 levels below |
+| HG00701 | CHS | `O2-M88`, `O-M111` | `O-CTS3745`, 9 levels below | `O-CTS3745`, 9 levels below |
+| HG00442 | CHS | `O2-M95`, `O-M95` | `O-CTS10007`, 2 levels below | `O-CTS10007`, 2 levels below |
+| HG00530 | CHS | `O2-F1942`, `O-F1658` | `O-Y174537*(xO-MF81782)`, 5 levels below | `O-K481`, 5 levels below |
+| HG00622 | CHS | `O3-M188`, `O-M188` | `O-FT315752`, 5 levels below | `O-FT315752`, 5 levels below |
+| HG00524 | CHS | `O3-M1561`, `O-P164` | `O-CTS1174`, 19 levels below | `O-CTS1174`, 19 levels below |
+| HG00403 | CHS | `O3-F11`, `O-F11` | `O-ACT3882`, 3 levels below | `O-ACT3882`, 3 levels below |
+| HG01124 | CLM | `Q1a-M3`, `Q-M3` | `Q-M848*(xQ-Y126607,Q-Z5906,Q-M925,Q-Z35841,Q-Y592325,Q-CTS2731,Q-MPB139,Q-Y166361,Q-Z19357,Q-Y27993,Q-Z19301,Q-MPB096,Q-Y202441,Q-Z35597,Q-Z19432)`, 1 level below | `Q-M848`, 1 level below |
+| HG01944 | PEL | `Q1a-M120`, `Q-M120` | `Q-FT8312*(xQ-Y280718)`, 6 levels below | `Q-FT9713`, 7 levels below |
+| HG03652 | PJL | `Q1b-F711`, `Q-L275` | `Q-Y478758`, 5 levels below | `Q-Y478758`, 5 levels below |
+| HG02600 | PJL | `R1a-Y7`, `R-Y7` | `R-C10046`, 9 levels below | `R-C10046`, 9 levels below |
+| HG02597 | PJL | `R1a-L657`, `R-L657` | `R-C131139`, 13 levels below | `R-Y672703`, 14 levels below |
+| HG03636 | PJL | `R1a-Z2123`, `R-Z2123` | `R-YP6547*(xR-FT74091)`, 6 levels below | `R-YP6547`, 6 levels below |
+| HG00107 | GBR | `R1b-DF27`, `R-DF27` | `R-A17453*(xR-Y235960,R-Y32852,R-A16155)`, 5 levels below | `R-A17453`, 5 levels below |
+| HG00129 | GBR | `R1b-PF6570`, `R-U152` | `R-Y222042`, 3 levels below | `R-Y222042`, 3 levels below |
+| HG00126 | GBR | `R1b-M167`, `R-Z201` | `R-BY75410`, 10 levels below | `R-BY75410`, 10 levels below |
+| HG01586 | PJL | `R2-L266`, `R2` | `R-Y154917*(xR-Y555693,R-Y155742)`, 18 levels below | `R-FT302409`, 19 levels below |
+| HG01133 | CLM | `T-Z709`, `T-Z709` | `T-CTS9882*(xT-Y169564,T-Y15648,T-Y4981,T-Y273415)`, 12 levels below | `T-CTS6901`, 13 levels below |
+
+</details>
+
 ## Runtime
 
 Not measured on a full genome; the end test runs the step on the fixture's chrY slices only. An estimate is a few minutes: Yleaf reads the pileup at about 183,000 Y marker positions, and the current tree's pileup is at about 369,000 more. The placement reads the tree and the tables in about a second.

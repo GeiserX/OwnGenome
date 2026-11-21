@@ -28,7 +28,8 @@
 //! - `og dev fixture` ([`fixture`]): writers of test fixtures (the
 //!   compound-het reads, a trimmed PharmCAT report).
 //! - `og dev evidence` ([`evidence`]): the measurements of the public
-//!   evidence workflow on GIAB's HG002.
+//!   evidence workflow on GIAB's HG002, and its Y placement
+//!   benchmark on published 1000 Genomes men.
 //! - `og dev renovate-check LOG` ([`renovate`]): what a Renovate dry run
 //!   found, against every pin in the repository.
 //! - `og dev build cn-intervals|callability|sv-rule-regions` ([`build`]):
@@ -47,6 +48,10 @@
 //! - `og dev traits-sources` ([`traits_sources`]): the traits panel's
 //!   reference bases against a FASTA, and its PubMed ids and rsIDs against
 //!   PubMed and dbSNP.
+//! - `og dev pictures take|live|check|same-sample` ([`pictures`]): the docs
+//!   pictures of DEMO-001 taken in a headless Chrome, their PNG and text
+//!   checks, and whether the pictured report and the live demo show one
+//!   sample.
 
 pub mod build;
 pub mod contract;
@@ -66,6 +71,7 @@ pub mod parity;
 pub mod personal_data;
 pub mod pgs;
 pub mod pharmcat;
+pub mod pictures;
 pub mod python_gate;
 pub mod remnants;
 pub mod renovate;
@@ -83,7 +89,7 @@ mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [args]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [args]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -218,6 +224,7 @@ pub fn main(args: &[String]) -> u8 {
         Some("steps-check") => run(steps_check::cli, &args[1..]),
         Some("site-check") => run(site_check::cli, &args[1..]),
         Some("traits-sources") => run(traits_sources::cli, &args[1..]),
+        Some("pictures") => run(pictures::cli, &args[1..]),
         Some("-h" | "--help") => {
             print!("{USAGE}");
             0

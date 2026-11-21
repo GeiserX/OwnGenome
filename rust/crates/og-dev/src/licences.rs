@@ -1,10 +1,23 @@
-//! `og dev licences`: the notices of the third-party code in the og binary.
+//! `og dev licences`: the notices of the third-party code in the og binary,
+//! and the register of the data files the repository ships.
 //!
 //! ```text
 //! og dev licences notices [--manifest-path FILE] [--package NAME]
 //!     (--target TRIPLE | --target-no-default TRIPLE)... [--extra NAME=FILE]...
 //!     [--out FILE]
+//! og dev licences check [--root DIR]
 //! ```
+//!
+//! `check` reads `assets/SOURCES.tsv` (columns path, source, version,
+//! licence, header) and fails, exit 1, naming each fault: a file under
+//! `assets/` that git tracks or would add with no row (a row ending in `/`
+//! covers a folder); a file in two rows; a row that matches no file; a row
+//! with no source or licence; a header phrase (split on `|`, `-` for none)
+//! missing as whole words from the file's opening `#` lines, read as one line
+//! so a phrase may wrap; and a third-party row (a source that does not start
+//! with "OwnGenome") without an entry for its full path in `NOTICE`.
+//! Lint runs it on every push and pull request. The rest of this page is
+//! about `notices`.
 //!
 //! The og binaries link about seventy crates statically, and all four also
 //! link htslib and htscodecs (C, built by `hts-sys`). Their licences
@@ -87,8 +100,13 @@ SOFTWARE.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     match args.first().map(String::as_str) {
         Some("notices") => notices_cli(&args[1..], out, err),
+        Some("check") => check_cli(&args[1..], out, err),
         _ => {
-            let _ = writeln!(err, "{USAGE}");
+            let _ = writeln!(
+                err,
+                "{USAGE}\n       {}",
+                CHECK_USAGE.trim_start_matches("usage: ")
+            );
             2
         }
     }
@@ -643,6 +661,370 @@ impl<'a> Parser<'a> {
     }
 }
 
+// ---- og dev licences check: the register of bundled data ----
+
+/// The register of bundled data, relative to the repository root.
+pub const REGISTER: &str = "assets/SOURCES.tsv";
+/// The notice file that names every third-party data file.
+pub const NOTICE: &str = "NOTICE";
+/// The folder whose every file must have a row.
+pub const SCOPE: &str = "assets/";
+/// The register's columns, in order.
+pub const COLUMNS: [&str; 5] = ["path", "source", "version", "licence", "header"];
+
+const CHECK_USAGE: &str = "usage: og dev licences check [--root DIR]";
+
+/// One row of the register.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    /// Line number in the register, for messages.
+    pub line: usize,
+    /// A file, or a folder when it ends with `/` (every file below it).
+    pub path: String,
+    pub source: String,
+    pub version: String,
+    pub licence: String,
+    /// Phrases the file's opening `#` lines must carry, split on `|`;
+    /// `-` when the file carries no header.
+    pub header: String,
+}
+
+impl Row {
+    /// Our own work: the source starts with "OwnGenome". Any other row is
+    /// a third party's, and NOTICE must name its path.
+    pub fn own(&self) -> bool {
+        self.source.starts_with("OwnGenome")
+    }
+
+    fn matches(&self, file: &str) -> bool {
+        if self.path.ends_with('/') {
+            file.starts_with(&self.path)
+        } else {
+            file == self.path
+        }
+    }
+
+    fn phrases(&self) -> Vec<String> {
+        if self.header == "-" {
+            return Vec::new();
+        }
+        self.header
+            .split('|')
+            .map(words)
+            .filter(|p| !p.is_empty())
+            .collect()
+    }
+}
+
+/// Runs of blanks folded to one space, ends trimmed.
+fn words(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A value that names nothing.
+fn placeholder(v: &str) -> bool {
+    ["-", "?", "unknown", "todo", "tbd", "none", "n/a"].contains(&v.to_ascii_lowercase().as_str())
+}
+
+/// The register's rows, or every problem in it. `#` lines and blank lines
+/// are skipped; the first other line names the columns.
+pub fn parse_register(text: &str) -> Result<Vec<Row>, Vec<String>> {
+    let mut problems = Vec::new();
+    let mut rows: Vec<Row> = Vec::new();
+    let mut header_seen = false;
+    for (i, raw) in text.lines().enumerate() {
+        let line = i + 1;
+        let l = raw.trim_end_matches('\r');
+        if l.starts_with('#') || l.trim().is_empty() {
+            continue;
+        }
+        let cells: Vec<&str> = l.split('\t').collect();
+        if !header_seen {
+            header_seen = true;
+            if cells != COLUMNS {
+                problems.push(format!(
+                    "{REGISTER}:{line}: the column line must be {:?}, got {:?}",
+                    COLUMNS.join("\t"),
+                    l
+                ));
+                return Err(problems);
+            }
+            continue;
+        }
+        if cells.len() != COLUMNS.len() {
+            problems.push(format!(
+                "{REGISTER}:{line}: {} tab-separated fields, want {}",
+                cells.len(),
+                COLUMNS.len()
+            ));
+            continue;
+        }
+        let cell: Vec<String> = cells.iter().map(|c| c.trim().to_string()).collect();
+        let row = Row {
+            line,
+            path: cell[0].clone(),
+            source: cell[1].clone(),
+            version: cell[2].clone(),
+            licence: cell[3].clone(),
+            header: cell[4].clone(),
+        };
+        let p = &row.path;
+        if p.is_empty()
+            || p.starts_with('/')
+            || p.contains('\\')
+            || p.split('/').any(|s| s == ".." || s == ".")
+        {
+            problems.push(format!(
+                "{REGISTER}:{line}: path {p:?} must be relative to the repository root"
+            ));
+        }
+        for (name, v) in [
+            ("source", &row.source),
+            ("licence", &row.licence),
+            ("version", &row.version),
+            ("header", &row.header),
+        ] {
+            if v.is_empty() {
+                problems.push(format!(
+                    "{REGISTER}:{line}: {p}: the {name} is empty (write - for none)"
+                ));
+            }
+        }
+        for (name, v) in [("source", &row.source), ("licence", &row.licence)] {
+            if !v.is_empty() && placeholder(v) {
+                problems.push(format!(
+                    "{REGISTER}:{line}: {p}: the {name} is {v:?}; name the real one"
+                ));
+            }
+        }
+        if row.header != "-" && row.phrases().is_empty() {
+            problems.push(format!(
+                "{REGISTER}:{line}: {p}: the header names no phrase"
+            ));
+        }
+        if let Some(first) = rows.iter().find(|r| r.path == row.path) {
+            problems.push(format!(
+                "{REGISTER}:{line}: {p} has a row already, on line {}",
+                first.line
+            ));
+        }
+        rows.push(row);
+    }
+    if !header_seen {
+        problems.push(format!("{REGISTER}: no column line and no rows"));
+    }
+    if problems.is_empty() {
+        Ok(rows)
+    } else {
+        Err(problems)
+    }
+}
+
+/// The opening comment of a file: its leading `#` lines, the `#` and the
+/// blanks dropped, joined into one line of words. A phrase can so wrap
+/// across lines; a line after the first non-`#` line is never header.
+pub fn header_text(file: &str) -> String {
+    let lines: Vec<&str> = file
+        .lines()
+        .take_while(|l| l.starts_with('#'))
+        .map(|l| l.trim_start_matches('#'))
+        .collect();
+    words(&lines.join(" "))
+}
+
+/// Match a normalized phrase with word boundaries, keeping its punctuation.
+fn contains_header_phrase(header: &str, phrase: &str) -> bool {
+    let word_char = |c: char| c.is_alphanumeric() || c == '_';
+    header.char_indices().any(|(start, _)| {
+        !header[..start].ends_with(word_char)
+            && header[start..]
+                .strip_prefix(phrase)
+                .is_some_and(|rest| !rest.starts_with(word_char))
+    })
+}
+
+/// Every problem with the register against the files of the tree.
+/// `files`: every file of the tree, relative to its root; `read`: a file's
+/// text; `notice`: a path on its own line or followed by `: ` and a description.
+pub fn audit(
+    rows: &[Row],
+    files: &[String],
+    read: &dyn Fn(&str) -> Result<String, String>,
+    notice: &str,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut used = vec![false; rows.len()];
+    for f in files {
+        let hits: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].matches(f)).collect();
+        for &i in &hits {
+            used[i] = true;
+        }
+        if f.starts_with(SCOPE) && f != REGISTER && hits.is_empty() {
+            problems.push(format!(
+                "{f} has no row in {REGISTER}: add its source, version, licence and header"
+            ));
+        }
+        if hits.len() > 1 {
+            let lines: Vec<String> = hits.iter().map(|&i| rows[i].line.to_string()).collect();
+            problems.push(format!(
+                "{f} is in {} rows of {REGISTER} (lines {}); give it one",
+                hits.len(),
+                lines.join(", ")
+            ));
+        }
+        let Some(&i) = hits.first() else { continue };
+        let phrases = rows[i].phrases();
+        if phrases.is_empty() || hits.len() > 1 {
+            continue;
+        }
+        match read(f) {
+            Ok(text) => {
+                let head = header_text(&text);
+                for p in phrases {
+                    if !contains_header_phrase(&head, &p) {
+                        problems.push(format!(
+                            "{f}: its opening # lines lack {p:?}, which {REGISTER}:{} says it carries",
+                            rows[i].line
+                        ));
+                    }
+                }
+            }
+            Err(e) => problems.push(format!("{f}: {e}")),
+        }
+    }
+    let named_in_notice = |path: &str| {
+        notice.lines().map(str::trim).any(|line| {
+            line == path
+                || line
+                    .strip_prefix(path)
+                    .is_some_and(|description| description.starts_with(": "))
+        })
+    };
+    for (r, u) in rows.iter().zip(&used) {
+        if !u {
+            let hint = if r.path.ends_with('/') {
+                ""
+            } else {
+                " (a folder row ends with /)"
+            };
+            problems.push(format!(
+                "{REGISTER}:{}: {} matches no file{hint}",
+                r.line, r.path
+            ));
+        }
+        if !r.own() && !named_in_notice(&r.path) {
+            problems.push(format!(
+                "{NOTICE} does not name {}, which comes from a third party ({REGISTER}:{})",
+                r.path, r.line
+            ));
+        }
+    }
+    problems
+}
+
+/// The files of the tree at `root` that git tracks or would add: tracked
+/// ones, and untracked ones that .gitignore does not exclude, so a file
+/// not yet added is checked too.
+pub fn tree_files(root: &Path) -> Result<Vec<String>, String> {
+    let run = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
+        .output()
+        .map_err(|e| format!("git did not start: {e}"))?;
+    if !run.status.success() {
+        return Err(format!(
+            "git ls-files in {} failed: {}",
+            root.display(),
+            String::from_utf8_lossy(&run.stderr).trim()
+        ));
+    }
+    let mut files: Vec<String> = String::from_utf8_lossy(&run.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
+/// `og dev licences check` on the tree at `root`: Ok(summary) or every
+/// problem.
+pub fn check(root: &Path) -> Result<String, Vec<String>> {
+    let reg = root.join(REGISTER);
+    let text =
+        std::fs::read_to_string(&reg).map_err(|e| vec![format!("cannot read {REGISTER}: {e}")])?;
+    let rows = parse_register(&text)?;
+    let notice = std::fs::read_to_string(root.join(NOTICE))
+        .map_err(|e| vec![format!("cannot read {NOTICE}: {e}")])?;
+    let files = tree_files(root).map_err(|e| vec![e])?;
+    let read = |f: &str| -> Result<String, String> {
+        std::fs::read(root.join(f))
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .map_err(|e| format!("cannot read it: {e}"))
+    };
+    let problems = audit(&rows, &files, &read, &notice);
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    let in_scope = files
+        .iter()
+        .filter(|f| f.starts_with(SCOPE) && f.as_str() != REGISTER)
+        .count();
+    let third = rows.iter().filter(|r| !r.own()).count();
+    Ok(format!(
+        "{in_scope} files under {SCOPE} and {} rows in {REGISTER}: every file has its source and licence, \
+every header phrase is in its file, {NOTICE} names all {third} third-party rows",
+        rows.len()
+    ))
+}
+
+fn check_cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let mut root = PathBuf::from(".");
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match (a.as_str(), it.next()) {
+            ("--root", Some(v)) => root = PathBuf::from(v),
+            _ => {
+                let _ = writeln!(
+                    err,
+                    "og dev licences check: unknown or incomplete argument {a:?}\n{CHECK_USAGE}"
+                );
+                return 2;
+            }
+        }
+    }
+    match check(&root) {
+        Ok(summary) => {
+            let _ = writeln!(out, "og dev licences check: {summary}");
+            0
+        }
+        Err(problems) => {
+            for p in &problems {
+                let _ = writeln!(err, "og dev licences check: {p}");
+            }
+            let _ = writeln!(
+                err,
+                "og dev licences check: {} {}; {REGISTER} says how each column is filled",
+                problems.len(),
+                if problems.len() == 1 {
+                    "problem"
+                } else {
+                    "problems"
+                }
+            );
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -692,5 +1074,253 @@ mod tests {
         for e in ["", "MIT OR", "(MIT", "MIT)", "AND MIT", "MIT WITH"] {
             assert!(allowed(e).is_err(), "{e:?} should not parse");
         }
+    }
+
+    // ---- og dev licences check ----
+
+    const REG: &str = "# the register\npath\tsource\tversion\tlicence\theader\n\
+assets/third.tsv\tSomeone, Some data\t1.0\tCC-BY-4.0\tSource: Someone, Some data | licensed CC BY 4.0\n\
+assets/own.tsv\tOwnGenome\t-\tGPL-3.0-or-later\t-\n\
+assets/stub/\tOwnGenome, synthetic\t-\tGPL-3.0-or-later\t-\n";
+
+    const THIRD: &str = "# third.tsv: a table.\n# Source: Someone, Some data, https://example.org,\n\
+# licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).\na\tb\n";
+
+    fn files(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The audit of REG-like rows against a tree whose third.tsv is `third`.
+    fn run(reg: &str, tree: &[&str], third: &str, notice: &str) -> Vec<String> {
+        let rows = parse_register(reg).expect("register parses");
+        let third = third.to_string();
+        let read = move |f: &str| -> Result<String, String> {
+            match f {
+                "assets/third.tsv" => Ok(third.clone()),
+                _ => Ok(String::new()),
+            }
+        };
+        audit(&rows, &files(tree), &read, notice)
+    }
+
+    const TREE: &[&str] = &[
+        "README.md",
+        "assets/SOURCES.tsv",
+        "assets/own.tsv",
+        "assets/stub/a.bam",
+        "assets/stub/db/.keep",
+        "assets/third.tsv",
+    ];
+    const NOTICE_OK: &str = "assets/third.tsv: Some data, CC BY 4.0\n";
+
+    #[test]
+    fn a_registered_tree_passes() {
+        assert_eq!(run(REG, TREE, THIRD, NOTICE_OK), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_unregistered_asset_fails() {
+        let mut tree = TREE.to_vec();
+        tree.push("assets/planted.tsv");
+        let p = run(REG, &tree, THIRD, NOTICE_OK);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].starts_with("assets/planted.tsv has no row"), "{p:?}");
+    }
+
+    #[test]
+    fn a_file_outside_assets_needs_no_row() {
+        let mut tree = TREE.to_vec();
+        tree.push("docs/x.md");
+        assert!(run(REG, &tree, THIRD, NOTICE_OK).is_empty());
+    }
+
+    #[test]
+    fn a_stripped_source_line_fails() {
+        let stripped: String = THIRD
+            .lines()
+            .filter(|l| !l.contains("Source:"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let p = run(REG, TREE, &stripped, NOTICE_OK);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(
+            p[0].contains(
+                "assets/third.tsv: its opening # lines lack \"Source: Someone, Some data\""
+            ),
+            "{p:?}"
+        );
+    }
+
+    #[test]
+    fn a_phrase_may_wrap_and_is_read_only_from_the_opening_lines() {
+        // "licensed CC BY 4.0" wraps here: still found.
+        let wrapped = "# Source: Someone, Some data, licensed\n#   CC   BY 4.0\nrow\n";
+        assert!(run(REG, TREE, wrapped, NOTICE_OK).is_empty());
+        // The same words after the first data line are no header.
+        let late = "# a table\nrow\n# Source: Someone, Some data, licensed CC BY 4.0\n";
+        assert_eq!(run(REG, TREE, late, NOTICE_OK).len(), 2);
+    }
+
+    #[test]
+    fn a_header_phrase_must_match_whole_words() {
+        let reg = REG.replace("Source: Someone, Some data", "Source: GENCODE release 50");
+        let header = "# Source: GENCODE release 500, unlicensed CC BY 4.0\nrow\n";
+        let problems = run(&reg, TREE, header, NOTICE_OK);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems[0].contains("lack \"Source: GENCODE release 50\""));
+        assert!(problems[1].contains("lack \"licensed CC BY 4.0\""));
+
+        let correct = "# Source: GENCODE release 50, licensed\n# CC BY 4.0\nrow\n";
+        assert!(run(&reg, TREE, correct, NOTICE_OK).is_empty());
+    }
+
+    #[test]
+    fn a_third_party_row_missing_from_notice_fails() {
+        let p = run(REG, TREE, THIRD, "nothing here\n");
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(
+            p[0].starts_with("NOTICE does not name assets/third.tsv"),
+            "{p:?}"
+        );
+    }
+
+    #[test]
+    fn a_notice_must_name_the_complete_path() {
+        for notice in [
+            "assets/third.tsv.gz: Some data, CC BY 4.0\n",
+            "other/assets/third.tsv: Some data, CC BY 4.0\n",
+        ] {
+            let problems = run(REG, TREE, THIRD, notice);
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            assert!(problems[0].starts_with("NOTICE does not name assets/third.tsv"));
+        }
+
+        assert!(run(REG, TREE, THIRD, "assets/third.tsv\n").is_empty());
+    }
+
+    #[test]
+    fn a_row_with_no_file_fails() {
+        let tree: Vec<&str> = TREE
+            .iter()
+            .copied()
+            .filter(|f| *f != "assets/own.tsv")
+            .collect();
+        let p = run(REG, &tree, THIRD, NOTICE_OK);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("assets/own.tsv matches no file"), "{p:?}");
+    }
+
+    #[test]
+    fn a_file_in_two_rows_fails() {
+        let reg = format!("{REG}assets/stub/a.bam\tOwnGenome\t-\tGPL-3.0-or-later\t-\n");
+        let p = run(&reg, TREE, THIRD, NOTICE_OK);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("assets/stub/a.bam is in 2 rows"), "{p:?}");
+    }
+
+    #[test]
+    fn a_broken_register_fails_to_parse() {
+        let bad = [
+            ("path\tsource\tlicence\n", "the column line"),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\tX\t1\tMIT\n",
+                "4 tab-separated fields",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\tX\t1\t\t-\n",
+                "the licence is empty",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\tX\t1\tunknown\t-\n",
+                "the licence is \"unknown\"",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\t-\t1\tMIT\t-\n",
+                "the source is \"-\"",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\n../a\tX\t1\tMIT\t-\n",
+                "relative to the repository root",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\tX\t1\tMIT\t | \n",
+                "names no phrase",
+            ),
+            (
+                "path\tsource\tversion\tlicence\theader\nassets/a\tX\t1\tMIT\t-\nassets/a\tY\t1\tMIT\t-\n",
+                "has a row already, on line 2",
+            ),
+            ("# only comments\n", "no column line"),
+        ];
+        for (text, want) in bad {
+            let e = parse_register(text).expect_err(text);
+            assert!(e.iter().any(|p| p.contains(want)), "{text:?}: {e:?}");
+        }
+    }
+
+    #[test]
+    fn check_reads_the_tree_git_would_commit() {
+        let root = std::env::temp_dir().join(format!("og-licences-check-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        let w = |rel: &str, text: &str| std::fs::write(root.join(rel), text).unwrap();
+        w(
+            "assets/SOURCES.tsv",
+            "path\tsource\tversion\tlicence\theader\nassets/third.tsv\tSomeone, Some data\t1.0\tCC-BY-4.0\tSource: Someone, Some data\n",
+        );
+        w("assets/third.tsv", THIRD);
+        w("NOTICE", NOTICE_OK);
+        w(".gitignore", "*.bed\n");
+        let git = |args: &[&str]| {
+            let s = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                s.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&s.stderr)
+            );
+        };
+        git(&["init", "-q"]);
+        git(&["add", "assets/SOURCES.tsv", "assets/third.tsv"]);
+        // An ignored file is not checked; an untracked one is.
+        w("assets/ignored.bed", "x\n");
+        let ok = check(&root);
+        assert!(ok.is_ok(), "{ok:?}");
+        w("assets/planted.tsv", "x\n");
+        let e = check(&root).expect_err("an untracked asset with no row must fail");
+        assert!(
+            e.iter()
+                .any(|p| p.starts_with("assets/planted.tsv has no row")),
+            "{e:?}"
+        );
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let root_s = root.to_str().unwrap().to_string();
+        assert_eq!(
+            cli(
+                &["check".into(), "--root".into(), root_s.clone()],
+                &mut out,
+                &mut err
+            ),
+            1
+        );
+        std::fs::remove_file(root.join("assets/planted.tsv")).unwrap();
+        assert_eq!(
+            cli(
+                &["check".into(), "--root".into(), root_s],
+                &mut out,
+                &mut err
+            ),
+            0
+        );
+        assert_eq!(
+            cli(&["check".into(), "--bogus".into()], &mut out, &mut err),
+            2
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

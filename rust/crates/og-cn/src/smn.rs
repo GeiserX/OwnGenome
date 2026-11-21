@@ -139,11 +139,14 @@ pub fn read(path: Option<&str>, chrom: &str, marker_copies: &[i64]) -> Result<Sm
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     const HEAD: &str = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n";
 
-    /// A table file that is removed, with its folder once empty, when the
-    /// test ends.
+    /// A table file in a folder of its own, removed with the folder when the
+    /// test ends. The tests run in parallel threads of one process, so the
+    /// folder name carries a counter: a folder shared by two tests was
+    /// removed by one test's drop while the other was still writing to it.
     struct Table(String);
 
     impl Drop for Table {
@@ -157,15 +160,30 @@ mod tests {
     }
 
     fn table(rows: &[&str]) -> Table {
-        let dir =
-            std::env::temp_dir().join(format!("og-cn-smn-{}-{}", std::process::id(), rows.len()));
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("og-cn-smn-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let p = dir.join(format!("t{}.tsv", rows.join("").len()));
+        let p = dir.join("table.tsv");
         std::fs::write(&p, format!("{HEAD}{}", rows.join(""))).unwrap();
         Table(p.to_string_lossy().into_owned())
     }
 
     const SITES: [i64; 2] = [70_952_074, 70_076_654];
+
+    #[test]
+    fn two_tables_of_the_same_size_never_share_a_folder() {
+        let row =
+            "chr5\t70925000\t70955000\tSMN1\tPASS\t4\t30\tPASS\t2\t40\tchr5:70049000-70080000\n";
+        let a = table(&[row]);
+        let b = table(&[row]);
+        let parent = |t: &Table| std::path::Path::new(&t.0).parent().unwrap().to_path_buf();
+        assert_ne!(parent(&a), parent(&b));
+        // Dropping one table leaves the other readable.
+        drop(a);
+        let r = read(Some(&b.0), "chr5", &SITES).unwrap();
+        assert_eq!(r.pscn, Some(2));
+    }
 
     #[test]
     fn the_first_row_over_exon_7_wins() {

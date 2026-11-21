@@ -71,11 +71,12 @@ The panel's extraction, QC and PCA come on top of step 25's run; see the measure
 
 - **population** is the reference group whose genetic ancestry is most similar to yours. It is a statement about similarity to five continental groups of the 1000 Genomes Project, not about identity, nationality or ethnicity.
 - **probability_<POP>** are the random forest's probabilities. A low top probability (`population_low_confidence` is `True`) means you sit between groups or far from all of them; the step 25 percentile is then less reliable.
+- When the two most probable groups each have a probability of 0.2 or more, you sit between them. pgsc_calc sets `population_low_confidence` only when the top probability is under 0.5, so a sample at 0.55 and 0.45 reads `False` there. Step 25 then prints a note that names both groups and says each percentile ranks you among `population` only. In `summary.json`, the PRS section's `ancestry` says `mixed` (`True` or `False`) and `second_population` (the most probable group other than `population`), and its `low_confidence` is `True` for such a sample, so the report reads the ancestry match as low-confidence.
 - **PC1 to PC10** are your coordinates on the panel's principal components. They can be plotted against the panel samples in `sample_popsimilarity.txt.gz`.
 
 ## Limitations
 
-- Five continental groups only. Mixed ancestry is shown as the single most similar group, with its probabilities; this step does not estimate admixture fractions or local ancestry.
+- Five continental groups only. Mixed ancestry is shown as the single most similar group, with its probabilities; this step does not estimate admixture fractions or local ancestry. The probabilities say how the random forest split its vote, not what share of your genome comes from each group.
 - Groups the 1000 Genomes Project does not sample well are placed less reliably.
 - Fractions, regional groups and a chromosome painting are [step 26b](26b-ancestry-fine.md), against an open panel of 80 populations. It has limits of its own: a regional name is a cluster we name, splits within Iberia are weak for every method, Greek and Southern Italian ancestry overlap, and what it supports well is continental, and in places country-level, similarity.
 

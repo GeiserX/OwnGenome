@@ -50,11 +50,13 @@
       : af === 0 ? 'Not seen in gnomAD.' : 'Allele frequency ' + af + '. A change above 1 in 100 is unlikely to be a high-penetrance finding.'));
     return box;
   }
-  // A sketch of the reads at the position: what the genome viewer shows in full.
+  // A drawing of reads over the position, the same for every finding: it shows where to look, not this
+  // person's reads, and its label says so before the picture. The genome viewer shows the real reads; the
+  // demo has none, so there the caption says so instead of linking to a page that has none.
   function readsSketch(f) {
     var box = el('figure', { 'class': 'reads' });
-    add(box, el('div', { 'class': 'fig-label' }, 'The reads at ' + f.viewer));
-    var s = U.svg('svg', { viewBox: '0 0 680 90', role: 'img', 'aria-label': 'A sketch of reads over the position' });
+    add(box, el('div', { 'class': 'fig-label' }, 'Where to look at the reads: ' + f.viewer + '. An illustration, not your reads.'));
+    var s = U.svg('svg', { viewBox: '0 0 680 90', role: 'img', 'aria-label': 'An illustration of reads over the position, not your reads' });
     for (var i = 0; i < 9; i++) {
       var x = 30 + ((i * 97) % 260), w = 260 + ((i * 53) % 140);
       s.appendChild(U.svg('rect', { x: x, y: 6 + i * 9, width: w, height: 5, rx: 1, fill: 'rgba(255,255,255,.14)' }));
@@ -62,7 +64,8 @@
     s.appendChild(U.svg('line', { x1: 340, x2: 340, y1: 0, y2: 90, stroke: '#c8ab78', 'stroke-dasharray': '3 3' }));
     box.appendChild(s);
     var cap = el('figcaption', {});
-    add(cap, 'A sketch, not the data. ', el('a', { href: BASE + 'viewer/#' + encodeURIComponent(f.viewer) }, 'See the real reads in the genome viewer →'));
+    add(cap, replay ? 'Reads: not in the demo'
+      : el('a', { href: BASE + 'viewer/#' + encodeURIComponent(f.viewer) }, 'See the real reads in the genome viewer →'));
     add(box, cap);
     return box;
   }

@@ -2,7 +2,7 @@
 # generate-report.sh — Create a plain-text summary report of all pipeline results
 # Usage: ./scripts/generate-report.sh <sample_name>
 #
-# Renders the text report (bin/render_report.py) from ${SAMPLE}/summary.json,
+# Renders the text report (og report render) from ${SAMPLE}/summary.json,
 # the summary og summary collect reads from every step's output. When step 24
 # wrote that summary and nothing it reads has changed since (in a run-all.sh
 # run, step 24 ran just before), the text report is rendered from it as it is:
@@ -81,8 +81,9 @@ else
   # assets/: the ACMG SF rules (acmg_sf.tsv) and the carrier list (carrier_genes.tsv).
   from=(--assets /pgp-assets --json "/genome/${SAMPLE}/summary.json")
 fi
+# og is the static binary, so the python image runs it.
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/render_report.py \
+  /pgp-bin/og report render \
     "${from[@]}" \
     --sample "$SAMPLE" \
     --sample-dir "/genome/${SAMPLE}" \

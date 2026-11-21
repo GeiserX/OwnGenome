@@ -2,9 +2,12 @@
 //! written in the 23andMe layout and the AncestryDNA layout, each zipped,
 //! with a summary table.
 //!
-//! A site inside a reference block (GT 0/0) is homozygous reference; a site
-//! with no gVCF record, a no-call, a filtered call or one inside a deletion
-//! is `--` (AncestryDNA: `0 0`). Both files are read back with the strict
+//! A site inside a confident reference block (GT 0/0, GQ 20 or more or no
+//! GQ, FILTER PASS, `.` or `RefCall`) is homozygous reference; a site with
+//! no gVCF record, a no-call, a filtered call, a weaker reference call or
+//! one inside a deletion is `--` (AncestryDNA: `0 0`). A gVCF with more
+//! than one sample column is read only for the column `--sample` names.
+//! Both files are read back with the strict
 //! reader ([`super::check`]) before they are zipped. Exit 1 when a file
 //! fails it, or when the gVCF's reference bases disagree with the site table
 //! (the gVCF is not on GRCh38, or the table is wrong).
@@ -25,7 +28,12 @@
 //!   where the Python wrote a file that then failed its own strict reader;
 //! - a site row whose positions are not whole numbers from 0 to 2^32 - 1,
 //!   or whose GRCh38 base is not one character, is refused as not a site
-//!   row.
+//!   row;
+//! - a reference answer (GT all 0) needs GQ 20 or more, or no GQ, and
+//!   FILTER PASS, `.` or `RefCall` (decision D10): a GQ 3 or `LowQual`
+//!   block is `--`, where the Python wrote the reference bases;
+//! - a gVCF of several samples is read for the column `--sample` names and
+//!   refused when none is, where the Python read the first column.
 
 use std::fmt::{self, Write as _};
 use std::io::{BufRead, Write};
@@ -52,6 +60,11 @@ const SITES_HEADER: [&str; 7] = [
 const PAR37: [(u32, u32); 2] = [(60001, 2_699_520), (154_931_044, 155_260_560)];
 /// ALT alleles that make a record a reference block.
 const SYMBOLIC: [&[u8]; 3] = [b"<*>", b"<NON_REF>", b"."];
+/// The lowest GQ of a reference answer (decision D10: GQ 20 reads, GQ 19
+/// does not, a missing GQ stays readable).
+const MIN_GQ: i64 = 20;
+/// The column of the first sample.
+const FIRST_SAMPLE: usize = 9;
 
 /// An rsID as the table spells it: `rs<n>` and `i<n>` without leading
 /// zeros are kept as numbers; anything else as text in [`Table::names`].
@@ -92,6 +105,7 @@ pub enum Why {
     InsideDeletion,
     RefMismatch,
     Filtered,
+    WeakReference,
     Symbolic,
     NoRecord,
     ChrYFemale,
@@ -107,6 +121,7 @@ impl fmt::Display for Why {
             Why::InsideDeletion => "inside a deletion or a longer allele",
             Why::RefMismatch => "reference base differs from the site table",
             Why::Filtered => "filtered call",
+            Why::WeakReference => "weak reference call (GQ below 20, or filtered)",
             Why::Symbolic => "symbolic allele",
             Why::NoRecord => "no gVCF record",
             Why::ChrYFemale => "chrY site of a female sample",
@@ -360,7 +375,7 @@ struct Rec<'a> {
     /// The ALT column, alleles separated by commas.
     alts: &'a [u8],
     filter: &'a [u8],
-    /// FORMAT and the first sample, when the line has both.
+    /// FORMAT and the sample read, when the line has both.
     sample: Option<(&'a [u8], &'a [u8])>,
 }
 
@@ -374,11 +389,28 @@ impl Rec<'_> {
         self.alts.split(|&c| c == b',')
     }
 
+    /// The value of FORMAT key `key`, when the record has one.
+    fn format(&self, key: &[u8]) -> Option<&[u8]> {
+        let (fmt, smp) = self.sample?;
+        let i = fmt.split(|&c| c == b':').position(|k| k == key)?;
+        smp.split(|&c| c == b':').nth(i)
+    }
+
     /// The GT value: `.` when the record has none.
     fn gt(&self) -> Option<&[u8]> {
-        let (fmt, smp) = self.sample?;
-        let i = fmt.split(|&c| c == b':').position(|k| k == b"GT")?;
-        smp.split(|&c| c == b':').nth(i)
+        self.format(b"GT")
+    }
+
+    /// Why a reference answer from this record is not confident: a FILTER
+    /// other than PASS, `.` or DeepVariant's `RefCall` (its label for a
+    /// candidate it called reference), or a GQ below [`MIN_GQ`]. A GQ that
+    /// is missing or `.` stays readable (D10).
+    fn weak_reference(&self) -> bool {
+        !matches!(self.filter, b"PASS" | b"." | b"RefCall")
+            || self
+                .format(b"GQ")
+                .and_then(int)
+                .is_some_and(|gq| gq < MIN_GQ)
     }
 }
 
@@ -407,15 +439,23 @@ fn info_end(info: &[u8]) -> Option<i64> {
 }
 
 /// `parse_record`: the record of a line (without its newline), or None for
-/// fewer than eight columns.
-fn parse_record(line: &[u8]) -> Result<Option<Rec<'_>>, String> {
-    // The first ten columns; a line is parsed for nearly every record, so
-    // nothing here allocates.
-    let mut c: [&[u8]; 10] = [&[]; 10];
+/// fewer than eight columns. Its sample is column `col` (0-based; 9 is the
+/// first sample).
+fn parse_record(line: &[u8], col: usize) -> Result<Option<Rec<'_>>, String> {
+    // The first nine columns and the sample's; a line is parsed for nearly
+    // every record, so nothing here allocates.
+    let mut c: [&[u8]; 9] = [&[]; 9];
+    let mut smp: Option<&[u8]> = None;
     let mut ncols = 0;
-    for (slot, col) in c.iter_mut().zip(line.split(|&c| c == b'\t')) {
-        *slot = col;
-        ncols += 1;
+    for (k, field) in line.split(|&c| c == b'\t').enumerate() {
+        if let Some(slot) = c.get_mut(k) {
+            *slot = field;
+        }
+        ncols = k + 1;
+        if k == col {
+            smp = Some(field);
+            break;
+        }
     }
     if ncols < 8 {
         return Ok(None);
@@ -436,7 +476,7 @@ fn parse_record(line: &[u8]) -> Result<Option<Rec<'_>>, String> {
         ref_: c[3],
         alts: c[4],
         filter: c[6],
-        sample: (ncols > 9).then(|| (c[8], c[9])),
+        sample: smp.filter(|_| ncols > 9).map(|s| (c[8], s)),
     }))
 }
 
@@ -484,6 +524,9 @@ fn call_from_record(r: &Rec, pos: i64, ref38: u8, tally: &mut Tally) -> Result<C
         // The site lies inside a record that starts before it: a reference
         // block (each base is the reference) or a deletion.
         if gt_parts(gt).all(|i| i == b"0") && r.is_block() {
+            if r.weak_reference() {
+                return Ok(Call::No(Why::WeakReference));
+            }
             return Ok(bases([ref38; 2], n));
         }
         return Ok(Call::No(Why::InsideDeletion));
@@ -498,6 +541,9 @@ fn call_from_record(r: &Rec, pos: i64, ref38: u8, tally: &mut Tally) -> Result<C
     tally.reference_checked += 1;
     if !matches!(r.filter, b"PASS" | b".") && gt_parts(gt).any(|i| i != b"0") {
         return Ok(Call::No(Why::Filtered));
+    }
+    if gt_parts(gt).all(|i| i == b"0") && r.weak_reference() {
+        return Ok(Call::No(Why::WeakReference));
     }
     let mut out = [0u8; 2];
     for (k, i) in gt_parts(gt).enumerate() {
@@ -541,6 +587,8 @@ struct Walk {
     prune_at: usize,
     /// The pending records [`Walk::resolve`] parsed.
     recs: Vec<Pending>,
+    /// The column of the sample read.
+    col: usize,
 }
 
 /// What [`Walk::resolve`] keeps of a pending record: where it starts and
@@ -575,7 +623,7 @@ impl Walk {
         self.recs.clear();
         let mut from = 0;
         for &end in &self.ends {
-            if let Some(r) = parse_record(&self.pending[from..end])? {
+            if let Some(r) = parse_record(&self.pending[from..end], self.col)? {
                 self.recs.push(Pending {
                     pos: r.pos,
                     end: r.end,
@@ -610,7 +658,7 @@ impl Walk {
             let at_start = Some(p) == start;
             let r = hit.find(|r| r.block != at_start).unwrap_or(first);
             let (a, b) = r.line;
-            let rec = parse_record(&self.pending[a..b])?.expect("parsed once already");
+            let rec = parse_record(&self.pending[a..b], self.col)?.expect("parsed once already");
             s.call = call_from_record(&rec, p, s.ref38, tally)?;
             if matches!(s.call, Call::Bases { .. } | Call::Many(_)) {
                 if r.block || r.pos != p {
@@ -643,13 +691,16 @@ fn contig_chrom(contig: &[u8]) -> Option<u8> {
 /// block that covers it. A site inside the span of a variant whose genotype
 /// carries a longer allele (a deletion, an MNV) is `--` whatever blocks
 /// cover it: DeepVariant starts its next block one base after the variant,
-/// inside the deleted bases. Only lines near a site are parsed.
+/// inside the deleted bases. Only lines near a site are parsed. The
+/// genotype is read from the sample column [`sample_column`] picks.
 fn genotype_all(
     gvcf: &str,
     input: &mut dyn BufRead,
+    sample: &str,
     table: &mut Table,
     tally: &mut Tally,
 ) -> Result<(), Fail> {
+    let mut col: Option<usize> = None;
     let mut by_chrom: Vec<Vec<u32>> = vec![Vec::new(); CHROMS.len()];
     for (k, s) in (0u32..).zip(&table.sites) {
         by_chrom[usize::from(s.chrom)].push(k);
@@ -683,9 +734,25 @@ fn genotype_all(
             line.pop();
         }
         if line.first() == Some(&b'#') {
+            if line.starts_with(b"#CHROM\t") {
+                col = Some(sample_column(gvcf, &line, sample)?);
+            }
             continue;
         }
         let l = line.as_slice();
+        let col = match col {
+            Some(c) => c,
+            None => {
+                // No #CHROM line: one sample column is read, two cannot be
+                // told apart, so every record is checked until one is seen.
+                if l.iter().filter(|&&c| c == b'\t').count() > FIRST_SAMPLE {
+                    return Err(Fail::data(format!(
+                        "{gvcf} line {lineno}: more than one sample column and no #CHROM header line to name them"
+                    )));
+                }
+                FIRST_SAMPLE
+            }
+        };
         // Python indexed the line with its "\n"; t1 and t2 never reach it.
         let t1 = find(l, b'\t', 0);
         let t2 = find(l, b'\t', t1 + 1);
@@ -714,6 +781,7 @@ fn genotype_all(
                 sites: chrom
                     .map(|c| std::mem::take(&mut by_chrom[usize::from(c)]))
                     .unwrap_or_default(),
+                col,
                 ..Walk::default()
             };
             last_pos = 0;
@@ -740,7 +808,7 @@ fn genotype_all(
         let t3 = find(l, b'\t', t2 + 1);
         let t4 = find(l, b'\t', t3 + 1);
         if t4 - t3 > 2 {
-            let r = parse_record(l).map_err(bad)?;
+            let r = parse_record(l, col).map_err(bad)?;
             if let Some(r) = r
                 && !r.is_block()
                 && nonref_gt(&r)
@@ -765,6 +833,44 @@ fn genotype_all(
         }
     }
     Ok(())
+}
+
+/// The column of the sample to read, from the `#CHROM` line: the one
+/// sample column whatever its name, else the column named `sample`. A gVCF
+/// of several samples none of which is `sample` is refused: reading its
+/// first column would write another person's genotypes under this name.
+fn sample_column(gvcf: &str, header: &[u8], sample: &str) -> Result<usize, Fail> {
+    let names: Vec<&[u8]> = header.split(|&c| c == b'\t').skip(FIRST_SAMPLE).collect();
+    if names.len() <= 1 {
+        return Ok(FIRST_SAMPLE);
+    }
+    let hits: Vec<usize> = names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| **n == sample.as_bytes())
+        .map(|(k, _)| k)
+        .collect();
+    match hits[..] {
+        [k] => Ok(FIRST_SAMPLE + k),
+        _ => {
+            let list = names
+                .iter()
+                .map(|n| String::from_utf8_lossy(n))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let why = if hits.is_empty() {
+                "none of them"
+            } else {
+                "more than one of them"
+            };
+            Err(Fail::data(format!(
+                "{gvcf} holds {} samples ({list}) and {why} is named {}: \
+                 give --sample the column to export, or a gVCF of one sample",
+                names.len(),
+                py_repr(sample)
+            )))
+        }
+    }
 }
 
 fn complement(b: u8) -> Option<u8> {
@@ -976,7 +1082,7 @@ pub fn export(a: &ExportArgs, workers: NonZero<usize>) -> Result<String, Fail> {
     let par = read_par(a.par)?;
     let mut tally = Tally::default();
     let mut input = og_io::bgzf::open(a.gvcf, workers).map_err(|e| Fail::io(a.gvcf, &e))?;
-    genotype_all(a.gvcf, &mut input, &mut table, &mut tally)?;
+    genotype_all(a.gvcf, &mut input, a.sample, &mut table, &mut tally)?;
     drop(input);
     finalise(&mut table, a.sex, &par)?;
     let (checked, bad) = (tally.reference_checked, tally.reference_mismatch);
@@ -1335,6 +1441,118 @@ mod tests {
         assert!(txt.iter().all(|t| !out.join(t).exists()));
         assert!(out.join("S_23andme_v5.zip").exists());
         let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Runs the export of the gVCF `text` (plain, written to a scratch
+    /// file) on the unit site table as `sample`; the 23andMe calls and the
+    /// summary table.
+    fn run_text(
+        name: &str,
+        text: &str,
+        sample: &str,
+    ) -> Result<(Vec<(String, String)>, String), Fail> {
+        let dir = std::env::temp_dir().join(format!(
+            "og-consumer-{name}-{sample}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch directory");
+        let gvcf = dir.join("in.g.vcf");
+        std::fs::write(&gvcf, text).expect("the gVCF");
+        let out = dir.join("out");
+        let (gvcf, out_dir) = (gvcf.to_string_lossy(), out.to_string_lossy());
+        let (sites, par) = (input("unit-sites.tsv.gz"), input("par_grch38.bed"));
+        let a = ExportArgs {
+            gvcf: &gvcf,
+            sites: &sites,
+            sample,
+            sex: "male",
+            par: Some(&par),
+            out_dir: &out_dir,
+            date: DosDate::parse("2026-01-02").expect("a date"),
+        };
+        let got = export(&a, NonZero::new(2).expect("2 > 0")).map(|_| {
+            let z = std::fs::read(out.join(format!("{sample}_23andme_v5.zip"))).expect("the zip");
+            let members = zip::read_all(&z).expect("a zip");
+            let text = String::from_utf8(members[0].1.clone()).expect("ASCII");
+            let calls = text
+                .lines()
+                .filter(|l| !l.starts_with('#'))
+                .map(|l| {
+                    let c: Vec<&str> = l.split('\t').collect();
+                    (c[0].to_owned(), c[3].to_owned())
+                })
+                .collect();
+            let tsv = std::fs::read_to_string(out.join(format!("{sample}_consumer_export.tsv")))
+                .expect("tsv");
+            (calls, tsv)
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        got
+    }
+
+    const HEAD: &str =
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT";
+
+    #[test]
+    fn a_weak_reference_call_is_no_genotype() {
+        // D10: a reference answer needs GQ 20 or more (a missing GQ stays
+        // readable) and FILTER PASS, `.` or RefCall. A variant call keeps
+        // its bases whatever its GQ.
+        let body = [
+            "chr20\t90\t.\tA\t<*>\t0\t.\tEND=120\tGT:GQ\t0/0:3",
+            "chr20\t150\t.\tC\t<*>\t0\t.\tEND=155\tGT:GQ\t0/0:20",
+            "chr20\t160\t.\tG\t<*>\t0\t.\tEND=165\tGT\t0/0",
+            "chr20\t170\t.\tT\t<*>\t0\tLowQual\tEND=175\tGT:GQ\t0/0:30",
+            "chr20\t180\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:5",
+            "chr20\t200\t.\tC\tT,<*>\t30\tRefCall\t.\tGT:GQ\t0/0:30",
+            "chr20\t212\t.\tG\tA,<*>\t30\tPASS\t.\tGT:GQ\t0/1:3",
+            "chr20\t215\t.\tT\t<*>\t0\t.\tEND=225\tGT:GQ\t0/0:19",
+            "chr20\t230\t.\tG\t<*>\t0\t.\tEND=235\tGT:GQ\t0/0:.",
+        ];
+        let text = format!("{HEAD}\tS\n{}\n", body.join("\n"));
+        let (calls, tsv) = run_text("weak", &text, "S").expect("export");
+        // Ids and genotypes apart, so no line pairs an rsID with letters.
+        let ids = (101..=109).map(|n| format!("rs{n}"));
+        let want = ["--", "CC", "GG", "--", "--", "CC", "AG", "--", "GG"];
+        for (id, g) in ids.zip(want) {
+            assert_eq!(call(&calls, &id), g, "{id}");
+        }
+        let row = "no_call: weak reference call (GQ below 20, or filtered)\t4";
+        assert!(tsv.lines().any(|l| l == row), "{row} in {tsv}");
+    }
+
+    #[test]
+    fn a_multi_sample_gvcf_is_read_only_for_the_sample_it_names() {
+        let text = format!(
+            "{HEAD}\tFATHER\tCHILD\nchr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n"
+        );
+        let e = run_text("two", &text, "S").unwrap_err();
+        assert!(
+            e.code == 1 && e.msg.contains("2 samples") && e.msg.contains("FATHER, CHILD"),
+            "{e:?}"
+        );
+        let (child, _) = run_text("two", &text, "CHILD").expect("export");
+        assert_eq!(call(&child, "rs101"), "TT");
+        let (father, _) = run_text("two", &text, "FATHER").expect("export");
+        assert_eq!(call(&father, "rs101"), "AA");
+        // One sample column is read whatever its name.
+        let one = format!("{HEAD}\tNA\nchr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n");
+        let (calls, _) = run_text("one", &one, "S").expect("export");
+        assert_eq!(call(&calls, "rs101"), "AT");
+        // Without a #CHROM line two sample columns cannot be told apart.
+        let bare = "chr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n";
+        let e = run_text("bare", bare, "S").unwrap_err();
+        assert!(e.code == 1 && e.msg.contains("#CHROM"), "{e:?}");
+        // Every record is checked while no #CHROM was seen, not only the
+        // first one.
+        let late = "chr20\t100\t.\tA\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/1:30\n\
+                    chr20\t150\t.\tC\tT,<*>\t30\tPASS\t.\tGT:GQ\t0/0:30\t1/1:30\n";
+        let e = run_text("late", late, "S").unwrap_err();
+        assert!(
+            e.code == 1 && e.msg.contains("line 2") && e.msg.contains("#CHROM"),
+            "{e:?}"
+        );
     }
 
     #[test]
