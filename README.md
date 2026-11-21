@@ -87,3 +87,5 @@ Your genome data is sensitive personal information. This pipeline runs locally a
 ## License
 
 [GPL-3.0-or-later](LICENSE). OwnGenome is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. Contributions come in under the same terms ([CONTRIBUTING.md](CONTRIBUTING.md#license)).
+
+Some data files the repository ships come from third parties, under their own terms. [NOTICE](NOTICE) lists them, and [assets/SOURCES.tsv](assets/SOURCES.tsv) records the source, version and licence of every data file under `assets/`. The Lint check fails on a data file with no row there.

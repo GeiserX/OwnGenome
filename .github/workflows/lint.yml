@@ -300,3 +300,65 @@ jobs:
             exit 1
           fi
           echo "OK: All internal links valid"
+
+  # Every data file the repository ships has a recorded source and licence:
+  # assets/SOURCES.tsv has a row for each file under assets/, each file
+  # carries the header phrase its row names, and NOTICE names every
+  # third-party row (og dev licences check, rust/crates/og-dev/src/licences.rs).
+  data-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      # A debug build without BAM reading: the check needs no htslib and no
+      # optimised code.
+      - name: Build og
+        working-directory: rust
+        run: cargo build --locked -p og --no-default-features
+
+      - name: Check that every bundled data file has a recorded source and licence
+        run: rust/target/debug/og dev licences check
+
+      # A check that cannot fail is no check: a new asset with no row, and an
+      # asset with its source line stripped, must both fail it.
+      - name: Controls, an unregistered asset and a stripped source line must fail
+        run: |
+          og=rust/target/debug/og
+          log=$(mktemp)
+
+          planted=assets/lint-control.tsv
+          printf 'a\tb\n' > "$planted"
+          rc=0; "$og" dev licences check > "$log" 2>&1 || rc=$?
+          rm -f "$planted"
+          cat "$log"
+          if [ "$rc" -ne 1 ] || ! grep -qF "${planted} has no row in assets/SOURCES.tsv" "$log"; then
+            echo "ERROR: control 1, an asset with no row passed (exit ${rc})"; exit 1
+          fi
+          echo "Control 1: the unregistered ${planted} was caught."
+
+          target=assets/sv_rule_regions.tsv
+          sed -i '/^# Sources and terms:/d' "$target"
+          if git diff --quiet -- "$target"; then
+            echo "ERROR: control 2 stripped nothing from ${target}"; exit 1
+          fi
+          rc=0; "$og" dev licences check > "$log" 2>&1 || rc=$?
+          git checkout -- "$target"
+          cat "$log"
+          if [ "$rc" -ne 1 ] || ! grep -qF "${target}: its opening # lines lack \"Sources and terms:" "$log"; then
+            echo "ERROR: control 2, ${target} without its source line passed (exit ${rc})"; exit 1
+          fi
+          echo "Control 2: ${target} without its source line was caught."
