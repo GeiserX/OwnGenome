@@ -174,28 +174,22 @@ impl Rec {
         Ok((idx, g.contains('|')))
     }
 
-    /// GT as alleles (`None` for a no-call or an index past the alleles),
-    /// and whether it is phased.
+    /// GT as alleles (`None` for a no-call or an index that names no
+    /// allele: one past the last, or a negative one, which the Python read
+    /// from the end of the list), and whether it is phased.
     pub fn bases(&self) -> Result<(Vec<Option<&str>>, bool), Error> {
         let (idx, phased) = self.gt()?;
         let n = 1 + self.alts.len() as i128;
-        let allele = |i: i128| -> Result<Option<&str>, Error> {
-            // Python's list index: a negative one counts from the end.
-            let j = if i < 0 { n + i } else { i };
-            if i >= n {
-                Ok(None)
-            } else if j < 0 {
-                Err(Error::other("list index out of range"))
-            } else if j == 0 {
-                Ok(Some(self.ref_.as_str()))
+        let allele = |i: i128| -> Option<&str> {
+            if !(0..n).contains(&i) {
+                None
+            } else if i == 0 {
+                Some(self.ref_.as_str())
             } else {
-                Ok(Some(self.alts[(j - 1) as usize].as_str()))
+                Some(self.alts[(i - 1) as usize].as_str())
             }
         };
-        let bases = idx
-            .into_iter()
-            .map(|i| i.map_or(Ok(None), allele))
-            .collect::<Result<_, _>>()?;
+        let bases = idx.into_iter().map(|i| i.and_then(allele)).collect();
         Ok((bases, phased))
     }
 
@@ -448,16 +442,19 @@ mod tests {
     }
 
     #[test]
-    fn genotypes_read_as_python_read_them() {
+    fn genotypes_read_as_vcf_numbers_them() {
+        // A negative index names no allele (the Python read -1 as the last).
         let r = rec("chr7\t1\t.\tC\tT,<*>\t.\t.\t.\tGT:DP\t1|-1:9");
         let (b, phased) = r.bases().unwrap();
-        assert_eq!(b, vec![Some("T"), Some("<*>")]);
+        assert_eq!(b, vec![Some("T"), None]);
         assert!(phased);
         assert!(r.has_alt_call().unwrap());
         let r = rec("chr7\t1\t.\tC\tT\t.\t.\t.\tGT\t0/");
         assert_eq!(r.gt().unwrap_err().code, 2);
         let r = rec("chr7\t1\t.\tC\tT\t.\t.\t.\tGT\t0/5");
         assert_eq!(r.bases().unwrap().0, vec![Some("C"), None]);
+        let r = rec("chr7\t1\t.\tC\tT\t.\t.\t.\tGT\t-3/0");
+        assert_eq!(r.bases().unwrap().0, vec![None, Some("C")]);
     }
 
     #[test]
