@@ -25,6 +25,10 @@
 #                used until then.
 # Case prs-2 projects HG002 onto the small synthetic panel on every run.
 # Removes the panel and everything else it made.
+# Its own limit, above the runner's 3600 s: the wait for the download (up to
+# 30 minutes, when EBI is slow), the site list, the target and pgsc_calc's 35
+# minutes add up to about 80.
+# case-timeout: 5400
 . "$(dirname "$0")/lib.sh"
 
 measure_on() { [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ]; }; }
