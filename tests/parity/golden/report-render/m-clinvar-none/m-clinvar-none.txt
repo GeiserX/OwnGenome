@@ -112,18 +112,18 @@
 
 ## Carrier List (this sample)
 ---
-  Carrier list (3292 genes): 8 finding(s), 1 set aside
+  Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside
   MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C>T het, ClinVar Pathogenic
   HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G>A het, ClinVar Pathogenic
   CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic
   GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic
   BRCA1 (Fanconi anemia; AR): chr17:43057100 C>T het, ClinVar Pathogenic
-  GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic
   HBA1 (Alpha-thalassemia; AR): chr16:176700 G>A het, ClinVar Pathogenic
-  SMN1 (Spinal muscular atrophy; AR): chr5:70951946 C>T hemizygous (called homozygous inside one SMN1 copy (Parascopy, step 35)), ClinVar Pathogenic
+  GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier
+  SMN1 (Spinal muscular atrophy; AR): chr5:70951946 C>T hemizygous (called homozygous inside one SMN1 copy (Parascopy, step 35)), ClinVar Pathogenic: the only copy changed, not the pattern of a carrier
   Set aside: BTD chr3:15645186 G>C het: p.Asp444His (p.Asp424His on NM_001370658.1), partial biotinidase deficiency is a hypomorph allele, not a carrier finding on its own
-  Possibly biallelic: CFTR (Cystic fibrosis; AR), both copies may be hit: CFTR_del deletion, 1 of 2 copies (read depth, step 35) and chr7:117559590 ATCT>A het; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
-  Possibly biallelic: GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR), both copies may be hit: DEL chr13:20180000-20200000 (AnnotSV class 4, Manta) and chr13:20189473 C>T one copy, other copy not called ref (1/.); a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
+  Possibly biallelic (low-confidence call): CFTR (Cystic fibrosis; AR), both copies may be hit: CFTR_del deletion, 1 of 2 copies (read depth, step 35) and chr7:117559590 ATCT>A het; the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
+  Possibly biallelic (low-confidence call): GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR), both copies may be hit: DEL chr13:20180000-20200000 (AnnotSV class 4, Manta) and chr13:20189473 C>T one copy, other copy not called ref (1/.); the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
   Possibly biallelic: HBA1 (Alpha-thalassemia; AR), both copies may be hit: 3 of 4 alpha-globin genes (read depth, step 35) and chr16:176700 G>A het; phase unknown, possibly in trans (no read-backed phase links the two calls)
   Biallelic: MUTYH (MUTYH-related polyposis; AR), both copies may be hit: DEL chr1:45338000-45340000 (AnnotSV class 5, Manta) and chr1:45331556 C>T het; in trans: read-backed phase puts them on different copies (phase set 45331000)
   Biallelic: SMN1 (Spinal muscular atrophy; AR), both copies may be hit: one SMN1 copy (Parascopy, step 35) and chr5:70951946 C>T hemizygous; the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way
