@@ -119,12 +119,13 @@ env:
   E2E_SHARDS: 6
   # Times that replace scripts/ci/e2e-case-times.tsv's for this run
   # (scripts/ci/e2e-shards.sh). prs-3-panel-measure measures the 1000 Genomes
-  # panel only on a run dispatched on a branch other than main (measure_on in
-  # its file), where it took 2684 to 3452 s (median 2900, runs 44488552622,
-  # 44616213787 and 44790003535 on the geiresx fork); elsewhere it takes 0 s,
-  # as the table says. Without this its shard got a full share of other cases
-  # on top and finished last. Set here, so every job of a run splits alike.
-  E2E_SECONDS: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && 'prs-3-panel-measure=2900' || '' }}
+  # panel only on a run dispatched on a branch other than main and not traced
+  # (measure_on in its file), where it took 2684 to 3452 s (median 2900, runs
+  # 44488552622, 44616213787 and 44790003535 on the geiresx fork); elsewhere it
+  # takes 0 s, as the table says. Without this its shard got a full share of
+  # other cases on top and finished last. Set here, so every job of a run
+  # splits alike.
+  E2E_SECONDS: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !inputs.trace && 'prs-3-panel-measure=2900' || '' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
