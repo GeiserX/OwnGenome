@@ -444,8 +444,9 @@ pub struct Phenoconversion {
     pub lines: Vec<String>,
 }
 
-/// Phenoconversion by an opt-in medication list. A line naming no drug of
-/// the inhibitor table is listed as not checked. The genotype phenotype is
+/// Phenoconversion by an opt-in medication list. Every drug of a line
+/// counts, so a combination product converts by each of its drugs; a line
+/// none of whose drugs is in the inhibitor table is listed as not checked. The genotype phenotype is
 /// never changed: the converted one sits beside it. With several inhibitors
 /// of one gene the strongest counts (CPIC gives no rule for combining them).
 ///
@@ -465,11 +466,18 @@ pub fn phenoconversion(
     let mut unknown: Vec<&str> = Vec::new();
     let mut names: Vec<&str> = Vec::new();
     for m in meds {
-        if !inhibitors.keys().any(|(d, _)| *d == m.name) && !unknown.contains(&m.text.as_str()) {
+        // A line is unchecked only when none of its drugs is in the table.
+        let known = m
+            .names
+            .iter()
+            .any(|n| inhibitors.keys().any(|(d, _)| d == n));
+        if !known && !unknown.contains(&m.text.as_str()) {
             unknown.push(&m.text);
         }
-        if !names.contains(&m.name.as_str()) {
-            names.push(&m.name);
+        for n in &m.names {
+            if !names.contains(&n.as_str()) {
+                names.push(n);
+            }
         }
     }
     for gene in PHENOCONVERSION_GENES {
@@ -576,9 +584,14 @@ pub fn phenoconversion(
                 format!("CPIC gives no rule that converts the {gene} phenotype")
             };
             let inhibiting = hits.iter().map(|h| h.0).collect::<Vec<_>>().join(", ");
+            let verb = if hits.len() > 1 {
+                "inhibit"
+            } else {
+                "inhibits"
+            };
             column.insert(
                 gene,
-                format!("not computed: {inhibiting} inhibits {gene}; {why}"),
+                format!("not computed: {inhibiting} {verb} {gene}; {why}"),
             );
             let mut first = why.chars();
             let why_cap: String = first
