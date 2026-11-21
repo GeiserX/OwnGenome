@@ -154,6 +154,12 @@ jobs:
     timeout-minutes: 180
     strategy:
       fail-fast: false
+      # The account runs 20 jobs at once. A change that picks every image
+      # starts about 66 rows: they held the runners for up to two hours while
+      # the E2E run of the same commit waited 54 minutes for runners (runs
+      # 44721158887 and 44720913761 on the geiresx fork). At 8 at a time
+      # every row still runs, only later.
+      max-parallel: 8
       matrix:
         var: ${{ fromJSON(needs.plan.outputs.images) }}
     steps:
