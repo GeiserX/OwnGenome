@@ -13,10 +13,11 @@
 //! `assets/` that git tracks or would add with no row (a row ending in `/`
 //! covers a folder); a file in two rows; a row that matches no file; a row
 //! with no source or licence; a header phrase (split on `|`, `-` for none)
-//! missing from the file's opening `#` lines, read as one line of words so a
-//! phrase may wrap; and a third-party row (a source that does not start with
-//! "OwnGenome") whose path `NOTICE` does not name. Lint runs it on every
-//! push and pull request. The rest of this page is about `notices`.
+//! missing as whole words from the file's opening `#` lines, read as one line
+//! so a phrase may wrap; and a third-party row (a source that does not start
+//! with "OwnGenome") without an entry for its full path in `NOTICE`.
+//! Lint runs it on every push and pull request. The rest of this page is
+//! about `notices`.
 //!
 //! The og binaries link about seventy crates statically, and all four also
 //! link htslib and htscodecs (C, built by `hts-sys`). Their licences
@@ -831,9 +832,20 @@ pub fn header_text(file: &str) -> String {
     words(&lines.join(" "))
 }
 
+/// Match a normalized phrase with word boundaries, keeping its punctuation.
+fn contains_header_phrase(header: &str, phrase: &str) -> bool {
+    let word_char = |c: char| c.is_alphanumeric() || c == '_';
+    header.char_indices().any(|(start, _)| {
+        !header[..start].ends_with(word_char)
+            && header[start..]
+                .strip_prefix(phrase)
+                .is_some_and(|rest| !rest.starts_with(word_char))
+    })
+}
+
 /// Every problem with the register against the files of the tree.
 /// `files`: every file of the tree, relative to its root; `read`: a file's
-/// text; `notice`: the text of NOTICE.
+/// text; `notice`: a path on its own line or followed by `: ` and a description.
 pub fn audit(
     rows: &[Row],
     files: &[String],
@@ -869,7 +881,7 @@ pub fn audit(
             Ok(text) => {
                 let head = header_text(&text);
                 for p in phrases {
-                    if !head.contains(&p) {
+                    if !contains_header_phrase(&head, &p) {
                         problems.push(format!(
                             "{f}: its opening # lines lack {p:?}, which {REGISTER}:{} says it carries",
                             rows[i].line
@@ -880,6 +892,14 @@ pub fn audit(
             Err(e) => problems.push(format!("{f}: {e}")),
         }
     }
+    let named_in_notice = |path: &str| {
+        notice.lines().map(str::trim).any(|line| {
+            line == path
+                || line
+                    .strip_prefix(path)
+                    .is_some_and(|description| description.starts_with(": "))
+        })
+    };
     for (r, u) in rows.iter().zip(&used) {
         if !u {
             let hint = if r.path.ends_with('/') {
@@ -892,7 +912,7 @@ pub fn audit(
                 r.line, r.path
             ));
         }
-        if !r.own() && !notice.contains(&r.path) {
+        if !r.own() && !named_in_notice(&r.path) {
             problems.push(format!(
                 "{NOTICE} does not name {}, which comes from a third party ({REGISTER}:{})",
                 r.path, r.line
@@ -1142,6 +1162,19 @@ assets/stub/\tOwnGenome, synthetic\t-\tGPL-3.0-or-later\t-\n";
     }
 
     #[test]
+    fn a_header_phrase_must_match_whole_words() {
+        let reg = REG.replace("Source: Someone, Some data", "Source: GENCODE release 50");
+        let header = "# Source: GENCODE release 500, unlicensed CC BY 4.0\nrow\n";
+        let problems = run(&reg, TREE, header, NOTICE_OK);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems[0].contains("lack \"Source: GENCODE release 50\""));
+        assert!(problems[1].contains("lack \"licensed CC BY 4.0\""));
+
+        let correct = "# Source: GENCODE release 50, licensed\n# CC BY 4.0\nrow\n";
+        assert!(run(&reg, TREE, correct, NOTICE_OK).is_empty());
+    }
+
+    #[test]
     fn a_third_party_row_missing_from_notice_fails() {
         let p = run(REG, TREE, THIRD, "nothing here\n");
         assert_eq!(p.len(), 1, "{p:?}");
@@ -1149,6 +1182,20 @@ assets/stub/\tOwnGenome, synthetic\t-\tGPL-3.0-or-later\t-\n";
             p[0].starts_with("NOTICE does not name assets/third.tsv"),
             "{p:?}"
         );
+    }
+
+    #[test]
+    fn a_notice_must_name_the_complete_path() {
+        for notice in [
+            "assets/third.tsv.gz: Some data, CC BY 4.0\n",
+            "other/assets/third.tsv: Some data, CC BY 4.0\n",
+        ] {
+            let problems = run(REG, TREE, THIRD, notice);
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            assert!(problems[0].starts_with("NOTICE does not name assets/third.tsv"));
+        }
+
+        assert!(run(REG, TREE, THIRD, "assets/third.tsv\n").is_empty());
     }
 
     #[test]
