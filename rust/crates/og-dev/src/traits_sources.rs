@@ -449,24 +449,64 @@ mod tests {
         d
     }
 
-    /// A FASTA whose chr2 (60 bases a line, as its .fai says) holds the
-    /// lactase row's base at its position. Only that byte is written: the
-    /// check seeks to it through the .fai, and the rest of the 135 Mb contig
-    /// is a hole in a sparse file, so no test builds or writes a chromosome.
+    /// The test FASTA's chr2 length, and where the lactase row's base sits
+    /// in it: line 3, column 5, so the check must use the .fai's line width.
+    const LEN: u64 = 150;
+    const POS: u64 = 125;
+
+    /// A 150-base chr2 (60 bases a line, as its .fai says), N everywhere but
+    /// the lactase row's base at POS, and the lactase row moved to POS. No
+    /// test writes a chromosome; the e2e case traits-panel-1 checks the real
+    /// coordinates against the real reference.
     fn lactase_fasta(d: &Path) -> (PathBuf, Row) {
         let lct = shipped()
             .into_iter()
             .find(|r| r.rsid == "rs4988235")
             .unwrap();
-        let (n, i) = (lct.pos, lct.pos - 1);
+        let lct = Row { pos: POS, ..lct };
+        let mut seq = vec![b'N'; usize::try_from(LEN).unwrap()];
+        seq[usize::try_from(POS - 1).unwrap()] = lct.ref_.as_bytes()[0];
+        let body: Vec<u8> = seq
+            .chunks(60)
+            .flat_map(|c| c.iter().copied().chain([b'\n']))
+            .collect();
         let fa = d.join("ref.fasta");
-        let mut f = std::fs::File::create(&fa).unwrap();
-        f.write_all(b">chr2\n").unwrap();
-        f.seek(SeekFrom::Start(6 + i / 60 * 61 + i % 60)).unwrap();
-        f.write_all(lct.ref_.as_bytes()).unwrap();
-        f.set_len(6 + n.div_ceil(60) * 61).unwrap();
-        std::fs::write(d.join("ref.fasta.fai"), format!("chr2\t{n}\t6\t60\t61\n")).unwrap();
+        std::fs::write(&fa, [b">chr2\n".as_slice(), &body].concat()).unwrap();
+        std::fs::write(d.join("ref.fasta.fai"), format!("chr2\t{LEN}\t6\t60\t61\n")).unwrap();
         (fa, lct)
+    }
+
+    #[test]
+    fn the_test_fasta_is_small() {
+        let d = scratch("small");
+        let (fa, _) = lactase_fasta(&d);
+        let size = std::fs::metadata(&fa).unwrap().len();
+        assert!(size < 4096, "{size} bytes");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn fasta_check_reads_exactly_the_row_position_and_stops_at_the_contig_end() {
+        let d = scratch("exact");
+        let (fa, lct) = lactase_fasta(&d);
+        let at = |pos: u64| Row { pos, ..lct.clone() };
+        let want = |pos: u64, got: &str| {
+            vec![format!(
+                "rs4988235 chr2:{pos}: table ref {}, FASTA {got}",
+                lct.ref_
+            )]
+        };
+        // One base either side holds N: an offset off by one fails.
+        for pos in [POS - 1, POS + 1] {
+            assert_eq!(fasta_errors(&fa, &[at(pos)]).unwrap(), (want(pos, "N"), 1));
+        }
+        // The last base reads; one past the declared contig does not.
+        assert_eq!(fasta_errors(&fa, &[at(LEN)]).unwrap(), (want(LEN, "N"), 1));
+        assert_eq!(
+            fasta_errors(&fa, &[at(LEN + 1)]).unwrap(),
+            (want(LEN + 1, "past the end of the contig"), 1)
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -523,15 +563,12 @@ mod tests {
     #[test]
     fn the_command_line_fails_on_a_wrong_base_and_too_few_rows() {
         let d = scratch("cli");
-        let (fa, _) = lactase_fasta(&d);
+        let (fa, lct) = lactase_fasta(&d);
         let fa = fa.to_string_lossy().into_owned();
-        let lct = shipped()
-            .into_iter()
-            .find(|r| r.rsid == "rs4988235")
-            .unwrap();
         // The shipped table without its other chr2 rows: one row on the
-        // FASTA's contig, every other row on a contig it lacks. With
-        // `wrong`, the lactase row's ref is that base.
+        // FASTA's contig, moved to the test FASTA's POS, every other row on a
+        // contig it lacks. With `wrong`, the lactase row's ref is that base.
+        let pos = POS.to_string();
         let text = std::fs::read_to_string(format!("{REPO}/{TABLE}")).unwrap();
         let write = |name: &str, wrong: Option<&str>| {
             let kept: String = text
@@ -541,6 +578,9 @@ mod tests {
                     let lactase = c.get(2) == Some(&"rs4988235");
                     if c.first() == Some(&"chr2") && !lactase {
                         return None;
+                    }
+                    if lactase {
+                        c[1] = &pos;
                     }
                     if let (true, Some(w)) = (lactase, wrong) {
                         c[4] = w;
