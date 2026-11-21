@@ -23,8 +23,9 @@
     and assets/carrier_genes.tsv (the carrier list) and
     assets/callability_genes.tsv (the hard-to-read genes) come in the same list
     and go to assets/, which --assets names, as do assets/mito_confirmed.tsv
-    (the confirmed mtDNA variants step 20's section names) and the paralog
-    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv. Every
+    (the confirmed mtDNA variants step 20's section names), the paralog
+    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv, and
+    assets/steps.tsv (the step catalogue). Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
     do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv,
     <id>_cyp21a2_psv.tsv and <id>_smn1_marker.tsv; step 46's <id>_lpa_kiv2.tsv
@@ -35,7 +36,11 @@
     OwnGenome release (nextflow.config's manifest.version), so the report
     names it as the bash report does, and the regions of --intervals when
     the run was limited to them, so summary.json marks the run partial as
-    the bash report does; it is not published, because
+    the bash report does, and the run's tool list (meta.tools, main.nf's
+    --tools list), so og summary collect marks each section of a selected
+    step that wrote nothing "selected, no result" instead of not run (it
+    maps each tool to its sections through assets/steps.tsv, which comes in
+    the list with the other assets); it is not published, because
     run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
     (og report index), for the live site's search, and the report's
@@ -73,6 +78,9 @@ process HTML_REPORT {
     def release = workflow.manifest.version ?: ''
     // --intervals as given, single-quoted below like gvcf; the task script puts it on one line
     def intervals = params.intervals ? params.intervals.toString().replace("'", "'\\''") : ''
+    // The run's --tools names (main.nf checks each against its known list),
+    // single-quoted below like gvcf
+    def tools = (meta.tools ?: []).join(' ').replace("'", "'\\''")
     """
     # Where og summary collect looks for each output (rust/crates/og-summary)
     S=layout/${id}
@@ -93,6 +101,11 @@ process HTML_REPORT {
     intervals='${intervals}'
     read -r -d '' -a regions <<< "\$intervals" || true
     [ "\${#regions[@]}" -eq 0 ] || printf 'run\\tintervals\\t%s\\n' "\${regions[*]}" >> "\$S/run_manifest.tsv"
+    # The steps this run selected (the bash runner records none), so og
+    # summary collect lists a selected step that wrote nothing as
+    # "selected, no result"
+    tools='${tools}'
+    [ -z "\$tools" ] || printf 'run\\ttools\\t%s\\n' "\$tools" >> "\$S/run_manifest.tsv"
     for f in input/*; do
         n=\$(basename "\$f")
         if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
@@ -148,7 +161,7 @@ process HTML_REPORT {
             ${id}_mei.tsv|${id}_mei_sites.tsv)            place mei "\$f" ;;
             ${id}_mocha.tsv|${id}_mocha_summary.tsv)      place mosaic "\$f" ;;
             ${id}_couple_carrier.tsv)                     place couple "\$f" ;;
-            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
+            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv|steps.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
             *) echo "ERROR: HTML_REPORT got an input it has no place for: \$(basename "\$f")" >&2; exit 1 ;;
         esac
     done
