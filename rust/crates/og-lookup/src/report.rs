@@ -361,8 +361,7 @@ fn covered(gvcf: &Region, chrom: &str, start: u64, end: u64) -> Result<u64, Erro
         if r.chrom != chrom || r.end < start || r.pos > end {
             continue;
         }
-        let (idx, _) = r.gt()?;
-        if idx.iter().any(Option::is_some) {
+        if r.has_call()? {
             let (b, e) = (r.pos.max(start), r.end.min(end));
             if b <= e {
                 spans.push((b, e));

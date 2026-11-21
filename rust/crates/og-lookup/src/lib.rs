@@ -14,10 +14,11 @@
 //! place is looked for in the annotated VCF in one pass for every such
 //! rsID of the command line.
 //!
-//! The output is what the Python wrote, byte for byte (`tests/parity`),
-//! with one deliberate change: a gene's "bases have a genotype call" count
-//! is the union of the called records, so overlapping records (a deletion
-//! and the reference block that follows it) no longer count a base twice.
+//! Parity tests in `tests/parity` compare the output with the former Python
+//! lookup. The Rust lookup counts each base in a gene span once, even when
+//! called records overlap. It also reads negative genotype indexes as missing
+//! alleles. A record counts toward gene coverage only when at least one index
+//! names an allele.
 
 mod query;
 mod report;
