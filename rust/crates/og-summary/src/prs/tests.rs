@@ -40,12 +40,13 @@ fn formatted(
     );
 }
 
-/// A pgsc_calc --outdir for sampleset `sample`: PGS000001 matched 2 of 3,
-/// PGS000002 dropped. The reference's rows come after the target's.
+/// A pgsc_calc --outdir for sampleset `sample`: PGS000001 matched 3 of 4,
+/// meeting pgsc_calc's default 75% minimum. PGS000002 was dropped.
+/// The reference's rows come after the target's.
 fn results(d: &Dir, dir: &str, panel: bool) {
     d.put(
         &format!("{dir}/sample/match/sample_summary.csv"),
-        "dataset,accession,match_status,count\nsample,PGS000001,matched,2\n\
+        "dataset,accession,match_status,count\nsample,PGS000001,matched,3\n\
          sample,PGS000001,unmatched,1\nsample,PGS000002,unmatched,5\n",
     );
     if !panel {
@@ -76,7 +77,7 @@ fn two_scores(d: &Dir) -> String {
         "pgs",
         "PGS000001",
         "Coronary artery disease",
-        3,
+        4,
         "1\tleft out",
         "",
         "PPM000591;PPM000594\tEUR;AFR\tHR 1.53;HR 1.27",
@@ -134,9 +135,9 @@ fn no_panel_raw_sums() {
             "Coronary artery disease",
             "PGS000001",
             "62",
-            "2",
             "3",
-            "66.7",
+            "4",
+            "75.0",
             "NA",
             "NA",
             "1 left out",
@@ -170,7 +171,7 @@ fn no_panel_raw_sums() {
     );
     assert_eq!(
         stdout,
-        "  Coronary artery disease (PGS000001): sum 62, 2 of 3 variants matched (66.7%)\n  \
+        "  Coronary artery disease (PGS000001): sum 62, 3 of 4 variants matched (75.0%)\n  \
          PGS000002 (PGS000002): sum NA, 0 of 5 variants matched (0.0%)\n"
     );
 }
@@ -196,7 +197,7 @@ fn panel_percentile_group_effect_and_ancestry() {
     );
     assert_eq!(code, 0);
     // The target's values, not the reference sample's.
-    assert_eq!(rows[1][2..8], ["1.25", "2", "3", "66.7", "94.4", "EUR"]);
+    assert_eq!(rows[1][2..8], ["1.25", "3", "4", "75.0", "94.4", "EUR"]);
     assert_eq!(rows[1][13], "HR 1.53 (EUR, PPM000591)");
     assert!(
         stdout
@@ -218,7 +219,7 @@ fn a_score_for_the_other_sex_keeps_its_sum_and_loses_its_percentile() {
         "pgs",
         "PGS000001",
         "Prostate cancer",
-        3,
+        4,
         "0\tleft out",
         "male",
         "PPM000591\tEUR\tHR 1.53",
@@ -272,10 +273,10 @@ fn zero_matches_and_below_threshold_are_rows() {
         &["--results", &none, "--scores", &pgs, "--zero-matches"],
     );
     assert_eq!(code, 0);
-    assert_eq!(rows[1][2..6], ["NA", "0", "3", "0.0"]);
+    assert_eq!(rows[1][2..6], ["NA", "0", "4", "0.0"]);
     let log = d.put(
         "below.log",
-        "ERROR Score PGS000001 fails minimum matching threshold (33.33% variants match)\n\
+        "ERROR Score PGS000001 fails minimum matching threshold (25.00% variants match)\n\
          Score  fails minimum matching threshold (1% variants match)\nScore PGS000002 fails minimum matching threshold (x% variants match)\n",
     );
     let (code, stdout, _, rows) = go(
@@ -290,10 +291,10 @@ fn zero_matches_and_below_threshold_are_rows() {
         ],
     );
     assert_eq!(code, 0);
-    assert_eq!(rows[1][2..6], ["NA", "NA", "3", "33.3"]);
+    assert_eq!(rows[1][2..6], ["NA", "NA", "4", "25.0"]);
     assert_eq!(rows[2][2..6], ["NA", "NA", "5", "NA"]);
     assert!(stdout.starts_with(
-        "  Coronary artery disease (PGS000001): no sum, under pgsc_calc's minimum overlap (33.3% of 3 variants matched)\n"
+        "  Coronary artery disease (PGS000001): no sum, under pgsc_calc's minimum overlap (25.0% of 4 variants matched)\n"
     ));
     // Neither flag and no pgsc_calc output: an error, and no table.
     std::fs::remove_file(d.path("out.tsv")).unwrap();
@@ -367,7 +368,7 @@ fn a_list_without_evaluations_keeps_the_older_columns() {
         "pgs",
         "PGS000001",
         "Coronary artery disease",
-        3,
+        4,
         "0\tleft out",
         "",
         "",
@@ -497,7 +498,7 @@ fn a_variant_only_input_keeps_its_sum_and_loses_its_percentile() {
     assert_eq!(cell(&rows, 2, NOTE_COLUMN), "");
     assert!(
         stdout.contains(
-            "sum 1.25, 2 of 3 variants matched (66.7%), percentile withheld: the input lists variants only\n"
+            "sum 1.25, 3 of 4 variants matched (75.0%), percentile withheld: the input lists variants only\n"
         ),
         "{stdout}"
     );
@@ -573,7 +574,7 @@ fn a_withheld_percentile_leaves_other_rows_alone() {
         "pgs",
         "PGS000001",
         "Prostate cancer",
-        3,
+        4,
         "0\tleft out",
         "male",
         "",
@@ -717,7 +718,7 @@ fn no_percentile_no_ancestry_note() {
         "pgs",
         "PGS000001",
         "Prostate cancer",
-        3,
+        4,
         "0\tleft out",
         "male",
         "",
@@ -959,9 +960,8 @@ fn percentiles_of_people_from_the_reference_group_are_uniform() {
 
 #[test]
 fn a_reference_group_half_a_standard_deviation_off_fails_the_check() {
-    // The same people against a reference whose mean sits 0.5 SD higher, as
-    // when a person is ranked among a group their ancestry does not match:
-    // the check must see it.
+    // Shifting the simulated reference mean by 0.5 SD tests the sensitivity
+    // of the KS check. og reads the resulting simulated percentiles.
     let p = calibration("prs-shifted", 0.5);
     assert!(p < 0.01, "KS p = {p}");
 }
