@@ -302,14 +302,30 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
 
-  // While a run goes, the page asks again every 30 seconds, as the family page does.
+  // While a run goes, the page asks again every 30 seconds, as the family page does. A failed read (an error
+  // answer, no answer at all) is asked again in 30 seconds too; while nothing is drawn the page says so, with a
+  // retry, above the server's plain list of runs. A drawn page stays as it is.
+  var drawn = false, timer = null;
+  function again() { clearTimeout(timer); timer = setTimeout(start, 30000); }
+  function failed() {
+    root.setAttribute('data-pgp-status', 'offline');
+    again();
+    if (drawn || document.getElementById('home-failed')) { return; }
+    var main = document.getElementById('home');
+    var b = el('button', { type: 'button', 'class': 'more' }, 'Try again');
+    var box = add(el('div', { 'class': 'load-failed', id: 'home-failed' }), el('p', {}, 'The list of people could not be loaded.'), b);
+    b.addEventListener('click', function () { box.parentNode.removeChild(box); start(); });
+    main.insertBefore(box, main.firstChild);
+  }
   function start() {
+    clearTimeout(timer);
     U.getJSON(root.getAttribute('data-data') || '/runs.json').then(function (d) {
-      if (!d) { return; }
+      if (!d) { failed(); return; }
       draw(d);
+      drawn = true;
       // A stopped run reads running again once it writes, so keep looking at it too.
-      if ((d.runs || []).some(function (r) { return r.state === 'running' || r.state === 'stopped'; })) { setTimeout(start, 30000); }
-    }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
+      if ((d.runs || []).some(function (r) { return r.state === 'running' || r.state === 'stopped'; })) { again(); }
+    }).catch(failed);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
 }());

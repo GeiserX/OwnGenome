@@ -172,6 +172,13 @@ fn chrom_keys_and_info_values() {
     assert_eq!(chrom_key("CHRX"), "X");
     assert_eq!(chrom_key("20"), "20");
     assert_eq!(chrom_key("ch"), "ch");
+    assert_eq!(chrom_key("éé"), "éé");
+    assert_eq!(chrom_key("é"), "é");
+    assert_eq!(chrom_key("☃1"), "☃1");
+    assert_eq!(chrom_key("chr☃"), "☃");
+    assert_eq!(chrom_key("cHrX"), "X");
+    assert_eq!(chrom_key("chr"), "");
+    assert_eq!(chrom_key(""), "");
     assert_eq!(
         info_value("A=1;SVCALLER=delly;SVCALLER=x", "SVCALLER"),
         "delly"
@@ -206,11 +213,15 @@ fn add_callers_adds_what_no_call_covers() {
     let (vcf, note) = add_callers::run_text(&o).unwrap();
     assert_eq!(ids(&vcf), ["M0", "M1", "D_inside"], "{vcf}");
     assert!(
-        vcf.contains("\tEND=14000;SVTYPE=DEL;IMPRECISE;SVCALLER=delly\tGT\t0/1\n"),
-        "{vcf}"
+        vcf.contains("\tEND=14000;SVTYPE=DEL;IMPRECISE;SVCALLER=delly\tGT:RDCN\t0/1:1\n"),
+        "a Delly call keeps its RDCN beside GT: {vcf}"
     );
     assert!(vcf.contains("\tSVCALLER=manta\tGT\t0/1\n"), "{vcf}");
     assert!(vcf.contains("##INFO=<ID=SVCALLER,"));
+    assert!(
+        vcf.contains("\n##FORMAT=<ID=RDCN,Number=1,Type=Integer,"),
+        "{vcf}"
+    );
     assert_eq!(
         note,
         "Callers beside manta: delly: 2 PASS DEL/DUP calls, 1 added, and 1 PASS calls longer than 1000 bp set aside because read depth (RDCN) does not show the change"
@@ -218,6 +229,40 @@ fn add_callers_adds_what_no_call_covers() {
     o.sex = Sex::Female;
     let (vcf, _) = add_callers::run_text(&o).unwrap();
     assert!(ids(&vcf).contains(&"D_x1".to_owned()), "{vcf}");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn add_callers_keeps_rdcn_as_an_integer_field() {
+    let d = scratch("add-rdcn-cell");
+    let base = put(&d, "base.vcf", HEAD);
+    // Calls of 1,000 bp or less pass add-callers whatever their RDCN says.
+    let delly = put(
+        &d,
+        "delly.vcf",
+        &format!(
+            "{HEAD}chr1\t1000\tFRAC\tN\t<DEL>\t60\tPASS\tSVTYPE=DEL;END=1500\tGT:RDCN\t0/1:1.5\n\
+             chr1\t3000\tNEG\tN\t<DEL>\t60\tPASS\tSVTYPE=DEL;END=3500\tGT:RDCN\t0/1:-1\n\
+             chr1\t5000\tCUT\tN\t<DEL>\t60\tPASS\tSVTYPE=DEL;END=5500\tGT:GQ:RDCN\t0/1:40\n"
+        ),
+    );
+    let mut o = opts(&base);
+    o.delly = Some(delly);
+    let (vcf, _) = add_callers::run_text(&o).unwrap();
+    let format_of = |id: &str| {
+        vcf.lines()
+            .find(|l| l.split('\t').nth(2) == Some(id))
+            .map(|l| l.split('\t').skip(8).collect::<Vec<_>>().join("\t"))
+    };
+    assert_eq!(
+        (format_of("FRAC"), format_of("NEG"), format_of("CUT")),
+        (
+            Some("GT:RDCN\t0/1:.".to_owned()),
+            Some("GT:RDCN\t0/1:-1".to_owned()),
+            Some("GT:RDCN\t0/1:.".to_owned())
+        ),
+        "RDCN goes along as a whole number, else `.` (the header says Integer): {vcf}"
+    );
     std::fs::remove_dir_all(d).unwrap();
 }
 
@@ -260,6 +305,7 @@ fn c45_row(id: &str, start: i64, end: i64, t: &str, caller: &str, fmt: &str, s: 
 fn postfilter_rows(
     d: &std::path::Path,
     body: &str,
+    consensus: Option<String>,
 ) -> Vec<std::collections::HashMap<String, String>> {
     let c45 = put(d, "c45.tsv", &format!("{C45_HEAD}{body}"));
     let out = d.join("checked.tsv").to_string_lossy().into_owned();
@@ -267,7 +313,7 @@ fn postfilter_rows(
         class45: c45,
         genes: None,
         rules: None,
-        consensus: None,
+        consensus,
         sex: Sex::Unknown,
         par_bed: None,
         out: out.clone(),
@@ -299,6 +345,7 @@ fn duphold_thresholds_move_the_class() {
             c45_row("R15", 1000, 50000, "DEL", "delly", "GT:RDCN", "0/1:1.5"),
         ]
         .concat(),
+        None,
     );
     let get = |i: usize, c: &str| rows[i][c].clone();
     // Red-first control: DHFFC 0.75 is not below 0.7.
@@ -316,6 +363,269 @@ fn duphold_thresholds_move_the_class() {
     assert_eq!(
         (get(3, "Depth_support"), get(3, "ACMG_class")),
         ("not checked".into(), "4".into())
+    );
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn a_delly_call_without_rdcn_has_unknown_depth_support() {
+    let d = scratch("missing-rdcn");
+    let rows = postfilter_rows(
+        &d,
+        &[
+            c45_row("ABSENT", 1000, 50000, "DEL", "delly", "GT", "0/1"),
+            c45_row("MISSING", 1000, 50000, "DEL", "delly", "GT:RDCN", "0/1:."),
+        ]
+        .concat(),
+        None,
+    );
+    for row in &rows {
+        assert_eq!(row["Depth_support"], "unknown", "{}", row["ID"]);
+        assert_eq!(row["ACMG_class"], "4", "{}", row["ID"]);
+    }
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+const CONSENSUS_HEAD: &str =
+    "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n";
+
+#[test]
+fn support_rejects_a_dup_at_the_same_position_as_a_del() {
+    let d = scratch("consensus-type");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tCLUSTER\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DUP:SHARED\t0/1:DUP:D1\nchr20\t1000\tDECOY\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M2\t0/1:DEL:D2\n"
+        ),
+    );
+    let body = [
+        c45_row("SHARED", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("SHARED", 1000, 5000, "DUP", "manta", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support"], "2");
+    assert_eq!(rows[1]["Support_callers"], "manta,delly");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn support_rejects_filtered_records_and_non_voting_members() {
+    let d = scratch("consensus-filtered");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tFILTERED\tN\t<DEL>\t.\tLowQual\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M1\t0/1:DEL:D1\n\
+             chr20\t10000\tNOT_VOTED\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=15000;SUPP=1;SUPP_VEC=10\tGT:TY:ID\t0/1:DEL:M2\t0/0:DEL:D2\n"
+        ),
+    );
+    let body = [
+        c45_row("M1", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("D2", 10000, 15000, "DEL", "delly", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support_callers"], "delly");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn support_requires_the_original_id_even_at_the_old_distance_limit() {
+    let d = scratch("consensus-distance");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t2000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=6000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M1\t0/1:DEL:D1\n"
+        ),
+    );
+    let body = [
+        c45_row("M2", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("M1", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("D1", 2000, 6000, "DEL", "manta", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support"], "2");
+    assert_eq!(rows[1]["Support_callers"], "manta,delly");
+    assert_eq!(rows[2]["Support"], "1");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+/// AnnotSV's class 4 and 5 rows for the records of a VCF, with the cells
+/// AnnotSV copies from each record: ID, INFO, FORMAT and the sample.
+fn annotsv_rows(vcf: &str) -> String {
+    vcf.lines()
+        .filter(|l| !l.starts_with('#'))
+        .map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            let start: i64 = f[1].parse().unwrap();
+            let end: i64 = info_value(f[7], "END").parse().unwrap();
+            let t = info_value(f[7], "SVTYPE");
+            format!(
+                "a\t{}\t{start}\t{end}\t{}\t{t}\t{}\t{}\t{}\t{}\tfull\tG\t\t4\t0.9\n",
+                chrom_key(f[0]),
+                start - end,
+                f[2],
+                f[7],
+                f[8],
+                f[9]
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_delly_call_step_05_adds_keeps_its_rdcn_for_the_depth_check() {
+    let d = scratch("chain-rdcn");
+    let base = put(
+        &d,
+        "base.vcf",
+        &format!("{HEAD}chr1\t500000\tM1\tN\t<DEL>\t50\tPASS\tEND=520000;SVTYPE=DEL\tGT\t0/1\n"),
+    );
+    // KEEP: Delly 2.x FORMAT, RDCN 1 on a 100 kb deletion, which passes
+    // add-callers' depth gate. NORDCN: a Delly VCF with no RDCN field.
+    let delly = put(
+        &d,
+        "delly.vcf",
+        &format!(
+            "{HEAD}chr1\t1000000\tKEEP\tN\t<DEL>\t60\tPASS\tSVTYPE=DEL;END=1100000\tGT:GQ:FT:RDCN:DV\t0/1:40:PASS:1:10\n\
+             chr1\t2000000\tNORDCN\tN\t<DEL>\t60\tPASS\tSVTYPE=DEL;END=2100000\tGT:GQ\t0/1:40\n"
+        ),
+    );
+    let mut o = opts(&base);
+    o.delly = Some(delly);
+    let (vcf, _) = add_callers::run_text(&o).unwrap();
+    assert_eq!(ids(&vcf), ["M1", "KEEP", "NORDCN"], "{vcf}");
+    let rows = postfilter_rows(&d, &annotsv_rows(&vcf), None);
+    let depth = |id: &str| {
+        rows.iter()
+            .find(|r| r["ID"] == id)
+            .map(|r| (r["Depth_support"].as_str(), r["ACMG_class"].as_str()))
+    };
+    assert_eq!(
+        (depth("KEEP"), depth("NORDCN")),
+        (Some(("yes", "4")), Some(("unknown", "4"))),
+        "the RDCN add-callers checked reaches the depth check; only a call with no RDCN is unknown: {vcf}"
+    );
+    assert!(
+        vcf.contains(
+            "\tKEEP\tN\t<DEL>\t60\tPASS\tEND=1100000;SVTYPE=DEL;SVCALLER=delly\tGT:RDCN\t0/1:1\n"
+        ) && vcf.contains(
+            "\tNORDCN\tN\t<DEL>\t60\tPASS\tEND=2100000;SVTYPE=DEL;SVCALLER=delly\tGT\t0/1\n"
+        ),
+        "{vcf}"
+    );
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn a_source_id_in_two_clusters_has_unknown_support() {
+    let d = scratch("consensus-twice");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tA\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:TWICE\t0/1:DEL:D1\n\
+             chr20\t9000\tB\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=12000;SUPP=1;SUPP_VEC=10\tGT:TY:ID\t0/1:DEL:TWICE\t./.:NaN:NaN\n\
+             chr20\t20000\tC\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=25000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:ONCE\t0/1:DEL:D3\n"
+        ),
+    );
+    let body = [
+        c45_row("TWICE", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("ONCE", 20000, 25000, "DEL", "manta", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    let support = |i: usize| {
+        (
+            rows[i]["Support"].as_str(),
+            rows[i]["Support_callers"].as_str(),
+        )
+    };
+    assert_eq!(
+        support(0),
+        ("", ""),
+        "a source ID in two consensus records of one contig and type has no unique event: unknown"
+    );
+    assert_eq!(support(1), ("2", "manta,delly"), "control: a unique member");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn support_is_unknown_when_the_consensus_cannot_tell() {
+    let d = scratch("consensus-unknown");
+    // Three callers. Manta and Delly always vote with their IDs; CNVpytor
+    // votes once with no ID, as for a VCF whose records have ID `.`.
+    let head = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\tcnvpytor\n";
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{head}chr20\t1000\tA\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=110\tGT:TY:ID\t0/1:DEL:M1\t0/1:DEL:D1\t./.:NaN:NaN\n\
+             chr20\t9000\tB\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=12000;SUPP=2;SUPP_VEC=101\tGT:TY:ID\t0/1:DEL:M2\t./.:NaN:NaN\t0/1:DEL:.\n"
+        ),
+    );
+    let body = [
+        c45_row(".", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("M1", 1000, 5000, "DEL", "sv_vcf", "GT", "0/1"),
+        c45_row("CNV9", 9000, 12000, "DEL", "cnvpytor", "GT", "0/1"),
+        c45_row("M9", 30000, 35000, "DEL", "manta", "GT", "0/1"),
+        c45_row("D1", 1000, 5000, "DEL", "delly", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    let support = |i: usize| {
+        (
+            rows[i]["Support"].as_str(),
+            rows[i]["Support_callers"].as_str(),
+        )
+    };
+    assert_eq!(support(0), ("", ""), "a row with ID `.`: unknown");
+    assert_eq!(support(1), ("", ""), "a row with no ID: unknown");
+    assert_eq!(
+        support(2),
+        ("", ""),
+        "a caller that is no consensus column (SV_VCF's sv_vcf): unknown"
+    );
+    assert_eq!(
+        support(3),
+        ("", ""),
+        "a CNVpytor row when CNVpytor voted with no ID: unknown"
+    );
+    assert_eq!(
+        support(4),
+        ("1", "manta"),
+        "control: a Manta row no event holds, Manta's members all named: single caller"
+    );
+    assert_eq!(support(5), ("2", "manta,delly"), "control: a member");
+
+    // A consensus whose records carry no FORMAT/ID cannot name any member.
+    let no_ids = put(
+        &d,
+        "no_ids.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tA\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT\t0/1\t0/1\n"
+        ),
+    );
+    let rows = postfilter_rows(
+        &d,
+        &c45_row("M1", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        Some(no_ids),
+    );
+    assert_eq!(
+        (
+            rows[0]["Support"].as_str(),
+            rows[0]["Support_callers"].as_str()
+        ),
+        ("", ""),
+        "a consensus without FORMAT/ID: unknown, not single caller"
     );
     std::fs::remove_dir_all(d).unwrap();
 }

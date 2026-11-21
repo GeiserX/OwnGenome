@@ -219,8 +219,8 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
 /// chrY filter of CNVpytor's count. Each part runs on its own: one that
 /// returns an error is returned as its section's key and why, and the
 /// others still run. The parts read with defaults, so a row of an
-/// unexpected shape is no error. A panic is not caught: the release binary
-/// aborts on one (`panic = "abort"`).
+/// unexpected shape is no error. A panic is not caught: it ends og with an
+/// error.
 pub fn post(
     c: &Ctx<'_>,
     sections: &mut [(Spec, State, Option<&mut Data>)],

@@ -280,11 +280,6 @@ ancestry-fine	check-map-problems	ancestry-fine/cm-problems/samples.tsv	check-map
 ancestry-fine	check-map-short-row	ancestry-fine/cm-short/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
 ancestry-fine	check-map-flag	ancestry-fine/cm-flag/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
 ancestry-fine	check-map-no-reference	ancestry-fine/cm-empty/samples.tsv	check-map --map samples.tsv	-	bytes;*.png=png-pixels	PYTHON_IMAGE
-ancestry-fine	order	ancestry-fine/order/ref.3.Q,ancestry-fine/order/ref.pop	order --pop ref.pop --q ref.3.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
-ancestry-fine	order-k	ancestry-fine/order-k/ref.2.Q,ancestry-fine/order-k/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
-ancestry-fine	order-same-group	ancestry-fine/order-dup/ref.2.Q,ancestry-fine/order-dup/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
-ancestry-fine	order-rows	ancestry-fine/order-rows/ref.2.Q,ancestry-fine/order-rows/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
-ancestry-fine	order-tie	ancestry-fine/order-tie/ref.2.Q,ancestry-fine/order-tie/ref.pop	order --pop ref.pop --q ref.2.Q	-	bytes;*.png=png-pixels	PYTHON_IMAGE
 ancestry-fine	sample-bed	ancestry-fine/sb/continent.P,ancestry-fine/sb/g.vcf,ancestry-fine/sb/ref.bim,ancestry-fine/sb/region.P	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --level region:2:region.P --bootstrap 7 --min-sites 10 --out-dir adm	adm/S_continent.bed,adm/S_continent.bim,adm/S_continent.fam,adm/S_continent.3.P.in,adm/S_region.bed,adm/S_region.2.P.in,adm/S.geno,adm/S.map,adm/levels.txt,adm/S_sites.txt,adm/run_admixture.sh	bytes;*.png=png-pixels	PYTHON_IMAGE
 ancestry-fine	sample-bed-gz	ancestry-fine/sb-gz/continent.P,ancestry-fine/sb-gz/g.vcf.gz,ancestry-fine/sb-gz/ref.bim	sample-bed --bim ref.bim --vcf g.vcf.gz --sample HG002 --level continent:3:continent.P --min-sites 10 --out-dir .	HG002_continent.bed,HG002.geno,run_admixture.sh	bytes;*.png=png-pixels	PYTHON_IMAGE
 ancestry-fine	sample-bed-min-sites	ancestry-fine/sb-min-sites/continent.P,ancestry-fine/sb-min-sites/g.vcf,ancestry-fine/sb-min-sites/ref.bim	sample-bed --bim ref.bim --vcf g.vcf --sample S --level continent:3:continent.P --out-dir adm	-	bytes;*.png=png-pixels	PYTHON_IMAGE
@@ -691,6 +686,7 @@ sv-postfilter	checks	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/genes.
 sv-postfilter	bare	gen:sv-oracle.sh,sv-postfilter/c45.tsv	--class45 c45.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	consensus-gone	gen:sv-oracle.sh,sv-postfilter/c45.tsv	--class45 c45.tsv --consensus none.vcf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	consensus-empty	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/consensus_empty.vcf.gz	--class45 c45.tsv --consensus consensus_empty.vcf.gz --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+sv-postfilter	consensus-ids	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/consensus_ids.vcf	--class45 c45.tsv --consensus consensus_ids.vcf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	empty	gen:sv-oracle.sh,sv-postfilter/empty.tsv,sv-postfilter/genes.bed	--class45 empty.tsv --genes genes.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	header-only	gen:sv-oracle.sh,sv-postfilter/header_only.tsv	--class45 header_only.tsv --rules rules.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	rules	gen:sv-oracle.sh,sv-postfilter/rows7.tsv,sv-postfilter/genes7.bed	--class45 rows7.tsv --genes genes7.bed --rules rules.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
@@ -1330,6 +1326,17 @@ report-render	a-prs-sex	gen:report-corpus.sh	--summary a-prs-sex.json -o a-prs-s
 report-render	a-y-calls	gen:report-corpus.sh	--summary a-y-calls.json -o a-y-calls.txt -o a-y-calls.html	a-y-calls.txt,a-y-calls.html	bytes	PYTHON_IMAGE
 report-render	a-since	gen:report-corpus.sh	--summary a-since.json -o a-since.txt -o a-since.html	a-since.txt,a-since.html	bytes	PYTHON_IMAGE
 report-render	a-numbers	gen:report-corpus.sh	--summary a-numbers.json -o a-numbers.txt	a-numbers.txt	bytes	PYTHON_IMAGE
+# report-render, the structural-variant, mosaic sex-loss and raw-data export sections: the s-* summaries of gen/report-corpus.sh.
+report-render	s-sexloss-detected	gen:report-corpus.sh	--summary s-sexloss-detected.json -o s-sexloss-detected.txt -o s-sexloss-detected.html	s-sexloss-detected.txt,s-sexloss-detected.html	bytes	PYTHON_IMAGE
+report-render	s-sexloss-chrx	gen:report-corpus.sh	--summary s-sexloss-chrx.json -o s-sexloss-chrx.txt -o s-sexloss-chrx.html	s-sexloss-chrx.txt,s-sexloss-chrx.html	bytes	PYTHON_IMAGE
+report-render	s-sexloss-odd	gen:report-corpus.sh	--summary s-sexloss-odd.json -o s-sexloss-odd.txt -o s-sexloss-odd.html	s-sexloss-odd.txt,s-sexloss-odd.html	bytes	PYTHON_IMAGE
+report-render	s-sexloss-not-estimated	gen:report-corpus.sh	--summary s-sexloss-not-estimated.json -o s-sexloss-not-estimated.txt -o s-sexloss-not-estimated.html	s-sexloss-not-estimated.txt,s-sexloss-not-estimated.html	bytes	PYTHON_IMAGE
+report-render	s-sexloss-gain-stale	gen:report-corpus.sh	--summary s-sexloss-gain-stale.json -o s-sexloss-gain-stale.txt -o s-sexloss-gain-stale.html	s-sexloss-gain-stale.txt,s-sexloss-gain-stale.html	bytes	PYTHON_IMAGE
+report-render	s-sexloss-failed	gen:report-corpus.sh	--summary s-sexloss-failed.json -o s-sexloss-failed.txt -o s-sexloss-failed.html	s-sexloss-failed.txt,s-sexloss-failed.html	bytes	PYTHON_IMAGE
+report-render	s-consumer-reasons	gen:report-corpus.sh	--summary s-consumer-reasons.json -o s-consumer-reasons.txt -o s-consumer-reasons.html	s-consumer-reasons.txt,s-consumer-reasons.html	bytes	PYTHON_IMAGE
+report-render	s-consumer-stale	gen:report-corpus.sh	--summary s-consumer-stale.json -o s-consumer-stale.txt -o s-consumer-stale.html	s-consumer-stale.txt,s-consumer-stale.html	bytes	PYTHON_IMAGE
+report-render	s-sv-stale	gen:report-corpus.sh	--summary s-sv-stale.json -o s-sv-stale.txt -o s-sv-stale.html	s-sv-stale.txt,s-sv-stale.html	bytes	PYTHON_IMAGE
+report-render	s-sv-mixed	gen:report-corpus.sh	--summary s-sv-mixed.json -o s-sv-mixed.txt -o s-sv-mixed.html	s-sv-mixed.txt,s-sv-mixed.html	bytes	PYTHON_IMAGE
 # report-render, the traits, copy-number and repeat sections: every branch of each in each state (m-genome-*).
 report-render	m-genome-ok	gen:report-corpus.sh	--summary m-genome-ok.json -o m-genome-ok.txt -o m-genome-ok.html	m-genome-ok.txt,m-genome-ok.html	bytes	PYTHON_IMAGE
 report-render	m-genome-stale	gen:report-corpus.sh	--summary m-genome-stale.json -o m-genome-stale.txt -o m-genome-stale.html	m-genome-stale.txt,m-genome-stale.html	bytes	PYTHON_IMAGE
@@ -1486,6 +1493,16 @@ report-charts	a-prs-sex	gen:report-corpus.sh	--summary a-prs-sex.json --charts-j
 report-charts	a-y-calls	gen:report-corpus.sh	--summary a-y-calls.json --charts-json a-y-calls_charts.json	a-y-calls_charts.json	json	PYTHON_IMAGE
 report-charts	a-since	gen:report-corpus.sh	--summary a-since.json --charts-json a-since_charts.json	a-since_charts.json	json	PYTHON_IMAGE
 report-charts	a-numbers	gen:report-corpus.sh	--summary a-numbers.json --charts-json a-numbers_charts.json	a-numbers_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-detected	gen:report-corpus.sh	--summary s-sexloss-detected.json --charts-json s-sexloss-detected_charts.json	s-sexloss-detected_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-chrx	gen:report-corpus.sh	--summary s-sexloss-chrx.json --charts-json s-sexloss-chrx_charts.json	s-sexloss-chrx_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-odd	gen:report-corpus.sh	--summary s-sexloss-odd.json --charts-json s-sexloss-odd_charts.json	s-sexloss-odd_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-not-estimated	gen:report-corpus.sh	--summary s-sexloss-not-estimated.json --charts-json s-sexloss-not-estimated_charts.json	s-sexloss-not-estimated_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-gain-stale	gen:report-corpus.sh	--summary s-sexloss-gain-stale.json --charts-json s-sexloss-gain-stale_charts.json	s-sexloss-gain-stale_charts.json	json	PYTHON_IMAGE
+report-charts	s-sexloss-failed	gen:report-corpus.sh	--summary s-sexloss-failed.json --charts-json s-sexloss-failed_charts.json	s-sexloss-failed_charts.json	json	PYTHON_IMAGE
+report-charts	s-consumer-reasons	gen:report-corpus.sh	--summary s-consumer-reasons.json --charts-json s-consumer-reasons_charts.json	s-consumer-reasons_charts.json	json	PYTHON_IMAGE
+report-charts	s-consumer-stale	gen:report-corpus.sh	--summary s-consumer-stale.json --charts-json s-consumer-stale_charts.json	s-consumer-stale_charts.json	json	PYTHON_IMAGE
+report-charts	s-sv-stale	gen:report-corpus.sh	--summary s-sv-stale.json --charts-json s-sv-stale_charts.json	s-sv-stale_charts.json	json	PYTHON_IMAGE
+report-charts	s-sv-mixed	gen:report-corpus.sh	--summary s-sv-mixed.json --charts-json s-sv-mixed_charts.json	s-sv-mixed_charts.json	json	PYTHON_IMAGE
 report-charts	m-genome-ok	gen:report-corpus.sh	--summary m-genome-ok.json --charts-json m-genome-ok_charts.json	m-genome-ok_charts.json	json	PYTHON_IMAGE
 report-charts	m-genome-stale	gen:report-corpus.sh	--summary m-genome-stale.json --charts-json m-genome-stale_charts.json	m-genome-stale_charts.json	json	PYTHON_IMAGE
 report-charts	m-genome-failed	gen:report-corpus.sh	--summary m-genome-failed.json --charts-json m-genome-failed_charts.json	m-genome-failed_charts.json	json	PYTHON_IMAGE

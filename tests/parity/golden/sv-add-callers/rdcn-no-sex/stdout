@@ -1,0 +1,22 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##svcallers_added="Callers beside manta: delly: 6 PASS DEL/DUP calls, 6 added, and 3 PASS calls longer than 1000 bp set aside because read depth (RDCN) does not show the change"
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">
+##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">
+##INFO=<ID=CIPOS,Number=2,Type=Integer,Description="Confidence interval around POS">
+##INFO=<ID=CIEND,Number=2,Type=Integer,Description="Confidence interval around END">
+##INFO=<ID=SVCALLER,Number=1,Type=String,Description="The SV caller of this record: the input of step 05 (manta), or delly or cnvpytor for a call no record of that input covers">
+##FORMAT=<ID=RDCN,Number=1,Type=Integer,Description="Read-depth based copy-number estimate for autosomal sites">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr1	10000000	DEL_rd1	N	<DEL>	60	PASS	END=60000000;SVTYPE=DEL;IMPRECISE;SVCALLER=delly	GT:RDCN	0/1:1
+chr1	120000000	DUP_rd3	N	<DUP>	60	PASS	END=120500000;SVTYPE=DUP;IMPRECISE;SVCALLER=delly	GT:RDCN	0/1:3
+chr1	150000000	DEL_short	N	<DEL>	60	PASS	END=150000500;SVTYPE=DEL;SVCALLER=delly	GT:RDCN	0/1:2
+chr20	1000000	MantaDEL:1	N	<DEL>	500	PASS	END=1100000;SVTYPE=DEL;SVLEN=-100000;SVCALLER=manta	GT	0/1
+chr20	3000000	MantaINV:2	N	<INV>	500	PASS	END=4000000;SVTYPE=INV;SVLEN=1000000;INV3;SVCALLER=manta	GT	0/1
+chrX	1000000	DEL_par1	N	<DEL>	60	PASS	END=1500000;SVTYPE=DEL;IMPRECISE;SVCALLER=delly	GT:RDCN	0/1:1
+chrX	50000000	DEL_x1	N	<DEL>	60	PASS	END=51000000;SVTYPE=DEL;IMPRECISE;SVCALLER=delly	GT:RDCN	0/1:1
+chrX	60000000	DUP_x2	N	<DUP>	60	PASS	END=60500000;SVTYPE=DUP;IMPRECISE;SVCALLER=delly	GT:RDCN	0/1:2

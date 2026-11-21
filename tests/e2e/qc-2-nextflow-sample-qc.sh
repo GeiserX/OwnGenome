@@ -145,7 +145,7 @@ card() {
     }' 2>/dev/null < "$1" || echo absent
 }
 check_eq "pypgx ran: its section is filled" "$(section "$JSON" pypgx)" ok
-check "the Steps Not Run list does not name pypgx" lacks '<li>pypgx</li>' "$(cat "$HTML" 2>/dev/null)"
+check "the Steps Not Run list does not name pypgx" lacks '<li>pypgx( \([^)]*\))?</li>' "$(cat "$HTML" 2>/dev/null)"
 
 # The indexcov sex check: HTML_REPORT gets INDEXCOV's folder from UPSTREAM.
 # The report must show the sex INDEXCOV's own table holds, not "not available".
