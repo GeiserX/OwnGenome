@@ -233,10 +233,7 @@ fn dose_word(w: &str) -> bool {
 /// never drugs, so they give nothing. A word without a hyphen has no parts.
 fn hyphen_parts(w: &str) -> impl Iterator<Item = &str> {
     w.split('-').filter(move |p| {
-        *p != w
-            && p.chars().count() >= 3
-            && p.starts_with(char::is_alphabetic)
-            && !dose_word(p)
+        *p != w && p.chars().count() >= 3 && p.starts_with(char::is_alphabetic) && !dose_word(p)
     })
 }
 

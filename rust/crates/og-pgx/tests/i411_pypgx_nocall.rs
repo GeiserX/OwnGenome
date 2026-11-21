@@ -307,7 +307,13 @@ fn a_combinations_second_drug_is_on_the_list() {
 /// strong inhibitor; the rows are invented for the test.
 fn convert_with(name: &str, drugs: &[&str], meds: &str) -> (String, String) {
     let s = Scratch::new(name);
-    let rep = report(&[gene("CYP2D6", "*1", "*1", "Normal Metabolizer", Some("2.0"))]);
+    let rep = report(&[gene(
+        "CYP2D6",
+        "*1",
+        "*1",
+        "Normal Metabolizer",
+        Some("2.0"),
+    )]);
     let list = s.put("meds.txt", meds);
     let mut table =
         "Drug\tGene\tStrength\tActivity_score_factor\tClass_source\tRule_source\n".to_owned();
@@ -365,7 +371,12 @@ fn a_hyphenated_drug_name_of_the_table_still_matches_whole() {
 fn a_hyphen_part_gives_no_false_hit() {
     // With the shipped table none of these names an inhibitor, whole or by
     // its parts, so each line stays unchecked.
-    for line in ["co-trimoxazole 960 mg", "L-dopa 100 mg", "L 5 mg", "5-HTP 100 mg"] {
+    for line in [
+        "co-trimoxazole 960 mg",
+        "L-dopa 100 mg",
+        "L 5 mg",
+        "5-HTP 100 mg",
+    ] {
         let (col, rec) = convert("parts", &NORMAL, &format!("{line}\n"));
         assert_eq!(col, "-", "{line}: {rec}");
         assert!(
