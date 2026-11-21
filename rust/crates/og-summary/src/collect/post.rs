@@ -7,7 +7,9 @@
 //!   primary calls with HLA, pypgx and Cyrius, and CNVpytor's chrY filter
 //!   with the declared sex ([`super::post_c`]);
 //! - the `cyp2d6` block over CPIC, pypgx and Cyrius;
-//! - `not_run`: the steps whose section has no file;
+//! - `not_run`: the steps whose section has no file, and
+//!   `selected_no_result`: the ones of those the run selected
+//!   ([`super::sections::selected_no_result`]);
 //! - `not_assessed`: what no step looked at, with the lines that depend on
 //!   the polygenic scores, HBA1/HBA2, mobile elements, VNtyper and MoChA;
 //! - `scope`: what part of the genome the run called, and the `partial`
@@ -182,8 +184,15 @@ pub fn collect(input: &Input) -> Result<Value, String> {
         declared_sex.as_deref(),
     );
     let cyp2d6 = group_b::cyp2d6(input, &folder.index, &b);
-    let sections = in_order(a.into_iter().chain(b).chain(c).collect());
-    let not_run = not_run(&sections);
+    let mut sections = in_order(a.into_iter().chain(b).chain(c).collect());
+    let selected = super::sections::selected_no_result(
+        &mut sections,
+        folder.manifest.as_ref(),
+        &input.assets,
+        &NOT_A_STEP,
+        declared_sex.as_deref(),
+    );
+    let not_run = not_run(&sections, selected.as_deref().unwrap_or_default());
     let not_assessed = not_assessed(&sections);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -206,6 +215,12 @@ pub fn collect(input: &Input) -> Result<Value, String> {
         "not_run".into(),
         Value::Array(not_run.into_iter().map(Value::Str).collect()),
     );
+    if let Some(keys) = selected {
+        m.insert(
+            "selected_no_result".into(),
+            Value::Array(keys.into_iter().map(|k| Value::Str(k.into())).collect()),
+        );
+    }
     m.insert(
         "not_assessed".into(),
         Value::Array(
@@ -349,8 +364,9 @@ fn in_order(mut sections: Vec<Section>) -> Vec<Section> {
 }
 
 /// The steps whose section has no file, with " (step N failed)" for a step
-/// that failed in the last run.
-fn not_run(sections: &[Section]) -> Vec<String> {
+/// that failed in the last run and " (selected, no result)" for one the run
+/// selected (`selected`, section keys).
+fn not_run(sections: &[Section], selected: &[&str]) -> Vec<String> {
     sections
         .iter()
         .filter(|s| matches!(s.state, State::Missing | State::Failed))
@@ -358,6 +374,8 @@ fn not_run(sections: &[Section]) -> Vec<String> {
         .map(|s| {
             if s.state == State::Failed {
                 format!("{} (step {} failed)", s.spec.title, s.spec.step)
+            } else if selected.contains(&s.spec.key) {
+                format!("{} ({})", s.spec.title, super::sections::SELECTED_NO_RESULT)
             } else {
                 s.spec.title.to_owned()
             }

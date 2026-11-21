@@ -193,7 +193,7 @@ check "the CYP2D6 card reads step 36's table (result: ${CONS_RESULT:-none})" tes
 check "the Structural Variants card counts the consensus SVs" \
   has 'Consensus SVs \(2\+ callers\)</span><span class="value">(<[^>]*>)?[1-9][0-9]*<' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
 check "the Steps Not Run list names none of the SV callers" \
-  lacks '<li>Structural variants \((Manta|Delly)\)</li>|<li>SV consensus merge</li>' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
+  lacks '<li>Structural variants \((Manta|Delly)\)( \([^)]*\))?</li>|<li>SV consensus merge( \([^)]*\))?</li>' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
 
 # --- The bash steps 22 and 37 on the same calls and BAM, for parity-diff --------------------
 # A GENOME_DIR of hard links: the reference, Yleaf's tables, step 04's Manta

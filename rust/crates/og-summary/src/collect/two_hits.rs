@@ -26,6 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
+use og_steps::sv::postfilter::{ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -411,99 +412,26 @@ fn sample_format(r: &DictRow) -> HashMap<&str, &str> {
     }
 }
 
-/// How far a consensus record may sit from an AnnotSV call, each end.
-const CONSENSUS_BP: i128 = 1000;
-
-fn chrom_key(c: &str) -> &str {
-    if c.as_bytes()
-        .get(..3)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"chr"))
-    {
-        // An ASCII prefix ends at a UTF-8 boundary.
-        &c[3..]
-    } else {
-        c
-    }
-}
-
-fn info_value<'a>(info: &'a str, key: &str) -> &'a str {
-    info.split(';')
-        .find_map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
-            (k == key).then_some(v)
-        })
-        .unwrap_or("")
-}
-
-fn dup_or(t: &str) -> String {
-    let t = t.to_uppercase();
-    if t.starts_with("DUP") {
-        "DUP".into()
-    } else {
-        t
-    }
-}
-
-/// The support of each row from step 22's consensus: the nearest record of
-/// the same contig and type within 1 kb at both ends; 1 without one; `None`
-/// for every row when there is no consensus or it cannot be read.
+/// The support of each row from the SURVIVOR event containing its source
+/// call. A row in no event has support 1. Support is unknown (`None`) when
+/// the membership is not known and without a readable consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Vec<Option<i128>> {
     let none = || vec![None; rows.len()];
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
         return none();
     };
-    let Ok(lines) = text::lines(path) else {
+    let mut consensus = ConsensusSupport::default();
+    if text::each_line(path, |line| consensus.add_line(line)).is_err() {
         return none();
-    };
-    // (contig, type) to the records' (pos, end, supp).
-    type Records = HashMap<(String, String), Vec<(i128, i128, i128)>>;
-    let mut by: Records = HashMap::new();
-    for l in lines.iter().filter(|l| !l.starts_with('#')) {
-        let c: Vec<&str> = l.split('\t').collect();
-        if c.len() < 8 {
-            continue;
-        }
-        let num = |s: &str| crate::int(s).ok();
-        let Some(pos) = num(c[1]) else { continue };
-        let end = match info_value(c[7], "END") {
-            "" => Some(pos),
-            e => num(e),
-        };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Some(0),
-            e => num(e),
-        };
-        let (Some(end), Some(supp)) = (end, supp) else {
-            continue;
-        };
-        by.entry((
-            chrom_key(c[0]).to_owned(),
-            dup_or(info_value(c[7], "SVTYPE")),
-        ))
-        .or_default()
-        .push((pos, end, supp));
     }
     rows.iter()
-        .map(|r| {
-            let (Some(Ok(start)), Some(Ok(end))) = (
-                cell(r, "SV_start").map(crate::int),
-                cell(r, "SV_end").map(crate::int),
-            ) else {
-                return Some(1);
-            };
-            let key = (
-                chrom_key(cell(r, "SV_chrom").unwrap_or("")).to_owned(),
-                dup_or(cell(r, "SV_type").unwrap_or("")),
-            );
-            let mut best: Option<(i128, i128)> = None;
-            for &(p, e, supp) in by.get(&key).map_or(&[][..], Vec::as_slice) {
-                let (dp, de) = ((p - start).abs(), (e - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, supp));
-                }
+        .map(|row| {
+            let get = |key| cell(row, key).unwrap_or_default();
+            match consensus.membership(get("SV_chrom"), get("SV_type"), get("Caller"), get("ID")) {
+                Membership::Member(callers) => Some(callers.len() as i128),
+                Membership::NotMember => Some(1),
+                Membership::Unknown => None,
             }
-            Some(best.map_or(1, |(_, s)| s))
         })
         .collect()
 }
@@ -932,23 +860,6 @@ pub fn gene_deletions(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn chromosome_prefix_is_safe_for_non_ascii_contigs() {
-        for (input, expected) in [
-            ("éé", "éé"),
-            ("é", "é"),
-            ("☃1", "☃1"),
-            ("chr☃", "☃"),
-            ("CHR1", "1"),
-            ("cHrX", "X"),
-            ("chr", ""),
-            ("ch", "ch"),
-            ("", ""),
-        ] {
-            assert_eq!(chrom_key(input), expected);
-        }
-    }
 
     fn del(gt: Option<&str>, ps: Option<&str>) -> Deletion {
         Deletion {

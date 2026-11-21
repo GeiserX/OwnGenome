@@ -100,7 +100,7 @@ put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVa
 CAD\tPGS000018\t0.5\t100\t120\t0\t12 dropped\tall\tok\t75\tEUR\tEUR;;AFR\tHR 1.5 (EUR)\t
 T2D\tPGS000014\t0.1\t10\t20\t0\t0\tall\tok\tNA\tNA\t\t\tpercentile withheld: the input lists variants only
 Short\tPGS1\n"
-put $f/ancestry/S_ancestry.tsv "key\tvalue\npopulation\tEUR\nreference_panel\tHGDP+1kGP\n\tskipped\npopulation_low_confidence\n"
+put $f/ancestry/S_ancestry.tsv "key\tvalue\npopulation\tEUR\nreference_panel\tHGDP+1kGP\n\tskipped\npopulation_low_confidence\nprobability_AFR\t0.4\nprobability_EUR\t0.6\n"
 put $f/ancestry_fine/S_ancestry_fine.tsv "level\tcode\tgroup\tfraction\tse\tlow\thigh
 continent\tWEA\tWest Eurasia\t0.95\t0.01\t0.93\t0.97
 continent\tAFR\tAfrica\t0.05\t0.01\tnan\tx

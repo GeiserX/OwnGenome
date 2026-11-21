@@ -3372,7 +3372,7 @@ def terms_appendix(index, parts):
     browser's find (Ctrl+F) searches it; the live site's search box filters
     the same index."""
     terms = index.get("terms") or {}
-    # No card title: the chapter title above names it (and the cards' titles are tests/test_render_report.py's list).
+    # No card title: the chapter title above names it (and the cards' titles are rust/og/tests/report_checks.rs's list).
     body = ['  <div class="card">',
             '    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that '
             "name it and how many times. A gene listed here is a gene the results mention, not a finding: open the "

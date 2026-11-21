@@ -19,7 +19,10 @@
 //! overlaps it by at least `--min-overlap` of the longer of the two. Only a
 //! base record that is a call the sample carries ([`call_holds`]) covers.
 //! Delly's calls go in before CNVpytor's, so a deletion both make is added
-//! once. Each record names its caller in INFO SVCALLER. The output is sorted
+//! once. Each record names its caller in INFO SVCALLER. An added record
+//! keeps FORMAT GT of the first sample; an added Delly record that has RDCN
+//! keeps it too (`GT:RDCN`), so `og sv postfilter` judges the call's read
+//! depth by the value this step checked. The output is sorted
 //! by the base header's `##contig` order, then POS, keeping the input order
 //! of ties.
 //!
@@ -108,6 +111,27 @@ pub const MAX_Q0: f64 = 0.5;
 
 /// The INFO keys an added record keeps, in this order.
 const KEPT: [&str; 4] = ["END", "SVTYPE", "CIPOS", "CIEND"];
+
+/// Delly 2.x's header line for RDCN, written when an added Delly record
+/// keeps it and the base header has none.
+const RDCN_FORMAT: &str = "##FORMAT=<ID=RDCN,Number=1,Type=Integer,Description=\"Read-depth based copy-number estimate for autosomal sites\">";
+
+/// RDCN of a record's first sample when it is a whole number (Delly
+/// writes an integer, `-1` with no reads in the flanks), else `.` so the
+/// field stays an Integer; `None` when FORMAT has no RDCN.
+fn rdcn_cell<'a>(fields: &[&'a str]) -> Option<&'a str> {
+    if fields.len() < 10 {
+        return None;
+    }
+    let i = fields[8].split(':').position(|k| k == "RDCN")?;
+    let v = fields[9].split(':').nth(i).unwrap_or(".");
+    let digits = v.strip_prefix('-').unwrap_or(v);
+    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        Some(v)
+    } else {
+        Some(".")
+    }
+}
 
 /// What the command line asks for.
 #[derive(Debug, Clone)]
@@ -338,6 +362,7 @@ pub fn run(o: &Opts, out: impl Write) -> Result<String, Error> {
 
     let mut summary = Vec::new();
     let mut added_any = false;
+    let mut added_rdcn = false;
     let mut take = |caller: &str,
                     path: &str,
                     keep: &mut Keep,
@@ -385,8 +410,24 @@ pub fn run(o: &Opts, out: impl Write) -> Result<String, Error> {
             ]
             .join("\t");
             if n_samples > 0 {
-                row.push_str("\tGT\t");
+                // Delly's RDCN goes along, so step 05's depth check reads
+                // the value the keep rule above judged.
+                let rdcn = if caller == "delly" {
+                    rdcn_cell(&f)
+                } else {
+                    None
+                };
+                row.push_str(if rdcn.is_some() {
+                    "\tGT:RDCN\t"
+                } else {
+                    "\tGT\t"
+                });
                 row.push_str(first_gt(&f));
+                if let Some(cn) = rdcn {
+                    row.push(':');
+                    row.push_str(cn);
+                    added_rdcn = true;
+                }
                 for _ in 1..n_samples {
                     row.push_str("\t./.");
                 }
@@ -482,6 +523,7 @@ pub fn run(o: &Opts, out: impl Write) -> Result<String, Error> {
         }
     );
     let has_gt = header.iter().any(|h| h.starts_with("##FORMAT=<ID=GT,"));
+    let has_rdcn = header.iter().any(|h| h.starts_with("##FORMAT=<ID=RDCN,"));
     let mut out = io::BufWriter::with_capacity(1 << 16, out);
     let w = |out: &mut io::BufWriter<_>| -> io::Result<()> {
         for h in &header {
@@ -500,6 +542,9 @@ pub fn run(o: &Opts, out: impl Write) -> Result<String, Error> {
                         out,
                         "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">"
                     )?;
+                }
+                if added_rdcn && !has_rdcn {
+                    writeln!(out, "{RDCN_FORMAT}")?;
                 }
             }
             writeln!(out, "{h}")?;

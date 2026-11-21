@@ -686,6 +686,7 @@ sv-postfilter	checks	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/genes.
 sv-postfilter	bare	gen:sv-oracle.sh,sv-postfilter/c45.tsv	--class45 c45.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	consensus-gone	gen:sv-oracle.sh,sv-postfilter/c45.tsv	--class45 c45.tsv --consensus none.vcf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	consensus-empty	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/consensus_empty.vcf.gz	--class45 c45.tsv --consensus consensus_empty.vcf.gz --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
+sv-postfilter	consensus-ids	gen:sv-oracle.sh,sv-postfilter/c45.tsv,sv-postfilter/consensus_ids.vcf	--class45 c45.tsv --consensus consensus_ids.vcf --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	empty	gen:sv-oracle.sh,sv-postfilter/empty.tsv,sv-postfilter/genes.bed	--class45 empty.tsv --genes genes.bed --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	header-only	gen:sv-oracle.sh,sv-postfilter/header_only.tsv	--class45 header_only.tsv --rules rules.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE
 sv-postfilter	rules	gen:sv-oracle.sh,sv-postfilter/rows7.tsv,sv-postfilter/genes7.bed	--class45 rows7.tsv --genes genes7.bed --rules rules.tsv --out out.tsv	out.tsv	bytes	PYTHON_IMAGE

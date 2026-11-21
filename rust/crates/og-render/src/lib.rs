@@ -9,10 +9,13 @@
 //! two reports, [`notes`] holds the caveats, [`escape`] the HTML escaping and
 //! [`css`] the page's style.
 //!
-//! Ported so far: the frame (chapters, contents, section frames, the run
-//! facts, what the report leaves out), the sections [`chapters::writer`]
-//! names, and the search index. A section not ported yet is left out of both
-//! reports; the charts verb says it is not ported and exits 2.
+//! Every part of the report is ported: the frame (chapters, contents,
+//! section frames, the run facts, what the report leaves out), every section
+//! [`chapters::writer`] names, the search index and the charts. A section
+//! that cannot be written says so in its place in both reports, and the rest
+//! of the report is still written ([`render`]). `og report charts` writes the
+//! chart specs on its own, and `og report render --charts-json` writes the
+//! same file for the steps.
 
 pub mod chapters;
 pub mod charts;

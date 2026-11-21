@@ -246,20 +246,20 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 
 ### The report step
 
-`run-all.sh` writes both reports ([step 24](24-html-report.md)) after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes in November 2026, on `main` at e7d5919 and on the same server, while it ran other work (load average 10-14). Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
+`run-all.sh` writes both reports ([step 24](24-html-report.md)) after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes in November 2026, on `main` at e7d5919 and on the same server, while it ran other work (load average 10-14). Both scripts then ran the Python renderer `bin/render_report.py`. Step 24, the Nextflow `HTML_REPORT` module and `scripts/generate-report.sh` now run `og report render` instead, and we have not measured it on these genomes yet, so the numbers below are the Python renderer's. Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
 
 | Command | Wall time | Peak memory | What it does |
 |---|---|---|---|
-| `scripts/24-html-report.sh` (`render_report.py`, HTML, search index, charts) | 11.2-14.5 s | 403-424 MB | collects `summary.json` from every step's output, then renders |
-| `scripts/generate-report.sh`, the text report | 11.6-12.7 s | 403-424 MB | collects `summary.json` again, then renders the text |
+| `scripts/24-html-report.sh` with `render_report.py` (HTML, search index, charts) | 11.2-14.5 s | 403-424 MB | collects `summary.json` from every step's output, then renders |
+| `scripts/generate-report.sh` with `render_report.py`, the text report | 11.6-12.7 s | 403-424 MB | collects `summary.json` again, then renders the text |
 | `render_report.py --summary` (render only, from a written `summary.json`) | 0.40-0.42 s | 62-73 MB | |
 | `run_delta.py` (what changed since the previous run) | 0.11-0.16 s | 19-21 MB | |
 
 So the reports cost about 25 s per sample, not 1-3 minutes, and almost all of it is collecting the summary, which each of the two scripts does once. Under `cProfile` (one HTML run), 82% of the collection was `sec_variants` reading every record of the sample's small-variant VCF in Python, and 9% the ROH section. Rendering is under half a second. The HTML report was 2.0-2.7 MiB and the search index 8.3-12.2 MiB.
 
-Since then the Rust `og summary collect` writes `summary.json`, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
+Since then the Rust `og summary collect` writes `summary.json`, `og report render` renders it, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
 
-The command, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root):
+To time today's step the same way, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root; `bin/og` runs the build `scripts/setup.sh --og` puts in `bin/.og/`):
 
 ```sh
 IMG=$(. ./versions.env; echo "$PYTHON_IMAGE")
@@ -272,12 +272,12 @@ print(f"rc={rc} wall={time.perf_counter() - s:.2f}s maxrss_MB={r.ru_maxrss / 102
 PY
 docker run --rm --cpus 1 --network none -v <genome_dir>:/genome:ro -v "$PWD/bin":/pgp-bin:ro \
   -v "$PWD/assets":/pgp-assets:ro -v <scratch>:/out "$IMG" nice -n 19 python3 /out/tm.py \
-  "python3 /pgp-bin/render_report.py --assets /pgp-assets --sample <sample> --sample-dir /genome/<sample> \
+  "/pgp-bin/og report render --assets /pgp-assets --sample <sample> --sample-dir /genome/<sample> \
    --json /out/summary.json -o /out/report.html --search-index /out/search_index.json \
    --charts-json /out/charts.json >/dev/null"
 ```
 
-The text report is the same line with `-o /out/report.txt` and no `--search-index` or `--charts-json`; render only adds `--summary /out/summary.json`.
+The text report is the same line with `-o /out/report.txt` and no `--search-index` or `--charts-json`; render only replaces `--assets` and `--json` with `--summary /out/summary.json`, as `generate-report.sh` does.
 
 ### The clinical filter, stage by stage
 

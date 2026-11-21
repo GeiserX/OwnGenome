@@ -43,57 +43,57 @@ const APOE_GOLDEN: [(&str, &str, &str); 11] = [
     (
         "T/T",
         "C/C",
-        "e3d7512b649f1d23f5acbcaa08da19bd6a009d5b39ac57cb6856591c50e7cfda",
+        "2b86d32d95173915383e58b95fcc1e519589efb87d5c3160669046a40b75b105",
     ),
     (
         "T/T",
         "C/T",
-        "62e910d8ec7ac45ab15e9c9ed85c93b128ac41703d1149a332082dc0d7b5f389",
+        "b017cf02ad018e8490dfc6206f1a41479395ee15514c87f4ad0590738f756537",
     ),
     (
         "T/T",
         "T/T",
-        "41b4ad51c67028bb19af1b7ab7e4f414f5c0354e4c4a7c3c19309186b429f960",
+        "e2651c654e584c9fb2a43c9c7779d7950694c6b62ca1ddec3cbe3394240a77d9",
     ),
     (
         "T/C",
         "C/C",
-        "08c5ed9e2898f2ae29cbd49d5ac97394758fa852f9d35e3c7173b2aa8d3111ad",
+        "1a60b43daee0d9f83d4040aaf5d2f69c9c8554b2ad688428211ec1bbd04098f9",
     ),
     (
         "T/C",
         "C/T",
-        "555c9cc0e8b59b10bdc5bdc2e33d93fb4ccbee1e6ea12916b17e73ffd6fdb8d8",
+        "ac7868b28771945d04ad569243030ce316012f2a69fe54910551ce959d18526f",
     ),
     (
         "T/C",
         "T/T",
-        "043f51b41486f217cac3a71e705e0e29c1a1ced9745e60abde2230df2fe901db",
+        "a028571f1686e47d25ba1dd1b7f659eb6c52da3a5ce38bae5754a31c159e61c4",
     ),
     (
         "C/C",
         "C/C",
-        "ca7f36540cf1269b84649b4ad6ace19e0abc03eab7984d495de584540bb11dcc",
+        "6e47c4b999a43e76f8d163112a71c1934a6e54a187d37b24537c4a045cccb519",
     ),
     (
         "C/C",
         "C/T",
-        "db499d1bfebedf77ed34a9d0525030d34be6336e685758a8efd53125197e3d00",
+        "5b8c85cd677caa66cf6a6743cec909154c34941903f75fee1fc29a13a6c21ff2",
     ),
     (
         "C/C",
         "T/T",
-        "16e5214f90c5f2c401e5849dffd76a08dc3fc5ba2deb324d7fb02c76a92113be",
+        "5b697d7e0c4a234a3762b842a1bbc6039b32f43251d977014ae275db5520b20e",
     ),
     (
         "T/C",
         ".",
-        "34624db16a92981c0882edb3d8ce8d291162aa78b7c5208eba2360141e6ccbd8",
+        "0ca82afd9aec8d5fb27738e8a6fce41239e355a3c6228b337f0e5a1f1cae4cdb",
     ),
     (
         "T/G",
         "C/C",
-        "1d0aee0b8d241561ebd7477d6f4a8be274a48157a297abecd444c6c6a0a6abac",
+        "6ef8a51c05999ff03d0b801151cd6e3b130b407c18615a2619a32d9a01b6e353",
     ),
 ];
 
