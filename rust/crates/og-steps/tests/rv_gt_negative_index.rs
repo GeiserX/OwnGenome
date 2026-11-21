@@ -4,6 +4,9 @@
 //! `TT`, and a record with a negative index counted as non-reference, so a
 //! longer REF with `GT -1/-1` hid the reference block after it as if it
 //! were a called deletion. A negative index is now an unreadable genotype.
+//! An index past the last allele also names no allele, so a record whose
+//! only non-reference parts are out of range no longer hides the reference
+//! block after it either.
 
 use std::num::NonZero;
 use std::path::{Path, PathBuf};
