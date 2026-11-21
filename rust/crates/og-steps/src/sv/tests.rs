@@ -172,6 +172,13 @@ fn chrom_keys_and_info_values() {
     assert_eq!(chrom_key("CHRX"), "X");
     assert_eq!(chrom_key("20"), "20");
     assert_eq!(chrom_key("ch"), "ch");
+    assert_eq!(chrom_key("éé"), "éé");
+    assert_eq!(chrom_key("é"), "é");
+    assert_eq!(chrom_key("☃1"), "☃1");
+    assert_eq!(chrom_key("chr☃"), "☃");
+    assert_eq!(chrom_key("cHrX"), "X");
+    assert_eq!(chrom_key("chr"), "");
+    assert_eq!(chrom_key(""), "");
     assert_eq!(
         info_value("A=1;SVCALLER=delly;SVCALLER=x", "SVCALLER"),
         "delly"
@@ -260,6 +267,7 @@ fn c45_row(id: &str, start: i64, end: i64, t: &str, caller: &str, fmt: &str, s: 
 fn postfilter_rows(
     d: &std::path::Path,
     body: &str,
+    consensus: Option<String>,
 ) -> Vec<std::collections::HashMap<String, String>> {
     let c45 = put(d, "c45.tsv", &format!("{C45_HEAD}{body}"));
     let out = d.join("checked.tsv").to_string_lossy().into_owned();
@@ -267,7 +275,7 @@ fn postfilter_rows(
         class45: c45,
         genes: None,
         rules: None,
-        consensus: None,
+        consensus,
         sex: Sex::Unknown,
         par_bed: None,
         out: out.clone(),
@@ -299,6 +307,7 @@ fn duphold_thresholds_move_the_class() {
             c45_row("R15", 1000, 50000, "DEL", "delly", "GT:RDCN", "0/1:1.5"),
         ]
         .concat(),
+        None,
     );
     let get = |i: usize, c: &str| rows[i][c].clone();
     // Red-first control: DHFFC 0.75 is not below 0.7.
@@ -317,6 +326,96 @@ fn duphold_thresholds_move_the_class() {
         (get(3, "Depth_support"), get(3, "ACMG_class")),
         ("not checked".into(), "4".into())
     );
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn a_delly_call_without_rdcn_has_unknown_depth_support() {
+    let d = scratch("missing-rdcn");
+    let rows = postfilter_rows(
+        &d,
+        &[
+            c45_row("ABSENT", 1000, 50000, "DEL", "delly", "GT", "0/1"),
+            c45_row("MISSING", 1000, 50000, "DEL", "delly", "GT:RDCN", "0/1:."),
+        ]
+        .concat(),
+        None,
+    );
+    for row in &rows {
+        assert_eq!(row["Depth_support"], "unknown", "{}", row["ID"]);
+        assert_eq!(row["ACMG_class"], "4", "{}", row["ID"]);
+    }
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+const CONSENSUS_HEAD: &str =
+    "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n";
+
+#[test]
+fn support_rejects_a_dup_at_the_same_position_as_a_del() {
+    let d = scratch("consensus-type");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tCLUSTER\tN\t<DUP>\t.\tPASS\tSVTYPE=DUP;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DUP:SHARED\t0/1:DUP:D1\nchr20\t1000\tDECOY\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M2\t0/1:DEL:D2\n"
+        ),
+    );
+    let body = [
+        c45_row("SHARED", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("SHARED", 1000, 5000, "DUP", "manta", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support"], "2");
+    assert_eq!(rows[1]["Support_callers"], "manta,delly");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn support_rejects_filtered_records_and_non_voting_members() {
+    let d = scratch("consensus-filtered");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t1000\tFILTERED\tN\t<DEL>\t.\tLowQual\tSVTYPE=DEL;END=5000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M1\t0/1:DEL:D1\n\
+             chr20\t10000\tNOT_VOTED\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=15000;SUPP=1;SUPP_VEC=10\tGT:TY:ID\t0/1:DEL:M2\t0/0:DEL:D2\n"
+        ),
+    );
+    let body = [
+        c45_row("M1", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("D2", 10000, 15000, "DEL", "delly", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support_callers"], "delly");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn support_requires_the_original_id_even_at_the_old_distance_limit() {
+    let d = scratch("consensus-distance");
+    let consensus = put(
+        &d,
+        "consensus.vcf",
+        &format!(
+            "{CONSENSUS_HEAD}chr20\t2000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=6000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:M1\t0/1:DEL:D1\n"
+        ),
+    );
+    let body = [
+        c45_row("M2", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("M1", 1000, 5000, "DEL", "manta", "GT", "0/1"),
+        c45_row("D1", 2000, 6000, "DEL", "manta", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(consensus));
+    assert_eq!(rows[0]["Support"], "1");
+    assert_eq!(rows[1]["Support"], "2");
+    assert_eq!(rows[1]["Support_callers"], "manta,delly");
+    assert_eq!(rows[2]["Support"], "1");
     std::fs::remove_dir_all(d).unwrap();
 }
 

@@ -6,6 +6,7 @@
 use super::roh::masked_overlap;
 use super::util::{Obj, at, base, cells, count, int, lines, number, s, strs, table, vcf_lines};
 use super::{Ctx, Found, Out};
+use og_steps::sv::postfilter::ConsensusSupport;
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use std::collections::HashMap;
@@ -159,133 +160,32 @@ pub fn cnvpytor_sex_filter(v: &mut Value, declared_sex: Option<&str>) {
 
 // --- step 05, AnnotSV class 4 and 5 ---------------------------------------------
 
-/// Two breakpoints within this many bases of a consensus record's are the
-/// same SV.
-const CONSENSUS_BP: i128 = 1000;
-
-/// AnnotSV writes chromosomes without `chr`; step 22 writes them with it.
-fn chrom_key(c: &str) -> &str {
-    if c.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("chr")) {
-        &c[3..]
-    } else {
-        c
-    }
-}
-
-fn info_value<'a>(info: &'a str, key: &str) -> &'a str {
-    info.split(';')
-        .find_map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
-            (k == key).then_some(v)
-        })
-        .unwrap_or("")
-}
-
-fn kind(t: &str) -> String {
-    let t = pycompat::text::upper(t);
-    if t.starts_with("DUP") {
-        "DUP".into()
-    } else {
-        t
-    }
-}
-
-struct Rec {
-    pos: i128,
-    end: i128,
-    supp: i128,
-    vec: String,
-}
-
-/// Step 22's consensus: caller names, and the records by (chrom, type).
-/// The header and the records of the consensus VCF by (chrom, id).
-type Consensus = (Vec<String>, HashMap<(String, String), Vec<Rec>>);
-
-fn read_consensus(path: &str) -> Result<Consensus, String> {
-    let mut names = Vec::new();
-    let mut by: HashMap<(String, String), Vec<Rec>> = HashMap::new();
-    for line in lines(path)? {
-        if line.starts_with("##") {
-            continue;
-        }
-        let c: Vec<&str> = line.split('\t').collect();
-        if line.starts_with("#CHROM") {
-            names = c.iter().skip(9).map(|x| (*x).to_owned()).collect();
-            continue;
-        }
-        if c.len() < 8 {
-            continue;
-        }
-        let Ok(pos) = crate::int(c[1]) else { continue };
-        let end = match info_value(c[7], "END") {
-            "" => Ok(pos),
-            v => crate::int(v),
-        };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Ok(0),
-            v => crate::int(v),
-        };
-        let (Ok(end), Ok(supp)) = (end, supp) else {
-            continue;
-        };
-        by.entry((chrom_key(c[0]).to_owned(), kind(info_value(c[7], "SVTYPE"))))
-            .or_default()
-            .push(Rec {
-                pos,
-                end,
-                supp,
-                vec: info_value(c[7], "SUPP_VEC").to_owned(),
-            });
-    }
-    Ok((names, by))
-}
-
-/// Support and the supporting callers of each row from the consensus: the
-/// record of the same type whose two breakpoints lie within 1,000 bp (the
-/// nearest, the first of a tie), else 1 and the row's own caller; `None`
-/// for both without a consensus file.
+/// Support and callers from the SURVIVOR event containing the source call.
+/// An unlisted row has its own caller alone. Both values are null without
+/// a consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value, Value)>, String> {
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
         return Ok(rows.iter().map(|_| (Value::Null, Value::Null)).collect());
     };
-    let (names, by) = read_consensus(path)?;
-    let mut out = Vec::new();
-    for r in rows {
-        let cell = |k: &str| r.get(k).flatten().unwrap_or_default();
-        let mut best: Option<(i128, &Rec)> = None;
-        if let (Ok(start), Ok(end)) = (crate::int(cell("SV_start")), crate::int(cell("SV_end"))) {
-            let key = (
-                chrom_key(cell("SV_chrom")).to_owned(),
-                kind(cell("SV_type")),
-            );
-            for rec in by.get(&key).map_or(&[][..], Vec::as_slice) {
-                let (dp, de) = ((rec.pos - start).abs(), (rec.end - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, rec));
-                }
-            }
-        }
-        out.push(match best {
-            Some((_, rec)) => {
-                let callers: Vec<String> = rec
-                    .vec
-                    .chars()
-                    .enumerate()
-                    .filter(|&(_, x)| x == '1')
-                    .map(|(i, _)| {
-                        names
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| format!("caller {}", i + 1))
-                    })
-                    .collect();
-                (int(rec.supp), s(&callers.join(",")))
-            }
-            None => (int(1), s(&super::util::or(r, "Caller", "."))),
-        });
+    let mut consensus = ConsensusSupport::default();
+    for line in lines(path)? {
+        consensus.add_line(&line);
     }
-    Ok(out)
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let cell = |key| row.get(key).flatten().unwrap_or_default();
+            match consensus.callers(
+                cell("SV_chrom"),
+                cell("SV_type"),
+                cell("Caller"),
+                cell("ID"),
+            ) {
+                Some(callers) => (count(callers.len()), s(&callers.join(","))),
+                None => (int(1), s(&super::util::or(row, "Caller", "."))),
+            }
+        })
+        .collect())
 }
 
 /// `{FORMAT key: value}` of the sample column (the column after FORMAT,
@@ -463,4 +363,52 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
         .set("common", count(common));
     let _ = cells;
     Ok(Some((p, data.val())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_and_two_hit_rules_use_the_original_member_id() {
+        let d = std::env::temp_dir().join(format!("og-summary-sv-support-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let checked = d.join("checked.tsv").to_string_lossy().into_owned();
+        let consensus = d.join("consensus.vcf").to_string_lossy().into_owned();
+        std::fs::write(
+            &checked,
+            concat!(
+                "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n",
+                "MantaDEL:1:0\t20\t1000\t5000\tDEL\t4\tmanta\tno\t\tno\n",
+                "UNLISTED\t20\t2000\t6000\tDEL\t4\tmanta\tno\t\tno\n",
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &consensus,
+            concat!(
+                "##fileformat=VCFv4.2\n",
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n",
+                "chr20\t2000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=6000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:MantaDEL_1_0\t0/1:DEL:D1\n",
+            ),
+        )
+        .unwrap();
+        let rows = table(&checked, false).unwrap().rows;
+        let report = consensus_support(&rows, Some(&consensus)).unwrap();
+        let two_hits = crate::collect::two_hits::read_annotsv(
+            Some((checked, "checked.tsv".to_owned())),
+            Some(consensus),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (&report[..], two_hits[0].support, two_hits[1].support),
+            (
+                &[(int(2), s("manta,delly")), (int(1), s("manta"))][..],
+                Some(2),
+                Some(1)
+            ),
+        );
+        std::fs::remove_dir_all(d).unwrap();
+    }
 }

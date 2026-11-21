@@ -21,7 +21,8 @@
 //! - `Depth_support`: duphold's DHFFC (< 0.7 for a deletion) or DHBFC
 //!   (> 1.3 for a duplication), else for a Delly call over 1,000 bp its
 //!   RDCN by the same rule `og sv add-callers` applies
-//!   ([`depth_contradicts`]); `no` moves the call to class 3;
+//!   ([`depth_contradicts`]). Missing RDCN is `unknown` for a long Delly call.
+//!   `no` moves the call to class 3;
 //! - `Rule`, `Rule_detail`: the region rules of `--rules`
 //!   (`assets/sv_rule_regions.tsv`) and the depth rule that fired.
 //!
@@ -39,6 +40,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::{self, BufRead, Write};
+use std::rc::Rc;
 
 use og_filters::args::{self, ArgError, Spec};
 use og_io::{Lines, Utf8};
@@ -100,7 +102,6 @@ pub const SUPPORT: [&str; 2] = ["Support", "Support_callers"];
 
 const EDGE_BP: i64 = 5;
 const COMMON_AF: f64 = 0.01;
-const CONSENSUS_BP: i64 = 1000;
 const DHFFC_MAX: f64 = 0.7;
 const DHBFC_MIN: f64 = 1.3;
 const REPEAT_SLACK_BP: i64 = 10;
@@ -259,6 +260,15 @@ fn number(v: Option<&str>) -> Option<f64> {
     (!x.is_nan()).then_some(x)
 }
 
+fn event_kind(kind: &str) -> String {
+    let kind = pycompat::text::upper(kind);
+    if kind.starts_with("DUP") {
+        "DUP".to_owned()
+    } else {
+        kind
+    }
+}
+
 /// One class 4 or 5 row: AnnotSV's cells by name.
 struct Row {
     cells: DictRow,
@@ -271,12 +281,7 @@ impl Row {
     }
 
     fn kind(&self) -> String {
-        let t = pycompat::text::upper(self.get("SV_type"));
-        if t.starts_with("DUP") {
-            "DUP".to_owned()
-        } else {
-            t
-        }
+        event_kind(self.get("SV_type"))
     }
 
     fn sv_kind(&self) -> SvKind {
@@ -398,7 +403,7 @@ fn population(row: &Row) -> (Option<f64>, String) {
     }
 }
 
-/// `(yes|no|not checked|., detail)` of the read depth of a deletion or
+/// `(yes|no|unknown|not checked|., detail)` of the read depth of a deletion or
 /// duplication.
 fn depth_support(
     row: &Row,
@@ -474,13 +479,7 @@ fn depth_support(
         );
     }
     if caller == "delly" && rdcn.is_none() && len > DEPTH_MIN_SIZE {
-        // og sv add-callers keeps FORMAT GT only on a Delly call it adds,
-        // after it set aside every call over 1,000 bp whose RDCN does not
-        // show the change.
-        return (
-            "yes",
-            "RDCN checked when step 05 added the call (og sv add-callers)".to_owned(),
-        );
+        return ("unknown", "no Delly RDCN in the record".to_owned());
     }
     (
         "not checked",
@@ -629,59 +628,108 @@ fn region_rules(
     (hits, new_genes, downgrade)
 }
 
-/// One consensus record: chrom (no `chr`), POS, END, type, SUPP, SUPP_VEC.
-struct ConsensusRec {
-    chrom: String,
-    pos: i64,
-    end: i64,
-    kind: String,
-    supp: i64,
-    vec: String,
+/// SURVIVOR's own membership, indexed by contig, type, caller and source
+/// record ID. Several caller IDs can point to the same set of votes.
+#[derive(Default)]
+pub struct ConsensusSupport {
+    names: Vec<String>,
+    members: HashMap<MemberKey, Option<Rc<[String]>>>,
 }
 
-fn read_consensus(path: &str) -> Result<(Vec<String>, Vec<ConsensusRec>), Error> {
-    let mut names = Vec::new();
-    let mut recs = Vec::new();
-    for_each_line(path, |_, line| {
-        if line.starts_with("##") {
-            return Ok(());
+#[derive(Eq, Hash, PartialEq)]
+struct MemberKey {
+    chrom: String,
+    kind: String,
+    caller: String,
+    id: String,
+}
+
+impl MemberKey {
+    fn new(chrom: &str, kind: &str, caller: &str, id: &str) -> Self {
+        Self {
+            chrom: chrom_key(chrom).to_owned(),
+            kind: event_kind(kind),
+            caller: caller.to_owned(),
+            // SURVIVOR 1.0.7 replaces colons in FORMAT/ID with underscores.
+            id: id.replace(':', "_"),
         }
-        let c: Vec<&str> = line.trim_end_matches('\n').split('\t').collect();
-        if line.starts_with("#CHROM") {
-            names = c.iter().skip(9).map(|s| (*s).to_owned()).collect();
-            return Ok(());
+    }
+}
+
+impl ConsensusSupport {
+    /// Read a header or record from the step 22 VCF.
+    pub fn add_line(&mut self, line: &str) {
+        if line.starts_with("#CHROM\t") {
+            self.names = line.split('\t').skip(9).map(str::to_owned).collect();
+            if self.names.iter().collect::<HashSet<_>>().len() != self.names.len() {
+                self.names.clear();
+            }
+            return;
         }
-        if c.len() < 8 {
-            return Ok(());
+        if line.starts_with('#') {
+            return;
         }
-        let t = pycompat::text::upper(info_value(c[7], "SVTYPE"));
-        let Some(pos) = int(c[1]) else { return Ok(()) };
-        let end = match info_value(c[7], "END") {
-            "" => Some(pos),
-            v => int(v),
+        let fields: Vec<&str> = line.split('\t').collect();
+        let [
+            chrom,
+            _,
+            _,
+            _,
+            _,
+            _,
+            "PASS" | ".",
+            info,
+            format,
+            samples @ ..,
+        ] = fields.as_slice()
+        else {
+            return;
         };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Some(0),
-            v => int(v),
+        let vec = info_value(info, "SUPP_VEC").as_bytes();
+        let kind = info_value(info, "SVTYPE");
+        if kind.is_empty()
+            || samples.len() != self.names.len()
+            || vec.len() != self.names.len()
+            || !vec.iter().all(|&b| matches!(b, b'0' | b'1'))
+        {
+            return;
+        }
+        let Some(id_index) = format.split(':').position(|key| key == "ID") else {
+            return;
         };
-        let (Some(end), Some(supp)) = (end, supp) else {
-            return Ok(());
-        };
-        recs.push(ConsensusRec {
-            chrom: chrom_key(c[0]).to_owned(),
-            pos,
-            end,
-            kind: if t.starts_with("DUP") {
-                "DUP".to_owned()
-            } else {
-                t
-            },
-            supp,
-            vec: info_value(c[7], "SUPP_VEC").to_owned(),
-        });
-        Ok(())
-    })?;
-    Ok((names, recs))
+        let voters: Vec<_> = self
+            .names
+            .iter()
+            .zip(samples)
+            .zip(vec)
+            .filter_map(|(vote, &bit)| (bit == b'1').then_some(vote))
+            .collect();
+        if voters.is_empty() || info_value(info, "SUPP").parse() != Ok(voters.len()) {
+            return;
+        }
+        let callers: Rc<[String]> = voters.iter().map(|(name, _)| (*name).clone()).collect();
+        for (caller, sample) in voters {
+            if let Some(id) = sample.split(':').nth(id_index)
+                && !matches!(id, "" | ".")
+            {
+                self.members
+                    .entry(MemberKey::new(chrom, kind, caller, id))
+                    // A source ID in two clusters has no unique consensus.
+                    .and_modify(|old| *old = None)
+                    .or_insert_with(|| Some(Rc::clone(&callers)));
+            }
+        }
+    }
+
+    /// The voting callers of the event containing this source record.
+    pub fn callers(&self, chrom: &str, kind: &str, caller: &str, id: &str) -> Option<&[String]> {
+        if matches!(id, "" | ".") {
+            return None;
+        }
+        self.members
+            .get(&MemberKey::new(chrom, kind, caller, id))?
+            .as_deref()
+    }
 }
 
 /// The checked table: header and rows of cells.
@@ -878,14 +926,13 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             " (no rule table)"
         },
         count("Depth_support", "no"),
-        count("Depth_support", "not checked"),
+        count("Depth_support", "not checked") + count("Depth_support", "unknown"),
     ))
 }
 
-/// Support and Support_callers of each row from step 22's consensus:
-/// the record of the same type whose two breakpoints lie within 1,000 bp
-/// (the nearest, the first of a tie), else 1 and the row's own caller.
-/// Without the file both are empty.
+/// Support and Support_callers of each row from its SURVIVOR membership.
+/// A checked row absent from the consensus has its own caller alone.
+/// Without the file both cells are empty.
 fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error> {
     if !std::path::Path::new(path).is_file() {
         for r in rows {
@@ -894,62 +941,24 @@ fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error
         }
         return Ok(());
     }
-    let (names, recs) = read_consensus(path)?;
-    let mut by: HashMap<(&str, &str), Vec<&ConsensusRec>> = HashMap::new();
-    for rec in &recs {
-        by.entry((rec.chrom.as_str(), rec.kind.as_str()))
-            .or_default()
-            .push(rec);
-    }
+    let mut consensus = ConsensusSupport::default();
+    for_each_line(path, |_, line| {
+        consensus.add_line(line.trim_end_matches('\n'));
+        Ok(())
+    })?;
     for r in rows {
-        let kind = {
-            let t = pycompat::text::upper(&r["SV_type"]);
-            if t.starts_with("DUP") {
-                "DUP".to_owned()
-            } else {
-                t
-            }
-        };
-        let se = int(&r["SV_start"]).zip(int(&r["SV_end"]));
-        let mut best: Option<(i64, &ConsensusRec)> = None;
-        if let Some((start, end)) = se {
-            let chrom = chrom_key(&r["SV_chrom"]).to_owned();
-            for rec in by
-                .get(&(chrom.as_str(), kind.as_str()))
-                .map_or(&[][..], Vec::as_slice)
-            {
-                let (dp, de) = ((rec.pos - start).abs(), (rec.end - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, rec));
-                }
-            }
-        }
-        let (s, c) = match best {
-            Some((_, rec)) => (
-                rec.supp.to_string(),
-                rec.vec
-                    .chars()
-                    .enumerate()
-                    .filter(|&(_, x)| x == '1')
-                    .map(|(i, _)| {
-                        names
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| format!("caller {}", i + 1))
-                    })
-                    .collect::<Vec<_>>()
-                    .join(","),
-            ),
+        let (s, c) = match consensus.callers(&r["SV_chrom"], &r["SV_type"], &r["Caller"], &r["ID"])
+        {
+            Some(callers) => (callers.len(), callers.join(",")),
             None => (
-                "1".to_owned(),
+                1,
                 match r["Caller"].as_str() {
                     "" => ".".to_owned(),
-                    c => c.to_owned(),
+                    caller => caller.to_owned(),
                 },
             ),
         };
-        r.insert("Support".to_owned(), s);
+        r.insert("Support".to_owned(), s.to_string());
         r.insert("Support_callers".to_owned(), c);
     }
     Ok(())
