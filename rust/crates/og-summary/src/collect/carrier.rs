@@ -358,11 +358,26 @@ impl Carrier {
         // A low-confidence row pairs with a deletion by a confident call of
         // its combined allele, as the secondary-findings card counts it: the
         // first confident row of the gene, with as many copies, that is a
-        // part of it or that it is a part of. That row's GT and phase set
-        // stand for it, and the pair no longer needs a low-confidence call.
+        // part of it, or an unphased combined allele whose first part present
+        // it is (the card counts such an allele under that part). A phased
+        // combined allele stands for its parts, so it never lends them its
+        // phase. That row's GT and phase set stand for it, and the pair no
+        // longer needs a low-confidence call.
         let mut vs: Vec<Variant> = variants.iter().map(|(v, _)| v.clone()).collect();
         let mut low_pair = low.clone();
         let is_low = |v: &Variant| low.contains(&(v.gene.clone(), v.key.clone()));
+        let phased = |v: &Variant| {
+            v.ps.as_deref().is_some_and(|p| !p.is_empty())
+                && phase_haps(Some(&v.gt)).is_some_and(|h| !h.is_empty())
+        };
+        // The first part of combined row `j` present among the gene's
+        // variants, in `PGP_JOINED_FROM` order.
+        let first_part = |j: usize| {
+            let g = &variants[j].0.gene;
+            vjoined[j]
+                .iter()
+                .find(|k| variants.iter().any(|(x, _)| &x.gene == g && &x.key == *k))
+        };
         for (i, (v, _)) in variants.iter().enumerate() {
             if !is_low(v) {
                 continue;
@@ -371,7 +386,8 @@ impl Carrier {
                 c.gene == v.gene
                     && !is_low(c)
                     && c.copies >= v.copies
-                    && (vjoined[i].contains(&c.key) || vjoined[*j].contains(&v.key))
+                    && (vjoined[i].contains(&c.key)
+                        || (!phased(c) && first_part(*j) == Some(&v.key)))
             });
             if let Some((_, (c, _))) = sure {
                 vs[i].gt = c.gt.clone();

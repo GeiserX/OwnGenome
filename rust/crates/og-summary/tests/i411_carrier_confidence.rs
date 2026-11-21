@@ -489,6 +489,16 @@ fn high(site: Site, gt: &str, ps: Option<&str>, weak: bool) -> (Site, HighRecord
     )
 }
 
+/// The same HIGH-impact record with good GQ and DP, weak on its allele
+/// balance alone (5 alt reads of 30 on a heterozygote).
+fn high_ab(site: Site, gt: &str, ps: Option<&str>) -> (Site, HighRecord) {
+    let (s, mut r) = high(site, gt, ps, false);
+    r.weak = true;
+    r.why = vec!["alt reads 0.17 of the depth on a heterozygote".to_owned()];
+    r.ad = Some("25,5".to_owned());
+    (s, r)
+}
+
 /// The `pair` word of each reported ClinVar row of `gene` on the SF card.
 fn sf_pairs(c: &IndexMap<String, Value>, gene: &str) -> Vec<String> {
     let r = of(c, "clinvar_hits", gene);
@@ -509,6 +519,29 @@ fn the_sf_card_caps_a_deletion_pair_on_a_low_confidence_call() {
     );
     let sure = sf(vec![good(MUTYH_A, "MUTYH", "0|1", Some("9"))], &dels);
     assert_eq!(sf_pairs(&sure, "MUTYH"), ["biallelic"]);
+}
+
+/// A HIGH-impact call weak on its allele balance alone is low confidence on
+/// the card, and its deletion pair says so without blaming the call floor.
+#[test]
+fn the_sf_card_names_a_weak_high_impact_call_in_its_deletion_pair() {
+    let card = sf_with_high(
+        Vec::new(),
+        vec![high_ab(MUTYH_A, "0/1", None)],
+        &mutyh_deletion("0/1", None),
+    );
+    let r = of(&card, "high_impact", "MUTYH");
+    assert_eq!(r.len(), 1, "{card:?}");
+    assert_eq!(s(r[0], "pair"), "possibly biallelic (low-confidence call)");
+    let either = "low confidence (below the call floor, or a weak HIGH-impact call)";
+    for k in ["phase", "two_hit"] {
+        let t = s(r[0], k);
+        assert!(t.contains(either), "{k}: {t}");
+        assert!(
+            !t.contains("below the call floor (low confidence)"),
+            "{k}: {t}"
+        );
+    }
 }
 
 #[test]
@@ -748,6 +781,18 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
     let combined_hom = || hit(b, "MUTYH", "GT:GQ:DP", "1/1:5:4", &joined);
     // A second alt allele at MUTYH_A's position, for a split call there.
     let a2 = (a.0, a.1, a.2, "G");
+    // A confident phased combined allele at chr1:45336998, inside the test
+    // deletion, whose second part sits at chr1:45337002, just past its end.
+    let edge = ("chr1", 45_337_002, "C", "T");
+    let straddle = || {
+        hit(
+            ("chr1", 45_336_998, "ATGCC", "GTGCT"),
+            "MUTYH",
+            "GT:GQ:DP:PS",
+            "0|1:50:30:9",
+            ";PGP_JOINED_FROM=chr1:45336998:A:G|chr1:45337002:C:T",
+        )
+    };
     let del = || mutyh_deletion("1|0", Some("9"));
     let none = no_deletions;
     let p9 = Some("9");
@@ -953,6 +998,12 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
             del(),
             None,
         ),
+        (
+            "N13 confident phased combined inside the deletion, weak part just outside it, deletion in trans",
+            vec![straddle(), w(edge, "0/1", None)],
+            del(),
+            maybe,
+        ),
     ];
     // The same weak calls with a HIGH-impact record of the variant on the
     // card, weak too (its GT and phase set the call's own): the record is
@@ -993,6 +1044,13 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
             vec![hw(a, "0/1", None), hw(b, "0/1", None)],
             none(),
             low,
+        ),
+        (
+            "N1 confident het with a HIGH record weak on allele balance alone + confident unphased het",
+            vec![g(a, "0/1", None), g(cc, "0/1", None)],
+            vec![high_ab(a, "0/1", None)],
+            none(),
+            maybe,
         ),
     ];
     let all = shapes

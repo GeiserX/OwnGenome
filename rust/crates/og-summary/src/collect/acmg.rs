@@ -1118,9 +1118,21 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             _ => None,
         })
         .collect();
-    let found = two_hits_with(&variants, &dels, |v| {
+    let mut found = two_hits_with(&variants, &dels, |v| {
         low.contains(&(v.gene.clone(), v.key.clone()))
     });
+    // The card's low calls include a weak HIGH-impact call, so its pairs
+    // name both kinds, as its own low-confidence word does.
+    let (floor, either) = (
+        "the variant's call is below the call floor (low confidence)",
+        "the variant's call is low confidence (below the call floor, or a weak HIGH-impact call)",
+    );
+    for e in found.entries.values_mut() {
+        e.why = e.why.replacen(floor, either, 1);
+    }
+    for t in found.pairs.values_mut() {
+        *t = t.replacen(floor, either, 1);
+    }
     let mut two: HashMap<(String, Key), String> = HashMap::new();
     for g in found.entries.keys() {
         if matches!(rules[g].report_if.as_str(), "biallelic" | "hemizygous") {
