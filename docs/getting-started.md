@@ -16,7 +16,7 @@
 | Resource | Minimum | Recommended | Notes |
 |---|---|---|---|
 | **CPU** | 4 cores | 8-16 cores | `run-all.sh` runs DeepVariant with at most 8 shards, fewer when `--max_cpus` is lower; more cores run other steps beside it ([CPU](hardware-requirements.md#cpu-requirements)) |
-| **RAM** | 16 GB | 32 GB | Every container has a hard memory limit; the 8-CPU steps ask for 32 GB, capped at the machine's RAM |
+| **RAM** | 16 GB | 32 GB | Every container has a hard memory limit; the 8-CPU steps ask for 32 GB, capped at the machine's RAM. A 16 GB machine needs swap for step 25's pgsc_calc ([step 25, Memory](25-prs.md#memory)) |
 | **Disk** | 500 GB free from a BAM, about 700 GB from FASTQ | 1 TB+ | See [detailed breakdown](hardware-requirements.md#disk-space-breakdown) |
 | **Internet** | Broadband | 100+ Mbps | ~73-78 GB core downloads + ~175 GB optional annotation databases |
 | **OS** | Linux (amd64) | Ubuntu 22.04+ | macOS/ARM works but slower (see below) |
@@ -28,9 +28,9 @@
 | Software | Version | Install |
 |---|---|---|
 | Docker | 20.10+ | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
-| bash | 4.4+ | Pre-installed on Linux; macOS ships 3.2, install a newer one with `brew install bash` |
-| Java *(for a full run)* | 17+ | Any OpenJDK build, e.g. `apt install openjdk-17-jre-headless` or [Adoptium Temurin](https://adoptium.net/) |
-| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | The pinned install command in [Full run](#full-run) |
+| bash | 4.4+ | Pre-installed on Linux; macOS ships 3.2, and the [Mac steps](#intel-mac) install a newer one with Homebrew |
+| Java *(for a full run)* | 17+ | Any OpenJDK build, such as [Adoptium Temurin](https://adoptium.net/); [Install the requirements](#install-the-requirements) has the command for each platform |
+| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | The pinned install command in [Install the requirements](#install-the-requirements) |
 | wget or curl | Any | For downloading references |
 | python3 *(optional)* | 3.6+ | Used by long-read alignment (02b) for symlink resolution. Falls back to `readlink -f` on GNU/Linux if absent |
 
@@ -67,6 +67,131 @@ Setup ends in one of three ways:
 
 The PGS Catalog scores, pgsc_calc and its Nextflow plugin are not on the list: step 25 fetches what is missing when it runs.
 
+## Install the requirements
+
+Pick your platform and run its steps in order. Each section ends with the same check: four commands that each print a version. When all four do, go on to [Get the code](#get-the-code). The [platform notes](#platform-notes) below say how each platform runs the images.
+
+### Linux
+
+Run these in a terminal. The package names are Debian's and Ubuntu's; other distributions have the same packages under their own names. bash 4.4 or later comes with every current distribution.
+
+```bash
+# 1. Java 17, git and curl
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jre-headless git curl
+# 2. Docker Engine, and the right to run it without sudo
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+# 3. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mv nextflow /usr/local/bin/
+```
+
+Log out and back in, so that your user is in the `docker` group. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it. Next: [Get the code](#get-the-code).
+
+### Intel Mac
+
+Run these in Terminal. Homebrew installs the rest, so it comes first; its installer asks for your password.
+
+```bash
+# 1. Homebrew (https://brew.sh)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# 2. bash 4.4 or later (macOS ships 3.2), Java 17 and Docker Desktop
+brew install bash
+brew install --cask temurin@17 docker-desktop
+open -a Docker
+# 3. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mkdir -p /usr/local/bin
+sudo mv nextflow /usr/local/bin/
+```
+
+Docker Desktop asks you to accept its terms the first time it opens. Set its memory as the [Intel Mac notes](#macos-intel) say. Open a new Terminal window, so that the new bash comes first on your `PATH`. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. Next: [Get the code](#get-the-code).
+
+### Apple Silicon Mac
+
+Run these in Terminal. Homebrew installs the rest, so it comes first; its installer asks for your password. On Apple Silicon it installs to `/opt/homebrew`, which is not on your `PATH` until step 2 puts it there.
+
+```bash
+# 1. Homebrew (https://brew.sh)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# 2. Put Homebrew on your PATH, now and in every new Terminal window
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+# 3. Rosetta 2, which runs the amd64 images
+softwareupdate --install-rosetta --agree-to-license
+# 4. bash 4.4 or later (macOS ships 3.2), Java 17 and Docker Desktop
+brew install bash
+brew install --cask temurin@17 docker-desktop
+open -a Docker
+# 5. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mkdir -p /usr/local/bin
+sudo mv nextflow /usr/local/bin/
+```
+
+Docker Desktop asks you to accept its terms the first time it opens. Turn on its Rosetta setting as the [Apple Silicon notes](#macos-apple-silicon-m1-m4) say. Open a new Terminal window, so that the new bash comes first on your `PATH`. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. If `java -version` crashes with `SIGBUS` in `CodeHeap::allocate`, run `csrutil status`: on Apple Silicon every Java crashes at start this way when System Integrity Protection is turned off, and turning it back on is the fix. Next: [Get the code](#get-the-code).
+
+### Windows with WSL2
+
+The pipeline runs inside Linux on WSL2, and Docker Desktop gives that Linux its Docker.
+
+1. Open PowerShell as Administrator and install WSL2 with Ubuntu. Restart Windows when it asks.
+
+    ```powershell
+    wsl --install -d Ubuntu-24.04
+    ```
+
+2. Open **Ubuntu** from the Start menu and create your Linux user.
+3. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/) with the WSL 2 backend. In its Settings, under Resources > WSL integration, turn on Ubuntu-24.04.
+4. Give WSL2 its memory: write `%UserProfile%\.wslconfig` as the [WSL2 notes](#windows-wsl2) say, then run `wsl --shutdown` in PowerShell and open Ubuntu again.
+5. In the Ubuntu terminal, install Java 17, git and curl, then Nextflow, the release versions.env pins:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y openjdk-17-jre-headless git curl
+    curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+    sudo mv nextflow /usr/local/bin/
+    ```
+
+6. Check, in the same Ubuntu terminal:
+
+    ```bash
+    docker info
+    bash --version
+    java -version
+    nextflow -version
+    ```
+
+`docker info` must show a `Server:` part with no error under it. Run every later command in the Ubuntu terminal, and keep the code and your data in your Linux home (`cd ~`), not under `/mnt/c`. Next: [Get the code](#get-the-code).
+
 ## Platform Notes
 
 ### Linux (Recommended)
@@ -96,10 +221,10 @@ Works for long-running analyses. Each step has a hard memory limit. On the `run-
 ```bash
 git clone https://github.com/GeiserX/OwnGenome.git
 cd OwnGenome
-git tag --sort=-v:refname | head -n 1   # the newest release; `git checkout <tag>` stays on it, main moves on
+git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"   # the newest release
 ```
 
-Every command on these pages runs from this folder, the repository root.
+On a release tag, `setup.sh` downloads that release's `og` binaries. On `main` it builds `og` in a container instead, which takes longer; skip the checkout to follow `main`, which moves on. Every command on these pages runs from this folder, the repository root.
 
 ### Step 0: Quick Test (Optional)
 
