@@ -838,15 +838,37 @@ jobs:
             END {if (k / n >= min) {printf "y_samples: %d of %d men share a line with the man whose calls the red control hands them; name men from different haplogroups\n", k, n; exit 1}}' "${D}/partner.out.tsv"
           # col FILE NAME: the value of column NAME in the one data row of FILE
           col() { awk -F'\t' -v n="$2" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} NR == 2 {print $c[n]}' "$1"; }
+          # slice URL MAN: MAN's chrY reads from his CRAM at URL, as a BAM with
+          # its index. EBI fails a read now and then (a .crai that does not
+          # parse, a region that still fails after htslib's own reconnects),
+          # so try 4 times, 1, 2 and 4 minutes apart, then stop the job. Each
+          # try starts clean: samtools keeps the .crai it fetched in /g and
+          # would read a bad copy again. A retry reads the same file again and
+          # nothing else: the calls and the gate below do not change.
+          slice() {
+            local crai="${G}/${1##*/}.crai" bam="${G}/$2/aligned/$2_sorted.bam" n
+            for n in 1 2 3 4; do
+              rm -f "$crai" "$bam" "${bam}.bai"
+              if docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w /g "$SAMTOOLS_IMAGE" \
+                sh -c 'samtools view -b -T reference/chrY.fa -o "$2/aligned/$2_sorted.bam" "$1" chrY && samtools index "$2/aligned/$2_sorted.bam"' \
+                _ "$1" "$2"; then
+                rm -f "$crai"
+                return 0
+              fi
+              [ "$n" -lt 4 ] || break
+              echo "::warning::$2: reading chrY from $1 failed (try $n of 4); next try in $((60 << (n - 1))) s"
+              sleep $((60 << (n - 1)))
+            done
+            echo "::error::$2: reading chrY from $1 failed 4 times; no calls are made for him, so the job stops"
+            return 1
+          }
           printf 'sample\tpublished\ttool\tcall\n' > "${D}/calls.tsv"
           for s in "${want[@]}"; do
             pub=$(awk -v s="$s" '$1 == s {print $3}' "${D}/published.txt")
             url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
             [ -n "$pub" ] && [ -n "$url" ] || { echo "${s}: no published call or no 30x CRAM"; exit 1; }
             mkdir -p "${G}/${s}/aligned" "${G}/${s}/indexcov"
-            docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w /g "$SAMTOOLS_IMAGE" \
-              sh -c 'samtools view -b -T reference/chrY.fa -o "$2/aligned/$2_sorted.bam" "$1" chrY && samtools index "$2/aligned/$2_sorted.bam"' \
-              _ "$url" "$s"
+            slice "$url" "$s"
             # A chrY slice has no autosomes for indexcov to read the sex from:
             # the men are men in the 1000 Genomes panel, so the row says male.
             printf '#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\tCNchrX\tCNchrY\n%s\t%s\t-9\t-9\t1\t-9\t1.0\t1.0\n' \
