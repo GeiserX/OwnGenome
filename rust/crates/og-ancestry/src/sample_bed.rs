@@ -392,8 +392,9 @@ mod tests {
     }
 
     #[test]
-    fn python_list_indexing_of_alleles() {
-        assert_eq!(bed_code(&["A", "G"], ["0", "-1"], "G", "A"), Some(2));
+    fn genotype_indexes_must_name_alleles() {
+        assert_eq!(bed_code(&["A", "G"], ["0", "1"], "G", "A"), Some(2));
+        assert_eq!(bed_code(&["A", "G"], ["0", "-1"], "G", "A"), None);
         assert_eq!(bed_code(&["A"], ["0", "2"], "G", "A"), None);
         assert_eq!(bed_code(&["A", "G"], ["x", "1"], "G", "A"), None);
         assert_eq!(gt_alleles("0/1/1"), None);

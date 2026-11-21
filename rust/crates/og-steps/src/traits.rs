@@ -1565,6 +1565,25 @@ mod tests {
     }
 
     #[test]
+    fn phase_skips_records_with_indexes_that_name_no_allele() {
+        let scratch = Scratch::new();
+        let path = scratch.put(
+            "phased.vcf",
+            "chr20\t100\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|-1:7\n\
+             chr20\t200\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|3:7\n\
+             chr20\t300\t.\tA\t.\t.\tPASS\t.\tGT:PS\t0|1:7\n\
+             chr20\t400\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|2:7\n",
+        );
+        let key = |pos: u64| ("chr20".to_owned(), pos.to_string());
+        let wanted = [100, 200, 300, 400].into_iter().map(key).collect();
+
+        assert_eq!(
+            read_phased(&path, &wanted).unwrap(),
+            HashMap::from([(key(400), ("A".into(), "G".into(), "7".into()))])
+        );
+    }
+
+    #[test]
     fn phase_requires_one_block_and_only_multiple_hets_are_exported() {
         let (_, rules) = assets();
         let r = rules.iter().find(|r| r.id == "TAS2R38").unwrap();
