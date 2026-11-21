@@ -40,6 +40,7 @@ og-live = { path = "crates/og-live" }
 og-couple = { path = "crates/og-couple" }
 og-admix = { path = "crates/og-admix" }
 og-facts = { path = "crates/og-facts" }
+og-browser = { path = "crates/og-browser" }
 indexmap = "2"
 flate2 = "1"
 memchr = "2"

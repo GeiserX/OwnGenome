@@ -19,7 +19,4 @@ python	.github/workflows/docs.yml	python-version: ['\"]?\d
 ANHIG/IMGTHLA	scripts/lib/common.sh	^HLA_DB_RELEASE=\$\{HLA_DB_RELEASE:-\d
 PGScatalog/pgsc_calc	versions.env	^PGSC_CALC_VERSION="
 PGScatalog/pgsc_calc	conf/containers.config	ext\.pipeline_version = '
-playwright	tests/demo/retake-screenshots.sh	playwright==\d
-pillow	tests/demo/retake-screenshots.sh	pillow==\d
-pyobjc-framework-Vision	tests/demo/retake-screenshots.sh	pyobjc-framework-Vision==\d
 aldy	docs/21-cyrius.md	aldy==\d|\[Aldy\]\([^)]*\) v\d

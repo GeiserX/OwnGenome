@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Two steps no e2e case runs, against the fake docker:
+# Three steps no e2e case runs, against the fake docker:
 #   Strelka2 (03c): configures the workflow on the sample's BAM (or ALIGN_DIR's)
 #     into vcf_strelka2/, runs it, counts the records; a finished run is not
 #     repeated, an unfinished one is resumed without configuring again, a
 #     run that writes no VCF fails, and a missing BAM index stops it first.
+#     A run of another BAM (replaced under the same size and time), finished
+#     or not, or one with no record of its BAM, is removed and configured again.
+#   Octopus (03d): a finished VCF with its index, of the same INTERVALS and
+#     BAM, is kept; a missing index, other INTERVALS or a replaced BAM call
+#     again; an index Octopus did not write is made with bcftools; a run that
+#     writes no VCF fails.
 #   CNVpytor (18): asks the image for its data folder and mounts the pinned
 #     resource files there read-only, imports the canonical chromosomes only,
 #     runs -his, -partition and -call at 1 kb, feeds -view its commands on
@@ -34,6 +40,19 @@ case "$args" in
   *" configureStrelkaGermlineWorkflow.py "*)
     d=$(host_path /genome/sample1/vcf_strelka2)
     mkdir -p "$d" && printf '#!/usr/bin/env python\n' > "${d}/runWorkflow.py" ;;
+  *" octopus "*)
+    # Octopus writes a finished bgzipped VCF and, unless told not to, its index.
+    if [ "${FAKE_OCTOPUS_NO_VCF:-}" != 1 ]; then
+      o=$(host_path "$(sed -n 's/.* -o \([^ ]*\) .*/\1/p' <<<"$args")")
+      { printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c
+        printf '\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00'; } > "$o"
+      [ "${FAKE_OCTOPUS_NO_TBI:-}" = 1 ] || printf 'TBI\001' > "${o}.tbi"
+    fi
+    exit 0 ;;
+  *" bcftools index -f -t "*)
+    # A non-empty index, as bcftools writes it (hook-outputs leaves it empty).
+    printf 'TBI\001' > "$(host_path "${*: -1}").tbi"
+    exit 0 ;;
   *" bcftools stats "*)
     printf 'SN\t0\tnumber of samples:\t1\nSN\t0\tnumber of records:\t4242\n' ;;
   *"site-packages/cnvpytor/data"*)
@@ -80,6 +99,32 @@ output_has strelka-resume 'Found an unfinished Strelka2 run'
 if grep -q 'configureStrelkaGermlineWorkflow' "$FAKE_DOCKER_LOG"; then fail "step 03c configured again over an unfinished run"; fi
 docker_log_has '^run image=[^ ]*strelka.* /genome/sample1/vcf_strelka2/runWorkflow\.py ' "step 03c did not resume the unfinished run"
 
+# A finished run of a BAM since replaced under the same size and time is
+# removed and configured again, and so is an unfinished one.
+BAM="${GENOME_DIR}/sample1/aligned/sample1_sorted.bam"
+replace_bam() {
+  touch -r "$BAM" "${CASE_WORK}/bam-time"
+  printf '%s\n' "$1" > "$BAM"
+  touch -r "${CASE_WORK}/bam-time" "$BAM"
+}
+replace_bam placeholdeR
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 strelka-new-bam "${SCRIPTS}/03c-strelka2-germline.sh" sample1
+output_lacks strelka-new-bam 'already done'
+docker_log_has '^run image=[^ ]*strelka.* rm -rf /genome/sample1/vcf_strelka2' "step 03c kept the run of the BAM before"
+docker_log_has 'configureStrelkaGermlineWorkflow\.py --bam ' "step 03c did not configure again on the replaced BAM"
+rm -rf "${SD}/results"
+replace_bam placeholdER
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 strelka-new-bam-unfinished "${SCRIPTS}/03c-strelka2-germline.sh" sample1
+output_lacks strelka-new-bam-unfinished 'Found an unfinished Strelka2 run'
+docker_log_has 'configureStrelkaGermlineWorkflow\.py --bam ' "step 03c resumed a run of the BAM before"
+# A finished run with no record of its BAM (an older version of this step).
+rm -f "${SD}/sample1.run"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 strelka-no-record "${SCRIPTS}/03c-strelka2-germline.sh" sample1
+docker_log_has 'configureStrelkaGermlineWorkflow\.py --bam ' "step 03c kept a run without knowing its BAM"
+
 # A workflow that ends without a VCF fails the step.
 rm -rf "${SD}/results"
 : > "$FAKE_DOCKER_LOG"
@@ -97,6 +142,44 @@ ALIGN_DIR=aligned_bwamem2 run_expect 0 strelka-bwamem2 "${SCRIPTS}/03c-strelka2-
 docker_log_has '^run image=[^ ]*strelka.* rm -rf /genome/sample1/vcf_strelka2' "step 03c did not remove the leftover folder"
 docker_log_has '^run image=[^ ]*strelka.* configureStrelkaGermlineWorkflow\.py --bam /genome/sample1/aligned_bwamem2/sample1_sorted\.bam ' \
   "ALIGN_DIR=aligned_bwamem2 did not reach Strelka2"
+
+# --- step 03d ---------------------------------------------------------------------------
+OD="${GENOME_DIR}/sample1/vcf_octopus"
+octopus_runs() { grep -c '^run image=[^ ]*octopus.* octopus -R ' "$FAKE_DOCKER_LOG" || true; }
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 octopus "${SCRIPTS}/03d-octopus.sh" sample1
+[ "$(octopus_runs)" -eq 1 ] || fail "step 03d did not run Octopus once"
+grep -q '^INTERVALS= bam=.* reference=.* image=' "${OD}/sample1.run" 2>/dev/null || fail "step 03d wrote no run record beside its VCF"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 octopus-again "${SCRIPTS}/03d-octopus.sh" sample1
+output_has octopus-again 'Octopus output already exists'
+[ "$(octopus_runs)" -eq 0 ] || fail "a rerun of step 03d called again a VCF it had finished"
+# A VCF without its index is called again.
+rm -f "${OD}/sample1.vcf.gz.tbi"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 octopus-no-index "${SCRIPTS}/03d-octopus.sh" sample1
+[ "$(octopus_runs)" -eq 1 ] || fail "step 03d kept a VCF without its index"
+# Other INTERVALS call again.
+: > "$FAKE_DOCKER_LOG"
+INTERVALS=chr22 run_expect 0 octopus-intervals "${SCRIPTS}/03d-octopus.sh" sample1
+[ "$(octopus_runs)" -eq 1 ] || fail "step 03d reused a whole-genome VCF for INTERVALS=chr22"
+docker_log_has ' octopus .* --regions chr22( |$)' "INTERVALS=chr22 did not reach Octopus"
+# A BAM replaced under the same size and time calls again.
+replace_bam placeholdeR
+: > "$FAKE_DOCKER_LOG"
+INTERVALS=chr22 run_expect 0 octopus-new-bam "${SCRIPTS}/03d-octopus.sh" sample1
+[ "$(octopus_runs)" -eq 1 ] || fail "step 03d reused a VCF called from a BAM replaced under the same size and time"
+# An index Octopus did not write is made with bcftools.
+rm -f "${OD}/sample1.run"
+: > "$FAKE_DOCKER_LOG"
+FAKE_OCTOPUS_NO_TBI=1 run_expect 0 octopus-indexes "${SCRIPTS}/03d-octopus.sh" sample1
+docker_log_has '^run image=[^ ]*bcftools.* bcftools index -f -t /genome/sample1/vcf_octopus/sample1\.vcf\.gz' "step 03d did not index a VCF Octopus left unindexed"
+test -s "${OD}/sample1.vcf.gz.tbi" || fail "step 03d ended without the index"
+# A run that writes no VCF fails, and leaves no record.
+rm -rf "$OD"
+FAKE_OCTOPUS_NO_VCF=1 run_expect 1 octopus-no-vcf "${SCRIPTS}/03d-octopus.sh" sample1
+output_has octopus-no-vcf 'ERROR: Octopus finished without a complete .*/vcf_octopus/sample1\.vcf\.gz and its \.tbi'
+[ ! -e "${OD}/sample1.run" ] || fail "step 03d wrote a run record without a VCF"
 
 # --- step 18 ----------------------------------------------------------------------------
 CD="${GENOME_DIR}/reference/cnvpytor"
@@ -133,4 +216,4 @@ docker_log_has '^run image=[^ ]*bcftools.*bcftools reheader --fai /genome/refere
   "step 18 did not reheader the VCF from the reference's .fai"
 test -f "${GENOME_DIR}/sample1/cnvpytor/sample1_cnvs.txt" || fail "step 18 wrote no sample1_cnvs.txt"
 output_has cnvpytor 'Calls \(VCF\): .*/sample1/cnvpytor/sample1_cnvs\.vcf\.gz'
-echo "PASS steps 03c and 18 against the fake docker"
+echo "PASS steps 03c, 03d and 18 against the fake docker"

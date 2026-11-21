@@ -416,7 +416,9 @@
     add(foot, el('a', { href: 'report.html#' + encodeURIComponent(c.anchor), 'class': 'report' }, 'Open in the report'));
     var reads = c.viewer || [];
     if (g === 'show' && reads.length) {
-      add(foot, el('a', { href: 'viewer/#' + reads[0], 'class': 'viewer' }, 'See the reads at ' + reads[0]));
+      // The demo has no reads: say so here, not on the page the link would open.
+      add(foot, replay ? el('span', { 'class': 'viewer' }, 'Reads: not in the demo')
+        : el('a', { href: 'viewer/#' + reads[0], 'class': 'viewer' }, 'See the reads at ' + reads[0]));
     }
     (g === 'show' ? c.links || [] : []).forEach(function (f) {
       add(foot, el('a', { href: f.split('/').map(encodeURIComponent).join('/') }, 'Open ' + f));

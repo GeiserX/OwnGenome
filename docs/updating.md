@@ -13,7 +13,6 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | IPD-IMGT/HLA release (step 8) | `HLA_DB_RELEASE` in `scripts/lib/common.sh` | Renovate, from the `v<x.y.z>-alpha` tags of `ANHIG/IMGTHLA` |
 | pgsc_calc (steps 25 and 26) | `PGSC_CALC_VERSION` in `versions.env`, copied into `conf/containers.config` | Renovate, after approval on the dependency dashboard. `PGSC_CALC_SHA256`, `PGSC_CALC_NF_SCHEMA` and the `PGSC_*_IMAGE` lines move with it by hand ([PRS](25-prs.md#maintenance)) |
 | Python of the docs build | `python-version` in `docs.yml` | Renovate, after approval on the dependency dashboard |
-| Python packages of the screenshot script | the `==` pins in `tests/demo/retake-screenshots.sh` | Renovate |
 | Aldy, the alternative CYP2D6 caller | its version in [Cyrius](21-cyrius.md), in the prose and the `pip install` line | Renovate |
 | GitHub Actions (`uses:` lines) | the workflows | Dependabot, monthly |
 | Zensical, the docs site builder | `docs/requirements-docs.txt` | Dependabot, monthly |
@@ -102,7 +101,7 @@ The [Renovate dry run](https://github.com/GeiserX/OwnGenome/blob/main/.github/wo
 - a package name carries a `:` or `@`;
 - `docs/versions.md` does not hold exactly the images of `versions.env`, or `conf/containers.config` holds one it does not;
 - a tool would get a different update in one file than in another;
-- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, the screenshot script's packages, Aldy, the docs build's Python) is not detected in every place the text pins it;
+- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, Aldy, the docs build's Python) is not detected in every place the text pins it;
 - a lookup failed, or a dependency was skipped for any reason other than a rule that disables it.
 
 The lookup job's summary lists every dependency with the update Renovate would propose, or why it proposes none. The full debug log is the `renovate-dry-run-log` artifact. A second job, `versions-doc`, fails when `docs/versions.md` is not what `scripts/ci/gen-versions-doc.sh` writes from `versions.env`.
