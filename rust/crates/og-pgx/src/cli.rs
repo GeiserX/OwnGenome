@@ -361,7 +361,7 @@ fn contraindication_section(a: &CpicArgs, table_path: &str) -> Vec<String> {
         .medications
         .as_deref()
         .and_then(|m| read_medications(m).ok())
-        .map(|m| m.into_iter().map(|m| m.name).collect())
+        .map(|m| m.into_iter().flat_map(|m| m.names).collect())
         .unwrap_or_default();
     let found = contraindication_lines(&hits, &table, &med_names);
     if found.is_empty() {
