@@ -119,8 +119,10 @@
         <li><a href="#clinical-filter"><span class="dot dot-missing" title="Not run"></span>Clinical filter and secondary findings</a></li>
         <li><a href="#cpsr"><span class="dot dot-missing" title="Not run"></span>Cancer predisposition</a></li>
         <li><a href="#slivar"><span class="dot dot-missing" title="Not run"></span>Variant prioritization</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-missing" title="Not run"></span>Structural variants</a></li>
         <li><a href="#expansions"><span class="dot dot-missing" title="Not run"></span>Repeat expansions</a></li>
         <li><a href="#mito"><span class="dot dot-missing" title="Not run"></span>Mitochondrial variants</a></li>
+        <li><a href="#mosaic"><span class="dot dot-ok" title="Complete"></span>Mosaic loss of chromosome Y or X</a></li>
       </ol>
     </li>
     <li><a href="#ch-carrier">Carrier</a>
@@ -159,6 +161,7 @@
         <li><a href="#not-assessed">Not assessed</a></li>
       </ol>
     </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
 <main>
@@ -234,6 +237,18 @@
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
+  <section class="sec" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">N/A</span></div>
+  </div>
+  </section>
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
@@ -246,6 +261,16 @@
     <h2>Mitochondrial Analysis</h2>
     <p class="sec-meta">Step 20 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mito">link to this section</a></p>
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
+    <p class="caveat">Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).</p>
+    <div class="stat"><span class="label">chrY or chrX</span><span class="value"><span class="badge badge-gray">not detected above 10%</span></span></div>
+    <div class="stat"><span class="label">Why</span><span class="value"><span style="font-weight:normal;font-size:13px"></span></span></div>
+    <p class="note">From depth: estimated share of the cells that lost one X 2.0% (95% range -1.0% to 5.0%); None to autosome depth ratio 0.980, 1.0 expected</p>
   </div>
   </section>
   </div>
@@ -422,6 +447,18 @@
       <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
       <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
     </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <p>No section of this report names a gene or an rsID.</p>
   </div>
   </section>
   </div>

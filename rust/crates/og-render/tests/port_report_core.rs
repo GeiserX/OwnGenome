@@ -273,10 +273,13 @@ fn both_reports_follow_the_chapter_order() {
         .flat_map(|c| c.sections.iter().map(|s| s.id))
         .collect();
     let shown = shown_sections(&page);
-    // The sections ported so far, in chapter order, then the limits chapter.
+    // The sections, in chapter order, then the limits chapter and the
+    // appendix of genes and rsIDs.
     let n = shown.len();
     assert!(
-        n >= 4 && shown[..2] == ["qc", "variants"] && shown[n - 2..] == ["not-run", "not-assessed"],
+        n >= 5
+            && shown[..2] == ["qc", "variants"]
+            && shown[n - 3..] == ["not-run", "not-assessed", "terms-list"],
         "{shown:?}"
     );
     // ROH, telomere content and the mitochondrial haplogroup show a card
@@ -288,7 +291,7 @@ fn both_reports_follow_the_chapter_order() {
         "{shown:?}"
     );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
-    assert_eq!(&shown[..n - 2], in_order.as_slice());
+    assert_eq!(&shown[..n - 3], in_order.as_slice());
     // The HTML report shows a card for a section that did not run; the text
     // report leaves it out, except the paralogs' "not checked" line, which
     // prints when neither step 35 nor step 35b ran. So of the chapters with a
@@ -297,7 +300,7 @@ fn both_reports_follow_the_chapter_order() {
     // only when step 47 ran.
     let with_card: Vec<String> = CHAPTERS
         .iter()
-        .filter(|c| c.sections.iter().any(|s| shown[..n - 2].contains(&s.id)))
+        .filter(|c| c.sections.iter().any(|s| shown[..n - 3].contains(&s.id)))
         .map(|c| c.title.to_uppercase())
         .collect();
     assert_eq!(
@@ -320,7 +323,7 @@ fn both_reports_follow_the_chapter_order() {
         .replace("id=\"qc\"", "id=\"tmp\"")
         .replace("id=\"variants\"", "id=\"qc\"")
         .replace("id=\"tmp\"", "id=\"variants\"");
-    assert_ne!(shown_sections(&swapped)[..n - 2], in_order[..]);
+    assert_ne!(shown_sections(&swapped)[..n - 3], in_order[..]);
 }
 
 #[test]
@@ -591,16 +594,21 @@ fn the_verb_writes_both_reports_and_refuses_what_it_does_not_take() {
         .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
         .collect();
     assert_eq!(names.len(), 3, "no temporary file is left: {names:?}");
-    // Refused before anything is read: an unknown option, an option of the
-    // parts still in Python, a report name of another kind, no summary.
+    // Refused before anything is read: an unknown option, an option without
+    // its value, a sample without its folder, a report name of another kind,
+    // no summary.
     for (args, why) in [
         (
             vec!["--og-scaffold-probe"],
             "unrecognized arguments: --og-scaffold-probe",
         ),
         (
-            vec!["--summary", "x.json", "--search-index", "i.json"],
-            "--search-index is not ported yet",
+            vec!["--summary", "x.json", "--search-index"],
+            "argument --search-index: expected one argument",
+        ),
+        (
+            vec!["--sample", "S", "-o", "r.txt"],
+            "give --summary, or --sample and --sample-dir",
         ),
         (
             vec!["--summary", "x.json", "-o", "r.pdf"],
