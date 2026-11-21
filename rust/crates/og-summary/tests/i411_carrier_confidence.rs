@@ -12,10 +12,11 @@
 //! same hits (`assets/acmg_sf.tsv`): a pair that rests on a low-confidence
 //! call reads the same there, a low-confidence call beside a confident pair
 //! leaves it as it is, and MUTYH, on both lists, gets the same answer from
-//! both cards over each shape of hits.
+//! both cards over each shape of hits, some with a HIGH-impact record of
+//! the clinical VCF beside the hit on the card.
 
 use indexmap::IndexMap;
-use og_summary::collect::acmg::{Inputs, acmg_sf};
+use og_summary::collect::acmg::{ClinicalVcf, HighRecord, Inputs, acmg_sf};
 use og_summary::collect::carrier::Carrier;
 use og_summary::collect::clinvar::{Floor, HitRecords, HitsVcf};
 use og_summary::collect::two_hits::{DeletionInputs, SvRow};
@@ -429,14 +430,63 @@ fn a_deletion_plus_a_low_confidence_call_is_only_possibly_biallelic() {
 
 /// The ACMG SF card on step 06's hits alone (no clinical VCF).
 fn sf(hits: Vec<Vec<String>>, dels: &DeletionInputs) -> IndexMap<String, Value> {
+    sf_with_high(hits, Vec::new(), dels)
+}
+
+/// The ACMG SF card on step 06's hits plus a clinical VCF whose only
+/// HIGH-impact records are `high` (none: no clinical VCF).
+fn sf_with_high(
+    hits: Vec<Vec<String>>,
+    high: Vec<(Site, HighRecord)>,
+    dels: &DeletionInputs,
+) -> IndexMap<String, Value> {
     let h: Result<HitRecords, String> = Ok((Floor::default(), hits));
+    let clinical: Option<Result<ClinicalVcf, String>> = (!high.is_empty()).then(|| {
+        Ok(ClinicalVcf {
+            records: high.len(),
+            high: Ok(high
+                .into_iter()
+                .map(|(s, r)| ((s.0.to_owned(), s.1, s.2.to_owned(), s.3.to_owned()), r))
+                .collect()),
+        })
+    });
     obj(acmg_sf(&Inputs {
         assets: ASSETS,
         hits: Some(&h),
-        clinical: None,
+        clinical: clinical.as_ref(),
         deletions: dels,
     })
     .unwrap())
+}
+
+type Site = (&'static str, i128, &'static str, &'static str);
+
+/// A HIGH-impact MUTYH stop-gain record of the clinical VCF for the hit at
+/// `site`, with the hit's own GT and phase set, as a real run gives it,
+/// called weak (GQ 5, DP 4) or confident (GQ 50, DP 30).
+fn high(site: Site, gt: &str, ps: Option<&str>, weak: bool) -> (Site, HighRecord) {
+    let (gq, dp) = if weak { (5, 4) } else { (50, 30) };
+    (
+        site,
+        HighRecord {
+            genotype: gt.to_owned(),
+            ps: ps.map(str::to_owned),
+            genes: [("MUTYH".to_owned(), "stop_gained".to_owned())]
+                .into_iter()
+                .collect(),
+            transcript: "MANE",
+            frequency: "rare",
+            weak,
+            why: if weak {
+                vec!["GQ 5 < 30".to_owned(), "DP 4 < 10".to_owned()]
+            } else {
+                Vec::new()
+            },
+            gq: Some(gq),
+            dp: Some(dp),
+            ad: None,
+        },
+    )
 }
 
 /// The `pair` word of each reported ClinVar row of `gene` on the SF card.
@@ -694,6 +744,8 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
     let combined = |q: &str| hit(b, "MUTYH", "GT:GQ:DP:PS", &format!("0|1:{q}:9"), &joined);
     // The same combined allele, unphased and weak.
     let combined_open = || hit(b, "MUTYH", "GT:GQ:DP", "0/1:5:4", &joined);
+    // The same combined allele, called homozygous and weak.
+    let combined_hom = || hit(b, "MUTYH", "GT:GQ:DP", "1/1:5:4", &joined);
     // A second alt allele at MUTYH_A's position, for a split call there.
     let a2 = (a.0, a.1, a.2, "G");
     let del = || mutyh_deletion("1|0", Some("9"));
@@ -877,11 +929,80 @@ fn the_carrier_list_and_the_sf_card_agree_on_a_gene_on_both_lists() {
         ),
         ("deletion alone", vec![], del(), None),
         ("nothing", vec![], none(), None),
+        (
+            "X4 weak hom combined, confident part, third in trans with the part",
+            vec![combined_hom(), g(a, "0|1", p9), g(cc, "1|0", p9)],
+            none(),
+            bi,
+        ),
+        (
+            "X4b confident combined, weak hom part, third in trans with the combined",
+            vec![combined("50:30"), w(a, "1/1", None), g(cc, "1|0", p9)],
+            none(),
+            bi,
+        ),
+        (
+            "X9b weak unphased combined, confident part in cis with the deletion",
+            vec![combined_open(), g(a, "0|1", p9)],
+            mutyh_deletion("0|1", p9),
+            None,
+        ),
+        (
+            "X10 weak phased combined, confident part in cis with the deletion",
+            vec![combined("5:4"), g(a, "1|0", p9)],
+            del(),
+            None,
+        ),
     ];
+    // The same weak calls with a HIGH-impact record of the variant on the
+    // card, weak too (its GT and phase set the call's own): the record is
+    // no confident call of it.
+    let hw = |site, gt, ps| high(site, gt, ps, true);
+    #[allow(clippy::type_complexity)]
+    let with_high: Vec<(
+        &str,
+        Vec<Vec<String>>,
+        Vec<(Site, HighRecord)>,
+        DeletionInputs,
+        Option<&str>,
+    )> = vec![
+        (
+            "H1 weak het with a weak HIGH record + confident unphased het",
+            vec![w(a, "0/1", None), g(cc, "0/1", None)],
+            vec![hw(a, "0/1", None)],
+            none(),
+            low,
+        ),
+        (
+            "H2 weak het with a weak HIGH record + unphased deletion",
+            vec![w(a, "0/1", None)],
+            vec![hw(a, "0/1", None)],
+            mutyh_deletion("0/1", None),
+            low,
+        ),
+        (
+            "H3p weak het with a weak HIGH record, in trans with a confident het by its own phase",
+            vec![w(a, "0|1", p9), g(b, "1|0", p9)],
+            vec![hw(a, "0|1", p9)],
+            none(),
+            low,
+        ),
+        (
+            "H5 two weak hets with weak HIGH records",
+            vec![w(a, "0/1", None), w(b, "0/1", None)],
+            vec![hw(a, "0/1", None), hw(b, "0/1", None)],
+            none(),
+            low,
+        ),
+    ];
+    let all = shapes
+        .into_iter()
+        .map(|(l, h, d, w)| (l, h, Vec::new(), d, w))
+        .chain(with_high);
     let mut wrong = Vec::new();
-    for (label, hits, dels, want) in shapes {
+    for (label, hits, records, dels, want) in all {
         let carrier = list(hits.clone(), &dels);
-        let card = sf(hits, &dels);
+        let card = sf_with_high(hits, records, &dels);
         // The whole output of both cards, for a before/after diff.
         eprintln!("DUMP {label}\tSF {card:?}\tCARRIER {carrier:?}");
         let (x, y) = (sf_answer(&card, "MUTYH"), carrier_answer(&carrier, "MUTYH"));

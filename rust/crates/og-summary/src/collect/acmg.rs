@@ -441,8 +441,9 @@ struct Cand {
 /// One distinct variant of a gene as the verdict counts it: its alt
 /// copies, ploidy, GT and phase set, whether it stands for a combined
 /// allele and its parts, and the alt copies its confident calls give (`firm`:
-/// 0 when every call of it is below step 06's call floor, low confidence),
-/// with the GT and phase set of the confident call that gives them.
+/// 0 when every call of it is low confidence: below step 06's call floor, or
+/// a weak HIGH-impact call), with the GT and phase set of the confident call
+/// that gives them.
 #[derive(Debug, Clone, PartialEq)]
 struct Allele {
     copies: usize,
@@ -638,25 +639,19 @@ fn sf_verdicts(
     }
     // The count again with only the copies confident calls give: a pair
     // that needs a low-confidence call is only possible until the call is
-    // confirmed. A small allele no confident call gives drops out; one whose
-    // confident calls give fewer copies than it counts loses its phase too,
-    // as that came from the low call; any other takes the GT and phase set
-    // of the confident call, so a phase only a low call gives proves
-    // nothing. A deletion counts as it is: its pair is judged by
-    // `two_hits_with`.
+    // confirmed. A small allele no confident call gives drops out; any other
+    // takes the copies, GT and phase set of the confident call that gives
+    // them, so a phase only a low call gives proves nothing. A deletion
+    // counts as it is: its pair is judged by `two_hits_with`.
     let firm: IndexMap<AKey, Allele> = kept
         .iter()
         .filter(|(k, a)| !matches!(k, AKey::Small(_)) || a.firm > 0)
         .map(|(k, a)| {
             let mut f = a.clone();
             if matches!(k, AKey::Small(_)) {
-                if a.firm < a.copies {
-                    f.copies = a.firm;
-                    f.ps = None;
-                } else {
-                    f.gt = a.firm_gt.clone();
-                    f.ps = a.firm_ps.clone();
-                }
+                f.copies = a.firm;
+                f.gt = a.firm_gt.clone();
+                f.ps = a.firm_ps.clone();
             }
             (k.clone(), f)
         })
@@ -666,8 +661,8 @@ fn sf_verdicts(
         (
             Verdict::LowConfidence.word(),
             format!(
-                "a call it rests on is below the call floor (low confidence), so confirm it \
-                 first; {why}"
+                "a call it rests on is low confidence (below the call floor, or a weak \
+                 HIGH-impact call), so confirm it first; {why}"
             ),
         )
     };
@@ -1018,8 +1013,14 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     // allele's own call stands for its parts.
     let (own, folded): (Vec<&Cand>, Vec<&Cand>) =
         small.iter().copied().partition(|x| unit(x) == x.key);
-    // A step 06 hit below its call floor (the ClinVar row's low_confidence).
-    let is_low = |x: &Cand| matches!(x.fields.get("low_confidence"), Some(Value::Bool(true)));
+    // A low-confidence call: a step 06 hit below its call floor (the
+    // ClinVar row's low_confidence), or a weak HIGH-impact call (its
+    // weak_call: the clinical call floor or allele balance). Neither makes
+    // its allele firm.
+    let is_low = |x: &Cand| {
+        matches!(x.fields.get("low_confidence"), Some(Value::Bool(true)))
+            || matches!(x.fields.get("weak_call"), Some(Value::Bool(true)))
+    };
     for x in &own {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
         let a = alleles

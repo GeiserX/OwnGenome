@@ -246,6 +246,8 @@ impl Carrier {
         // Which list each item is on: carriers (false) or set aside (true).
         let mut aside: Vec<bool> = Vec::new();
         let mut variants: Vec<(Variant, usize)> = Vec::new();
+        // The parts of each variant's combined allele, by the same index.
+        let mut vjoined: Vec<Vec<VarKey>> = Vec::new();
         let mut low: HashSet<(String, VarKey)> = HashSet::new();
         // The heterozygous carrier hits of each recessive gene, with the
         // items they are.
@@ -325,6 +327,7 @@ impl Carrier {
                         },
                         items.len() - 1,
                     ));
+                    vjoined.push(joined_keys(r));
                 }
             }
         }
@@ -352,9 +355,32 @@ impl Carrier {
             .map(|(g, x)| (g.clone(), x.span.clone()))
             .collect();
         let (dels, read, unread) = gene_deletions(deletions, &spans);
-        let vs: Vec<Variant> = variants.iter().map(|(v, _)| v.clone()).collect();
+        // A low-confidence row pairs with a deletion by a confident call of
+        // its combined allele, as the secondary-findings card counts it: the
+        // first confident row of the gene, with as many copies, that is a
+        // part of it or that it is a part of. That row's GT and phase set
+        // stand for it, and the pair no longer needs a low-confidence call.
+        let mut vs: Vec<Variant> = variants.iter().map(|(v, _)| v.clone()).collect();
+        let mut low_pair = low.clone();
+        let is_low = |v: &Variant| low.contains(&(v.gene.clone(), v.key.clone()));
+        for (i, (v, _)) in variants.iter().enumerate() {
+            if !is_low(v) {
+                continue;
+            }
+            let sure = variants.iter().enumerate().find(|(j, (c, _))| {
+                c.gene == v.gene
+                    && !is_low(c)
+                    && c.copies >= v.copies
+                    && (vjoined[i].contains(&c.key) || vjoined[*j].contains(&v.key))
+            });
+            if let Some((_, (c, _))) = sure {
+                vs[i].gt = c.gt.clone();
+                vs[i].ps = c.ps.clone();
+                low_pair.remove(&(v.gene.clone(), v.key.clone()));
+            }
+        }
         let found = two_hits_with(&vs, &dels, |v| {
-            low.contains(&(v.gene.clone(), v.key.clone()))
+            low_pair.contains(&(v.gene.clone(), v.key.clone()))
         });
         for (v, at) in &variants {
             if let Some(t) = found.hemi.get(&(v.gene.clone(), v.key.clone())) {
