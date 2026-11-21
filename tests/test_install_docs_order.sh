@@ -25,7 +25,8 @@
 #     Apple Silicon so does the brew shellenv eval (/opt/homebrew is not on
 #     PATH before it); on Linux and WSL2 the apt-get install line, which
 #     installs curl, comes before the first curl command;
-#   - every NXF_VER= in the page is NEXTFLOW_VERSION from versions.env.
+#   - every NXF_VER= in the page is NEXTFLOW_VERSION from versions.env
+#     (a value such as latest fails too).
 # Planted copies with one defect each must fail (a check that cannot fail is
 # not a check).
 #
@@ -202,7 +203,7 @@ check_guide() {
   done
   while read -r v; do
     [ "$v" = "$NXF_PIN" ] || { echo "NXF_VER=${v} is not NEXTFLOW_VERSION ${NXF_PIN}"; rc=1; }
-  done < <(grep -oE 'NXF_VER=[0-9.]+' "$f" | cut -d= -f2)
+  done < <(grep -oE 'NXF_VER=[^[:space:]]*' "$f" | cut -d= -f2)
   return "$rc"
 }
 
@@ -276,6 +277,8 @@ move_after "$GUIDE" "Linux" 'apt-get install' 'get.docker.com' > "${WORK}/guide-
 expect_fail "a Linux section that runs curl before apt-get installs it" check_guide "${WORK}/guide-curl-first.md" 'Linux: runs curl'
 awk -v pin="NXF_VER=${NXF_PIN}" '!done && index($0, pin) { sub(pin, "NXF_VER=1.0.0"); done = 1 } { print }' "$GUIDE" > "${WORK}/guide-oldnxf.md"
 expect_fail "an NXF_VER that is not the pin" check_guide "${WORK}/guide-oldnxf.md" 'NXF_VER=1.0.0 is not'
+awk -v pin="NXF_VER=${NXF_PIN}" '!done && index($0, pin) { sub(pin, "NXF_VER=latest"); done = 1 } { print }' "$GUIDE" > "${WORK}/guide-latestnxf.md"
+expect_fail "an unpinned NXF_VER=latest" check_guide "${WORK}/guide-latestnxf.md" 'NXF_VER=latest is not'
 
 if [ "$FAILS" -gt 0 ]; then
   echo "${FAILS} check(s) failed"

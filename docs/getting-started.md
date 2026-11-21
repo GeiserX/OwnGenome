@@ -200,7 +200,7 @@ Best performance. Docker runs natively. All pipeline images are linux/amd64. No 
 ### macOS (Intel)
 Works fine. Docker Desktop runs a Linux VM, so there's a ~10-20% I/O overhead on file operations. Set Docker Desktop memory to at least 16 GB (Preferences > Resources).
 
-### macOS (Apple Silicon / M1-M4)
+### macOS (Apple Silicon M1-M4)
 Works but **slower**. All bioinformatics Docker images are amd64 and run under Rosetta 2 emulation (2-5x performance penalty). DeepVariant and BWA-MEM2 are the most affected. In Docker Desktop, turn on "Use Rosetta for x86_64/amd64 emulation on Apple Silicon" if your version offers it; it needs the Apple Virtualization framework as the virtual machine manager, not Docker VMM. Without it, Docker falls back to QEMU emulation, which is slower still.
 
 ### Windows (WSL2)
