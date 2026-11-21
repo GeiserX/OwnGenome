@@ -8,7 +8,7 @@ use super::model::{Section, State};
 use super::sections::Data;
 use super::text::{self, cell, stripped};
 use indexmap::IndexMap;
-use og_steps::pgx_rules::{NO_CALL, is_call, same_diplotype};
+use og_steps::pgx_rules::{is_call, same_diplotype};
 use og_steps::pypgx_summary::{LOW_GQ, NOT_CALLABLE};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
@@ -230,9 +230,11 @@ fn key_text(v: Option<&str>) -> String {
 impl Pypgx {
     pub fn read(path: &str, s: &str) -> Result<Pypgx, String> {
         let rows = rows_or_note(path)?;
+        // A called gene is one whose diplotype steps 27 and 36 take as a
+        // call: `*1/Indeterminate`, one allele or several diplotypes are not.
         let called = rows
             .iter()
-            .filter(|r| !NO_CALL.contains(&lower(stripped(r, "Diplotype")).as_str()))
+            .filter(|r| is_call(stripped(r, "Diplotype")))
             .count();
         let cyp_row = rows.iter().find(|r| cell(r, "Gene") == Some("CYP2D6"));
         let cyp = cyp_row.and_then(|r| cell(r, "Diplotype")).unwrap_or("");
