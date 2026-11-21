@@ -226,11 +226,14 @@ fn naltrexone_bupropion_converts_by_bupropion() {
         "{rec}"
     );
     assert!(!rec.contains("Not in the inhibitor table"), "{rec}");
-    // `and`, `+` and `;` split a line too.
+    // `and`, `+`, `;` and brackets split a line too, and a trailing stop
+    // is not part of the drug's name.
     for line in [
         "naltrexone and bupropion",
         "naltrexone + bupropion",
         "naltrexone; bupropion",
+        "Contrave (naltrexone/bupropion) 8/90 mg",
+        "naltrexone, bupropion.",
     ] {
         let (col, rec) = convert("nalbup2", &NORMAL, &format!("{line}\n"));
         assert_eq!(
@@ -282,6 +285,14 @@ fn a_combinations_second_drug_is_on_the_list() {
     let want = "  WARNING: valproic acid -- POLG chr15:89300000 C>T, genotype 0/1, ClinVar Likely_pathogenic; ON THE MEDICATION LIST.";
     let rec = contra("contra", "lamotrigine/valproate 100/500 mg\n");
     assert!(rec.lines().any(|l| l == want), "{rec}");
+    // A brand name with its generic in brackets.
+    for line in [
+        "Epilim (sodium valproate) 500 mg",
+        "Depakote (divalproex sodium)",
+    ] {
+        let rec = contra("contra-brand", &format!("{line}\n"));
+        assert!(rec.lines().any(|l| l == want), "{line}: {rec}");
+    }
     // Control: without valproate the same hit warns, not as on the list.
     let rec = contra("contra-control", "lamotrigine 100 mg\n");
     assert!(

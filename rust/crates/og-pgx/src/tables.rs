@@ -229,11 +229,14 @@ fn dose_word(w: &str) -> bool {
 /// The lines of a medication list, one product per line; `#` starts a
 /// comment and blank lines are skipped. Every word of a line can name a
 /// drug, so each drug of a combination product is checked: whitespace,
-/// commas, semicolons, `/` and `+` split the line, and the word `and` is
-/// dropped (`olanzapine/fluoxetine`, `naltrexone/bupropion 8/90 mg` and
-/// `lopinavir and ritonavir` each name two drugs). Doses, units and
-/// frequencies (`20`, `mg`, `daily`) are dropped too. A line of nothing
-/// but those keeps its first word, so it is still listed as not checked.
+/// commas, semicolons, `/`, `+` and brackets split the line, punctuation at
+/// a word's ends is dropped (`paroxetine.` is paroxetine), and the word
+/// `and` is dropped (`olanzapine/fluoxetine`, `naltrexone/bupropion 8/90 mg`
+/// and `lopinavir and ritonavir` each name two drugs; `Contrave
+/// (naltrexone/bupropion)` names three words). Doses, units and frequencies
+/// (`20`, `mg`, `daily`) are dropped too. A line of nothing but those keeps
+/// its first word, so it is still listed as not checked; a line of only
+/// separators and punctuation is skipped.
 pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
     let text = read_text(path)?;
     let mut out = Vec::new();
@@ -243,7 +246,8 @@ pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
             continue;
         }
         let words: Vec<String> = t
-            .split(|c: char| pycompat::text::is_space(c) || ",;/+".contains(c))
+            .split(|c: char| pycompat::text::is_space(c) || ",;/+()[]".contains(c))
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
             .filter(|w| !w.is_empty())
             .map(lower)
             .collect();
@@ -424,14 +428,14 @@ mod tests {
     fn medication_lines_name_every_drug() {
         let p = tmp(
             "meds.txt",
-            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\nnaltrexone/bupropion 8/90 mg\nOlanzapine + fluoxetine; olanzapine\nlopinavir and ritonavir\n20 mg\n",
+            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\nnaltrexone/bupropion 8/90 mg\nOlanzapine + fluoxetine; olanzapine\nlopinavir and ritonavir\n20 mg\nContrave (naltrexone/bupropion) 8/90 mg\nEpilim (sodium valproate) 500 mg\nDepakote(divalproex sodium) [delayed-release]\nparoxetine.\n( )\n",
         );
         let got: Vec<(String, Vec<String>)> = read_medications(&p)
             .unwrap()
             .into_iter()
             .map(|m| (m.text, m.names))
             .collect();
-        let want: [(&str, &[&str]); 8] = [
+        let want: [(&str, &[&str]); 12] = [
             ("Paroxetine 20 mg daily", &["paroxetine"]),
             (", paroxetine", &["paroxetine"]),
             (
@@ -446,6 +450,22 @@ mod tests {
             ),
             ("lopinavir and ritonavir", &["lopinavir", "ritonavir"]),
             ("20 mg", &["20"]),
+            // Brackets split a line, and punctuation at a word's ends is
+            // dropped, so a brand name with its generic in brackets names
+            // both, and a line of only brackets names nothing.
+            (
+                "Contrave (naltrexone/bupropion) 8/90 mg",
+                &["contrave", "naltrexone", "bupropion"],
+            ),
+            (
+                "Epilim (sodium valproate) 500 mg",
+                &["epilim", "sodium", "valproate"],
+            ),
+            (
+                "Depakote(divalproex sodium) [delayed-release]",
+                &["depakote", "divalproex", "sodium", "delayed-release"],
+            ),
+            ("paroxetine.", &["paroxetine"]),
         ];
         let want: Vec<(String, Vec<String>)> = want
             .iter()
