@@ -28,7 +28,9 @@
     if (!box) { return; }
     while (box.firstChild) { box.removeChild(box.firstChild); }
     box.appendChild(el('h2', null, 'Run health'));
-    var o = last && last.plugins && last.plugins.ops;
+    // Before the first state arrives the card says it waits, never that there is nothing.
+    if (!last) { box.appendChild(el('p', 'muted', 'Waiting for the run\'s data.')); return; }
+    var o = last.plugins && last.plugins.ops;
     if (!o) { box.appendChild(el('p', 'muted', 'No numbers yet.')); return; }
     if (o.error) { box.appendChild(el('p', 'tone-attention', o.error)); return; }
 

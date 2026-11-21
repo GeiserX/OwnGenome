@@ -27,6 +27,16 @@
   Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
 
 ################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Mosaic loss of chromosome Y or X
+---
+  chrY or chrX: not detected above 10% (None)
+  From depth: estimated share of the cells that lost one X 2.0% (95% range -1.0% to 5.0%); None to autosome depth ratio 0.980, 1.0 expected
+  Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).
+
+################################################################################
 #  3. CARRIER: What could I pass on to a child?
 ################################################################################
 

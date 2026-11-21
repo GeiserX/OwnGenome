@@ -130,7 +130,7 @@ echo "paralog-rows: step 35 on 37 rows in ${ELAPSED} s, ${called} called, ${nass
 # The reports read every table: both, on this sample
 REP="${CASE_TMP}/report_all"
 mkdir -p "$REP"
-python3 "${REPO}/bin/render_report.py" --assets "${REPO}/assets" --sample "$P" --sample-dir "${GENOME_DIR}/${P}" \
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$P" --sample-dir "${GENOME_DIR}/${P}" \
   --json "${REP}/summary.json" -o "${REP}/report.html" > "${REP}/render.log" 2>&1
 loci_in_summary() { jq '.sections.parascopy.data.loci // [] | length' "${REP}/summary.json" 2>/dev/null || echo 0; }
 check_eq "summary.json has the 36 loci other than SMN1" "$(loci_in_summary)" 36
@@ -153,7 +153,7 @@ check "no SMN table without the SMN1 row" test ! -e "${GENOME_DIR}/${Q}/paralogs
 check "the HBA table is written" test -s "${GENOME_DIR}/${Q}/paralogs/${Q}_hba_copy_number.tsv"
 render_q() {
   rm -rf "$1"; mkdir -p "$1"
-  python3 "${REPO}/bin/render_report.py" --assets "${REPO}/assets" --sample "$Q" --sample-dir "${GENOME_DIR}/${Q}" \
+  "${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$Q" --sample-dir "${GENOME_DIR}/${Q}" \
     --json "$1/summary.json" -o "$1/report.html" > "$1/render.log" 2>&1
 }
 render_q "${CASE_TMP}/report_nosmn"

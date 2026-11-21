@@ -2,14 +2,16 @@
 # 24-html-report.sh — Generate a self-contained HTML report of all pipeline results
 # Usage: ./scripts/24-html-report.sh <sample_name>
 #
-# Reads every step's output once into ${SAMPLE}/summary.json (og summary
-# collect, run by bin/render_report.py) and renders the HTML report from it.
-# generate-report.sh renders the text report from the same summary when
-# nothing has changed since, so the two reports show the same values. A result from an
-# earlier run whose step was skipped or failed in the latest run-all.sh run is
-# marked stale with its date. No internet connection is needed to view it.
-# ${SAMPLE}_search_index.json lists every gene and rsID the results mention
-# (bin/results_index.py), for the report's closing list and the live search.
+# og report render reads every step's output once into ${SAMPLE}/summary.json
+# (og summary collect) and renders the HTML report from it. generate-report.sh
+# renders the text report from the same summary when nothing has changed
+# since, so the two reports show the same values. A result from an earlier
+# run whose step was skipped or failed in the latest run-all.sh run is marked
+# stale with its date. A section og cannot write says so in its place, and
+# the rest of the report is still written. No internet connection is needed
+# to view it. ${SAMPLE}_search_index.json lists every gene and rsID the
+# results mention (og report index), for the report's closing list and the
+# live search.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -41,8 +43,9 @@ fi
 echo "Reading pipeline outputs and writing the report..."
 rm -f "$OUTPUT" "${SAMPLE_DIR}/${SAMPLE}_search_index.json" "${SAMPLE_DIR}/${SAMPLE}_charts.json"
 # assets/: the ACMG SF rules (acmg_sf.tsv) and the carrier list (carrier_genes.tsv).
+# og is the static binary, so the python image runs it.
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/render_report.py \
+  /pgp-bin/og report render \
     --assets /pgp-assets \
     --sample "$SAMPLE" \
     --sample-dir "/genome/${SAMPLE}" \

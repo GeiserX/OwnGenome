@@ -314,11 +314,16 @@ pub fn figure(spec: &Spec) -> Option<String> {
 /// `<sample>_charts.json`: the schema version, the sample, when the summary
 /// was made and the charts.
 pub fn json(s: &Summary) -> Result<Value, Malformed> {
+    json_of(s, &build(s)?)
+}
+
+/// The same file around charts already built.
+pub fn json_of(s: &Summary, specs: &[Spec]) -> Result<Value, Malformed> {
     let mut m = IndexMap::new();
     m.insert("schema_version".into(), Value::Int(SCHEMA_VERSION));
     m.insert("sample".into(), s.need("sample")?.clone());
     m.insert("generated_utc".into(), s.need("generated_utc")?.clone());
-    let charts = build(s)?.iter().map(Spec::to_value).collect();
+    let charts = specs.iter().map(Spec::to_value).collect();
     m.insert("charts".into(), Value::Array(charts));
     Ok(Value::Object(m))
 }
