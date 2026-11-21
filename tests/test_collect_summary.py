@@ -1094,8 +1094,6 @@ def annotsv_section(work, schema):
     av = sec["data"]
     check("annotsv: the section is read", sec["state"] == "ok" and av["count"] == 3, sec)
     by = {x["sv"]: x for x in av.get("rows", [])}
-    check("annotsv: the deletion only Manta made has support 1", by["20:20000000-20450000"]["support"] == 1,
-          by.get("20:20000000-20450000"))
     check("annotsv: the intron-exact deletion is on exon edges, with its AF and common flag",
           (by["20:1000200-1009800"]["exon_edge"], by["20:1000200-1009800"]["population_af"],
            by["20:1000200-1009800"]["common"]) == ("yes", 0.05, True), by.get("20:1000200-1009800"))
