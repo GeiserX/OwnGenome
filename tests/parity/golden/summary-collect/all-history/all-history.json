@@ -13723,7 +13723,9 @@
     "ancestry": {
      "population": "EUR",
      "panel": "HGDP+1kGP",
-     "low_confidence": null
+     "low_confidence": "True",
+     "mixed": "True",
+     "second_population": "AFR"
     }
    },
    "partial": "partial: covers 1 of 22 autosomes"

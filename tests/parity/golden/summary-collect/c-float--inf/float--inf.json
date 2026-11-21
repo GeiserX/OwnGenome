@@ -519,7 +519,9 @@
     "ancestry": {
      "population": "EUR",
      "panel": "HGDP+1kGP",
-     "low_confidence": null
+     "low_confidence": "True",
+     "mixed": "True",
+     "second_population": "AFR"
     }
    }
   },
