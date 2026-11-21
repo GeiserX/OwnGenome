@@ -9,13 +9,16 @@
 #
 # Scatter: FreeBayes runs on one thread, so the genome is split into units
 # (chr1-22, X, Y and M one each, the other contigs together; or each region of
-# INTERVALS="chr20 chr22") and SCATTER_JOBS of them (default THREADS/2) run at
+# INTERVALS="chr20 chr22") and SCATTER_JOBS of them (default THREADS/2, fewer
+# when their 8 GB each do not fit in the container engine's memory) run at
 # once, 1 CPU and 8 GB each. Their records are joined into the raw VCF and
-# sorted as before. SCATTER=false runs one process over everything.
+# sorted as before. SCATTER=false runs one process over everything. A region
+# off its contig, or two regions that overlap, stop the step before FreeBayes
+# starts.
 #
-# Rerun: a finished VCF called with the same INTERVALS, SCATTER, BAM,
-# reference and image is kept (run-all.sh runs this step on every invocation with
-# EXTRA_CALLERS=freebayes); delete it to call again.
+# Rerun: a finished VCF called with the same INTERVALS, SCATTER, BAM (the
+# same file content), reference and image is kept (run-all.sh runs this step
+# on every invocation with EXTRA_CALLERS=freebayes); delete it to call again.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -49,21 +52,25 @@ done
 mkdir -p "$OUTPUT_DIR"
 
 # A finished VCF is reused only when it was called the way this run would
-# call it: RUN_FILE, written last, holds INTERVALS, SCATTER, the BAM (path,
-# size and modification time, so a realigned BAM is called again), the
-# reference and the image. A subset VCF never stands in for a whole-genome
-# request, and SCATTER=false after a scattered run calls again in one process.
+# call it: RUN_FILE, written last, holds INTERVALS, SCATTER, the BAM's path,
+# the reference and the image on its first line, then the BAM's input_stamp
+# (size, modification time and the sha256 of its first and last MiB), so a
+# realigned or replaced BAM is called again even under the same name, size
+# and time. A subset VCF never stands in for a whole-genome request, and
+# SCATTER=false after a scattered run calls again in one process.
 OUT="${OUTPUT_DIR}/${SAMPLE}.vcf.gz"
 RUN_FILE="${OUTPUT_DIR}/${SAMPLE}.run"
-BAM_ID=$(stat -c '%s %Y' "$BAM" 2>/dev/null || stat -f '%z %m' "$BAM")
-RUN_KEY="INTERVALS=${INTERVALS} scatter=${SCATTER:-true} bam=${BAM} bam_size_mtime=${BAM_ID} reference=${REF_FASTA} image=${FREEBAYES_IMAGE}"
+RUN_DESC="INTERVALS=${INTERVALS} scatter=${SCATTER:-true} bam=${BAM} reference=${REF_FASTA} image=${FREEBAYES_IMAGE}"
+BAM_STAMP=$(input_stamp "$BAM")
+RUN_KEY="${RUN_DESC}
+${BAM_STAMP}"
 if have_output "$OUT" "${OUT}.tbi" && [ -f "$RUN_FILE" ] && [ "$(cat "$RUN_FILE")" = "$RUN_KEY" ]; then
-  echo "Output already exists: ${OUT} (${RUN_KEY})"
+  echo "Output already exists: ${OUT} (${RUN_DESC}, the same BAM)"
   echo "Skipping. Delete the file to re-run."
   exit 0
 fi
 if [ -e "$OUT" ]; then
-  echo "Calling again: ${OUT} is unfinished or was not called with ${RUN_KEY}."
+  echo "Calling again: ${OUT} is unfinished or was not called with ${RUN_DESC} on this BAM."
 fi
 rm -f "$RUN_FILE"
 
@@ -71,7 +78,7 @@ rm -f "$RUN_FILE"
 UNITS_DIR="${OUTPUT_DIR}/scatter"
 mapfile -t UNITS < <(scatter_beds "$UNITS_DIR" "$INTERVALS")
 [ "${#UNITS[@]}" -gt 0 ] || { echo "ERROR: no calling units (INTERVALS='${INTERVALS}')" >&2; exit 1; }
-SCATTER_JOBS=${SCATTER_JOBS:-$(( THREADS / 2 > 1 ? THREADS / 2 : 1 ))}
+SCATTER_JOBS=$(scatter_jobs 8)
 [ "${#UNITS[@]}" -gt 1 ] || SCATTER_JOBS=1
 echo "Running FreeBayes: ${#UNITS[@]} unit(s), ${SCATTER_JOBS} at a time (this may take several hours for 30X WGS)..."
 

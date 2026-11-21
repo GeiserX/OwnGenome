@@ -43,6 +43,8 @@ INTERVALS=chr22 ./scripts/03d-octopus.sh <sample_name>
 | File | Location | Description |
 |---|---|---|
 | VCF | `vcf_octopus/<sample>.vcf.gz` | Germline variant calls |
+| Index | `vcf_octopus/<sample>.vcf.gz.tbi` | Tabix index; the step writes it with bcftools when Octopus did not |
+| Run record | `vcf_octopus/<sample>.run` | How the VCF was called: `INTERVALS`, the BAM and its content stamp, the reference and the image |
 
 ## Runtime
 
@@ -56,6 +58,7 @@ Not measured here, for the whole genome or for `INTERVALS=chr22`. The [runtime t
 ## Notes
 
 - Outputs to `vcf_octopus/` to maintain isolation from the default DeepVariant calls
+- A rerun keeps a finished VCF only when its index is there and its run record matches this run: the same `INTERVALS`, reference, image and BAM (by size, modification time and the sha256 of its first and last MiB). Otherwise it calls again ([reruns](03-variant-calling.md#alternative-callers-reruns))
 - Supports `ALIGN_DIR` variable for BWA-MEM2 alignments: `ALIGN_DIR=aligned_bwamem2 ./scripts/03d-octopus.sh sample`
 - Supports `INTERVALS` for region-restricted testing: `INTERVALS=chr22 ./scripts/03d-octopus.sh sample`
 - The benchmark script (`benchmark-variants.sh`) auto-discovers `vcf_octopus/` for pairwise concordance analysis

@@ -14,28 +14,24 @@ Checks:
      a negative Content-Length 413, a body that is not JSON 400, a run named
      '../x' 400; metadata.parameters
      (an HPO list, a VCF path) and a task's script are not stored;
-  5. the event stream sends a posted message within 2 s, Last-Event-ID
-     resumes after the id given, what it sends equals messages(), and an open
-     stream ends at logout;
-  6. state.json's step states are run_state's for the same files; a run is
-     finished only while pgp_run_finished is its newest message; ClinVar's
-     headline is never 'ok' and carries the report's caveat;
-  7. every browser response carries the Content-Security-Policy (the scan of
-     assets/live/ for outside URLs, inline scripts, on* attributes and eval
-     is cargo test -p og-browser, tests/live_assets.rs);
-  8. a plugin (tests/fixtures/live/plugins) adds a flag, a route, a run file
+  5. an open event stream ends at logout;
+  6. a plugin (tests/fixtures/live/plugins) adds a flag, a route, a run file
      and a state hook, all behind the session; the page gets one script tag
      per file in assets/live/plugins;
-  9. run files: a file the report links to is served, an unlinked one and a
-     symlink out of the root are 404;
- 10. in a headless Chrome (skipped without Chrome, except in CI): the login
-     form, the step map, a box that repaints after a posted message, and no
-     policy violation (the replay mode is cargo test -p og-browser,
-     tests/live_replay.rs);
- 11. with --tls-cert, a client that connects and sends nothing does not hold
+  7. in a headless Chrome (skipped without Chrome, except in CI): a page
+     without a session goes to the login form, which leads back to the run
+     page;
+  8. with --tls-cert, a client that connects and sends nothing does not hold
      up another client's HTTPS request.
-Checks 2, 4, 5, 6, 8 and 11 are also run against a planted mistake and must fail
+Checks 2, 4, 6 and 8 are also run against a planted mistake and must fail
 there: a check that cannot fail is no check.
+
+The rest of the site is checked against og live serve by cargo test -p og-live
+(tests/port_live_server*.rs): the event stream's messages and Last-Event-ID,
+state.json and the headlines, the policy on every answer, the run files, the
+map, the re-check plugin and the step map in Chrome. The scan of assets/live/
+is cargo test -p og-browser (tests/live_assets.rs), the replay mode
+tests/live_replay.rs.
 
 Run: python3 tests/test_owngenome_live.py
 """
@@ -65,7 +61,6 @@ ASSETS = os.path.join(REPO, "assets", "live")
 RUN = "DEMO-001"
 PASSWORD = "synthetic test password 7"
 FAILS = []
-RESPONSES = []  # (path, headers) of every browser response
 
 
 def check(desc, ok, detail=""):
@@ -79,7 +74,7 @@ def control(desc, still_passes):
     check(f"control: {desc}", not still_passes, "the check passed on the planted mistake")
 
 
-def request(port, method, path, body=None, headers=None, record=True):
+def request(port, method, path, body=None, headers=None):
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     h = {"Host": f"127.0.0.1:{port}"}
     h.update(headers or {})
@@ -88,8 +83,6 @@ def request(port, method, path, body=None, headers=None, record=True):
     data = r.read()
     hdr = {k.lower(): v for k, v in r.getheaders()}
     c.close()
-    if record:
-        RESPONSES.append((path, hdr))
     return r.status, hdr, data
 
 
@@ -152,7 +145,7 @@ def login(port, password=PASSWORD):
 
 def post(port, run, ev):
     body = ev if isinstance(ev, (bytes, str)) else json.dumps(ev)
-    return request(port, "POST", f"/ingest/{run}", body, {"Content-Type": "application/json"}, record=False)
+    return request(port, "POST", f"/ingest/{run}", body, {"Content-Type": "application/json"})
 
 
 class Stream:
@@ -382,7 +375,7 @@ class Chrome:
             self.p.kill()
 
 
-def browser_checks(port, work, live):
+def browser_checks(port, work):
     chrome = find_chrome()
     if not chrome:
         ci = os.environ.get("CI") == "true"
@@ -402,53 +395,6 @@ def browser_checks(port, work, live):
         ok = b.wait(f"location.pathname === '/runs/{RUN}/' && document.documentElement.dataset.pgpStatus === 'ready'")
         check("browser: the login form leads back to the run page, which loads", ok,
               b.eval("location.href + ' ' + document.documentElement.outerHTML.slice(0, 600)"))
-        n = b.eval("document.querySelectorAll('#map g.box').length")
-        check("browser: the step map draws one box per step shown", isinstance(n, int) and n >= 4, n)
-        check("browser: a finished step is painted done",
-              b.eval("document.querySelector('g.box[data-step=\"06\"]').dataset.state") == "done",
-              b.eval("document.querySelector('g.box[data-step=\"06\"]') && document.querySelector('g.box[data-step=\"06\"]').dataset.state"))
-        before = b.eval("document.querySelector('g.box[data-step=\"07\"]').dataset.state")
-        post(INGEST_PORT, RUN, {"event": "process_started", "utcTime": "2026-01-02T10:07:00Z",
-                                "trace": {"task_id": 20, "name": f"PGX:PHARMCAT_PREPROCESS ({RUN})",
-                                          "process": "PGX:PHARMCAT_PREPROCESS", "tag": RUN, "status": "RUNNING",
-                                          "start": 1767348420000}})
-        after = b.wait("document.querySelector('g.box[data-step=\"07\"]').dataset.state === 'running' && 'running'", 10)
-        check("browser: a box repaints after a posted message (07 waiting -> running)",
-              before == "waiting" and after == "running", (before, after))
-
-        class Refuse:  # every stream slot taken: the stream answers 503
-            def acquire(self, blocking=True):
-                return False
-
-            def release(self):
-                pass
-        real_streams, live.streams = live.streams, Refuse()
-        try:
-            b.go(f"{base}/runs/{RUN}/")
-            refused = b.wait("document.documentElement.dataset.pgpStatus === 'offline' || "
-                             "(document.documentElement.dataset.pgpStreams === '1' && "
-                             "document.documentElement.dataset.pgpStatus === 'ready' && window.PGP.state && 'loaded')", 10)
-            time.sleep(1)
-        finally:
-            live.streams = real_streams
-        reopened = b.wait("Number(document.documentElement.dataset.pgpStreams) >= 2 && 'reopened'", 15)
-        n0 = b.eval("window.PGP.state.events")
-        time.sleep(1)
-        post(INGEST_PORT, RUN, {"event": "pgp_step", "step": "06", "state": "ok", "utcTime": "2026-01-02T10:07:30Z"})
-        n1 = b.wait(f"window.PGP.state && window.PGP.state.events > {n0} && window.PGP.state.events", 10)
-        check("browser: a stream refused with 503 is opened again, and its messages update the page",
-              refused and reopened == "reopened" and n1, (refused, reopened, n0, n1))
-        b.eval("document.querySelector('g.box[data-step=\"11\"]').dispatchEvent(new MouseEvent('click', {bubbles: true})); true")
-        detail = b.wait("document.getElementById('detail').textContent.indexOf('Step 11') >= 0 && "
-                        "document.getElementById('detail').textContent")
-        check("browser: a click on a box opens its detail with its tasks", detail and "ROH" in detail, detail)
-        b.eval("document.querySelector('g.box[data-step=\"06\"]').dispatchEvent(new MouseEvent('click', {bubbles: true})); true")
-        links = b.wait("document.getElementById('detail').textContent.indexOf('Step 06') >= 0 && "
-                       "Array.from(document.querySelectorAll('#detail a')).map(function (a) { return a.getAttribute('href'); }).join(' ')")
-        check("browser: the detail links each section to its report anchor",
-              links and "report.html#clinvar" in links and "report.html#carrier-list" in links, links)
-        blocked = b.eval("document.documentElement.dataset.pgpBlocked || ''")
-        check("browser: the policy blocked nothing on the live page", not blocked, blocked)
     finally:
         b.close()
 
@@ -642,7 +588,7 @@ def main():
         code2, _, _ = post(INGEST_PORT, "-x", {"event": "started"})
         check("a run named '../x' or '-x' is 400", code == 400 and code2 == 400, (code, code2))
         code, _, _ = request(INGEST_PORT, "POST", f"/ingest/{RUN}", '{"event":"started"}',
-                             {"Origin": "https://evil.example.net"}, record=False)
+                             {"Origin": "https://evil.example.net"})
         check("a browser's post (an Origin header) is 403", code == 403, code)
         stored = open(live.store.path(RUN)).read()
 
@@ -653,126 +599,25 @@ def main():
         control("the raw message stored", not stored_leaks(open(os.path.join(FIX, "events.jsonl")).read()))
 
         # 5. the event stream
-        steps = run_state.read_steps()
         n0 = len(live.store.events(RUN))
-        st = Stream(port, cookie)
-        got_all = st.wait(n0, 5)
-        t0 = time.time()
-        post(INGEST_PORT, RUN, {"event": "process_completed", "utcTime": "2026-01-02T10:06:30Z",
-                                "trace": {"task_id": 9, "name": f"CLINICAL:CLINVAR_SCREEN ({RUN})",
-                                          "process": "CLINICAL:CLINVAR_SCREEN", "tag": RUN, "status": "COMPLETED",
-                                          "exit": 0, "start": 1767348360000, "complete": 1767348390000}})
-        live_ok = st.wait(n0 + 1, 2)
-        check("the stream sends a posted process_completed within 2 s",
-              got_all and live_ok and st.items[-1][1].get("event") == "process_completed" and st.items[-1][1].get("step") == "06",
-              (got_all, live_ok, time.time() - t0, st.items[-1:]))
-        want = owngenome_live.messages(live.store.events(RUN), steps)
-        check("what the stream sent equals messages()", st.items == want, (st.items[:3], want[:3]))
-        st.close()
-        st2 = Stream(port, cookie, last=n0 - 1)
-        st2.wait(2, 5)
-        check("Last-Event-ID resumes after the id given", [i for i, _ in st2.items] == [n0, n0 + 1],
-              [i for i, _ in st2.items])
-        st2.close()
         _, _, gone = login(port)
         st3 = Stream(port, gone)
-        st3.wait(n0 + 1, 5)
+        st3.wait(n0, 5)
         k = len(st3.items)
         live.end_session(__import__("hashlib").sha256(gone.encode()).hexdigest())
         post(INGEST_PORT, RUN, {"event": "pgp_step", "step": "06", "state": "ok", "utcTime": "2026-01-02T10:06:40Z"})
         end = time.time() + 3
         while time.time() < end and not st3.closed:
             time.sleep(0.02)
-        check("an open stream ends when its session does, and sends nothing after", st3.closed and len(st3.items) == k,
-              (st3.closed, len(st3.items), k))
+        check("an open stream ends when its session does, and sends nothing after",
+              k == n0 and st3.closed and len(st3.items) == k, (st3.closed, len(st3.items), k, n0))
         st3.close()
-        check("no message carries a path or a tag",
-              not any(k in json.dumps(want) for k in ("/data/", "workDir", "outdir", '"tag"')), json.dumps(want)[:300])
 
-        # 6. state.json
+        # 6. plugins
         _, _, body = request(port, "GET", f"/runs/{RUN}/state.json", headers=auth)
         s = json.loads(body)
-        ref = run_state.collect(RUN, os.path.join(root, RUN), events_path=live.store.path(RUN))
-        check("state.json's step states are run_state's",
-              [(x["step"], x["state"]) for x in s["steps"]] == [(x["step"], x["state"]) for x in ref["steps"]],
-              [(x["step"], x["state"]) for x in s["steps"] if x["state"] != "not planned"])
-        mine = {x["step"]: x["state"] for x in s["steps"]}
-        check("the fixture's steps: 06 done, 07 waiting, 11 done, 12 skipped",
-              (mine["06"], mine["07"], mine["11"], mine["12"]) == ("done", "waiting", "done", "skipped"), mine)
-        check("state.json names each section's report anchor (ClinVar: clinvar, the carrier list: carrier-list)",
-              s.get("anchors", {}).get("clinvar") == "clinvar" and s["anchors"].get("carrier") == "carrier-list"
-              and s["anchors"].get("roh") == "roh", s.get("anchors"))
-        done = [{"event": "started"}, {"event": "pgp_run_finished", "exit": 0}]
-        rerun = done + [{"event": "pgp_step", "step": "14", "state": "started"}]
-        check("a run is finished while pgp_run_finished is its newest message, not once a later run posts",
-              owngenome_live.run_finished(done) and not owngenome_live.run_finished(rerun) and not owngenome_live.run_finished([]))
-        control("any pgp_run_finished in the file counts", not any(e.get("event") == "pgp_run_finished" for e in rerun))
-        # A second run of a sample: events.jsonl still holds the first run, which finished with step 11 done.
-        again = "DEMO-RERUN"
-        ad = os.path.join(work, "rerun", again)
-        os.makedirs(os.path.join(ad, "logs"))
-        with open(os.path.join(ad, "logs", "run_status.tsv"), "w") as f:
-            f.write(f"meta\tstarted_epoch\t{int(time.time())}\nstep\t11\tplanned\n")
-        roh = {"task_id": 8, "name": f"CLINICAL:ROH ({again})", "process": "CLINICAL:ROH", "tag": again,
-               "status": "COMPLETED", "exit": 0, "submit": 1767348300000, "start": 1767348302000,
-               "complete": 1767348340000}
-        old = [{"event": "started"}, {"event": "process_completed", "trace": roh}, {"event": "completed"},
-               {"event": "pgp_run_finished", "exit": 0}, {"event": "started"}]
-        live.store.runs[again] = list(old)
-        rs = live.state({"name": again, "dir": ad})
-        r11 = next(x["state"] for x in rs["steps"] if x["step"] == "11")
-        check("a rerun's state.json is the new run's: running, step 11 not done, every message still counted",
-              rs["run"]["state"] == "running" and r11 != "done" and rs["events"] == len(old), (rs["run"], r11))
-        evf = os.path.join(work, "rerun", "events.jsonl")
-        with open(evf, "w") as f:
-            f.writelines(json.dumps(e) + "\n" for e in old)
-        whole = run_state.collect(again, ad, events_path=evf)
-        control("state built from the whole events file",
-                whole["run"]["state"] == "running"
-                and next(x["state"] for x in whole["steps"] if x["step"] == "11") != "done")
-        check("a bare nextflow rerun (no pgp_run_finished) starts at its own 'started'",
-              owngenome_live.current_run([{"event": "started"}, {"event": "completed"}, {"event": "started"},
-                                    {"event": "process_started"}]) == [{"event": "started"}, {"event": "process_started"}])
-        check("a finished run keeps its own messages while pgp_run_finished is the newest",
-              owngenome_live.current_run(old[:4]) == old[:4])
-        cp = {"plp": [{"gene": "GENEA"}], "call_floor_dp": 10, "low_confidence": 0}
-        tc = [owngenome_live.headline("cpsr", {"state": "ok", "title": "CPSR", "data": dict(cp, plp=p)}, {"databases": {}})
-              for p in ([], cp["plp"])]
-        tm = [owngenome_live.headline("mito", {"state": "ok", "title": "Mito",
-                                         "data": {"annotation": {"source": "VEP", "clinvar_plp": n}}}) for n in (0, 2)]
-        check("CPSR and mito headlines: attention with P/LP rows, info with none, the report's own lines",
-              [t[1] for t in tc + tm] == ["info", "attention", "info", "attention"]
-              and "Pathogenic/Likely Pathogenic rows: 1" in tc[1][0]
-              and tm[1][0] == "ClinVar pathogenic or likely pathogenic: 2", tc + tm)
-        table = owngenome_live.HEADLINES
-        owngenome_live.HEADLINES = {k: v for k, v in table.items() if k not in ("cpsr", "mito")}
-        try:
-            planted = [owngenome_live.headline(k, {"state": "ok", "title": k, "data": data}, {"databases": {}})[1]
-                       for k, data in (("cpsr", cp), ("mito", {"annotation": {"source": "VEP", "clinvar_plp": 2}}))]
-        finally:
-            owngenome_live.HEADLINES = table
-        control("the headline table without cpsr and mito", planted == ["attention", "attention"])
         check("a state hook's answer is under plugins", s["plugins"].get("fixture", {}).get("steps") == len(s["steps"]),
               s.get("plugins"))
-        import render_report
-        tones = [owngenome_live.headline("clinvar", {"state": "ok", "title": "ClinVar screen", "data": {"count": c, "hits": []}})
-                 for c in (0, 3)]
-        check("the ClinVar headline is never 'ok' and carries the report's caveat word for word",
-              all(t[1] in ("info", "attention") for t in tones) and tones[1][1] == "attention"
-              and all(render_report.CLINVAR_FREQ_NOTE in t[0] for t in tones), tones)
-        check("a section with no file has no headline", owngenome_live.headline("roh", {"state": "missing"}) is None)
-
-        # 7. the policy
-        code, _, _ = request(port, "GET", "/login")
-        code, _, _ = request(port, "GET", "/assets/live.css")
-        code, _, _ = request(port, "GET", "/nothing/here", headers=auth)
-        bad = [p for p, hdr in RESPONSES if "default-src 'none'" not in hdr.get("content-security-policy", "")
-               or "frame-ancestors 'none'" not in hdr.get("content-security-policy", "")
-               or hdr.get("x-frame-options") != "DENY"
-               or hdr.get("x-content-type-options") != "nosniff" or hdr.get("cache-control") != "no-store"]
-        check(f"every browser response ({len(RESPONSES)}) carries the policy, nosniff and no-store", not bad, bad)
-
-        # 8. plugins
         code, _, body = request(port, "GET", f"/fixture/{RUN}", headers=auth)
         code2, _, _ = request(port, "GET", f"/fixture/{RUN}")
         check("a plugin route answers with its own flag behind the session, 401 without",
@@ -799,43 +644,10 @@ def main():
         check("a plugin script is served", code == 200, code)
         live.cfg.assets = ASSETS
 
-        # 9. run files
-        code, hd, body = request(port, "GET", f"/runs/{RUN}/report.html", headers=auth)
-        check("report.html is the run's report, sandboxed", code == 200 and b"clinvar/hits.tsv" in body
-              and "sandbox" in hd.get("content-security-policy", ""), (code, hd))
-        code, _, body = request(port, "GET", f"/runs/{RUN}/clinvar/hits.tsv", headers=auth)
-        check("a file the report links to is served", code == 200 and body.startswith(b"gene\t"), code)
-        c1, _, _ = request(port, "GET", f"/runs/{RUN}/clinvar/unlinked.tsv", headers=auth)
-        c2, _, _ = request(port, "GET", f"/runs/{RUN}/clinvar/escape.tsv", headers=auth)
-        c3, _, _ = request(port, "GET", f"/runs/{RUN}/logs/run_status.tsv", headers=auth)
-        c4, _, _ = request(port, "GET", f"/runs/{RUN}/..%2F..%2Foutside.txt", headers=auth)
-        check("an unlinked file, a symlink out of the root and a path out of the run are 404",
-              (c1, c2, c3, c4) == (404, 404, 404, 404), (c1, c2, c3, c4))
-        code, hd, _ = request(port, "GET", f"/runs/{RUN}/cpsr/", headers=auth)
-        page = f"/runs/{RUN}/cpsr/{RUN}.cpsr.grch38.html"
-        check("the report's cpsr/ folder link opens the CPSR HTML report in it",
-              code == 302 and hd.get("location") == page, (code, hd.get("location")))
-        code, hd, body = request(port, "GET", page, headers=auth)
-        check("the CPSR HTML report in the linked folder is served sandboxed",
-              code == 200 and b"<title>CPSR" in body
-              and hd.get("content-security-policy") == owngenome_live.RUN_HTML_CSP, (code, hd))
-        c1, _, _ = request(port, "GET", f"/runs/{RUN}/cpsr/{RUN}.cpsr.grch38.classification.tsv.gz", headers=auth)
-        c2, _, _ = request(port, "GET", f"/runs/{RUN}/twopages/", headers=auth)
-        c3, _, _ = request(port, "GET", f"/runs/{RUN}/clinvar/", headers=auth)
-        c4, _, _ = request(port, "GET", f"/runs/{RUN}/twopages/a.html", headers=auth)
-        check("a linked folder serves only its one HTML; a folder with two HTML files (itself or either file) "
-              "and an unlinked folder are 404", (c1, c2, c3, c4) == (404, 404, 404, 404), (c1, c2, c3, c4))
-        code, _, body = request(port, "GET", "/", headers=auth)
-        check("the index lists the run", code == 200 and f'/runs/{RUN}/'.encode() in body, code)
-        log = open(os.path.join(state_dir, "access.log")).read()
-        check("the access log has a row per page read, with no query string",
-              "\treport\tDEMO-001\t" in log and "\tfile\tDEMO-001\tclinvar/hits.tsv\t200" in log and "?" not in log,
-              log[-600:])
+        # 7. the browser
+        browser_checks(port, work)
 
-        # 10. the browser
-        browser_checks(port, work, live)
-
-        # 11. TLS
+        # 8. TLS
         tls_checks(root, work, pwfile)
     finally:
         stop(*servers)

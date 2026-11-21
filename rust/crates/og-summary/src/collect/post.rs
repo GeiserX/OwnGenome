@@ -21,8 +21,8 @@
 //! Each part that changes a section runs on its own: when it returns an
 //! error, only its section becomes `unreadable`, with a note naming the
 //! file, and the summary is still written. The parts read with defaults, so
-//! a row of an unexpected shape is no error; a panic is not caught, as the
-//! release binary aborts on one. The Python collector ran this pass outside
+//! a row of an unexpected shape is no error; a panic is not caught, and it
+//! ends og with an error. The Python collector ran this pass outside
 //! its per-section error handling, so one failure there lost summary.json
 //! and both reports. A previous run that cannot be read leaves `new_since`
 //! out, as before; the comparison itself has no error to hide.

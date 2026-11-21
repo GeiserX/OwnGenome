@@ -36,7 +36,7 @@ fn a_null_score_reads_not_available_in_both_reports() {
     let txt = text::report(&s).unwrap();
     let row = txt
         .lines()
-        .find(|l| l.starts_with("  Short "))
+        .find(|l| l.starts_with("  Short ") && l.ends_with("PGS1"))
         .expect("the text row");
     assert_eq!(
         row.trim_end(),

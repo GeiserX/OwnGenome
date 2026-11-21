@@ -1,12 +1,12 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    HTML_REPORT — The sample's HTML report, rendered by bin/render_report.py
+    HTML_REPORT — The sample's HTML report, rendered by og report render
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    The same code scripts/24-html-report.sh runs: og summary collect
-    (rust/crates/og-summary, run by render_report.py through bin/og) reads
-    the step outputs into summary.json (the bash step's name for it),
-    and render_report.py writes the report from it, so a number on the
-    Nextflow report is the number the bash report shows for the same file.
+    The same code scripts/24-html-report.sh runs: og report render
+    (rust/crates/og-render) collects the step outputs into summary.json
+    (og summary collect, the bash step's name for it) and writes the report
+    from it, so a number on the Nextflow report is the number the bash
+    report shows for the same file.
 
     The inputs are the outputs of the steps that ran for this sample, as one
     list (main.nf joins them, so the report waits for each). They are linked
@@ -43,7 +43,7 @@
     the list with the other assets); it is not published, because
     run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
-    (bin/results_index.py), for the live site's search, and the report's
+    (og report index), for the live site's search, and the report's
     charts to ${id}_charts.json, for the live page (docs/24-html-report.md).
 
     Equivalent to: scripts/24-html-report.sh
@@ -167,7 +167,7 @@ process HTML_REPORT {
     done
     find layout | sort
 
-    render_report.py \\
+    og report render \\
         --assets assets \\
         --sample ${id} \\
         --sample-dir "\$S" \\
