@@ -17,6 +17,12 @@
 # What the Groovy side hands the block (the run's docker.runOptions and
 # task.containerOptions) is checked on real runs by the e2e case
 # tests/e2e/prs-runopts-and-trace-1.sh.
+#
+# It also checks the docker profile itself (nextflow.config), whose
+# docker.runOptions every task gets: expanded by bash, as a task's
+# .command.run expands it, its user is the caller's $(id -u):$(id -g), as
+# with the bash steps' run_in; and the block hands it on with no word of
+# that user left. The old --user root:root must fail the first check.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -83,7 +89,7 @@ expect() {
 }
 
 expect "no outer flags: the line of before" "" "" "$FIXED"
-expect "the docker profile's --user root:root and --network none are dropped" \
+expect "a config's --user root:root and --network none are dropped" \
   "--user root:root --network none" "" "$FIXED"
 expect "a low-priority runOptions reaches pgsc_calc after -u and --network none" \
   "--user root:root --cpu-shares 256" "" "${FIXED} --cpu-shares 256"
@@ -97,6 +103,48 @@ expect "a glob is passed as it is, not expanded to the files of the task folder"
 # A quote and a backslash, escaped for the single-quoted config string.
 expect "a quote and a backslash are escaped for the config" \
   "--label 'a=b c' --env X=a\\b" "" "${FIXED} --label \\'a=b c\\' --env X=a\\\\b"
+
+# --- The docker profile: every task runs as the caller ---------------------------
+# runs_as_caller OPTIONS: OPTIONS, split and expanded by bash as a task's
+# .command.run does, give the container the caller's ids. The last -u or
+# --user wins, as in `docker run`.
+runs_as_caller() {
+  local user='' a
+  local -a w=()
+  eval "w=($1)"
+  set -- ${w[@]+"${w[@]}"}
+  while [ $# -gt 0 ]; do
+    a=$1; shift
+    case "$a" in
+      -u|--user) user=${1-}; [ $# -eq 0 ] || shift ;;
+      -u?*) user=${a#-u} ;;
+      --user=*) user=${a#--user=} ;;
+    esac
+  done
+  [ "$user" = "$(id -u):$(id -g)" ]
+}
+# The docker profile's runOptions, the one docker.runOptions line of nextflow.config.
+OPTS=$(sed -n "s/^ *docker\.runOptions *= *'\(.*\)'\$/\1/p" "${REPO}/nextflow.config")
+if [ "$(printf '%s\n' "$OPTS" | grep -c .)" -ne 1 ]; then
+  echo "FAIL: want one docker.runOptions line in nextflow.config, got: ${OPTS:-none}"
+  FAILS=$((FAILS + 1))
+elif runs_as_caller "$OPTS"; then
+  echo "ok:   the docker profile runs every task as the caller ($(id -u):$(id -g)): ${OPTS}"
+else
+  echo "FAIL: the docker profile does not run tasks as the caller ($(id -u):$(id -g)): ${OPTS}"
+  FAILS=$((FAILS + 1))
+fi
+# Controls: the profile of before, and the user flag dropped, are refused.
+for bad in "--user root:root" "-e HOME=/tmp"; do
+  if runs_as_caller "$bad"; then
+    echo "FAIL: control: '${bad}' was read as running as the caller"
+    FAILS=$((FAILS + 1))
+  else
+    echo "ok:   control: '${bad}' is refused"
+  fi
+done
+# Through the block, pgsc_calc gets the profile's other flags and none of its user.
+expect "the docker profile's own runOptions: its user is dropped, the rest kept" "$OPTS" "" "${FIXED} -e HOME=/tmp"
 
 # Control: a block that drops nothing must fail the second case, so the
 # comparison above can fail.

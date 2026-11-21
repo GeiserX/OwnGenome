@@ -8,6 +8,9 @@
 #     the sex mount), without the outer --user root:root, and Docker's create
 #     events must show pgsc_calc's own containers (its pgscatalog images)
 #     with both labels.
+#   - Nextflow, the same row stubbed under the docker profile alone: every
+#     task's docker run line, expanded by bash as its .command.run does,
+#     runs the container as the caller, as the bash steps' run_in does.
 #   - Nextflow and step 25: pgsc_calc's trace, report and timeline are
 #     published as prs/pgsc_calc/pipeline_info/execution_{trace.txt,
 #     report.html,timeline.html}, and nothing else is there. The trace has
@@ -74,9 +77,9 @@ SHEET="${CASE_TMP}/samplesheet.csv"
 rm -rf "$NF_OUT" "$WORK"
 printf 'sample,vcf,vcf_index,gvcf,gvcf_index,sex\n%s,%s,%s,%s,%s,male\n' "$P" \
   "${D}/vcf/${P}.vcf.gz" "${D}/vcf/${P}.vcf.gz.tbi" "${D}/vcf/${P}.g.vcf.gz" "${D}/vcf/${P}.g.vcf.gz.tbi" > "$SHEET"
-# The outer flags: a low-priority share and a label each way. The docker
-# profile's --user root:root and --network none are repeated, as a user's
-# config would, and must not reach pgsc_calc.
+# The outer flags: a low-priority share and a label each way. A user's
+# --user root:root and --network none, as a config could carry, must not
+# reach pgsc_calc.
 cat > "${CASE_TMP}/outer.config" <<'NFCONF'
 docker.runOptions = '--user root:root --cpu-shares 300 --label pgp.runopts=e2e'
 process.containerOptions = '--network none --label pgp.containeropts=e2e'
@@ -140,6 +143,65 @@ check_ge "positive control: the outer tasks' containers show the labels" \
 awk -F'\t' -v OFS='\t' '{$2 = ""; $3 = ""; print}' "$EVENTS" > "${CASE_TMP}/events_unlabelled.tsv"
 check "control: containers without the labels are counted as unlabelled" \
   test "$(labelled "${CASE_TMP}/events_unlabelled.tsv")" -eq 0
+
+# --- Nextflow, the docker profile alone: every task runs as the caller ----------------
+# The same row, stubbed, with no outer.config: the docker run line of each
+# task's .command.run, expanded by bash as the task does, gives the container
+# the caller's ids. Before this check's package the profile ran every task as
+# --user root:root.
+STUB_WORK="${E2E_WORK}/nf-work-prs-stub"
+rm -rf "$STUB_WORK"
+echo "+ nextflow run main.nf -profile docker -stub --tools prs (the same row, no outer config)"
+STUB_RC=0
+(
+  cd "$CASE_TMP" && nextflow run "${REPO}/main.nf" -profile docker -stub -ansi-log false \
+    -work-dir "$STUB_WORK" \
+    --input "$SHEET" \
+    --reference "${G}/reference/GRCh38_no_alt_analysis_set.fasta" \
+    --sex_check warn \
+    --tools prs \
+    --pgs_scoring "$PGS" \
+    --outdir "${CASE_TMP}/stub-out" \
+    --max_cpus 4 --max_memory 14.GB
+) > "${CASE_TMP}/stub.log" 2>&1 || STUB_RC=$?
+tail -n 5 "${CASE_TMP}/stub.log"
+check_eq "the stub run under the docker profile exits 0" "$STUB_RC" 0
+# task_user RUN: the user the docker run line of RUN (a .command.run) gives
+# its container, the last -u or --user as in docker run, after bash expands
+# the line's options as the task does; empty without a user.
+task_user() {
+  local line opts a user=''
+  local -a w=()
+  line=$(grep -m1 'docker run' "$1") || return 0
+  # shellcheck disable=SC2016  # the line's own text, not an expansion
+  opts=${line#*'-w "$NXF_TASK_WORKDIR" '}
+  opts=${opts%% --name *}
+  eval "w=($opts)"
+  set -- ${w[@]+"${w[@]}"}
+  while [ $# -gt 0 ]; do
+    a=$1; shift
+    case "$a" in
+      -u|--user) user=${1-}; [ $# -eq 0 ] || shift ;;
+      -u?*) user=${a#-u} ;;
+      --user=*) user=${a#--user=} ;;
+    esac
+  done
+  printf '%s\n' "$user"
+}
+CALLER="$(id -u):$(id -g)"
+TASKS=0 MINE=0 ONE=''
+while IFS= read -r run; do
+  grep -q 'docker run' "$run" || continue
+  TASKS=$((TASKS + 1)); ONE=${ONE:-$run}
+  u=$(task_user "$run")
+  if [ "$u" = "$CALLER" ]; then MINE=$((MINE + 1)); else echo "  not the caller: ${u:-no user} in ${run#"$STUB_WORK"/}"; fi
+done < <(find "$STUB_WORK" -name .command.run 2>/dev/null)
+echo "stub tasks in a container: ${TASKS}, run as the caller (${CALLER}): ${MINE}; first line: $(grep -m1 'docker run' "${ONE:-/dev/null}" 2>/dev/null)"
+check_ge "stub tasks that ran in a container" "$TASKS" 2
+check_eq "stub tasks whose container runs as the caller (${CALLER})" "$MINE" "$TASKS"
+sed 's/ --name / --user 0:0 --name /' "${ONE:-/dev/null}" > "${CASE_TMP}/root.command.run" 2>/dev/null
+check "control: a docker run line that ends on --user 0:0 is read as root" test "$(task_user "${CASE_TMP}/root.command.run")" = 0:0
+rm -rf "$STUB_WORK" "${CASE_TMP}/stub-out"
 
 check_info "nextflow" "${NF_OUT}/${P}/prs/pgsc_calc/pipeline_info"
 check_eq "PRS scores in the summary (one per id of assets/pgs_scores.tsv)" "$(awk 'NR > 1' "${NF_OUT}/${P}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
