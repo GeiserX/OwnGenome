@@ -923,8 +923,18 @@ fn both_reports_print_the_two_hit_line_and_the_hemizygous_genotype() {
     let (txt, html) = reports(&collect(&d));
     assert!(txt.contains("Biallelic: MUTYH"));
     assert!(html.contains("Biallelic: MUTYH"));
-    // The hit has no unchanged copy, so the summary lists it apart from the
-    // carriers (hom_or_hemizygous); the two-hit line still names it.
+    // The hit has no unchanged copy: the summary lists it apart from the
+    // carriers (hom_or_hemizygous), and both reports still print it in the
+    // carrier block, with the hemizygous note, and not as a carrier.
+    assert!(html.contains("hemizygous (called homozygous inside DEL"));
+    assert!(txt.contains("hemizygous (called homozygous inside DEL"));
+    for r in [&txt, &html] {
+        assert!(r.contains("1 finding(s), 1 with no unchanged copy"), "{r}");
+        assert!(
+            r.contains("the only copy changed, not the pattern of a carrier"),
+            "{r}"
+        );
+    }
     assert!(
         html.replace("&gt;", ">")
             .contains("chr1:45336000 G>A hemizygous")
@@ -932,6 +942,28 @@ fn both_reports_print_the_two_hit_line_and_the_hemizygous_genotype() {
     assert!(txt.contains("chr1:45336000 G>A hemizygous"));
     assert!(txt.contains("biallelic with DEL chr1:45335000-45337000"));
     assert!(html.contains("biallelic with DEL chr1:45335000-45337000"));
+}
+
+/// A homozygous P/LP row has no unchanged copy: the carrier block lists it
+/// apart from the carriers and does not count it as one.
+#[test]
+fn a_homozygous_row_is_listed_apart_from_the_carriers() {
+    let t = Dir::new("hom-apart");
+    let d = sample(&t, "hom", &[hit(SNV, "MUTYH", "1/1", None)], None);
+    let c = carrier_of(&d);
+    let lines = carrier::lines(&D::new(&c, "carrier")).unwrap();
+    assert!(
+        lines[0].contains("0 finding(s), 1 with no unchanged copy"),
+        "{lines:?}"
+    );
+    let line: Vec<&String> = lines.iter().filter(|x| x.starts_with("MUTYH (")).collect();
+    assert_eq!(line.len(), 1, "{lines:?}");
+    assert!(line[0].contains(" hom, ClinVar "), "{}", line[0]);
+    assert!(
+        line[0].ends_with(": two changed copies, not the pattern of a carrier"),
+        "{}",
+        line[0]
+    );
 }
 
 /// test_cross_engine_biallelic.py check 10.

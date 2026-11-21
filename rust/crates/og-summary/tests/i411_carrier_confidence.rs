@@ -281,6 +281,7 @@ fn a_low_confidence_call_makes_two_hits_only_possible() {
         ],
         &no_deletions(),
     );
+    assert_eq!(of(&c, "carriers", "CFTR").len(), 2, "{c:?}");
     for x in of(&c, "carriers", "CFTR") {
         assert_eq!(
             s(x, "pair"),
@@ -303,6 +304,7 @@ fn a_combined_allele_and_its_part_are_one_allele() {
         ],
         &no_deletions(),
     );
+    assert_eq!(of(&c, "carriers", "CFTR").len(), 2, "{c:?}");
     for x in of(&c, "carriers", "CFTR") {
         assert!(x.get("pair").is_none(), "{x:?}");
         assert!(x.get("phase").is_none(), "{x:?}");
