@@ -174,23 +174,30 @@ impl Rec {
         Ok((idx, g.contains('|')))
     }
 
-    /// GT as alleles (`None` for a no-call or an index that names no
-    /// allele: one past the last, or a negative one, which the Python read
-    /// from the end of the list), and whether it is phased.
+    fn allele(&self, index: i128) -> Option<&str> {
+        let index = usize::try_from(index).ok()?;
+        if index == 0 {
+            Some(&self.ref_)
+        } else {
+            self.alts.get(index - 1).map(String::as_str)
+        }
+    }
+
+    /// GT as alleles (`None` for a no-call or an index outside the allele
+    /// list), and whether it is phased.
     pub fn bases(&self) -> Result<(Vec<Option<&str>>, bool), Error> {
         let (idx, phased) = self.gt()?;
-        let n = 1 + self.alts.len() as i128;
-        let allele = |i: i128| -> Option<&str> {
-            if !(0..n).contains(&i) {
-                None
-            } else if i == 0 {
-                Some(self.ref_.as_str())
-            } else {
-                Some(self.alts[(i - 1) as usize].as_str())
-            }
-        };
-        let bases = idx.into_iter().map(|i| i.and_then(allele)).collect();
+        let bases = idx
+            .into_iter()
+            .map(|i| i.and_then(|i| self.allele(i)))
+            .collect();
         Ok((bases, phased))
+    }
+
+    /// A partial genotype counts as called if any index names an allele.
+    pub fn has_call(&self) -> Result<bool, Error> {
+        let (idx, _) = self.gt()?;
+        Ok(idx.into_iter().flatten().any(|i| self.allele(i).is_some()))
     }
 
     /// Whether GT calls a variant allele.

@@ -4,6 +4,9 @@
 //! `TT`, and a record with a negative index counted as non-reference, so a
 //! longer REF with `GT -1/-1` hid the reference block after it as if it
 //! were a called deletion. A negative index is now an unreadable genotype.
+//! An index past the last allele also names no allele, so a record whose
+//! only non-reference parts are out of range no longer hides the reference
+//! block after it either.
 
 use std::num::NonZero;
 use std::path::{Path, PathBuf};
@@ -22,8 +25,8 @@ fn input(name: &str) -> String {
 /// Exports the plain gVCF `text` over the unit site table (rs101 chr20:100
 /// A, rs102 :150 C, rs103 :160 G, rs104 :170 T, rs105 :180 A); the 23andMe
 /// calls by rsID and the summary table.
-fn run(text: &str) -> (Vec<(String, String)>, String) {
-    let dir: PathBuf = Path::new(env!("CARGO_TARGET_TMPDIR")).join("rv_gt_negative_index");
+fn run(name: &str, text: &str) -> (Vec<(String, String)>, String) {
+    let dir: PathBuf = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let gvcf = dir.join("in.g.vcf");
@@ -76,7 +79,7 @@ fn a_negative_genotype_index_is_unreadable() {
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n{}\n",
         body.join("\n")
     );
-    let (calls, tsv) = run(&text);
+    let (calls, tsv) = run("rv_gt_negative_index_consumer", &text);
     let call = |id: &str| -> &str {
         &calls
             .iter()
@@ -92,4 +95,26 @@ fn a_negative_genotype_index_is_unreadable() {
     }
     let row = "no_call: unreadable genotype\t2";
     assert!(tsv.lines().any(|l| l == row), "{row} in {tsv}");
+}
+
+#[test]
+fn a_past_the_end_index_does_not_hide_the_reference_block() {
+    let export_call = |label, gt| {
+        let text = format!(
+            "##fileformat=VCFv4.2\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
+             chr20\t168\t.\tGTTT\tG,<*>\t30\tPASS\t.\tGT:GQ\t{gt}:30\n\
+             chr20\t169\t.\tT\t<*>\t0\t.\tEND=179\tGT:GQ\t0/0:30\n"
+        );
+        let (calls, _) = run(label, &text);
+        let rsid = format!("rs{}", 104);
+        calls
+            .into_iter()
+            .find(|(id, _)| id == &rsid)
+            .unwrap_or_else(|| panic!("{rsid} in the export"))
+            .1
+    };
+
+    assert_eq!(export_call("rv_gt_past_end_consumer", "5/5"), "TT");
+    assert_eq!(export_call("rv_gt_one_alt_consumer", "1/5"), "--");
 }
