@@ -503,6 +503,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 - `og` runs natively on a Mac that hosts the live site, so the genome map works there too. `scripts/setup.sh --og` and each release now also make `og-darwin-arm64` and `og-darwin-x86_64`, and `bin/og` runs them on macOS. They are built without the new cargo feature `bam` (on by default, so the Linux builds are unchanged): the BAM tools say so and exit 2 there. `rust/og.sh check` refuses a stale macOS binary, and a release's `SHA256SUMS` lists all four.
 
+- Nextflow vcfanno now writes CADD, REVEL and AlphaMissense scores as floating-point INFO fields, matching step 30. The clinical filter can compare them with its numeric thresholds.
+
 ## Releases
 
 - 1.0.0 (not released yet): [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)
