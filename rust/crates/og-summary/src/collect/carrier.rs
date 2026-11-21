@@ -14,7 +14,9 @@
 //! heterozygous hits in one recessive gene are counted as copies, the way
 //! the secondary-findings card counts them: read-backed phase on different
 //! copies is two hits, phase unknown is possible two hits, both on one copy
-//! is one hit.
+//! is one hit. A pair that needs a low-confidence call is possible two hits
+//! (low-confidence call); a pair the confident calls prove alone keeps its
+//! word, whatever weak call sits beside it.
 
 use super::assets::carrier_genes;
 use super::clinvar::{
@@ -82,7 +84,11 @@ fn joined_keys(r: &[String]) -> Vec<VarKey> {
 /// How two or more different heterozygous hits of one gene pair up: the
 /// pair word (`two hits`, `possible two hits`, none when they sit on one
 /// copy) and why. `None` when fewer than two distinct alleles are left
-/// once a combined allele and its parts count once.
+/// once a combined allele and its parts count once. The hets are counted
+/// twice, all of them and the confident ones alone: two hits when the
+/// confident ones prove it, the low-confidence word when only all of them
+/// do, and with phase unknown, possible two hits when the confident ones
+/// still count two copies.
 fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
     // A combined allele and its parts count once, under the combined
     // allele, when its call is phased or at most one part is here; an
@@ -102,79 +108,105 @@ fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
     if kept.len() < 2 {
         return None;
     }
-    let mut n = 0;
-    let mut sets: IndexMap<&str, (BTreeSet<usize>, usize)> = IndexMap::new();
-    let mut halves: IndexMap<(&str, i128), (BTreeSet<usize>, usize)> = IndexMap::new();
-    for h in &kept {
-        if let Some((ps, hs)) = h.phased() {
-            let s = sets.entry(ps).or_default();
-            s.0.extend(hs);
-            s.1 += 1;
-        } else if let Some(i) = h.half() {
-            let s = halves.entry((h.key.0.as_str(), h.key.1)).or_default();
-            s.0.insert(i);
-            s.1 += 1;
-        } else {
-            n += 1;
+    // A kept allele is firm when a call of it is confident: its own, or a
+    // call folded into it (a part under its combined allele, or an unphased
+    // combined allele under its first part), as the secondary-findings card
+    // counts it.
+    let mut firm: HashSet<&VarKey> = kept.iter().filter(|h| !h.low).map(|h| &h.key).collect();
+    for h in hets.iter().filter(|h| !h.joined.is_empty()) {
+        if gone.contains(&h.key) {
+            if !h.low {
+                firm.extend(h.joined.iter().find(|k| present.contains(k)));
+            }
+        } else if hets.iter().any(|p| !p.low && h.joined.contains(&p.key)) {
+            firm.insert(&h.key);
         }
     }
-    let mut proof: Option<String> = None;
-    let mut cis: Option<&str> = None;
-    for (ps, (h, count)) in &sets {
-        n += h.len();
-        if h.len() >= 2 {
-            proof.get_or_insert_with(|| {
-                format!(
-                    "in trans: read-backed phase puts them on different copies (phase set {ps})"
-                )
-            });
-        } else if *count >= 2 {
-            cis.get_or_insert(ps);
+    // The copies a set of hets hits: the count, the proof of two copies if a
+    // call gives one, and the first phase set holding two or more of them on
+    // one copy (cis).
+    let count = |hs: &[&Het]| -> (usize, Option<String>, Option<String>) {
+        let mut n = 0;
+        let mut sets: IndexMap<&str, (BTreeSet<usize>, usize)> = IndexMap::new();
+        let mut halves: IndexMap<(&str, i128), (BTreeSet<usize>, usize)> = IndexMap::new();
+        for h in hs {
+            if let Some((ps, s)) = h.phased() {
+                let e = sets.entry(ps).or_default();
+                e.0.extend(s);
+                e.1 += 1;
+            } else if let Some(i) = h.half() {
+                let e = halves.entry((h.key.0.as_str(), h.key.1)).or_default();
+                e.0.insert(i);
+                e.1 += 1;
+            } else {
+                n += 1;
+            }
         }
-    }
-    for ((chrom, pos), (h, count)) in &halves {
-        if h.len() >= 2 {
-            n += 2 + count - h.len();
-            proof.get_or_insert_with(|| {
-                format!("in trans: the two alt alleles of one call at {chrom}:{pos}")
-            });
-        } else {
-            n += count;
+        let mut proof: Option<String> = None;
+        let mut cis: Option<String> = None;
+        for (ps, (h, count)) in &sets {
+            n += h.len();
+            if h.len() >= 2 {
+                proof.get_or_insert_with(|| {
+                    format!(
+                        "in trans: read-backed phase puts them on different copies (phase set {ps})"
+                    )
+                });
+            } else if *count >= 2 {
+                cis.get_or_insert_with(|| (*ps).to_owned());
+            }
         }
-    }
-    let (word, why) = match (proof, cis) {
-        (Some(p), _) => ("two hits", p),
-        (None, _) if n >= 2 => (
-            "possible two hits",
-            "phase unknown: no read-backed phase links the variants, so they may sit on the same \
-             copy (cis)"
-                .to_owned(),
-        ),
-        (None, Some(ps)) => {
-            return Some((
-                None,
-                format!(
-                    "two heterozygous variants in cis: read-backed phase puts them on the same \
-                     copy (phase set {ps}), so one copy is hit"
-                ),
-            ));
+        for ((chrom, pos), (h, count)) in &halves {
+            if h.len() >= 2 {
+                n += 2 + count - h.len();
+                proof.get_or_insert_with(|| {
+                    format!("in trans: the two alt alleles of one call at {chrom}:{pos}")
+                });
+            } else {
+                n += count;
+            }
         }
-        (None, None) => {
-            return Some((
-                None,
-                "the variants sit on one copy, so one copy is hit".to_owned(),
-            ));
-        }
+        (n, proof, cis)
     };
-    if kept.iter().any(|h| h.low) {
-        return Some((
+    let (n, proof, cis) = count(&kept);
+    let sure: Vec<&Het> = kept
+        .iter()
+        .copied()
+        .filter(|h| firm.contains(&h.key))
+        .collect();
+    let (n_firm, proof_firm, _) = count(&sure);
+    // A pair that needs a low-confidence call is only possible until the
+    // call is confirmed.
+    let low = |why: String| {
+        Some((
             Some("possible two hits (low-confidence call)".to_owned()),
             format!(
                 "a call below the call floor (low confidence) is one of them, so confirm it first; {why}"
             ),
-        ));
+        ))
+    };
+    let unknown = "phase unknown: no read-backed phase links the variants, so they may sit on the \
+                   same copy (cis)"
+        .to_owned();
+    match (proof_firm, proof, cis) {
+        (Some(f), _, _) => Some((Some("two hits".to_owned()), f)),
+        (None, Some(p), _) => low(p),
+        (None, None, _) if n >= 2 && n_firm >= 2 => {
+            Some((Some("possible two hits".to_owned()), unknown))
+        }
+        (None, None, _) if n >= 2 => low(unknown),
+        (None, None, Some(ps)) => Some((
+            None,
+            format!(
+                "two heterozygous variants in cis: read-backed phase puts them on the same copy \
+                 (phase set {ps}), so one copy is hit"
+            ),
+        )),
+        (None, None, None) => Some((
+            None,
+            "the variants sit on one copy, so one copy is hit".to_owned(),
+        )),
     }
-    Some((Some(word.to_owned()), why))
 }
 
 impl Carrier {

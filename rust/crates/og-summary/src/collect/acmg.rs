@@ -440,8 +440,8 @@ struct Cand {
 
 /// One distinct variant of a gene as the verdict counts it: its alt
 /// copies, ploidy, GT and phase set, whether it stands for a combined
-/// allele and its parts, and whether a call of it is below step 06's call
-/// floor (low confidence).
+/// allele and its parts, and the alt copies its confident calls give (`firm`:
+/// 0 when every call of it is below step 06's call floor, low confidence).
 #[derive(Debug, Clone, PartialEq)]
 struct Allele {
     copies: usize,
@@ -449,7 +449,7 @@ struct Allele {
     gt: String,
     ps: Option<String>,
     combined: bool,
-    low: bool,
+    firm: usize,
 }
 
 impl Allele {
@@ -460,7 +460,7 @@ impl Allele {
             gt: String::new(),
             ps: None,
             combined: false,
-            low: false,
+            firm: 0,
         }
     }
 
@@ -621,12 +621,23 @@ fn sf_verdicts(
         };
         out.insert(k.clone(), why);
     }
-    // The count again without the low-confidence calls: a pair that needs
-    // one of them is only possible until the call is confirmed.
+    // The count again with only the copies confident calls give: a pair
+    // that needs a low-confidence call is only possible until the call is
+    // confirmed. A small allele no confident call gives drops out; one whose
+    // confident calls give fewer copies than it counts loses its phase too,
+    // as that came from the low call. A deletion counts as it is: its pair
+    // is judged by `two_hits_with`.
     let firm: IndexMap<AKey, Allele> = kept
         .iter()
-        .filter(|(_, a)| !a.low)
-        .map(|(k, a)| (k.clone(), a.clone()))
+        .filter(|(k, a)| !matches!(k, AKey::Small(_)) || a.firm > 0)
+        .map(|(k, a)| {
+            let mut f = a.clone();
+            if matches!(k, AKey::Small(_)) && a.firm < a.copies {
+                f.copies = a.firm;
+                f.ps = None;
+            }
+            (k.clone(), f)
+        })
         .collect();
     let (n_firm, proof_firm, _) = copies_hit(&firm);
     let low = |why: String| {
@@ -638,21 +649,28 @@ fn sf_verdicts(
             ),
         )
     };
-    let pair = (counted && n >= 2).then(|| match (proof, deletion) {
-        (Some(p), _) => match proof_firm {
-            Some(f) => ("biallelic", f),
-            None => low(p),
-        },
-        (None, Some(e)) => (e.verdict.word(), format!("with {}: {}", e.deletion, e.why)),
-        (None, None) => {
-            let why = "phase unknown: no read-backed phase links the variants, so they may sit \
-                       on the same copy (cis)"
-                .to_owned();
-            if n_firm >= 2 {
-                (Verdict::PossiblyBiallelic.word(), why)
-            } else {
-                low(why)
+    let unknown = || {
+        "phase unknown: no read-backed phase links the variants, so they may sit on the same \
+         copy (cis)"
+            .to_owned()
+    };
+    // The best the evidence gives: a confident proof, then the deletion pair
+    // when it is at least possibly biallelic (`two_hits_with` already lowers
+    // a pair on a low call), then a proof that needs a low call, then the
+    // copies counted with phase unknown.
+    let pair = (counted && n >= 2).then(|| {
+        let del = deletion.map(|e| (e.verdict, format!("with {}: {}", e.deletion, e.why)));
+        match (proof_firm, proof, del) {
+            (Some(f), _, _) => ("biallelic", f),
+            (None, _, Some((v @ (Verdict::Biallelic | Verdict::PossiblyBiallelic), why))) => {
+                (v.word(), why)
             }
+            (None, Some(p), Some(_)) => low(p),
+            (None, Some(_), None) if n_firm >= 2 => (Verdict::PossiblyBiallelic.word(), unknown()),
+            (None, Some(p), None) => low(p),
+            (None, None, Some((v, why))) => (v.word(), why),
+            (None, None, None) if n_firm >= 2 => (Verdict::PossiblyBiallelic.word(), unknown()),
+            (None, None, None) => low(unknown()),
         }
     });
     let hypo: Vec<&str> = out
@@ -990,7 +1008,9 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 ps: x.ps.clone(),
                 ..Allele::of(x.copies, p)
             });
-        a.low |= is_low(x);
+        if !is_low(x) {
+            a.firm = a.firm.max(x.copies);
+        }
     }
     for x in &folded {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
@@ -1005,7 +1025,9 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             });
         a.copies = a.copies.max(x.copies);
         a.combined = true;
-        a.low |= is_low(x);
+        if !is_low(x) {
+            a.firm = a.firm.max(x.copies);
+        }
     }
     for x in &svs {
         alleles
