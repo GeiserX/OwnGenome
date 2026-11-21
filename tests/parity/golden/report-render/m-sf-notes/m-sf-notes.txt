@@ -72,8 +72,8 @@
     MUTYH    chr1:45332000 G>A  het  stop_gained
     MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant
     MSH2     chr2:47414000 A>AT  het  frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
-    MSH2     DEL chr2:47386000-47388000  .  AnnotSV class 4, single caller (Delly); through EPCAM exons 8 and 9, the 3' end (ENST00000263735); A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
-    BRCA1    DUP chr17:43000000-43100000  .  AnnotSV class 4, single caller (CNVpytor)
+    MSH2     DEL chr2:47386000-47388000  .  AnnotSV class 4, caller support not known (no step 22 consensus); through EPCAM exons 8 and 9, the 3' end (ENST00000263735); A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
+    BRCA1    DUP chr17:43000000-43100000  .  AnnotSV class 4, caller support not known (no step 22 consensus)
     HFE chr6:26092913 G>A het (ClinVar): not reported, HFE is reported only for: HFE p.C282Y homozygotes only
     BTD chr3:15645186 G>C het (ClinVar): not reported, one heterozygous variant; BTD is reported with P and LP (2 variants)
     HFE chr6:26093000 C>T hom (HIGH impact): not reported, HFE is reported only for: HFE p.C282Y homozygotes only
@@ -135,16 +135,16 @@
 
 ## Structural Variants, Class 4 and 5 (AnnotSV)
 ---
-  Class 4-5 SVs: 6 (single caller: 5; deletions on exon edges: 1; common: 1)
+  Class 4-5 SVs: 6 (single caller: 0; deletions on exon edges: 1; common: 1)
   Moved to class 3 by step 05's rules, not counted above: 1
-    DEL  1:45338000-45340000  class 5  MUTYH  support: 2 callers (manta, delly)
+    DEL  1:45338000-45340000  class 5  MUTYH  support: not known (no step 22 consensus)
          on exon edges: 
-    DEL  chr2:47386000-47388000  class 4  EPCAM  support: single caller (Delly)
-    DUP  17:43000000-43100000  class 4  BRCA1, NBR2  support: single caller (CNVpytor)
+    DEL  chr2:47386000-47388000  class 4  EPCAM  support: not known (no step 22 consensus)
+    DUP  17:43000000-43100000  class 4  BRCA1, NBR2  support: not known (no step 22 consensus)
          benign-set AF 0.001 (gnomAD)
-    DEL  13:20180000-20200000  class 5  GJB2, NOTAGENE  support: single caller (Manta)
-    DEL  13:20180000-20200000  class 4  GJB2, XYZ1  support: single caller (Manta)
-    DEL  3:15600000-15700000  class 5  BTD  support: single caller (Manta)
+    DEL  13:20180000-20200000  class 5  GJB2, NOTAGENE  support: not known (no step 22 consensus)
+    DEL  13:20180000-20200000  class 4  GJB2, XYZ1  support: not known (no step 22 consensus)
+    DEL  3:15600000-15700000  class 5  BTD  support: not known (no step 22 consensus)
          benign-set AF 0.2 (gnomAD), common
   Moved to class 3 by step 05's rules (from AnnotSV's class, with the reason):
     DEL 3:15600000-15700000  BTD  AnnotSV class 5 -> 3  (rule not named: no detail)

@@ -186,13 +186,13 @@
 
 ## Structural Variants, Class 4 and 5 (AnnotSV)
 ---
-  Class 4-5 SVs: 3 (single caller: 1; deletions on exon edges: 1; common: 1)
+  Class 4-5 SVs: 3 (single caller: 0; deletions on exon edges: 1; common: 1)
   Moved to class 3 by step 05's rules, not counted above: 1
-    DEL  1:1100-5100  class 5  GENE1, GENE2  support: 2 callers (manta, delly)
+    DEL  1:1100-5100  class 5  GENE1, GENE2  support: not known (no step 22 consensus)
          on exon edges: exon 2
          benign-set AF 0.001 (gnomAD)
-    DUP  2:150-880  class 4  GENE3  support: 3 callers (manta, delly, tiddit, caller 4)
-    DEL  9:1-100  class 4  G9  support: single caller (tiddit)
+    DUP  2:150-880  class 4  GENE3  support: not known (no step 22 consensus)
+    DEL  9:1-100  class 4  G9  support: not known (no step 22 consensus)
          benign-set AF 0.2 (gnomAD), common
   Moved to class 3 by step 05's rules (from AnnotSV's class, with the reason):
     INV 7:1-100  no gene  AnnotSV class 4 -> 3  (mhc: the MHC)
@@ -570,7 +570,7 @@
   CAD                                 0.5 (100/120 variants matched) PGS000018  percentile 75 (EUR)  effect HR 1.5 (EUR)
   T2D                                 0.1 (10/20 variants matched) PGS000014
   Short                               not available (not available/not available variants matched) PGS1
-  Percentile: where the score falls among the EUR samples of the HGDP+1kGP reference panel, the group whose genetic ancestry is most similar to this sample's (pgsc_calc). A percentile is not a risk. Effect: the odds ratio (OR) or hazard ratio (HR) a published evaluation of the score measured in people of the same reference group, in that evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that group, not your own risk, and is shown only for a group the score was evaluated in. Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.
+  Percentile: where the score falls among the EUR samples of the HGDP+1kGP reference panel, the group whose genetic ancestry is most similar to this sample's (pgsc_calc). The ancestry match is low-confidence: read the percentile with care. A percentile is not a risk. Effect: the odds ratio (OR) or hazard ratio (HR) a published evaluation of the score measured in people of the same reference group, in that evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that group, not your own risk, and is shown only for a group the score was evaluated in. Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.
 
 ## Blood Groups (predicted from the genome)
 ---
