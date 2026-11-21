@@ -241,14 +241,38 @@ pub fn prs(c: &Ctx<'_>) -> Out {
             }
         }
         let g = |k: &str| kv.get(k).cloned().unwrap_or_else(|| s(""));
-        out.put(
-            "ancestry",
-            Obj::new()
-                .set("population", g("population"))
-                .set("panel", g("reference_panel"))
-                .set("low_confidence", g("population_low_confidence"))
-                .val(),
-        );
+        // A sample whose two most probable groups each reach 0.2 sits
+        // between them, so its match to one group is low-confidence too,
+        // though pgsc_calc flags only a top probability under 0.5. A table
+        // without two probabilities says nothing either way.
+        let population = match kv.get("population") {
+            Some(Value::Str(p)) => p.as_str(),
+            _ => "",
+        };
+        let probs = crate::prs::probabilities(kv.iter().filter_map(|(k, v)| match v {
+            Value::Str(v) => Some((k.as_str(), v.as_str())),
+            _ => None,
+        }));
+        let mixed = crate::prs::mixed(&probs, population);
+        let between = matches!(mixed, Some((true, _)));
+        let mut anc = Obj::new()
+            .set("population", g("population"))
+            .set("panel", g("reference_panel"))
+            .set(
+                "low_confidence",
+                if between {
+                    s("True")
+                } else {
+                    g("population_low_confidence")
+                },
+            );
+        if let Some((between, second)) = mixed {
+            let flag = if between { "True" } else { "False" };
+            anc = anc
+                .set("mixed", s(flag))
+                .set("second_population", s(&second));
+        }
+        out.put("ancestry", anc.val());
     }
     Ok(Some((p, out.val())))
 }

@@ -40,12 +40,13 @@ fn formatted(
     );
 }
 
-/// A pgsc_calc --outdir for sampleset `sample`: PGS000001 matched 2 of 3,
-/// PGS000002 dropped. The reference's rows come after the target's.
+/// A pgsc_calc --outdir for sampleset `sample`: PGS000001 matched 3 of 4,
+/// meeting pgsc_calc's default 75% minimum. PGS000002 was dropped.
+/// The reference's rows come after the target's.
 fn results(d: &Dir, dir: &str, panel: bool) {
     d.put(
         &format!("{dir}/sample/match/sample_summary.csv"),
-        "dataset,accession,match_status,count\nsample,PGS000001,matched,2\n\
+        "dataset,accession,match_status,count\nsample,PGS000001,matched,3\n\
          sample,PGS000001,unmatched,1\nsample,PGS000002,unmatched,5\n",
     );
     if !panel {
@@ -76,7 +77,7 @@ fn two_scores(d: &Dir) -> String {
         "pgs",
         "PGS000001",
         "Coronary artery disease",
-        3,
+        4,
         "1\tleft out",
         "",
         "PPM000591;PPM000594\tEUR;AFR\tHR 1.53;HR 1.27",
@@ -134,9 +135,9 @@ fn no_panel_raw_sums() {
             "Coronary artery disease",
             "PGS000001",
             "62",
-            "2",
             "3",
-            "66.7",
+            "4",
+            "75.0",
             "NA",
             "NA",
             "1 left out",
@@ -170,7 +171,7 @@ fn no_panel_raw_sums() {
     );
     assert_eq!(
         stdout,
-        "  Coronary artery disease (PGS000001): sum 62, 2 of 3 variants matched (66.7%)\n  \
+        "  Coronary artery disease (PGS000001): sum 62, 3 of 4 variants matched (75.0%)\n  \
          PGS000002 (PGS000002): sum NA, 0 of 5 variants matched (0.0%)\n"
     );
 }
@@ -196,7 +197,7 @@ fn panel_percentile_group_effect_and_ancestry() {
     );
     assert_eq!(code, 0);
     // The target's values, not the reference sample's.
-    assert_eq!(rows[1][2..8], ["1.25", "2", "3", "66.7", "94.4", "EUR"]);
+    assert_eq!(rows[1][2..8], ["1.25", "3", "4", "75.0", "94.4", "EUR"]);
     assert_eq!(rows[1][13], "HR 1.53 (EUR, PPM000591)");
     assert!(
         stdout
@@ -218,7 +219,7 @@ fn a_score_for_the_other_sex_keeps_its_sum_and_loses_its_percentile() {
         "pgs",
         "PGS000001",
         "Prostate cancer",
-        3,
+        4,
         "0\tleft out",
         "male",
         "PPM000591\tEUR\tHR 1.53",
@@ -272,10 +273,10 @@ fn zero_matches_and_below_threshold_are_rows() {
         &["--results", &none, "--scores", &pgs, "--zero-matches"],
     );
     assert_eq!(code, 0);
-    assert_eq!(rows[1][2..6], ["NA", "0", "3", "0.0"]);
+    assert_eq!(rows[1][2..6], ["NA", "0", "4", "0.0"]);
     let log = d.put(
         "below.log",
-        "ERROR Score PGS000001 fails minimum matching threshold (33.33% variants match)\n\
+        "ERROR Score PGS000001 fails minimum matching threshold (25.00% variants match)\n\
          Score  fails minimum matching threshold (1% variants match)\nScore PGS000002 fails minimum matching threshold (x% variants match)\n",
     );
     let (code, stdout, _, rows) = go(
@@ -290,10 +291,10 @@ fn zero_matches_and_below_threshold_are_rows() {
         ],
     );
     assert_eq!(code, 0);
-    assert_eq!(rows[1][2..6], ["NA", "NA", "3", "33.3"]);
+    assert_eq!(rows[1][2..6], ["NA", "NA", "4", "25.0"]);
     assert_eq!(rows[2][2..6], ["NA", "NA", "5", "NA"]);
     assert!(stdout.starts_with(
-        "  Coronary artery disease (PGS000001): no sum, under pgsc_calc's minimum overlap (33.3% of 3 variants matched)\n"
+        "  Coronary artery disease (PGS000001): no sum, under pgsc_calc's minimum overlap (25.0% of 4 variants matched)\n"
     ));
     // Neither flag and no pgsc_calc output: an error, and no table.
     std::fs::remove_file(d.path("out.tsv")).unwrap();
@@ -367,7 +368,7 @@ fn a_list_without_evaluations_keeps_the_older_columns() {
         "pgs",
         "PGS000001",
         "Coronary artery disease",
-        3,
+        4,
         "0\tleft out",
         "",
         "",
@@ -497,7 +498,7 @@ fn a_variant_only_input_keeps_its_sum_and_loses_its_percentile() {
     assert_eq!(cell(&rows, 2, NOTE_COLUMN), "");
     assert!(
         stdout.contains(
-            "sum 1.25, 2 of 3 variants matched (66.7%), percentile withheld: the input lists variants only\n"
+            "sum 1.25, 3 of 4 variants matched (75.0%), percentile withheld: the input lists variants only\n"
         ),
         "{stdout}"
     );
@@ -573,7 +574,7 @@ fn a_withheld_percentile_leaves_other_rows_alone() {
         "pgs",
         "PGS000001",
         "Prostate cancer",
-        3,
+        4,
         "0\tleft out",
         "male",
         "",
@@ -643,4 +644,344 @@ fn genotypes_count_called_and_reference_calls() {
     let g = |called, hom_ref| Genotypes { called, hom_ref }.lists_reference();
     assert!(g(5, 1) && g(1, 1) && g(430_000, 300_000));
     assert!(!g(6, 1) && !g(4, 0) && !g(0, 0));
+}
+
+/// The panel run of [`results`], with the target's random-forest
+/// probabilities and pgsc_calc's placement.
+fn placed(d: &Dir, dir: &str, afr: &str, eur: &str, top: &str) {
+    results(d, dir, true);
+    d.put_gz(
+        &format!("{dir}/sample/score/sample_popsimilarity.txt.gz"),
+        &format!(
+            "sampleset\tFID\tIID\tPC1\tRF_P_AFR\tRF_P_EUR\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\n\
+             reference\tR1\tR1\t-1\t0.9\t0.1\tAFR\tFalse\tTrue\n\
+             sample\tHG\tHG\t0.012\t{afr}\t{eur}\t{top}\tFalse\tFalse\n"
+        ),
+    );
+}
+
+#[test]
+fn a_sample_between_two_groups_is_told_the_percentile_ranks_it_among_one() {
+    // pgsc_calc calls none of these low-confidence: its top probability is
+    // 0.5 or more. Two groups at 0.2 or more each read as mixed.
+    for (afr, eur, want) in [
+        ("0.5", "0.5", true),
+        ("0.45", "0.55", true),
+        ("0.2", "0.8", true),
+        ("0.19", "0.81", false),
+        ("0.05", "0.95", false),
+    ] {
+        let d = Dir::new("prs-mixed");
+        let pgs = two_scores(&d);
+        placed(&d, "adj", afr, eur, "EUR");
+        let (res, anc) = (d.path("adj"), d.path("anc.tsv"));
+        let (code, stdout, _, rows) = go(
+            &d,
+            &[
+                "--results",
+                &res,
+                "--scores",
+                &pgs,
+                "--panel",
+                "p",
+                "--ancestry-out",
+                &anc,
+            ],
+        );
+        assert_eq!(code, 0);
+        // The ancestry table keeps pgsc_calc's own flag and probabilities.
+        assert!(
+            d.read("anc.tsv").contains(&format!(
+                "population_low_confidence\tFalse\nprobability_AFR\t{afr}\nprobability_EUR\t{eur}\n"
+            )),
+            "{afr}/{eur}: {}",
+            d.read("anc.tsv")
+        );
+        // The percentile itself stays: the note says what it is among.
+        assert_eq!(rows[1][6..8], ["94.4", "EUR"]);
+        let note = format!(
+            "NOTE: the genetic ancestry sits between EUR (probability {eur}) and AFR (probability \
+             {afr}), each at 0.2 or more, and each percentile ranks the sample among EUR samples \
+             only, so it may not fit\n"
+        );
+        assert_eq!(stdout.contains(&note), want, "{afr}/{eur}: {stdout}");
+        assert_eq!(stdout.contains("NOTE: the genetic ancestry"), want);
+    }
+}
+
+#[test]
+fn no_percentile_no_ancestry_note() {
+    // A score for the other sex has no percentile, so nothing is ranked.
+    let d = Dir::new("prs-mixed-none");
+    formatted(
+        &d,
+        "pgs",
+        "PGS000001",
+        "Prostate cancer",
+        4,
+        "0\tleft out",
+        "male",
+        "",
+    );
+    placed(&d, "adj", "0.5", "0.5", "EUR");
+    let (res, pgs, anc) = (d.path("adj"), d.path("pgs"), d.path("anc.tsv"));
+    let (code, stdout, _, rows) = go(
+        &d,
+        &[
+            "--results",
+            &res,
+            "--scores",
+            &pgs,
+            "--panel",
+            "p",
+            "--sex",
+            "female",
+            "--ancestry-out",
+            &anc,
+        ],
+    );
+    assert_eq!((code, rows[1][6].as_str()), (0, "NA"));
+    assert!(!stdout.contains("NOTE"), "{stdout}");
+}
+
+#[test]
+fn mixed_reads_the_two_most_probable_groups() {
+    let p = |v: &[(&str, f64)]| -> Vec<(String, f64)> {
+        v.iter().map(|(g, x)| ((*g).to_owned(), *x)).collect()
+    };
+    let three = p(&[("AFR", 0.25), ("EUR", 0.5), ("SAS", 0.25)]);
+    // Ties go by name; the second group is never the placement.
+    assert_eq!(mixed(&three, "EUR"), Some((true, "AFR".to_owned())));
+    assert_eq!(mixed(&three, "AFR"), Some((true, "EUR".to_owned())));
+    assert_eq!(
+        mixed(&p(&[("AFR", 0.1), ("EUR", 0.8), ("SAS", 0.1)]), "EUR"),
+        Some((false, "AFR".to_owned()))
+    );
+    // A cell that is not a number is not a group.
+    assert_eq!(mixed(&p(&[("AFR", f64::NAN), ("EUR", 1.0)]), "EUR"), None);
+    assert_eq!(mixed(&p(&[("EUR", 1.0)]), "EUR"), None);
+    // The ancestry table's rows: only probability_ rows with a number count.
+    assert_eq!(
+        probabilities([
+            ("population", "EUR"),
+            ("probability_AFR", "0.45"),
+            ("probability_EUR", "0.55"),
+            ("probability_SAS", "NA"),
+            ("PC1", "0.1"),
+        ]),
+        p(&[("AFR", 0.45), ("EUR", 0.55)])
+    );
+}
+
+// --- percentile calibration ----------------------------------------------------
+//
+// og prs table reports the percentile pgsc_calc gave: the rank of the
+// sample's sum among the sums of the reference group it was placed in. For
+// people drawn from that group's own allele frequencies the reported
+// percentiles must then be uniform from 0 to 100. These tests simulate the
+// genotypes, compute the percentile the way pgsc_calc's ancestry step does
+// (scipy's percentileofscore among the group's reference sums, pgscatalog-utils
+// _ancestry/tools.py), write it into a pgsc_calc output folder with the panel's
+// own rows beside the sample's, and read back what og prs table reports.
+
+/// splitmix64: the same simulated people on every run.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// Uniform in [0, 1).
+    fn unit(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / (1u64 << 53) as f64
+    }
+}
+
+/// Score sites in the simulation.
+const SITES: usize = 200;
+
+/// One reference group's effect-allele frequencies, and the score's weights.
+struct Group {
+    freq: Vec<f64>,
+    weight: Vec<f64>,
+}
+
+impl Group {
+    fn new(rng: &mut Rng) -> Group {
+        Group {
+            freq: (0..SITES).map(|_| 0.05 + 0.9 * rng.unit()).collect(),
+            weight: (0..SITES).map(|_| rng.unit() - 0.5).collect(),
+        }
+    }
+
+    /// The sum of one person of the group: two alleles at each site, each the
+    /// effect allele at the group's frequency.
+    fn person(&self, rng: &mut Rng) -> f64 {
+        self.freq
+            .iter()
+            .zip(&self.weight)
+            .map(|(p, w)| {
+                let dose = u8::from(rng.unit() < *p) + u8::from(rng.unit() < *p);
+                w * f64::from(dose)
+            })
+            .sum()
+    }
+}
+
+/// scipy's `percentileofscore(reference, x)` (kind "rank").
+fn percentile_of(reference: &[f64], x: f64) -> f64 {
+    let left = reference.iter().filter(|r| **r < x).count();
+    let right = reference.iter().filter(|r| **r <= x).count();
+    let plus1 = usize::from(right > left);
+    (left + right + plus1) as f64 * 50.0 / reference.len() as f64
+}
+
+/// The p-value of a Kolmogorov-Smirnov test of `u` against the uniform
+/// distribution on [0, 1] (Kolmogorov's limit with Stephens' small-sample
+/// correction). A percentile is a rank among `reference` people, a sample
+/// of the group itself, so the test is the two-sample one: its size is
+/// n * reference / (n + reference). `None` for a known uniform.
+fn ks_uniform(u: &mut [f64], reference: Option<usize>) -> f64 {
+    u.sort_by(f64::total_cmp);
+    let n = u.len() as f64;
+    let d = u
+        .iter()
+        .enumerate()
+        .map(|(i, x)| ((i + 1) as f64 / n - x).max(x - i as f64 / n))
+        .fold(0.0, f64::max);
+    let size = reference.map_or(n, |r| n * r as f64 / (n + r as f64));
+    let l = (size.sqrt() + 0.12 + 0.11 / size.sqrt()) * d;
+    if l < 0.2 {
+        return 1.0; // the series is 1 to many digits there, and converges slowly
+    }
+    let p: f64 = (1..=100i32)
+        .map(|k| {
+            let sign = if k % 2 == 1 { 2.0 } else { -2.0 };
+            let k = f64::from(k);
+            sign * (-2.0 * k * k * l * l).exp()
+        })
+        .sum();
+    p.clamp(0.0, 1.0)
+}
+
+/// What og prs table reports for each person: pgsc_calc's panel run is
+/// written with the person's sum and percentile among `reference`, the
+/// panel's own rows after it, and read back.
+fn reported(tag: &str, people: &[f64], reference: &[f64]) -> Vec<f64> {
+    let d = Dir::new(tag);
+    formatted(
+        &d,
+        "pgs",
+        "PGS000001",
+        "Simulated trait",
+        SITES,
+        "0\tleft out",
+        "",
+        "",
+    );
+    d.put(
+        "res/sample/match/sample_summary.csv",
+        format!("dataset,accession,match_status,count\nsample,PGS000001,matched,{SITES}\n"),
+    );
+    d.put(
+        "res/sample/score/sample_popsimilarity.txt.gz",
+        "sampleset\tFID\tIID\tRF_P_AFR\tRF_P_EUR\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\n\
+         sample\tS\tS\t0.02\t0.98\tEUR\tFalse\tFalse\n",
+    );
+    let head = "sampleset\tFID\tIID\tPGS\tSUM\tZ_MostSimilarPop\tpercentile_MostSimilarPop\tZ_norm1\tZ_norm2\n";
+    let row = |set: &str, id: &str, x: f64| {
+        format!(
+            "{set}\t{id}\t{id}\tPGS000001\t{x:.6}\t0\t{}\t0\t0\n",
+            percentile_of(reference, x)
+        )
+    };
+    let panel: String = reference
+        .iter()
+        .take(20)
+        .enumerate()
+        .map(|(k, x)| row("reference", &format!("R{k}"), *x))
+        .collect();
+    let (res, scores) = (d.path("res"), d.path("pgs"));
+    people
+        .iter()
+        .map(|x| {
+            d.put(
+                "res/sample/score/sample_pgs.txt.gz",
+                format!("{head}{}{panel}", row("sample", "S", *x)),
+            );
+            let inputs = Inputs {
+                results: &res,
+                sampleset: "sample",
+                scores: &scores,
+                input_kind: "gvcf",
+                outcome: Outcome::Scored,
+                sex: "",
+                panel: true,
+                genotypes: None,
+            };
+            let (rows, _) = table(&inputs).unwrap();
+            assert_eq!(rows[0][7], "EUR");
+            rows[0][6].parse::<f64>().unwrap()
+        })
+        .collect()
+}
+
+/// The KS p-value of what og prs table reports for 1,000 people of one
+/// group, scored against 2,000 reference people of the group whose sums are
+/// moved by `shift` standard deviations.
+fn calibration(tag: &str, shift: f64) -> f64 {
+    let mut rng = Rng(0x2026_1120);
+    let group = Group::new(&mut rng);
+    let mut reference: Vec<f64> = (0..2000).map(|_| group.person(&mut rng)).collect();
+    let people: Vec<f64> = (0..1000).map(|_| group.person(&mut rng)).collect();
+    let n = reference.len() as f64;
+    let mean = reference.iter().sum::<f64>() / n;
+    let sd = (reference.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+    for x in &mut reference {
+        *x += shift * sd;
+    }
+    let mut u: Vec<f64> = reported(tag, &people, &reference)
+        .iter()
+        .map(|p| p / 100.0)
+        .collect();
+    ks_uniform(&mut u, Some(reference.len()))
+}
+
+#[test]
+fn percentiles_of_people_from_the_reference_group_are_uniform() {
+    let p = calibration("prs-calibrated", 0.0);
+    assert!(p > 0.01, "KS p = {p}");
+}
+
+#[test]
+fn a_reference_group_half_a_standard_deviation_off_fails_the_check() {
+    // Shifting the simulated reference mean by 0.5 SD tests the sensitivity
+    // of the KS check. og reads the resulting simulated percentiles.
+    let p = calibration("prs-shifted", 0.5);
+    assert!(p < 0.01, "KS p = {p}");
+}
+
+#[test]
+fn the_ks_test_reads_known_samples() {
+    // An evenly spread sample is uniform; one squeezed into the lower half is not.
+    let mut even: Vec<f64> = (0..1000).map(|i| (f64::from(i) + 0.5) / 1000.0).collect();
+    assert!((ks_uniform(&mut even, None) - 1.0).abs() < 1e-9);
+    let mut low: Vec<f64> = (0..1000).map(|i| f64::from(i) / 2000.0).collect();
+    assert!(ks_uniform(&mut low, None) < 1e-6);
+    // D = 0.05 over 1,000 values: p 0.013 against a known uniform, 0.15
+    // against a reference of 1,000 people (the two-sample test).
+    let mut off: Vec<f64> = (0..1000)
+        .map(|i| (f64::from(i) + 0.5) / 1000.0 * 0.95)
+        .collect();
+    let (known, sampled) = (
+        ks_uniform(&mut off.clone(), None),
+        ks_uniform(&mut off, Some(1000)),
+    );
+    assert!((0.01..0.016).contains(&known), "{known}");
+    assert!((0.13..0.18).contains(&sampled), "{sampled}");
 }

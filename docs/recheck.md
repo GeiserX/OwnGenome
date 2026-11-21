@@ -11,7 +11,7 @@ bin/og recheck --sample your_sample
 
 It is part of `og`, OwnGenome's one binary, which `./scripts/setup.sh --og` builds ([og](rust.md)). It asks the network through the host's `curl`. It needs the sample's `run_manifest.tsv`, which `run-all.sh` writes (`bin/write_manifest.sh`).
 
-`bin/owngenome_recheck.py`, the old Python version, now only runs `bin/og recheck` with the same arguments and says on stderr that it is deprecated. It stays for crontabs until 1.1.0; point them at `bin/og recheck`.
+The old Python version, `bin/owngenome_recheck.py`, is gone: point crontabs at `bin/og recheck`.
 
 ## What it checks
 
@@ -170,4 +170,4 @@ launchd runs an interval missed during sleep when the Mac wakes; one missed whil
 
 ## Tests
 
-`cargo test -p og-recheck` checks the classes, the steps each item names, a failed lookup (an offline answer and a server on 127.0.0.1), the files it writes, the refusals during a run and while a lock is held, the lock held while `setup.sh` refreshes ClinVar and let go before the replay, the comparison after a rerun, `--launch-dir`, the last line when lookups fail (connections refused), a recorded command read back word by word and refused when it is not a `run-all.sh` call, and the replay with typed arguments. `tests/test_owngenome_recheck.py` runs `og recheck` from the outside, the deprecated `bin/owngenome_recheck.py`, the live-site plugin and the ClinVar lock block of `run-all.sh` and step 06, each against a planted mistake too. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.
+`cargo test -p og-recheck` checks the classes, the steps each item names, a failed lookup (an offline answer and a server on 127.0.0.1), the files it writes, the refusals during a run and while a lock is held, the lock held while `setup.sh` refreshes ClinVar and let go before the replay, the comparison after a rerun, `--launch-dir`, the last line when lookups fail (connections refused), a recorded command read back word by word and refused when it is not a `run-all.sh` call, and the replay with typed arguments. `cargo test -p og-live --test port_live_server_recheck` checks the live-site plugin and the ClinVar lock block of `run-all.sh` and step 06, and that the block with its `flock` call taken out fails the check. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.

@@ -12,13 +12,27 @@
 //!   panel site inside the benchmark regions that no GIAB record covers,
 //!   with the reference base from the FASTA (through its `.fai`). The
 //!   output is unsorted: the workflow sorts it with bcftools.
+//! - `og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN`: the Y
+//!   benchmark. CALLS has the columns `sample`, `published`, `tool` and
+//!   `call`: a man's published haplogroup, written `<clade>-<SNP>` as
+//!   Poznik et al. 2016 give it, and the branch a tool placed him on. Both
+//!   are placed on the current YFull tree (TREE, `current_tree.json`): the
+//!   published call by its SNP (a SNP on two branches by the clade letter
+//!   too), the tool's by its branch id, else by the SNP after the dash.
+//!   Each call is `exact`, `below` (deeper on the same
+//!   line), `ancestor` (above it only), `sibling` (splits off at the
+//!   published branch's parent), `wrong` (splits off higher), `no_call` or
+//!   `unknown_name`. OUT has one row per call; one table row per tool goes
+//!   to stdout. It exits 1 when a tool puts fewer than MIN of its men on
+//!   the published branch or below it (MIN is a share from 0 to 1): the
+//!   gate of the workflow's y-benchmark job.
 //!
-//! Both stream their VCFs. hg002-gvcf keeps, per chromosome, the merged
+//! The first two stream their VCFs. hg002-gvcf keeps, per chromosome, the merged
 //! spans the GIAB records cover instead of every covered position, and
 //! reads one reference base per site with a positioned read.
 //!
-//! Exit 0 when written, 1 when an input cannot be read or parsed, 2 on a
-//! usage error.
+//! Exit 0 when written, 1 when an input cannot be read or parsed (or the
+//! y-bench gate fails, after OUT is written), 2 on a usage error.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
@@ -28,7 +42,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const USAGE: &str = "usage: og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv\n       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf\n";
+const USAGE: &str = "usage: og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv\n       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf\n       og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN\n";
 
 /// Runs `og dev evidence ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -47,7 +61,10 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
                 );
             })
         }
-        Some("clashes" | "hg002-gvcf") => return usage(err, "wrong number of arguments"),
+        Some("y-bench") if rest.len() == 4 => y_bench(&rest[0], &rest[1], &rest[2], &rest[3], out),
+        Some("clashes" | "hg002-gvcf" | "y-bench") => {
+            return usage(err, "wrong number of arguments");
+        }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
             return 0;
@@ -607,6 +624,284 @@ fn hg002_gvcf(
     Ok((records, blocks))
 }
 
+/// The current YFull tree as `y-bench` reads it: each branch's parent and
+/// depth, its id, and the branches every id and every SNP name sits on.
+struct YTree {
+    /// The parent's index; the root's is `usize::MAX`.
+    parent: Vec<usize>,
+    depth: Vec<u32>,
+    ids: Vec<String>,
+    by_id: HashMap<String, Vec<usize>>,
+    by_snp: HashMap<String, Vec<usize>>,
+}
+
+fn read_ytree(path: &str) -> Result<YTree, String> {
+    use pycompat::json::{self, Value};
+    let text = read_text(Path::new(path))?;
+    let root = json::loads(&text).map_err(|e| format!("{path}: {e}"))?;
+    let mut t = YTree {
+        parent: Vec::new(),
+        depth: Vec::new(),
+        ids: Vec::new(),
+        by_id: HashMap::new(),
+        by_snp: HashMap::new(),
+    };
+    let mut stack: Vec<(&Value, usize, u32)> = vec![(&root, usize::MAX, 0)];
+    while let Some((v, parent, depth)) = stack.pop() {
+        let Value::Object(m) = v else {
+            return Err(format!("{path}: a branch is not a JSON object"));
+        };
+        let text_of = |key: &str| match m.get(key) {
+            Some(Value::Str(s)) => Ok(s.trim()),
+            None | Some(Value::Null) => Ok(""),
+            Some(_) => Err(format!("{path}: a branch's '{key}' is not text")),
+        };
+        let i = t.parent.len();
+        let id = text_of("id")?.to_owned();
+        for name in text_of("snps")?.split([',', '/']).map(str::trim) {
+            if !name.is_empty() {
+                let at = t.by_snp.entry(name.to_owned()).or_default();
+                if at.last() != Some(&i) {
+                    at.push(i);
+                }
+            }
+        }
+        if !id.is_empty() {
+            t.by_id.entry(id.clone()).or_default().push(i);
+        }
+        t.parent.push(parent);
+        t.depth.push(depth);
+        t.ids.push(id);
+        match m.get("children") {
+            Some(Value::Array(kids)) => {
+                for k in kids.iter().rev() {
+                    stack.push((k, i, depth + 1));
+                }
+            }
+            None | Some(Value::Null) => {}
+            Some(_) => return Err(format!("{path}: a branch's 'children' is not a list")),
+        }
+    }
+    if t.parent.len() < 2 {
+        return Err(format!("{path}: the tree has no branch below its root"));
+    }
+    Ok(t)
+}
+
+/// A branch name without Yleaf's marks: `R-M269*(xR-L23)` is `R-M269`.
+fn bare(name: &str) -> &str {
+    name.split(['*', '(']).next().unwrap_or("").trim()
+}
+
+/// The SNP of a name written `<clade>-<SNP>` (`R1b-DF27` is `DF27`), or the
+/// whole name when it has no dash.
+fn snp_of(name: &str) -> &str {
+    name.split_once('-').map_or(name, |(_, snp)| snp)
+}
+
+impl YTree {
+    fn one(v: Option<&Vec<usize>>) -> Option<usize> {
+        v.filter(|v| v.len() == 1).map(|v| v[0])
+    }
+
+    /// The branch a published call names: the one branch that carries its
+    /// SNP. A SNP name YFull gives to two branches (a recurrent mutation,
+    /// `M356` on `C-K98` and `T-Y31540`) is settled by the clade letter of
+    /// the published name (`C5-M356` is in C), never by anything else. A
+    /// published call is the truth, so a SNP the tree does not have, or one
+    /// the letter does not settle, is an error, never a guess.
+    fn published(&self, name: &str) -> Result<usize, String> {
+        let n = bare(name);
+        let snp = snp_of(n);
+        let Some(at) = self.by_snp.get(snp) else {
+            return Err(format!(
+                "published call '{name}': SNP {snp} is on no branch of the tree"
+            ));
+        };
+        if let [one] = at[..] {
+            return Ok(one);
+        }
+        let letter = n.chars().next();
+        let same: Vec<usize> = at
+            .iter()
+            .copied()
+            .filter(|&i| self.ids[i].chars().next() == letter)
+            .collect();
+        match same[..] {
+            [one] => Ok(one),
+            _ => Err(format!(
+                "published call '{name}': SNP {snp} is on {} branches of the tree, {} of them in clade {}",
+                at.len(),
+                same.len(),
+                letter.unwrap_or('?')
+            )),
+        }
+    }
+
+    /// The branch a tool's call names: its id on the tree, else the one
+    /// branch carrying the SNP after the dash (a branch renamed since the
+    /// tool's tree). `Ok(None)` is no call; `Err` a name the tree cannot place.
+    fn call(&self, name: &str) -> Result<Option<usize>, ()> {
+        let n = bare(name);
+        if n.is_empty() || n == "NA" || n == "." {
+            return Ok(None);
+        }
+        Self::one(self.by_id.get(n))
+            .or_else(|| Self::one(self.by_snp.get(snp_of(n))))
+            .map(Some)
+            .ok_or(())
+    }
+
+    fn is_ancestor(&self, a: usize, mut b: usize) -> bool {
+        while b != usize::MAX && self.depth[b] > self.depth[a] {
+            b = self.parent[b];
+        }
+        b == a
+    }
+
+    fn common(&self, mut a: usize, mut b: usize) -> usize {
+        while a != b {
+            if self.depth[a] >= self.depth[b] {
+                a = self.parent[a];
+            } else {
+                b = self.parent[b];
+            }
+        }
+        a
+    }
+}
+
+/// What a tool's call is, against the published branch.
+const RESULTS: [&str; 7] = [
+    "exact",
+    "below",
+    "ancestor",
+    "sibling",
+    "wrong",
+    "no_call",
+    "unknown_name",
+];
+
+/// One of [`RESULTS`]: the published branch itself, a branch below it
+/// (the same line, placed deeper than the published call went), one above
+/// it only, a branch that splits off at the published branch's parent, one
+/// that splits off higher, no call, or a name the tree cannot place.
+fn classify(t: &YTree, truth: usize, call: Result<Option<usize>, ()>) -> (usize, Option<usize>) {
+    let c = match call {
+        Err(()) => return (6, None),
+        Ok(None) => return (5, None),
+        Ok(Some(c)) => c,
+    };
+    let r = if c == truth {
+        0
+    } else if t.is_ancestor(truth, c) {
+        1
+    } else if t.is_ancestor(c, truth) {
+        2
+    } else if t.common(truth, c) == t.parent[truth] {
+        3
+    } else {
+        4
+    };
+    (r, Some(c))
+}
+
+/// `og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN`: places every
+/// published and every tool call of CALLS on the tree, writes one row per
+/// call to OUT and one line per tool to `out`, and fails when a tool puts
+/// fewer than MIN of its men on the published branch or below it.
+fn y_bench(tree: &str, calls: &str, out: &str, min: &str, w: &mut dyn Write) -> Result<(), String> {
+    let min: f64 = min
+        .parse()
+        .ok()
+        .filter(|m: &f64| (0.0..=1.0).contains(m))
+        .ok_or_else(|| format!("MIN '{min}' is not a share from 0 to 1"))?;
+    let t = read_ytree(tree)?;
+    let mut rows: Vec<[String; 4]> = Vec::new();
+    let mut first = true;
+    lines(calls, |line| {
+        let line = std::str::from_utf8(line).map_err(|e| format!("{calls}: {e}"))?;
+        let f: Vec<&str> = line.split('\t').collect();
+        if std::mem::take(&mut first) {
+            return if f == ["sample", "published", "tool", "call"] {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{calls}: the header is not sample, published, tool, call"
+                ))
+            };
+        }
+        let [s, p, tool, c] = f[..] else {
+            return Err(format!("{calls}: a row has {} columns, not 4", f.len()));
+        };
+        if s.is_empty() || p.is_empty() || tool.is_empty() {
+            return Err(format!(
+                "{calls}: a row has no sample, published call or tool"
+            ));
+        }
+        rows.push([s, p, tool, c].map(str::to_owned));
+        Ok(())
+    })?;
+    if rows.is_empty() {
+        return Err(format!("{calls}: no calls"));
+    }
+    let mut seen = BTreeSet::new();
+    let mut tools: Vec<String> = Vec::new();
+    let mut counts: HashMap<String, [u64; 7]> = HashMap::new();
+    let mut text = String::from(
+        "sample\tpublished\ttool\tcall\tpublished_branch\tcall_branch\tresult\tlevels\n",
+    );
+    for [s, p, tool, c] in &rows {
+        if !seen.insert((s.clone(), tool.clone())) {
+            return Err(format!("{calls}: two calls of {tool} for {s}"));
+        }
+        let truth = t.published(p)?;
+        let (r, at) = classify(&t, truth, t.call(c));
+        if !counts.contains_key(tool) {
+            tools.push(tool.clone());
+        }
+        counts.entry(tool.clone()).or_default()[r] += 1;
+        let (branch, levels) = at.map_or((".".to_owned(), ".".to_owned()), |a| {
+            let d = i64::from(t.depth[a]) - i64::from(t.depth[truth]);
+            (t.ids[a].clone(), format!("{d:+}"))
+        });
+        text += &format!(
+            "{s}\t{p}\t{tool}\t{c}\t{}\t{branch}\t{}\t{levels}\n",
+            t.ids[truth], RESULTS[r]
+        );
+    }
+    publish(Path::new(out), text.as_bytes())?;
+    let _ = writeln!(
+        w,
+        "| Tool | Men | Exact | Below | Ancestor only | Sibling | Wrong | No call | Unknown name | Published branch or below |\n|---|---|---|---|---|---|---|---|---|---|"
+    );
+    let mut short = Vec::new();
+    for tool in &tools {
+        let n = counts[tool];
+        let men: u64 = n.iter().sum();
+        let share = (n[0] + n[1]) as f64 / men as f64;
+        let cells: Vec<String> = n.iter().map(u64::to_string).collect();
+        let _ = writeln!(
+            w,
+            "| {tool} | {men} | {} | {} of {men} ({:.1}%) |",
+            cells.join(" | "),
+            n[0] + n[1],
+            share * 100.0
+        );
+        if share < min {
+            short.push(format!("{tool} {:.3}", share));
+        }
+    }
+    if short.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "y-bench gate: under {min} on the published branch or below: {}",
+            short.join(", ")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1136,5 +1431,192 @@ mod tests {
         assert!(
             inside(&m, 5) && !inside(&m, 6) && inside(&m, 15) && !inside(&m, 16) && !inside(&m, 4)
         );
+    }
+
+    const YTREE: &str = r#"{"id": "", "snps": "", "children": [
+        {"id": "A-a1", "snps": "a1, a2/a2b", "children": [
+            {"id": "A-a11", "snps": "a11, dup2"},
+            {"id": "A-a21", "snps": "a21", "children": [{"id": "A-a2x", "snps": "a2x, dup2"}]}]},
+        {"id": "B-b1", "snps": "b1", "children": [
+            {"id": "B-b11", "snps": "b11"},
+            {"id": "B-b21", "snps": "b21, dup"}]},
+        {"id": "C-c1", "snps": "dup"}]}"#;
+
+    struct YCase(PathBuf);
+    impl YCase {
+        fn new(name: &str, calls: &str) -> Self {
+            let d = std::env::temp_dir().join(format!("og-ybench-{}-{name}", std::process::id()));
+            let _ = fs::remove_dir_all(&d);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("tree.json"), YTREE).unwrap();
+            fs::write(d.join("calls.tsv"), calls).unwrap();
+            YCase(d)
+        }
+        fn run(&self, min: &str) -> (u8, String, String) {
+            let p = |n: &str| self.0.join(n).to_str().unwrap().to_owned();
+            let args: Vec<String> = vec![
+                "y-bench".into(),
+                p("tree.json"),
+                p("calls.tsv"),
+                p("out.tsv"),
+                min.into(),
+            ];
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let code = cli(&args, &mut out, &mut err);
+            (
+                code,
+                String::from_utf8(out).unwrap(),
+                String::from_utf8(err).unwrap(),
+            )
+        }
+        fn out(&self) -> String {
+            fs::read_to_string(self.0.join("out.tsv")).unwrap_or_default()
+        }
+    }
+    impl Drop for YCase {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    const YHEAD: &str = "sample\tpublished\ttool\tcall\n";
+
+    #[test]
+    fn y_bench_classifies_every_result() {
+        let calls = format!(
+            "{YHEAD}m1\tA2-a21\tt\tA-a21\nm2\tA2-a21\tt\tA-a2x\nm3\tA2-a21\tt\tA-a1\nm4\tA2-a21\tt\tA-a11\n\
+             m5\tA2-a21\tt\tB-b11\nm6\tA2-a21\tt\tNA\nm7\tA2-a21\tt\tZ-zz\nm8\tA2-a21\tt\tB-dup\n"
+        );
+        let c = YCase::new("classes", &calls);
+        let (code, table, err) = c.run("0");
+        assert_eq!(code, 0, "{err}");
+        let got: Vec<String> = c
+            .out()
+            .lines()
+            .skip(1)
+            .map(|l| {
+                let f: Vec<&str> = l.split('\t').collect();
+                format!("{}:{}:{}:{}", f[0], f[5], f[6], f[7])
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                "m1:A-a21:exact:+0",
+                "m2:A-a2x:below:+1",
+                "m3:A-a1:ancestor:-1",
+                "m4:A-a11:sibling:+0",
+                "m5:B-b11:wrong:+0",
+                "m6:.:no_call:.",
+                "m7:.:unknown_name:.",
+                "m8:.:unknown_name:.",
+            ]
+        );
+        assert!(
+            table.contains("| t | 8 | 1 | 1 | 1 | 1 | 1 | 1 | 2 | 2 of 8 (25.0%) |"),
+            "{table}"
+        );
+    }
+
+    #[test]
+    fn y_bench_reads_names_as_the_tools_and_the_paper_write_them() {
+        // Yleaf's marks, a published clade name that is not the tree's id
+        // (found by its SNP), an alias after a slash, and a branch renamed
+        // since the tool's tree (found by the SNP after the dash).
+        let calls = format!(
+            "{YHEAD}m1\tA1-a2b\tyleaf\tA-a1*(xA-a11)\nm2\tA2b-a21\tog\tA-a21\nm3\tB2-b21\tog\tOld-b21\n"
+        );
+        let c = YCase::new("names", &calls);
+        let (code, table, err) = c.run("1");
+        assert_eq!(code, 0, "{err}{table}");
+        assert!(
+            c.out()
+                .contains("m1\tA1-a2b\tyleaf\tA-a1*(xA-a11)\tA-a1\tA-a1\texact\t+0\n")
+        );
+        assert!(
+            c.out()
+                .contains("m3\tB2-b21\tog\tOld-b21\tB-b21\tB-b21\texact\t+0\n")
+        );
+        // A SNP on two branches is settled by the clade letter alone.
+        let c = YCase::new("letter", &format!("{YHEAD}m1\tC1-dup\tog\tC-c1\n"));
+        assert_eq!(c.run("1").0, 0);
+        assert!(c.out().contains("\tC-c1\tC-c1\texact\t"));
+        // A published SNP on no branch, or on two the letter does not
+        // settle, is refused: it is the truth.
+        for bad in ["X-nope", "D-dup", "A2-dup2"] {
+            let c = YCase::new("truth", &format!("{YHEAD}m1\t{bad}\tog\tA-a1\n"));
+            let (code, _, err) = c.run("0");
+            assert_eq!(code, 1);
+            assert!(err.contains("published call"), "{err}");
+            assert!(c.out().is_empty());
+        }
+    }
+
+    #[test]
+    fn y_bench_gate_and_its_red_control() {
+        let men = [
+            ("m1", "A2-a21"),
+            ("m2", "A1-a11"),
+            ("m3", "B1-b11"),
+            ("m4", "B2-b21"),
+        ];
+        let calls = ["A-a21", "A-a11", "B-b11", "B-b21"];
+        let table = |rotate: usize| {
+            let mut t = YHEAD.to_owned();
+            for (i, (m, p)) in men.iter().enumerate() {
+                t += &format!("{m}\t{p}\tog\t{}\n", calls[(i + rotate) % calls.len()]);
+            }
+            t
+        };
+        let c = YCase::new("gate", &table(0));
+        let (code, out, err) = c.run("1");
+        assert_eq!(code, 0, "{err}{out}");
+        assert!(out.contains("4 of 4 (100.0%)"), "{out}");
+        // Red control: the same calls given to the wrong men.
+        let c = YCase::new("rotated", &table(2));
+        let (code, out, err) = c.run("0.5");
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            err.contains("y-bench gate: under 0.5") && err.contains("og 0.000"),
+            "{err}"
+        );
+        assert_eq!(
+            c.out().matches("\twrong\t").count(),
+            4,
+            "the rows are written before the gate fails"
+        );
+    }
+
+    #[test]
+    fn y_bench_refuses_bad_input() {
+        for (name, calls, min, want) in [
+            ("header", "sample\tpublished\ttool\n", "0", "the header"),
+            (
+                "columns",
+                &*format!("{YHEAD}m1\tA-a1\tog\n"),
+                "0",
+                "columns, not 4",
+            ),
+            (
+                "twice",
+                &*format!("{YHEAD}m1\tA-a1\tog\tA-a1\nm1\tA-a1\tog\tA-a1\n"),
+                "0",
+                "two calls",
+            ),
+            ("empty", YHEAD, "0", "no calls"),
+            (
+                "min",
+                &*format!("{YHEAD}m1\tA-a1\tog\tA-a1\n"),
+                "1.5",
+                "not a share",
+            ),
+        ] {
+            let c = YCase::new(name, calls);
+            let (code, _, err) = c.run(min);
+            assert_eq!(code, 1, "{name}");
+            assert!(err.contains(want), "{name}: {err}");
+        }
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&["y-bench".into(), "x".into()], &mut out, &mut err), 2);
     }
 }

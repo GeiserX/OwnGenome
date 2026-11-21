@@ -9,9 +9,9 @@
 #   4. a newer history folder without a summary.json (a copy that stopped
 #      half way) is passed over: the delta is against the newest folder that
 #      holds one, and the report does not fail.
-# The report renderer runs with the host's python3 (bin/render_report.py,
-# until og report render replaces it) and og run delta with the host's
-# bin/og, on the host side of the call's mounts, so both are the real code.
+# The report renderer (og report render) and og run delta run with the
+# host's bin/og, on the host side of the call's mounts, so both are the real
+# code.
 # The Guard fake-docker job builds og into bin/.og. The case reads the JSON
 # with jq.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
@@ -35,7 +35,7 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 case "${*:2}" in
-  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
+  "/pgp-bin/og "*)
     # The real tool, on the host paths of every /... argument.
     shift
     mapped=()

@@ -18,11 +18,23 @@
     root.dataset.pgpBlocked = blocked.join(" | ");
   });
 
+  // The error box (role="alert") says what failed, what to check, and offers Try again, which
+  // loads the page again.
   function fail(why) {
     root.dataset.pgpStatus = "error: " + why;
     const box = document.getElementById("error");
-    box.textContent = "The viewer could not start: " + why;
-    box.style.display = "block";
+    const what = document.createElement("p");
+    what.textContent = "The viewer could not start: " + why;
+    const next = document.createElement("p");
+    next.textContent = "Check that owngenome-view.sh, or the live site, is still running, then try again.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "Try again";
+    retry.addEventListener("click", function () {
+      window.location.reload();
+    });
+    box.replaceChildren(what, next, retry);
+    box.hidden = false;
   }
 
   function locusFromHash() {

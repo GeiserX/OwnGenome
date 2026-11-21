@@ -262,6 +262,8 @@ table.rows th { text-align: left; font: 600 10.5px/1 var(--sans); letter-spacing
 table.rows td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--hair); vertical-align: top; color: var(--ink-2);
   overflow-wrap: break-word; min-width: 4ch; font-variant-numeric: tabular-nums; }
 .more { margin-top: 8px; }
+/* A page whose data did not load: the sentence and its Try again button (person.js, home.js). */
+.load-failed { margin: 16px 0; }
 .caveat { margin-top: 12px; font-size: 13px; line-height: 1.55; color: var(--ink-2); border-top: 1px solid var(--hair-2); padding-top: 9px; }
 .caveat::before { content: "Caveat"; display: block; font: 600 10.5px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--brass); margin-bottom: 7px; }
 .caveat p { margin: 0 0 6px; max-width: 75ch; }

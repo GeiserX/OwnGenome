@@ -165,7 +165,7 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/pypgx/`.
 | Column | Description |
 |---|---|
 | Gene | Gene symbol |
-| Diplotype | Star allele call (e.g., \*1/\*4); `Indeterminate` for CYP2D6 when the depth check failed (multi-mapped reads, or flanks under 10x); `FAILED` for a gene pypgx wrote no result for; `N/A` for a gene not callable on this reference (see Status) |
+| Diplotype | Star allele call (e.g., \*1/\*4); `Indeterminate` for CYP2D6 when the depth check failed (multi-mapped reads, or flanks under 10x), or for a gene pypgx itself could not call; `FAILED` for a gene pypgx wrote no result for; `N/A` for a gene not callable on this reference (see Status) |
 | Phenotype | Metabolizer status (e.g., Intermediate Metabolizer). `no pypgx phenotype rule` for a gene pypgx has no phenotype rule for (no `PhenotypeMethod` in its own gene table; in 0.26.0 the 17 genes listed under [Weakly supported genes](#weakly-supported-genes)), where pypgx itself writes `Indeterminate` |
 | CNV_call | The copy-number call pypgx itself made from read depth (its `CNV` field, for example `Normal` or `WholeDel1`). BAM-based genes only; `N/A` for VCF-based genes, and `N/A (CYP2D6 depth check)` for CYP2D6 when the depth check failed. Earlier versions guessed a Yes/No flag from the allele names, which flagged any name containing `*5` and missed the GSTM1/GSTT1/CYP2A6 whole-gene deletions |
 | Source | BAM (SV genes) or VCF (variant-based genes) |
@@ -175,6 +175,8 @@ All output is written to `${GENOME_DIR}/${SAMPLE}/pypgx/`.
 | Weakest_variant | That variant with its GQ and AD, for example `chr10:94781859 G>A GQ 12 AD 26,3` |
 | Defining_filter | `PASS` when every defining variant is in the VCF with FILTER `PASS`; otherwise the ones that are not PASS (`RefCall`, `LowQual`..., or `no filter` for FILTER `.`) or not in the VCF, and any star allele pypgx's table lacks (`not in pypgx's table: *99`) |
 | Quality | `low-confidence: check the reads` when a defining variant has a GQ below the floor, `GQ not in the VCF: check the reads` when one has no GQ, `ok` otherwise, `N/A` without defining variants |
+
+A Diplotype of `Indeterminate` is no call, in any case and also as one allele (`*1/Indeterminate`): step 36 counts it neither as agreeing nor as disagreeing with Cyrius, and step 27 gives it no comparison match and no warning.
 
 ### Low-GQ star alleles
 
@@ -192,7 +194,7 @@ The pypgx section of both reports also lists the genes not assessable on this re
 | PharmCAT_diplotype | Diplotype from step 7 |
 | pypgx_diplotype | Diplotype from this step |
 | Match | Yes, No, pypgx only, or PharmCAT only. Allele names are compared after one rename: PharmCAT's `rs9923231 reference (C)` and pypgx's `Reference` are the same allele, and so are `rs9923231 variant (T)` and `rs9923231` |
-| Called_by | `both` when both tools called the gene (Match is Yes or No), otherwise which tool did. PharmCAT's `Unknown/Unknown` and pypgx's `FAILED` and `N/A` count as no call; a gene neither tool called is left out |
+| Called_by | `both` when both tools called the gene (Match is Yes or No), otherwise which tool did. PharmCAT's `Unknown/Unknown` and pypgx's `FAILED`, `N/A` and `Indeterminate` (in any case, or as one allele such as `*1/Indeterminate`) count as no call; a gene neither tool called is left out |
 | PharmCAT_phenotype | PharmCAT's phenotype for the gene, as step 27's phenotypes table shows it |
 | pypgx_phenotype | The Phenotype column of the summary above |
 
