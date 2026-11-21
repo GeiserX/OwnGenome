@@ -1881,6 +1881,12 @@
     "type": "string"
    }
   },
+  "selected_no_result": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
   "not_assessed": {
    "type": "array",
    "items": {

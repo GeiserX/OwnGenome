@@ -183,6 +183,40 @@ fn a_run_that_records_no_selection_reads_as_before() {
 }
 
 #[test]
+fn y_steps_are_only_marked_for_samples_declared_male() {
+    for (tag, declared_sex) in [("male", "male"), ("female", "female"), ("unset", "")] {
+        let d = Dir::new(tag);
+        d.put(
+            "run_manifest.tsv",
+            &format!("run\ttools\tclinvar y_haplogroup y_str\nrun\tdeclared_sex\t{declared_sex}\n"),
+        );
+        let v = collect(&d);
+        let selected = texts(get(&v, "selected_no_result"));
+        let not_run = texts(get(&v, "not_run"));
+        assert!(selected.contains(&"clinvar".to_owned()), "{tag}");
+        for key in ["y_haplogroup", "y_tree", "y_str"] {
+            let title = title(&v, key);
+            let note = st(get(section(&v, key), "note"));
+            let expects_label = declared_sex == "male";
+            assert_eq!(
+                selected.iter().any(|k| k == key),
+                expects_label,
+                "{tag}: {key}"
+            );
+            assert_eq!(note.is_some(), expects_label, "{tag}: {key}");
+            if expects_label {
+                assert!(
+                    not_run.contains(&format!("{title} (selected, no result)")),
+                    "{key}"
+                );
+            } else {
+                assert!(not_run.contains(&title), "{tag}: {key}");
+            }
+        }
+    }
+}
+
+#[test]
 fn a_selected_step_whose_files_are_there_is_not_listed() {
     let d = Dir::new("all-there");
     d.put("run_manifest.tsv", "run\ttools\tmosdepth\n");

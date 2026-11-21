@@ -180,6 +180,7 @@ pub const SELECTED_NO_RESULT: &str = "selected, no result";
 /// beside the binary. A section is marked when it is `missing` (a `failed`
 /// one already says its step failed), a selected step feeds it, and it is
 /// not in `skip` (the sections that are no step of their own).
+/// Nextflow runs the Y haplogroup and Y-STR steps only for declared males.
 ///
 /// `None` when the run did not say what it selected (no `run tools` row:
 /// the bash runner writes none), or the catalogue cannot be read: the
@@ -189,6 +190,7 @@ pub fn selected_no_result(
     manifest: Option<&Manifest>,
     assets: &str,
     skip: &[&str],
+    declared_sex: Option<&str>,
 ) -> Option<Vec<&'static str>> {
     let tools: Vec<&str> = manifest?
         .value("run", "tools")?
@@ -202,10 +204,13 @@ pub fn selected_no_result(
     };
     let steps = og_runlog::steps::read_steps(&catalogue).ok()?;
     let mut out = Vec::new();
-    for s in sections
-        .iter_mut()
-        .filter(|s| s.state == State::Missing && !skip.contains(&s.spec.key))
-    {
+    const MALE_ONLY: [&str; 3] = ["y_haplogroup", "y_tree", "y_str"];
+    for s in sections.iter_mut().filter(|s| {
+        let key = s.spec.key;
+        s.state == State::Missing
+            && !skip.contains(&key)
+            && (declared_sex == Some("male") || !MALE_ONLY.contains(&key))
+    }) {
         let Some(step) = steps.iter().find(|st| {
             !st.tool.is_empty()
                 && tools.contains(&st.tool.as_str())

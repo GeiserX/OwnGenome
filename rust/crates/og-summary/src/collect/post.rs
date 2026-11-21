@@ -190,6 +190,7 @@ pub fn collect(input: &Input) -> Result<Value, String> {
         folder.manifest.as_ref(),
         &input.assets,
         &NOT_A_STEP,
+        declared_sex.as_deref(),
     );
     let not_run = not_run(&sections, selected.as_deref().unwrap_or_default());
     let not_assessed = not_assessed(&sections);
