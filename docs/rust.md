@@ -140,9 +140,11 @@ To add a primitive: write it in `pycompat` with unit tests, add an operation to 
 
 `og dev evidence clashes` reads two gzip VCFs and gzip archaic tables.
 `og dev evidence hg002-gvcf` reads a gzip truth VCF, plain BED, plain FASTA
-and FAI, and a plain sites table. `og dev renovate-check` reads a plain log
-and plain repository sources. Text uses strict UTF-8 and universal newlines
-(LF, CRLF and CR). Compression is explicit, even when a filename is misleading.
+and FAI, and a plain sites table. `og dev evidence y-bench` reads the current
+YFull tree as plain JSON and a plain calls table. `og dev renovate-check`
+reads a plain log and plain repository sources. Text uses strict UTF-8 and
+universal newlines (LF, CRLF and CR). Compression is explicit, even when a
+filename is misleading.
 
 Evidence, `og dev fixture comphet`, `og dev fixture trim-pharmcat` and the
 Renovate summary stage output beside its resolved destination. A file symlink
