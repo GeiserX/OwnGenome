@@ -1,7 +1,7 @@
 ================================================================================
   GENOMICS ANALYSIS REPORT
   Sample: S
-  Generated: 2026-11-21 10:08 UTC
+  Generated: 2026-01-02 03:04 UTC
   Latest run-all.sh run: 2020-01-01 00:00 UTC
   Database re-check: 2021-03-05 00:00:00 UTC: ClinVar newer-release
 ================================================================================
@@ -183,7 +183,36 @@
 ## Repeat Expansions (ExpansionHunter)
 ---
   [New since 2021-01-01 00:00 UTC]
-  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/str_intermediate_ranges.tsv']
+  Loci in output: 9
+  Outside the normal range (Stranger): 2
+    FMR1     58  premutation
+      FMR1 motif count: interrupted: AGG
+    RFC1     >=400/>=500  full_mutation
+      RFC1 motif count: pathogenic: AAGGG dominant
+  Not graded (no thresholds in the catalog): 1 (EXTRA1: no published range)
+  Not graded: the repeat catalog gives these loci no thresholds (for MUC1, CEL, TYMS and PLIN4 the reference repeat is longer than 300 bases, so no short read spans it), so Stranger gives them no status. Not graded is not normal (docs/09-str-expansions.md).
+  CFTR intron 9 (legacy IVS8) TG and poly-T tract: TG11/TG12 5T/7T
+    5T: 1 copy with the 5T poly-T tract, TG11 or TG12 on the 5T copy, not told by the counts (TG11-5T/TG12-7T or TG12-5T/TG11-7T). 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. One R117H copy and one 5T copy: phase unknown. R117H lies 17.6 kb from the tract, farther than a read pair spans, so whether they share a copy (in cis, a CF-causing allele of variable penetrance) or not (in trans) is not read; testing a parent tells them apart. (Deignan et al. 2020, PMID 32404922)
+  UGT1A1 promoter TA repeat: *1/*28
+    *1/*28 (TA6/TA7, 7/8 TA units as ExpansionHunter counts them): 1 decreased-function allele (*28 and *37 are decreased function). PharmCAT (step 7) called *1/*28: the same number of *28 and *37 copies. (Gammal et al. 2016, PMID 26417955)
+  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
+    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
+  Loci without a Stranger status (not in its catalog): 3
+  Not sized from short reads, so not counted as normal: 5 (FMR1, C9ORF72, ATXN1, EXTRA1, RFC1)
+  Every locus (key loci first): repeat count, Stranger status, notes
+    DMPK     not in output -
+    HTT      17/20      normal,normal  normal max 26
+    FMR1     58         premutation  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 55-60; normal max 44; FMR1 motif count: interrupted: AGG
+    C9ORF72  .          -  no call
+    ATXN1    30/37      not sized  size not determined (flanking reads only), interval 30-30/35-40; normal max 35
+    CFTR_T   5/7        -
+    CFTR_TG  11/12      -
+    EXTRA1   8/9        not graded  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 8-8/9-9; no thresholds in the catalog (no published range)
+    RFC1     >=400/>=500 full_mutation  longer than a read (in-repeat reads only): shown as at least the interval's lower end, interval 400-700/500-800
+    UGT1A1   7/8        normal
+  RFC1: Stranger's catalog sizes the degenerate AARRG unit and flags a low count, so the motif decides. The motif count reads the reads at the locus; it cannot size a long expansion.
+  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
+
 ## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)
 ---
   [New since 2021-01-01 00:00 UTC]
@@ -369,15 +398,48 @@
 ## HLA Typing (T1K)
 ---
   [New since 2021-01-01 00:00 UTC]
-  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/hla_alleles.tsv']
+    HLA-A    A*02:01:01 (quality 60) / A*01:01:01 (quality 50)
+    HLA-B    B*57:01:01:02 (quality 0) / no confident call (5 candidates, quality 0); low confidence (T1K quality 0 or below), not passed to PharmCAT
+    HLA-C    C*07:01:01 (quality 40)
+    HLA-DQA1 DQA1*05:01:01 (quality 40) / DQA1*02:01 (quality 30)
+    HLA-DQB1 DQB1*02:01:01 (quality 40) / DQB1*02:02:01 (quality 30)
+    HLA-DRB1 DRB1*03:01:01 (quality 40) / DRB1*07:01:01 (quality nan)
+    HFE      HFE*001 (quality 20) [T1K sequence allele, not the HFE C282Y/H63D genotype: that genotype comes from the variant calls (ClinVar section)]
+  Coeliac DQ: DQ2.5 present, likely cis (DRB1*03 present); DQ2.2 present; DQ8 absent
+  DQB1*02 copies: 2
+  A*31:01 absent: carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)
+  C*06:02 absent: psoriasis (Nair 2006, Am J Hum Genet)
+  DQB1*06:02 absent: narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)
+  DRB1*15:01 absent: multiple sclerosis (Barcellos 2003, Am J Hum Genet)
+  DRB1*01:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:04 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:05 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:08 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*14:02 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  B*15:02 not determined (HLA-B low confidence): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)
+  B*57:01 not determined (HLA-B low confidence): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)
+  B*58:01 not determined (HLA-B low confidence): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)
+  B*27 not determined (HLA-B low confidence): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)
+  Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.
+  HLA database: unknown
+  HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).
+  OptiType check (HLA_QC=true, two fields):
+    HLA-A    agree: T1K A*02:01, OptiType A*02:01
+    HLA-B    agree: T1K B*57:01, OptiType B*57:01 (ok)
+  KIR genes (T1K, KIR=true):
+    KIR2DL1  KIR2DL1*001 (quality 30) / KIR2DL1*002 (quality 20)
+    No allele called (absent, or too few reads): KIR3DL3
+  KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.
+
 ## Locityper Second Opinion at Hard Loci (step 53)
 ---
   [New since 2021-01-01 00:00 UTC]
   Loci called: 4 of 5; passing the authors' filter: 3
   HLA-DRB1  Locityper: h1 + h2 (quality 30, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)
-            primary:   T1K (step 08) did not run
+            primary:   T1K (step 08): DRB1*03:01:01/DRB1*07:01:01
   KIR       Locityper: k1 + k2 (quality 20, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)
-            primary:   T1K's KIR pass (step 08, KIR=true) gave no call
+            primary:   T1K KIR pass (step 08): 1 genes typed
   CYP2D6    Locityper: not called: low depth
             primary:   pypgx (step 32): *1/*2; Cyrius (step 21): *2/*1
   FCGR      Locityper: f + f (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter fail: q)
