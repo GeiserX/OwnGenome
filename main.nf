@@ -1078,6 +1078,11 @@ workflow {
         def chip_germline_index = germ ? file("${germ}.tbi", checkIfExists: true) : []
         def chip_pon            = pon ? file(pon, checkIfExists: true) : []
         def chip_pon_index      = pon ? file("${pon}.tbi", checkIfExists: true) : []
+        def common = params.chip_common_sites   // the contamination estimate FilterMutectCalls reads
+        def chip_common       = common ? file(common, checkIfExists: true) : []
+        def chip_common_index = common ? file("${common}.tbi", checkIfExists: true) : []
+        if (!common) log.warn "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate and another person's DNA in the sample can pass as a small clone (docs/49-chip.md)."
+        else if (!germ) log.warn "chip: --chip_common_sites without --chip_germline_resource: FilterMutectCalls has no population frequency to weigh the contamination estimate by, so it changes few calls (docs/49-chip.md)."
         ch_vcf
             .map { meta, _vcf, _idx -> [meta.id, meta] }
             .join(ch_bam.map { meta, _bam, _bai -> [meta.id, true] }, remainder: true)
@@ -1087,7 +1092,7 @@ workflow {
             }
         CHIP_PREPARE(Channel.value(file(params.chip_gff, checkIfExists: true)), ch_chip_genes, ch_reference_fai)
         CHIP_MUTECT2(ch_bam, CHIP_PREPARE.out.bed, ch_reference, ch_reference_fai, ch_reference_dict,
-                     chip_germline, chip_germline_index, chip_pon, chip_pon_index)
+                     chip_germline, chip_germline_index, chip_pon, chip_pon_index, chip_common, chip_common_index)
         CHIP_ANNOTATE(
             CHIP_MUTECT2.out.vcf.map { meta, vcf -> [meta.id, meta, vcf] }
                 .join(ch_bam.map { meta, bam, bai -> [meta.id, bam, bai] })

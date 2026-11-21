@@ -63,9 +63,9 @@ nextflow run main.nf \
 #    --tools '...,parascopy'                   + --parascopy_data (setup.sh --parascopy-data; docs/35-paralogs.md)
 #    --tools '...,bloodtype'                   no data to install; RhD needs the BAM (docs/41-bloodtype.md)
 #    --tools '...,lpa'                         no data to install; needs the BAM (docs/46-lpa.md)
-#    --tools '...,chip'                        + --chip_gff (setup.sh --chip-data), optional --chip_germline_resource
-#                                                and --chip_pon (each with its .tbi beside it); needs the BAM
-#                                                (docs/49-chip.md)
+#    --tools '...,chip'                        + --chip_gff (setup.sh --chip-data), optional --chip_germline_resource,
+#                                                --chip_pon, and --chip_common_sites (each with its .tbi beside it).
+#                                                Needs the BAM (docs/49-chip.md).
 #    --tools '...,archaic'                     + --archaic_data (setup.sh --archaic), --archaic_pop, --hla_genes for the
 #                                                genes of each segment (docs/43-archaic.md)
 #    --tools '...,ancient'                     + --ancient_panel (setup.sh --ancient-panel); reads the gVCF, so a sample
