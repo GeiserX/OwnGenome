@@ -141,6 +141,25 @@ grep -qF 'def chip_common       = common ? file(common, checkIfExists: true) : [
   || fail "main.nf does not read --chip_common_sites"
 grep -qF 'chip_pon, chip_pon_index, chip_common, chip_common_index)' "${REPO_ROOT}/main.nf" \
   || fail "main.nf does not pass the common sites to CHIP_MUTECT2"
+# The rendered script substitutes the VCF directly, so check the positional
+# binding of the VCF and its index in the module's input declarations too.
+awk '
+  /^process CHIP_MUTECT2[[:space:]]*\{/ { in_process = 1 }
+  in_process && /^}/ { exit }
+  in_process && /^[[:space:]]*input:/ { in_input = 1; next }
+  in_input && /^[[:space:]]*output:/ { exit }
+  in_input {
+    sub(/[[:space:]]*\/\/.*/, "")
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+    if (two_back == "path(pon_index)" && previous == "path(common)" && $0 == "path(common_index)") {
+      found = 1
+      exit
+    }
+    two_back = previous
+    previous = $0
+  }
+  END { exit !found }
+' "$MOD" || fail "CHIP_MUTECT2 does not take the common sites and their index after the panel of normals"
 
 # --- run-all.sh --------------------------------------------------------------------------
 # TOOLS=chip passes the installed common-sites VCF to the pipeline, only with its .tbi.
