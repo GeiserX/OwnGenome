@@ -369,6 +369,137 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
 mod tests {
     use super::*;
 
+    const REPORT_HEADER: &str = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tGene_name\tExon_edge\tExon_edge_detail\tPopulation_AF\tPopulation_source\tCommon\tAnnotSV_class\tRule\tRule_detail\n";
+    const REPORT_ROWS: &str = concat!(
+        "MantaDEL:1:0\t20\t1000\t5000\tDEL\t5\tmanta\tG1;G2;G3;G4;G5\tno\t\t\t\tno\t5\t\t\n",
+        "NEARBY\t20\t3000\t7000\tDEL\t4\tmanta\tFIXG1\tyes\texon 1 and exon 3 edges\t0.05\tfixture\tyes\t4\t\t\n",
+        "OTHER\t20\t3100\t7100\tDEL\t4\tmanta\tG9\tno\t\t\t\tno\t4\t\t\n",
+    );
+    const REPORT_LAST: &str = "RULE\t20\t50000\t55000\tDEL\t4\tmanta\tRULEG\tno\t\t\t\tno\t4\t\t\n";
+    const REPORT_MOVED: &str = "RULE\t20\t50000\t55000\tDEL\t3\tmanta\tRULEG\tno\t\t\t\tno\t4\tig_tr_locus\tinside the IG locus\n";
+    const REPORT_CONSENSUS: &str = concat!(
+        "##fileformat=VCFv4.2\n",
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n",
+        "chr20\t3000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=7000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:MantaDEL_1_0\t0/1:DEL:D1\n",
+    );
+
+    fn report_field<'a>(value: &'a Value, key: &str) -> &'a Value {
+        let Value::Object(fields) = value else {
+            panic!("expected an object for {key}: {value:?}");
+        };
+        &fields[key]
+    }
+
+    fn report_rows<'a>(data: &'a Value, key: &str) -> &'a [Value] {
+        let Value::Array(rows) = report_field(data, key) else {
+            panic!("expected rows in {key}");
+        };
+        rows
+    }
+
+    fn report_counts(data: &Value) -> [&Value; 4] {
+        ["count", "single_caller", "exon_edge", "common"].map(|key| report_field(data, key))
+    }
+
+    #[test]
+    fn annotsv_report_payload_tracks_membership_and_rule_downgrades() {
+        use crate::collect::{Group, Input, collect};
+        use crate::testutil::Dir;
+
+        let dir = Dir::new("annotsv-report-support");
+        dir.put_gz("S/sv_merged/S_sv_consensus.vcf.gz", REPORT_CONSENSUS);
+        let paired = |last: &str| {
+            dir.put(
+                "S/annotsv/S_sv_class4_5_checked.tsv",
+                format!("{REPORT_HEADER}{REPORT_ROWS}{last}"),
+            );
+            let summary = collect(&Input {
+                sample: "S".into(),
+                sample_dir: dir.path("S"),
+                declared_sex: None,
+                assets: dir.path("assets"),
+                group: Group::C,
+                tables: dir.path("bin"),
+            })
+            .unwrap()
+            .to_json();
+            let section = report_field(report_field(&summary, "sections"), "annotsv");
+            assert_eq!(report_field(section, "state"), &s("ok"));
+            report_field(section, "data").clone()
+        };
+        let full = paired(REPORT_LAST);
+        let moved = paired(REPORT_MOVED);
+        let rows = report_rows(&full, "rows");
+        let member = &rows[0];
+        let nearby = &rows[1];
+        let two_callers = report_field(member, "support") == &int(2)
+            && report_field(member, "support_callers") == &strs(["manta", "delly"]);
+        let one_caller = report_field(nearby, "support") == &int(1)
+            && report_field(nearby, "support_callers") == &strs(["manta"]);
+        let [total, single, edge, common] = report_counts(&full);
+        let [after_total, after_single, after_edge, after_common] = report_counts(&moved);
+        let downgraded = &report_rows(&moved, "downgraded")[0];
+
+        // Report text and HTML read these same summary fields. Keep every
+        // migrated assertion visible in the control, even when several fail.
+        let checks = [
+            ("summary member and caller names", two_callers),
+            (
+                "summary support, exon-edge and common counts",
+                (single, edge, common) == (&int(3), &int(1), &int(1)),
+            ),
+            (
+                "text headline counts",
+                (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1)),
+            ),
+            (
+                "text deletion row and support label",
+                two_callers
+                    && report_field(member, "sv") == &s("20:1000-5000")
+                    && report_field(member, "type") == &s("DEL")
+                    && report_field(member, "acmg_class") == &s("5")
+                    && report_field(member, "genes") == &strs(["G1", "G2", "G3", "G4", "G5"]),
+            ),
+            (
+                "HTML member and nearby non-member support labels",
+                two_callers && one_caller && report_field(nearby, "caller") == &s("manta"),
+            ),
+            (
+                "HTML card headline counts",
+                (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1))
+                    && report_field(&full, "exon_edge_checked") == &Value::Bool(true),
+            ),
+            (
+                "summary counts after excluding a downgraded call",
+                (after_single, after_edge, after_common) == (&int(2), &int(1), &int(1)),
+            ),
+            (
+                "text counts and separate downgrade reason",
+                (after_total, after_single, after_edge, after_common)
+                    == (&int(3), &int(2), &int(1), &int(1))
+                    && report_field(downgraded, "sv") == &s("20:50000-55000")
+                    && report_field(downgraded, "annotsv_class") == &s("4")
+                    && report_field(downgraded, "acmg_class") == &s("3")
+                    && report_field(downgraded, "rule") == &s("ig_tr_locus")
+                    && report_rows(&moved, "rows")
+                        .iter()
+                        .all(|row| report_field(row, "sv") != &s("20:50000-55000")),
+            ),
+            (
+                "exon and benign-set flags used in report rows",
+                report_field(nearby, "exon_edge_detail") == &s("exon 1 and exon 3 edges")
+                    && report_field(nearby, "population_af") == &Value::Float(0.05)
+                    && report_field(nearby, "population_source") == &s("fixture")
+                    && report_field(nearby, "common") == &Value::Bool(true),
+            ),
+        ];
+        let failed: Vec<&str> = checks
+            .into_iter()
+            .filter_map(|(name, passed)| (!passed).then_some(name))
+            .collect();
+        assert!(failed.is_empty(), "failed report checks: {failed:#?}");
+    }
+
     #[test]
     fn reports_and_two_hit_rules_use_the_original_member_id() {
         let d = std::env::temp_dir().join(format!("og-summary-sv-support-{}", std::process::id()));

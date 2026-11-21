@@ -208,8 +208,8 @@ const CONS_HEAD: &str = "##fileformat=VCFv4.1\n##source=SURVIVOR\n#CHROM\tPOS\tI
 fn consensus() -> String {
     CONS_HEAD.to_owned()
         + "chr20\t10101000\tMantaDEL:1\tN\t<DEL>\t.\tPASS\tSUPP=2;SUPP_VEC=11;SVLEN=-2000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;\
-CHR2=chr20;END=10103000;STRANDS=+-\tGT\t0/1\t0/1\n\
-chr20\t20000010\tMantaDUP:2\tN\t<DUP>\t.\tPASS\tSUPP=2;SUPP_VEC=11;SVLEN=450000;SVTYPE=DUP;END=20450010\tGT\t0/1\t0/1\n"
+CHR2=chr20;END=10103000;STRANDS=+-\tGT:TY:ID\t0/1:DEL:SV2\t0/1:DEL:DELLY2\n\
+chr20\t20000010\tMantaDUP:2\tN\t<DUP>\t.\tPASS\tSUPP=2;SUPP_VEC=11;SVLEN=450000;SVTYPE=DUP;END=20450010\tGT:TY:ID\t0/1:DUP:MantaDUP_2\t0/1:DUP:DELLY3\n"
 }
 
 /// The columns of the checked table: AnnotSV's kept ones, the checks', and
@@ -746,8 +746,8 @@ fn region_rules_and_the_depth_check() {
     );
     assert_eq!(
         (c("DELLY_GT", "Depth_support"), c("DELLY_GT", "ACMG_class")),
-        ("yes".into(), "4".into()),
-        "a Delly call step 05 added (FORMAT GT only) over 1,000 bp passed its RDCN gate there: support"
+        ("unknown".into(), "4".into()),
+        "a long Delly call with no RDCN or duphold depth keeps its class with unknown support"
     );
     assert_eq!(
         (
@@ -773,7 +773,7 @@ fn region_rules_and_the_depth_check() {
         "exactly the eight rows above are moved to class 3"
     );
     assert!(
-        summary.contains("moved to class 3: 8; depth support no: 3, not checked: 2"),
+        summary.contains("moved to class 3: 8; depth support no: 3, not checked: 3"),
         "the summary line counts them: {summary}"
     );
     assert_eq!(
