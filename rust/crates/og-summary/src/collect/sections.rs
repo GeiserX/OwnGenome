@@ -3,7 +3,7 @@
 //! counts. Each returns the file it read and its typed data, `None` when
 //! the step wrote nothing, or the note of an unreadable section.
 
-use super::model::{RUN_ALL_STEPS, RunStatus, is_stale, opt_str};
+use super::model::{Manifest, RUN_ALL_STEPS, RunStatus, Section, State, is_stale, opt_str};
 use crate::{basename, float, int, text_lines};
 use indexmap::IndexMap;
 use pycompat::csv::{DictReader, DictRow, Quoting};
@@ -162,6 +162,64 @@ impl Coverage {
     fn to_json(&self) -> Value {
         obj([("mean_depth", opt_float(self.mean_depth))])
     }
+}
+
+// --- selected steps that left no result ------------------------------------------
+
+/// What a section's note and its `not_run` line say of a step the run
+/// selected that wrote nothing for the sample.
+pub const SELECTED_NO_RESULT: &str = "selected, no result";
+
+/// The sections whose step the run selected and that have no file, in the
+/// order of `sections`, each with a note that says so.
+///
+/// The selection is the `run tools` row of `run_manifest.tsv`: the
+/// `--tools` names, separated by spaces (HTML_REPORT writes it from
+/// main.nf's tool list). `assets/steps.tsv` names the step of each tool and
+/// the sections each step feeds; the one in `assets` is read, else the one
+/// beside the binary. A section is marked when it is `missing` (a `failed`
+/// one already says its step failed), a selected step feeds it, and it is
+/// not in `skip` (the sections that are no step of their own).
+///
+/// `None` when the run did not say what it selected (no `run tools` row:
+/// the bash runner writes none), or the catalogue cannot be read: the
+/// sections then read as before, `missing` with no note.
+pub fn selected_no_result(
+    sections: &mut [Section],
+    manifest: Option<&Manifest>,
+    assets: &str,
+    skip: &[&str],
+) -> Option<Vec<&'static str>> {
+    let tools: Vec<&str> = manifest?
+        .value("run", "tools")?
+        .split_whitespace()
+        .collect();
+    let here = std::path::Path::new(assets).join("steps.tsv");
+    let catalogue = if here.is_file() {
+        here
+    } else {
+        og_runlog::steps::default_path()?
+    };
+    let steps = og_runlog::steps::read_steps(&catalogue).ok()?;
+    let mut out = Vec::new();
+    for s in sections
+        .iter_mut()
+        .filter(|s| s.state == State::Missing && !skip.contains(&s.spec.key))
+    {
+        let Some(step) = steps.iter().find(|st| {
+            !st.tool.is_empty()
+                && tools.contains(&st.tool.as_str())
+                && st.sections.iter().any(|k| k == s.spec.key)
+        }) else {
+            continue;
+        };
+        s.note = Some(format!(
+            "{SELECTED_NO_RESULT}: --tools named {}, but step {} wrote nothing for this sample",
+            step.tool, step.step
+        ));
+        out.push(s.spec.key);
+    }
+    Some(out)
 }
 
 // --- gene callability (step 16b) -----------------------------------------------------
