@@ -202,7 +202,7 @@ def a_clinical_filter(S, s):
     if sf.get("unavailable"):
         # Not assessed is never zero findings: the report's sentence instead of the counts.
         return {"facts": facts, "lines": rr.sf_apart_lines(sf), "attention": True}
-    rows = [[r[0], r[1], r[2], r[3]] for r in rr.sf_rows(sf)] if sf else []
+    rows = [[r[0], r[1], r[2], r[3]] for r in rr.sf_rows(sf, _data(S, "annotsv").get("consensus"))] if sf else []
     high = f"{rr.high_rare(sf)}{rr.high_apart(sf)}" if sf.get("high_impact_checked") else "not checked"
     facts += [[f"{sf.get('version') or 'ACMG SF'}: ClinVar P/LP in its genes", len(sf.get("clinvar_hits") or [])],
               ["High-impact rare variants in its genes", high]]
@@ -840,7 +840,7 @@ def finding_rows(summary):
     # rows (rr.sf_rows): one it cannot read costs this rule, never the rest.
     sf_list = []
     with _Row(out, "clinical-filter", "act"):
-        sf_list = rr.sf_rows(sf) if sf and not sf.get("unavailable") else []
+        sf_list = rr.sf_rows(sf, _data(S, "annotsv").get("consensus")) if sf and not sf.get("unavailable") else []
     for r in sf_list:
         with _Row(out, "clinical-filter", "act"):
             out.append(_f("act", "clinical-filter", ("sf", r[0], r[1]), f"Secondary finding in {r[0]}",
