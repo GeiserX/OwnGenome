@@ -44,8 +44,9 @@
 #   The other members are never run here: run run-all.sh for each, and the last one runs the family steps.
 #   A step without its data or BAM is skipped. A report-only tool whose task fails is skipped, and its step is marked
 #   failed (logs/run_status.tsv). Results are published by hard link when work/ and GENOME_DIR share a filesystem,
-#   you passed no -w, -c or --publish_dir_mode, and you run as root or Linux's fs.protected_hardlinks is 0 (then a user
-#   may link the files of the CPSR and CNVPYTOR tasks, which run as root and can stay root's).
+#   you passed no -w, -c or --publish_dir_mode, and you run as root or Linux's fs.protected_hardlinks is 0. Every
+#   published file is yours (tasks run as you; Nextflow gives the CPSR and CNVPYTOR work files back), but this
+#   condition is kept as it was.
 # logs/run_status.tsv keeps this command with its switches: bin/og recheck --rerun replays it when a newer
 #   ClinVar or catalog changes a result (docs/recheck.md).
 set -euo pipefail
@@ -384,9 +385,11 @@ if [ -n "$EX" ]; then
   [ "$XC" = "$NC" ] && [ "$XM" = "$M" ] || echo "[Resources] the pool follows a task cap you set above the engine's ${NC} CPUs and ${M} GB, or one not in whole CPUs or GB: a task can then be killed inside the engine (exit 137)"
 else rm -f "$EXC"; fi
 # Publish by hard link when it is sure to work: the BAM and every other output are then stored once, not twice.
-# Nextflow does not fall back to a copy when a link fails; the run stops. The docker profile runs most tasks as you,
-# but CPSR and CNVPYTOR as root, and their files can stay root's. Linux lets another user link a file it does not own
-# only when fs.protected_hardlinks is 0. So: root or protected_hardlinks 0, and a probe link from work/ to GENOME_DIR that works.
+# Nextflow does not fall back to a copy when a link fails; the run stops. The docker profile runs tasks as you, and
+# Nextflow's docker.fixOwnership gives the work files of CPSR and CNVPYTOR (which run as root) back to you, so every
+# published file is yours. Linux lets another user link a file it does not own only when fs.protected_hardlinks is 0;
+# the condition from when tasks ran as root is kept as it was: root or protected_hardlinks 0, and a probe link from
+# work/ to GENOME_DIR that works.
 # The probe only sees the default work/: with -w, -work-dir, NXF_WORK, or a -c/-config that may set workDir, keep the copy.
 if [[ " $* " != *" --publish_dir_mode"* && " $* " != *" -w "* && " $* " != *" -work-dir"* && " $* " != *" -c "* \
    && " $* " != *" -config "* ]] && [ -z "${NXF_WORK:-}" ] \

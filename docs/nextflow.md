@@ -161,7 +161,7 @@ sample1,results/variant_calling/deepvariant/sample1/sample1.deepvariant.vcf.gz,r
 
 | Profile | Description |
 |---------|-------------|
-| `docker` | Run with Docker containers (default for local). Every container runs with `--network none`, and as you (`-u` with your UID and GID, `HOME=/tmp`), as the step scripts do. `CPSR` and `CNVPYTOR` run as root: PCGR has not been shown to run unprivileged, and CNVpytor copies its resources into its image. Docker gives their work files back to you (`docker.fixOwnership`). A task can write beside its inputs under `GENOME_DIR`: the step scripts mount `GENOME_DIR` read-only, but Nextflow mounts the folders of a task's inputs read-write. |
+| `docker` | Run with Docker containers (default for local). Every container runs with `--network none`, and as you (`-u` with your UID and GID, `HOME=/tmp`), as the step scripts do. `CPSR` and `CNVPYTOR` run as root, with `HOME=/root`: PCGR has not been shown to run unprivileged, and CNVpytor copies its resources into its image. Nextflow (`docker.fixOwnership`) gives their work files back to you; a file they write outside their work directory stays root's. A task can write beside its inputs under `GENOME_DIR`: the step scripts mount `GENOME_DIR` read-only, but Nextflow mounts the folders of a task's inputs read-write. |
 | `singularity` | Singularity/Apptainer. **Untested.** One module writes inside its image and needs a writable container: `cnvpytor` (copies resources into its `site-packages`). This profile does not cut the network. |
 | `test` | Minimal test with reduced resources |
 | `test_full` | Full-size test with real WGS data |
