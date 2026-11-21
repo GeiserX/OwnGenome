@@ -11,7 +11,8 @@
 //!    for a duplication, AF 0.05 is common, an empty one is not.
 //! 3. The caller from INFO SVCALLER.
 //! 4. The support from step 22's consensus, and its red control: with an
-//!    empty consensus the two-caller deletion has support 1.
+//!    empty consensus the two-caller deletion has support 1. Manta's ID
+//!    `MantaDUP:2` matches SURVIVOR's `MantaDUP_2`.
 //! 5. The command line writes the table, and `--consensus` adds the support.
 //! 6. The rule table and the depth check (`--rules`
 //!    assets/sv_rule_regions.tsv, `--sex`, `--par-bed`), and the red
@@ -349,6 +350,39 @@ fn exon_edges_population_caller_and_support() {
         ("1", "manta"),
         "a deletion only Manta made: support 1 (the consensus DUP at its place does not count)"
     );
+    assert_eq!(
+        (
+            col(&sup, "GENE5", "Support"),
+            col(&sup, "GENE5", "Support_callers")
+        ),
+        ("", ""),
+        "CNVpytor is no column of this consensus, so its call's support is not known"
+    );
+    // SURVIVOR writes Manta's `MantaDUP:2` as `MantaDUP_2` in FORMAT/ID.
+    let c45_dup = w.put(
+        "S_sv_class4_5_dup.tsv",
+        &(class45()
+            + &row(7, 20000000, 20450000, "DUP", 4, "manta", "", "").replacen(
+                "\tSV7\t",
+                "\tMantaDUP:2\t",
+                1,
+            )),
+    );
+    let (dup, _) = run(
+        &Opts {
+            consensus: Some(cons.clone()),
+            ..opts(&c45_dup, &w.path("dup_checked.tsv"))
+        },
+        "Gene_name",
+    );
+    assert_eq!(
+        (
+            col(&dup, "GENE7", "Support"),
+            col(&dup, "GENE7", "Support_callers")
+        ),
+        ("2", "manta,delly"),
+        "Manta's MantaDUP:2 is the consensus member MantaDUP_2: support 2, manta and delly"
+    );
     let gone = checked(None, Some(&w.path("none.vcf")));
     assert!(
         !gone.is_empty() && gone.values().all(|r| r["Support"].is_empty()),
@@ -365,8 +399,10 @@ fn exon_edges_population_caller_and_support() {
         "red control: with an empty consensus the two-caller deletion has support 1"
     );
     assert!(
-        sup_e.values().all(|r| r["Support"] == "1"),
-        "red control: and no row has support 2: {sup_e:?}"
+        sup_e
+            .values()
+            .all(|r| r["Support"] == if r["Caller"] == "cnvpytor" { "" } else { "1" }),
+        "red control: and no row has support 2 (each Manta and Delly row 1): {sup_e:?}"
     );
 }
 
@@ -494,7 +530,7 @@ fn row7(r: &R7) -> String {
         + "\n"
 }
 
-const ROWS7: [R7; 18] = [
+const ROWS7: [R7; 19] = [
     (
         "TR_IN", "4", 87614600, 87615500, "DEL", 4, "manta", "DSPP", "GT:DHFFC", "0/1:0.45",
     ),
@@ -544,7 +580,19 @@ const ROWS7: [R7; 18] = [
         "CNV", "20", 45000000, 45300000, "DEL", 4, "cnvpytor", "G14", "GT", "0/1",
     ),
     (
-        "DELLY_GT", "20", 46000000, 46300000, "DEL", 4, "delly", "G15", "GT", "0/1",
+        "DELLY_GT", "20", 46000000, 46300000, "DEL", 4, "delly", "G15", "GT:RDCN", "0/1:1",
+    ),
+    (
+        "DELLY_NORDCN",
+        "20",
+        46500000,
+        46800000,
+        "DEL",
+        4,
+        "delly",
+        "G17",
+        "GT",
+        "0/1",
     ),
     (
         "DELLY_SHORT",
@@ -746,8 +794,16 @@ fn region_rules_and_the_depth_check() {
     );
     assert_eq!(
         (c("DELLY_GT", "Depth_support"), c("DELLY_GT", "ACMG_class")),
+        ("yes".into(), "4".into()),
+        "a Delly call step 05 added carries the RDCN that passed there (FORMAT GT:RDCN): support"
+    );
+    assert_eq!(
+        (
+            c("DELLY_NORDCN", "Depth_support"),
+            c("DELLY_NORDCN", "ACMG_class")
+        ),
         ("unknown".into(), "4".into()),
-        "a long Delly call with no RDCN or duphold depth keeps its class with unknown support"
+        "a long Delly call with no RDCN (a VCF not written by Delly 2.x) keeps its class with unknown support"
     );
     assert_eq!(
         (
@@ -773,7 +829,7 @@ fn region_rules_and_the_depth_check() {
         "exactly the eight rows above are moved to class 3"
     );
     assert!(
-        summary.contains("moved to class 3: 8; depth support no: 3, not checked: 3"),
+        summary.contains("moved to class 3: 8; depth support no: 3, not checked: 2, unknown: 1"),
         "the summary line counts them: {summary}"
     );
     assert_eq!(

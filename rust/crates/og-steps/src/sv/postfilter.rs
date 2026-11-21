@@ -21,13 +21,15 @@
 //! - `Depth_support`: duphold's DHFFC (< 0.7 for a deletion) or DHBFC
 //!   (> 1.3 for a duplication), else for a Delly call over 1,000 bp its
 //!   RDCN by the same rule `og sv add-callers` applies
-//!   ([`depth_contradicts`]). Missing RDCN is `unknown` for a long Delly call.
-//!   `no` moves the call to class 3;
+//!   ([`depth_contradicts`]); `og sv add-callers` keeps RDCN on each Delly
+//!   call it adds. A Delly call over 1,000 bp with no RDCN value (a VCF not
+//!   written by Delly 2.x) reads `unknown`. `no` moves the call to class 3;
 //! - `Rule`, `Rule_detail`: the region rules of `--rules`
 //!   (`assets/sv_rule_regions.tsv`) and the depth rule that fired.
 //!
 //! With `--consensus` (step 22's VCF), `Support` and `Support_callers`
-//! follow; then AnnotSV's FORMAT and sample columns. A summary line goes to
+//! follow, both empty when the consensus cannot tell ([`Membership`]);
+//! then AnnotSV's FORMAT and sample columns. A summary line goes to
 //! stderr.
 //!
 //! Fixes against the Python: inputs are read as gzip by their magic bytes;
@@ -634,6 +636,24 @@ fn region_rules(
 pub struct ConsensusSupport {
     names: Vec<String>,
     members: HashMap<MemberKey, Option<Rc<[String]>>>,
+    /// Callers that voted in an event whose member ID cannot be read: a
+    /// record of theirs that no key names may still be in an event.
+    unnamed: HashSet<String>,
+}
+
+/// Whether a checked row's source record is a voting member of a
+/// consensus event.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Membership<'a> {
+    /// A voting member: the event's voting callers, in column order.
+    Member(&'a [String]),
+    /// In no event, and the consensus names every member of this caller:
+    /// the call is the row's caller's alone.
+    NotMember,
+    /// Not known: the row has no ID (empty or `.`), its caller is not a
+    /// column of the consensus, its ID is a member of two events, or a vote
+    /// of its caller carries no ID this can read.
+    Unknown,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -657,7 +677,10 @@ impl MemberKey {
 }
 
 impl ConsensusSupport {
-    /// Read a header or record from the step 22 VCF.
+    /// Read a header or record from the step 22 VCF. A record whose FILTER
+    /// is not `PASS` or `.` is no event. A PASS record whose votes cannot
+    /// be read (no SVTYPE, a SUPP_VEC or SUPP that does not fit the
+    /// columns, no FORMAT/ID) marks each caller it may count as unnamed.
     pub fn add_line(&mut self, line: &str) {
         if line.starts_with("#CHROM\t") {
             self.names = line.split('\t').skip(9).map(str::to_owned).collect();
@@ -670,65 +693,69 @@ impl ConsensusSupport {
             return;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        let [
-            chrom,
-            _,
-            _,
-            _,
-            _,
-            _,
-            "PASS" | ".",
-            info,
-            format,
-            samples @ ..,
-        ] = fields.as_slice()
-        else {
+        let [chrom, _, _, _, _, _, "PASS" | ".", info, rest @ ..] = fields.as_slice() else {
             return;
         };
-        let vec = info_value(info, "SUPP_VEC").as_bytes();
+        let bits = info_value(info, "SUPP_VEC").as_bytes();
+        let bits_ok =
+            bits.len() == self.names.len() && bits.iter().all(|&b| matches!(b, b'0' | b'1'));
+        let voters = bits.iter().filter(|&&b| b == b'1').count();
         let kind = info_value(info, "SVTYPE");
-        if kind.is_empty()
-            || samples.len() != self.names.len()
-            || vec.len() != self.names.len()
-            || !vec.iter().all(|&b| matches!(b, b'0' | b'1'))
-        {
-            return;
-        }
-        let Some(id_index) = format.split(':').position(|key| key == "ID") else {
+        let id_index = rest
+            .first()
+            .and_then(|format| format.split(':').position(|key| key == "ID"));
+        let samples = rest.get(1..).unwrap_or_default();
+        let readable = bits_ok
+            && !kind.is_empty()
+            && samples.len() == self.names.len()
+            && voters > 0
+            && info_value(info, "SUPP").parse() == Ok(voters);
+        let (true, Some(id_index)) = (readable, id_index) else {
+            for (i, name) in self.names.iter().enumerate() {
+                if !bits_ok || bits[i] == b'1' {
+                    self.unnamed.insert(name.clone());
+                }
+            }
             return;
         };
-        let voters: Vec<_> = self
+        let callers: Rc<[String]> = self
             .names
             .iter()
-            .zip(samples)
-            .zip(vec)
-            .filter_map(|(vote, &bit)| (bit == b'1').then_some(vote))
+            .zip(bits)
+            .filter(|&(_, &bit)| bit == b'1')
+            .map(|(name, _)| name.clone())
             .collect();
-        if voters.is_empty() || info_value(info, "SUPP").parse() != Ok(voters.len()) {
-            return;
-        }
-        let callers: Rc<[String]> = voters.iter().map(|(name, _)| (*name).clone()).collect();
-        for (caller, sample) in voters {
-            if let Some(id) = sample.split(':').nth(id_index)
-                && !matches!(id, "" | ".")
-            {
-                self.members
-                    .entry(MemberKey::new(chrom, kind, caller, id))
-                    // A source ID in two clusters has no unique consensus.
-                    .and_modify(|old| *old = None)
-                    .or_insert_with(|| Some(Rc::clone(&callers)));
+        for ((caller, sample), &bit) in self.names.iter().zip(samples).zip(bits) {
+            if bit != b'1' {
+                continue;
+            }
+            match sample.split(':').nth(id_index) {
+                Some(id) if !matches!(id, "" | ".") => {
+                    self.members
+                        .entry(MemberKey::new(chrom, kind, caller, id))
+                        // A source ID in two events has no unique one.
+                        .and_modify(|old| *old = None)
+                        .or_insert_with(|| Some(Rc::clone(&callers)));
+                }
+                _ => {
+                    self.unnamed.insert(caller.clone());
+                }
             }
         }
     }
 
-    /// The voting callers of the event containing this source record.
-    pub fn callers(&self, chrom: &str, kind: &str, caller: &str, id: &str) -> Option<&[String]> {
-        if matches!(id, "" | ".") {
-            return None;
+    /// Whether the source record `id` of `caller` is a voting member of an
+    /// event of this contig and type, and that event's voting callers.
+    pub fn membership(&self, chrom: &str, kind: &str, caller: &str, id: &str) -> Membership<'_> {
+        if matches!(id, "" | ".") || !self.names.iter().any(|name| name == caller) {
+            return Membership::Unknown;
         }
-        self.members
-            .get(&MemberKey::new(chrom, kind, caller, id))?
-            .as_deref()
+        match self.members.get(&MemberKey::new(chrom, kind, caller, id)) {
+            Some(Some(callers)) => Membership::Member(callers),
+            Some(None) => Membership::Unknown,
+            None if self.unnamed.contains(caller) => Membership::Unknown,
+            None => Membership::NotMember,
+        }
     }
 }
 
@@ -912,7 +939,7 @@ pub fn run(o: &Opts) -> Result<String, Error> {
         .filter(|r| r["ACMG_class"] != r["AnnotSV_class"])
         .count();
     Ok(format!(
-        "Class 4-5 SVs checked: {}; deletions on exon edges: {}; common (benign-set AF >= 1%): {}; moved to class 3: {moved}{}; depth support no: {}, not checked: {}",
+        "Class 4-5 SVs checked: {}; deletions on exon edges: {}; common (benign-set AF >= 1%): {}; moved to class 3: {moved}{}; depth support no: {}, not checked: {}{}",
         checked.rows.len(),
         if tx.is_some() {
             count("Exon_edge", "yes").to_string()
@@ -926,13 +953,18 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             " (no rule table)"
         },
         count("Depth_support", "no"),
-        count("Depth_support", "not checked") + count("Depth_support", "unknown"),
+        count("Depth_support", "not checked"),
+        match count("Depth_support", "unknown") {
+            0 => String::new(),
+            n => format!(", unknown: {n}"),
+        },
     ))
 }
 
-/// Support and Support_callers of each row from its SURVIVOR membership.
-/// A checked row absent from the consensus has its own caller alone.
-/// Without the file both cells are empty.
+/// Support and Support_callers of each row from its SURVIVOR membership
+/// ([`ConsensusSupport::membership`]): a member has its event's voting
+/// callers, a row in no event its own caller alone, and a row whose
+/// membership is not known both cells empty, as without the file.
 fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error> {
     if !std::path::Path::new(path).is_file() {
         for r in rows {
@@ -947,18 +979,13 @@ fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error
         Ok(())
     })?;
     for r in rows {
-        let (s, c) = match consensus.callers(&r["SV_chrom"], &r["SV_type"], &r["Caller"], &r["ID"])
-        {
-            Some(callers) => (callers.len(), callers.join(",")),
-            None => (
-                1,
-                match r["Caller"].as_str() {
-                    "" => ".".to_owned(),
-                    caller => caller.to_owned(),
-                },
-            ),
-        };
-        r.insert("Support".to_owned(), s.to_string());
+        let (s, c) =
+            match consensus.membership(&r["SV_chrom"], &r["SV_type"], &r["Caller"], &r["ID"]) {
+                Membership::Member(callers) => (callers.len().to_string(), callers.join(",")),
+                Membership::NotMember => ("1".to_owned(), r["Caller"].clone()),
+                Membership::Unknown => (String::new(), String::new()),
+            };
+        r.insert("Support".to_owned(), s);
         r.insert("Support_callers".to_owned(), c);
     }
     Ok(())

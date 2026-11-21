@@ -6,7 +6,7 @@
 use super::roh::masked_overlap;
 use super::util::{Obj, at, base, cells, count, int, lines, number, s, strs, table, vcf_lines};
 use super::{Ctx, Found, Out};
-use og_steps::sv::postfilter::ConsensusSupport;
+use og_steps::sv::postfilter::{ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use std::collections::HashMap;
@@ -161,8 +161,9 @@ pub fn cnvpytor_sex_filter(v: &mut Value, declared_sex: Option<&str>) {
 // --- step 05, AnnotSV class 4 and 5 ---------------------------------------------
 
 /// Support and callers from the SURVIVOR event containing the source call.
-/// An unlisted row has its own caller alone. Both values are null without
-/// a consensus file.
+/// A row in no event has its own caller alone. Both values are null when
+/// the membership is not known ([`Membership::Unknown`]) and without a
+/// consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value, Value)>, String> {
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
         return Ok(rows.iter().map(|_| (Value::Null, Value::Null)).collect());
@@ -175,14 +176,15 @@ fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value,
         .iter()
         .map(|row| {
             let cell = |key| row.get(key).flatten().unwrap_or_default();
-            match consensus.callers(
+            match consensus.membership(
                 cell("SV_chrom"),
                 cell("SV_type"),
                 cell("Caller"),
                 cell("ID"),
             ) {
-                Some(callers) => (count(callers.len()), s(&callers.join(","))),
-                None => (int(1), s(&super::util::or(row, "Caller", "."))),
+                Membership::Member(callers) => (count(callers.len()), s(&callers.join(","))),
+                Membership::NotMember => (int(1), s(&super::util::or(row, "Caller", "."))),
+                Membership::Unknown => (Value::Null, Value::Null),
             }
         })
         .collect())
@@ -440,20 +442,24 @@ mod tests {
         let [after_total, after_single, after_edge, after_common] = report_counts(&moved);
         let downgraded = &report_rows(&moved, "downgraded")[0];
 
-        // Report text and HTML read these same summary fields. Keep every
+        // These checks read summary.json fields only; the text and HTML reports
+        // render them, and og-render's own tests cover the labels. Keep every
         // migrated assertion visible in the control, even when several fail.
         let checks = [
-            ("summary member and caller names", two_callers),
             (
-                "summary support, exon-edge and common counts",
+                "summary support and support_callers of a member",
+                two_callers,
+            ),
+            (
+                "summary single_caller, exon_edge and common counts",
                 (single, edge, common) == (&int(3), &int(1), &int(1)),
             ),
             (
-                "text headline counts",
+                "summary count with the single_caller, exon_edge and common counts",
                 (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1)),
             ),
             (
-                "text deletion row and support label",
+                "summary sv, type, acmg_class and genes of the two-caller deletion",
                 two_callers
                     && report_field(member, "sv") == &s("20:1000-5000")
                     && report_field(member, "type") == &s("DEL")
@@ -461,11 +467,11 @@ mod tests {
                     && report_field(member, "genes") == &strs(["G1", "G2", "G3", "G4", "G5"]),
             ),
             (
-                "HTML member and nearby non-member support labels",
+                "summary support of a member and of a nearby non-member, with its caller",
                 two_callers && one_caller && report_field(nearby, "caller") == &s("manta"),
             ),
             (
-                "HTML card headline counts",
+                "summary counts with exon_edge_checked",
                 (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1))
                     && report_field(&full, "exon_edge_checked") == &Value::Bool(true),
             ),
@@ -474,7 +480,7 @@ mod tests {
                 (after_single, after_edge, after_common) == (&int(2), &int(1), &int(1)),
             ),
             (
-                "text counts and separate downgrade reason",
+                "summary counts and the downgraded row after a rule moved it",
                 (after_total, after_single, after_edge, after_common)
                     == (&int(3), &int(2), &int(1), &int(1))
                     && report_field(downgraded, "sv") == &s("20:50000-55000")
@@ -486,7 +492,7 @@ mod tests {
                         .all(|row| report_field(row, "sv") != &s("20:50000-55000")),
             ),
             (
-                "exon and benign-set flags used in report rows",
+                "summary exon_edge_detail, population and common fields of a row",
                 report_field(nearby, "exon_edge_detail") == &s("exon 1 and exon 3 edges")
                     && report_field(nearby, "population_af") == &Value::Float(0.05)
                     && report_field(nearby, "population_source") == &s("fixture")
@@ -512,6 +518,7 @@ mod tests {
                 "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n",
                 "MantaDEL:1:0\t20\t1000\t5000\tDEL\t4\tmanta\tno\t\tno\n",
                 "UNLISTED\t20\t2000\t6000\tDEL\t4\tmanta\tno\t\tno\n",
+                ".\t20\t2000\t6000\tDEL\t4\tmanta\tno\t\tno\n",
             ),
         )
         .unwrap();
@@ -532,12 +539,24 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+        // A row with ID `.` cannot be matched to a member: its support is
+        // not known (null), as without a consensus, never single caller.
         assert_eq!(
-            (&report[..], two_hits[0].support, two_hits[1].support),
             (
-                &[(int(2), s("manta,delly")), (int(1), s("manta"))][..],
+                &report[..],
+                two_hits[0].support,
+                two_hits[1].support,
+                two_hits[2].support
+            ),
+            (
+                &[
+                    (int(2), s("manta,delly")),
+                    (int(1), s("manta")),
+                    (Value::Null, Value::Null)
+                ][..],
                 Some(2),
-                Some(1)
+                Some(1),
+                None
             ),
         );
         std::fs::remove_dir_all(d).unwrap();

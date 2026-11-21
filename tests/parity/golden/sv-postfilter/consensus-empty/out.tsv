@@ -3,5 +3,5 @@ AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	An
 20_10100999_10102999_DEL_1	SV2	20	10100999	10102999	-2000	DEL	GENE2	5	0.95	manta	not checked				no	5	not checked			1	manta
 20_20000000_20450000_DEL_1	SV3	20	20000000	20450000	-450000	DEL	GENE3	4	0.95	manta	not checked				no	4	not checked			1	manta
 20_30000000_30500000_DUP_1	SV4	20	30000000	30500000	500000	DUP	GENE4	4	0.95	delly	.				no	4	unknown			1	delly
-20_1000190_1009800_DEL_1	SV5	20	1000190	1009800	-9610	DEL	GENE5	4	0.95	cnvpytor	not checked				no	4	yes			1	cnvpytor
+20_1000190_1009800_DEL_1	SV5	20	1000190	1009800	-9610	DEL	GENE5	4	0.95	cnvpytor	not checked				no	4	yes				
 20_3000100_3005000_DEL_1	SV6	20	3000100	3005000	-4900	DEL	GENE6	4	0.95	manta	not checked				no	4	not checked			1	manta

@@ -26,7 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
-use og_steps::sv::postfilter::ConsensusSupport;
+use og_steps::sv::postfilter::{ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -391,8 +391,8 @@ fn sample_format(r: &DictRow) -> HashMap<&str, &str> {
 }
 
 /// The support of each row from the SURVIVOR event containing its source
-/// call. Unlisted rows have support 1. Without a readable consensus file,
-/// support is unknown.
+/// call. A row in no event has support 1. Support is unknown (`None`) when
+/// the membership is not known and without a readable consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Vec<Option<i128>> {
     let none = || vec![None; rows.len()];
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
@@ -405,11 +405,11 @@ fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Vec<Option<i128>> 
     rows.iter()
         .map(|row| {
             let get = |key| cell(row, key).unwrap_or_default();
-            Some(
-                consensus
-                    .callers(get("SV_chrom"), get("SV_type"), get("Caller"), get("ID"))
-                    .map_or(1, |callers| callers.len() as i128),
-            )
+            match consensus.membership(get("SV_chrom"), get("SV_type"), get("Caller"), get("ID")) {
+                Membership::Member(callers) => Some(callers.len() as i128),
+                Membership::NotMember => Some(1),
+                Membership::Unknown => None,
+            }
         })
         .collect()
 }
