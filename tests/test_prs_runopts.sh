@@ -157,6 +157,10 @@ expect "the space-free -u \${UID}:\${GROUPS} passes clean" \
   '-u ${UID}:${GROUPS} -e HOME=/tmp' "" "${FIXED} -e HOME=/tmp"
 expect "--userns is not a user flag and is kept" \
   "--userns host --cpu-shares 256" "" "${FIXED} --userns host --cpu-shares 256"
+# The pattern must read a user value whole or not at all: it never stops in
+# the middle of a word and leaves the rest (here `b"`) for pgsc_calc.
+expect "a user value the pattern cannot read whole is left to the block, not cut in a word" \
+  '-u "a\"b" --label c' "" "${FIXED} --label c"
 
 # --- The docker profile: every task runs as the caller ---------------------------
 # runs_as_caller OPTIONS: OPTIONS, split and expanded by bash as a task's
