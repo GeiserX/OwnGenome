@@ -13901,10 +13901,9 @@
        "GENE2"
       ],
       "caller": "manta",
-      "support": 2,
+      "support": 1,
       "support_callers": [
-       "manta",
-       "delly"
+       "manta"
       ],
       "exon_edge": "yes",
       "exon_edge_detail": "exon 2",
@@ -13926,12 +13925,9 @@
        "GENE3"
       ],
       "caller": "delly",
-      "support": 3,
+      "support": 1,
       "support_callers": [
-       "manta",
-       "delly",
-       "tiddit",
-       "caller 4"
+       "delly"
       ],
       "exon_edge": "no",
       "exon_edge_detail": "",
@@ -13993,7 +13989,7 @@
     ],
     "consensus": "sv_merged/S_sv_consensus.vcf.gz",
     "consensus_note": null,
-    "single_caller": 1,
+    "single_caller": 3,
     "exon_edge": 1,
     "exon_edge_checked": true,
     "common": 1
