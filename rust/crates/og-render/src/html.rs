@@ -6,14 +6,20 @@
 //! newest file date and "New since" under the first card title, each card's
 //! caveats under its title, the cards, then links to the step's own files.
 
-use crate::chapters::{CHAPTERS, FrameState, LIMITS, Sec, step_of, writer};
+use pycompat::json::Value;
+
+use crate::chapters::{
+    CHAPTERS, Failed, FrameState, LIMITS, Sec, TERMS, WriterFn, guarded, section_of, step_of,
+    writer,
+};
+use crate::charts;
 use crate::css::CSS;
 use crate::escape::e;
 use crate::model::{
     Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
     py,
 };
-use crate::notes::{VIEWER_NOTE, stale_note};
+use crate::notes::{NOTES, VIEWER_NOTE, stale_note};
 use crate::sections::run;
 
 /// The Content-Security-Policy: nothing is fetched, images only inline,
@@ -322,8 +328,195 @@ fn chapter_open(body: &mut Vec<String>, cid: &str, title: &str, question: &str) 
     body.push("  <div class=\"grid\">".to_owned());
 }
 
-/// The HTML report of one summary.
+/// The caveats a note line is made of: one, or several joined by spaces
+/// (step 11's F_ROH and band notes); empty when the line holds anything
+/// else.
+fn notes_in(line: &str) -> Vec<&'static str> {
+    let Some(mut rest) = line
+        .strip_prefix("<p class=\"note\">")
+        .and_then(|r| r.strip_suffix("</p>"))
+    else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    while !rest.is_empty() {
+        let next = NOTES.iter().map(|(_, n)| *n).find_map(|n| {
+            let en = e(n);
+            if rest == en {
+                Some((n, ""))
+            } else {
+                rest.strip_prefix(&*en)
+                    .and_then(|r| r.strip_prefix(' '))
+                    .map(|r| (n, r))
+            }
+        });
+        let Some((n, r)) = next else {
+            return Vec::new();
+        };
+        found.push(n);
+        rest = r;
+    }
+    found
+}
+
+/// The sections whose card prints its caveat as its last paragraph, before
+/// the caveat moves up under the title: the chart goes where that paragraph
+/// was, at the end of the card (render_report.py's ancestry card ends with
+/// `<p>{ANCESTRY_FINE_NOTE}</p>`).
+const FIGURE_LAST: &[&str] = &["ancestry-fine"];
+
+/// Puts a chart's figure line into its section's lines, under its caveat:
+/// right after the line whose sentence the caveat is part of (the PRS
+/// caption), at the end of the first card for the sections of
+/// [`FIGURE_LAST`], else under the first card's title, after that card's
+/// step line and caveats.
+fn place_figure(lines: &mut Vec<String>, sid: &str, caveat: &str, figure: String) {
+    if FIGURE_LAST.contains(&sid) {
+        let h2 = lines.iter().position(|x| x.trim().starts_with("<h2>"));
+        let end = h2.and_then(|h| {
+            lines[h..]
+                .iter()
+                .position(|x| x == "  </div>")
+                .map(|i| h + i)
+        });
+        if let Some(i) = end {
+            lines.insert(i, figure);
+            return;
+        }
+    }
+    let cav = e(caveat);
+    let inside = lines.iter().position(|x| {
+        let t = x.trim();
+        t.contains(&*cav) && !t.starts_with("<p class=\"caveat\">") && notes_in(t).is_empty()
+    });
+    let at = match inside {
+        Some(i) => i + 1,
+        None => {
+            let Some(h2) = lines.iter().position(|x| x.trim().starts_with("<h2>")) else {
+                return;
+            };
+            let mut i = h2 + 1;
+            if lines
+                .get(i)
+                .is_some_and(|x| x.starts_with("    <p class=\"sec-meta\">"))
+            {
+                i += 1;
+            }
+            while lines
+                .get(i)
+                .is_some_and(|x| x.starts_with("    <p class=\"caveat\">"))
+            {
+                i += 1;
+            }
+            i
+        }
+    };
+    lines.insert(at, figure);
+}
+
+/// The closing appendix: one line per gene symbol or rsID of the search
+/// index, with a link to each section that names it when the report shows
+/// that section. No script: the browser's find searches it; the live site's
+/// search box filters the same index.
+fn terms_appendix(index: &Value, shown: &[&str]) -> Result<Vec<String>, Malformed> {
+    let mut body = vec![
+        "  <div class=\"card\">".to_owned(),
+        "    <p class=\"note\">Every gene symbol and rsID a section of this report names, with the sections \
+         that name it and how many times. A gene listed here is a gene the results mention, not a finding: open \
+         the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization \
+         (step 31) come from their tables, which the report counts but does not list.</p>"
+            .to_owned(),
+    ];
+    let path = "index";
+    let terms = crate::model::get(index, "terms", path)?.filter(|v| crate::model::truthy(v));
+    let terms = match terms {
+        None => None,
+        Some(Value::Object(m)) => Some(m),
+        Some(_) => return Err(Malformed("index.terms is not an object".to_owned())),
+    };
+    match terms {
+        None => {
+            body.push("    <p>No section of this report names a gene or an rsID.</p>".to_owned())
+        }
+        Some(terms) => {
+            body.push("    <ul class=\"plain terms\">".to_owned());
+            for (term, items) in terms {
+                let Value::Array(items) = items else {
+                    return Err(Malformed(format!("index.terms.{term} is not a list")));
+                };
+                let mut links = Vec::new();
+                for it in items {
+                    let ipath = format!("index.terms.{term}[]");
+                    let need = |k: &str| crate::model::need(it, k, &ipath);
+                    let mut label = e(&py(need("title")?)?).into_owned();
+                    if crate::model::is_str(Some(need("state")?), "stale") {
+                        label.push_str(" (stale)");
+                    }
+                    let anchor = crate::model::get(it, "anchor", &ipath)?
+                        .filter(|a| crate::model::truthy(a))
+                        .map(py)
+                        .transpose()?;
+                    let mut link = match anchor {
+                        Some(a) if shown.contains(&a.as_str()) => {
+                            format!("<a href=\"#{}\">{label}</a>", e(&a))
+                        }
+                        _ => label,
+                    };
+                    let count = need("count")?;
+                    if crate::model::num(Some(count)).is_some_and(|n| n > 1.0) {
+                        link.push_str(&format!(" ({})", py(count)?));
+                    }
+                    links.push(link);
+                }
+                body.push(format!(
+                    "      <li><strong>{}</strong>: {}</li>",
+                    e(term),
+                    links.join(", ")
+                ));
+            }
+            body.push("    </ul>".to_owned());
+        }
+    }
+    body.push("  </div>".to_owned());
+    Ok(body)
+}
+
+/// The search index of a summary read alone: the step 23 and 31 tables,
+/// which need the sample folder, are left out.
+pub fn summary_index(s: &Summary) -> Result<Value, Malformed> {
+    crate::index::build(s.root(), None, &[], &mut std::io::sink()).map_err(Malformed)
+}
+
+/// The HTML report of one summary, with its closing appendix from the
+/// summary's own search index.
 pub fn report(s: &Summary) -> Result<String, Malformed> {
+    let idx = guarded(|| summary_index(s)).ok();
+    report_using(s, idx.as_ref(), writer).map(|(page, _)| page)
+}
+
+/// The HTML report of one summary with the section writers of `writers`,
+/// the closing appendix listing `index` (none without one), and the parts
+/// that could not be written. A section whose data cannot be read,
+/// or whose writer stops on an internal error, shows as failed with why;
+/// charts or an appendix that cannot be made are left out; the rest of the
+/// report is still written.
+pub fn report_using(
+    s: &Summary,
+    index: Option<&Value>,
+    writers: WriterFn,
+) -> Result<(String, Vec<Failed>), Malformed> {
+    let mut failed = Vec::new();
+    let mut fail = |part: &str, why: &Malformed| {
+        failed.push(Failed {
+            part: part.to_owned(),
+            why: why.to_string(),
+        });
+    };
+    let specs = guarded(|| charts::build(s)).unwrap_or_else(|why| {
+        fail("charts", &why);
+        Vec::new()
+    });
+    let mut shown_ids: Vec<&str> = Vec::new();
     let ns = s.new_since();
     let mut toc = vec![
         "<nav class=\"toc\" aria-label=\"Contents\">".to_owned(),
@@ -334,12 +527,15 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
     for chapter in &CHAPTERS {
         let mut shown = Vec::new();
         for sec in chapter.sections {
-            if let Some((_, html)) = writer(sec.id) {
+            if let Some((_, html)) = writers(sec.id) {
                 // A section whose data could not be read shows as failed in
                 // the contents and its badge, whatever its keys' states say.
-                let (part, failed) = match html(s) {
+                let (part, failed) = match guarded(|| html(s)) {
                     Ok(part) => (part, false),
-                    Err(why) => (unreadable(sec, &why), true),
+                    Err(why) => {
+                        fail(sec.id, &why);
+                        (unreadable(sec, &why), true)
+                    }
                 };
                 if !part.cards.is_empty() {
                     shown.push((sec, part, failed));
@@ -376,7 +572,16 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
                 None
             };
             let m = meta(s, sec.id, sec.keys, state, since.as_deref())?;
-            body.extend(frame(sec.id, &part, Some(m), false));
+            let mut lines = frame(sec.id, &part, Some(m), false);
+            for sp in &specs {
+                if section_of(sp.section).is_some_and(|x| x.id == sec.id)
+                    && let Some(fig) = charts::figure(sp)
+                {
+                    place_figure(&mut lines, sec.id, sp.caveat, fig);
+                }
+            }
+            body.extend(lines);
+            shown_ids.push(sec.id);
         }
         toc.push("      </ol>".to_owned());
         toc.push("    </li>".to_owned());
@@ -400,6 +605,25 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
     body.extend(frame("not-assessed", &not_assessed, None, true));
     body.push("  </div>".to_owned());
     body.push("</section>".to_owned());
+    if let Some(index) = index {
+        match guarded(|| terms_appendix(index, &shown_ids)) {
+            Ok(cards) => {
+                let (cid, title, question) = TERMS;
+                let at = toc.len() - 2;
+                toc.insert(
+                    at,
+                    format!("    <li><a href=\"#ch-{cid}\">{}</a></li>", e(title)),
+                );
+                chapter_open(&mut body, cid, title, question);
+                body.push("  <section class=\"sec\" id=\"terms-list\">".to_owned());
+                body.extend(cards);
+                body.push("  </section>".to_owned());
+                body.push("  </div>".to_owned());
+                body.push("</section>".to_owned());
+            }
+            Err(why) => fail("terms", &why),
+        }
+    }
 
     let mut out: Vec<String> = [
         "<!DOCTYPE html>",
@@ -445,5 +669,5 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
     out.extend(["</div>", "</main>", "</div>", "</body>", "</html>"].map(str::to_owned));
     let mut page = out.join("\n");
     page.push('\n');
-    Ok(page)
+    Ok((page, failed))
 }

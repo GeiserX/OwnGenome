@@ -6,17 +6,176 @@
 //! called homozygous inside a deletion is shown as hemizygous. A hit that
 //! is part of step 06's combined allele, or the combined allele itself,
 //! carries the note the ClinVar table prints for it.
+//!
+//! Each row keeps its zygosity and step 06's call quality: GQ, DP and the
+//! low-confidence mark against the hits file's own call floor. A carrier
+//! has one changed copy, so a row called homozygous or hemizygous is listed
+//! apart (`hom_or_hemizygous`), never as a carrier. Two different
+//! heterozygous hits in one recessive gene are counted as copies, the way
+//! the secondary-findings card counts them: read-backed phase on different
+//! copies is two hits, phase unknown is possible two hits, both on one copy
+//! is one hit.
 
 use super::assets::carrier_genes;
-use super::clinvar::{Floor, Hit, HitRecords, allele_copies, carrier_genotype, obj};
+use super::clinvar::{
+    Floor, Hit, HitRecords, VarKey, allele_copies, carrier_genotype, obj, opt_int, zygosity_word,
+};
 use super::text::{self, gt_field};
-use super::two_hits::{DeletionInputs, Spans, Variant, gene_deletions, two_hits};
+use super::two_hits::{DeletionInputs, Spans, Variant, gene_deletions, phase_haps, two_hits_with};
 use indexmap::IndexMap;
 use pycompat::json::Value;
+use std::collections::{BTreeSet, HashSet};
 
 /// The section's data: the list, or why it could not be made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Carrier(pub Value);
+
+/// One heterozygous carrier hit of a recessive gene, as the pair rule
+/// counts it.
+#[derive(Clone)]
+struct Het {
+    key: VarKey,
+    gt: String,
+    ps: Option<String>,
+    /// The parts of a combined allele (step 06's `PGP_JOINED_FROM`).
+    joined: Vec<VarKey>,
+    low: bool,
+}
+
+impl Het {
+    /// The copies read-backed phase puts the alt allele on, with its phase
+    /// set: only a `|` GT with every copy called and a non-empty PS.
+    fn phased(&self) -> Option<(&str, BTreeSet<usize>)> {
+        let ps = self.ps.as_deref().filter(|p| !p.is_empty())?;
+        let h = phase_haps(Some(&self.gt)).filter(|h| !h.is_empty())?;
+        Some((ps, h))
+    }
+
+    /// The copy a half call (`1/.`, `./1`) puts its alt allele on.
+    fn half(&self) -> Option<usize> {
+        let a: Vec<&str> = self.gt.split(['/', '|']).collect();
+        match a.as_slice() {
+            [x, "."] if !matches!(*x, "0" | ".") => Some(0),
+            [".", y] if !matches!(*y, "0" | ".") => Some(1),
+            _ => None,
+        }
+    }
+}
+
+/// `CHROM:POS:REF:ALT` joined by `|`, as step 06 writes `PGP_JOINED_FROM`.
+fn joined_keys(r: &[String]) -> Vec<VarKey> {
+    let info = r.get(7).map(String::as_str).unwrap_or("");
+    let v = text::info_map(info)
+        .get("PGP_JOINED_FROM")
+        .copied()
+        .unwrap_or("");
+    v.split('|')
+        .filter_map(|p| {
+            let mut it = p.rsplitn(4, ':');
+            let (alt, rf, pos, chrom) = (it.next()?, it.next()?, it.next()?, it.next()?);
+            let pos = crate::int(pos).ok()?;
+            Some((chrom.to_owned(), pos, rf.to_owned(), alt.to_owned()))
+        })
+        .collect()
+}
+
+/// How two or more different heterozygous hits of one gene pair up: the
+/// pair word (`two hits`, `possible two hits`, none when they sit on one
+/// copy) and why. `None` when fewer than two distinct alleles are left
+/// once a combined allele and its parts count once.
+fn het_pair(hets: &[Het]) -> Option<(Option<String>, String)> {
+    // A combined allele and its parts count once, under the combined
+    // allele, when its call is phased or at most one part is here; an
+    // unphased one with two or more parts here counts through its parts,
+    // which may sit on different copies.
+    let present: HashSet<&VarKey> = hets.iter().map(|h| &h.key).collect();
+    let mut gone: HashSet<&VarKey> = HashSet::new();
+    for h in hets.iter().filter(|h| !h.joined.is_empty()) {
+        let parts: Vec<&VarKey> = h.joined.iter().filter(|k| present.contains(k)).collect();
+        if h.phased().is_some() || parts.len() <= 1 {
+            gone.extend(parts);
+        } else {
+            gone.insert(&h.key);
+        }
+    }
+    let kept: Vec<&Het> = hets.iter().filter(|h| !gone.contains(&h.key)).collect();
+    if kept.len() < 2 {
+        return None;
+    }
+    let mut n = 0;
+    let mut sets: IndexMap<&str, (BTreeSet<usize>, usize)> = IndexMap::new();
+    let mut halves: IndexMap<(&str, i128), (BTreeSet<usize>, usize)> = IndexMap::new();
+    for h in &kept {
+        if let Some((ps, hs)) = h.phased() {
+            let s = sets.entry(ps).or_default();
+            s.0.extend(hs);
+            s.1 += 1;
+        } else if let Some(i) = h.half() {
+            let s = halves.entry((h.key.0.as_str(), h.key.1)).or_default();
+            s.0.insert(i);
+            s.1 += 1;
+        } else {
+            n += 1;
+        }
+    }
+    let mut proof: Option<String> = None;
+    let mut cis: Option<&str> = None;
+    for (ps, (h, count)) in &sets {
+        n += h.len();
+        if h.len() >= 2 {
+            proof.get_or_insert_with(|| {
+                format!(
+                    "in trans: read-backed phase puts them on different copies (phase set {ps})"
+                )
+            });
+        } else if *count >= 2 {
+            cis.get_or_insert(ps);
+        }
+    }
+    for ((chrom, pos), (h, count)) in &halves {
+        if h.len() >= 2 {
+            n += 2 + count - h.len();
+            proof.get_or_insert_with(|| {
+                format!("in trans: the two alt alleles of one call at {chrom}:{pos}")
+            });
+        } else {
+            n += count;
+        }
+    }
+    let (word, why) = match (proof, cis) {
+        (Some(p), _) => ("two hits", p),
+        (None, _) if n >= 2 => (
+            "possible two hits",
+            "phase unknown: no read-backed phase links the variants, so they may sit on the same \
+             copy (cis)"
+                .to_owned(),
+        ),
+        (None, Some(ps)) => {
+            return Some((
+                None,
+                format!(
+                    "two heterozygous variants in cis: read-backed phase puts them on the same \
+                     copy (phase set {ps}), so one copy is hit"
+                ),
+            ));
+        }
+        (None, None) => {
+            return Some((
+                None,
+                "the variants sit on one copy, so one copy is hit".to_owned(),
+            ));
+        }
+    };
+    if kept.iter().any(|h| h.low) {
+        return Some((
+            Some("possible two hits (low-confidence call)".to_owned()),
+            format!(
+                "a call below the call floor (low confidence) is one of them, so confirm it first; {why}"
+            ),
+        ));
+    }
+    Some((Some(word.to_owned()), why))
+}
 
 impl Carrier {
     /// `carrier_list_or_note`. An `Err` is the collector's note (a hit
@@ -31,16 +190,22 @@ impl Carrier {
             Ok(g) => g,
             Err(e) => return Ok(unavailable(e)),
         };
-        let recs = match hits {
-            Ok((_, r)) => r,
+        // The hits file's own call floor (`##PGP_CALL_FLOOR`), as the
+        // ClinVar section judges the same rows.
+        let (floor, recs): (Floor, _) = match hits {
+            Ok((f, r)) => (*f, r),
             Err(e) => return Ok(unavailable(e.clone())),
         };
         let mut items: Vec<IndexMap<String, Value>> = Vec::new();
         // Which list each item is on: carriers (false) or set aside (true).
         let mut aside: Vec<bool> = Vec::new();
         let mut variants: Vec<(Variant, usize)> = Vec::new();
+        let mut low: HashSet<(String, VarKey)> = HashSet::new();
+        // The heterozygous carrier hits of each recessive gene, with the
+        // items they are.
+        let mut hets: IndexMap<String, Vec<(Het, usize)>> = IndexMap::new();
         for r in recs.iter().filter(|r| r.len() >= 8) {
-            let row = Hit::parse(r, Floor::default())?;
+            let row = Hit::parse(r, floor)?;
             let gt = text::gt_of(r).to_owned();
             let (copies, ploidy) = allele_copies(&gt);
             let key = row.key();
@@ -50,8 +215,15 @@ impl Carrier {
                 item.insert("gene".into(), Value::Str(g.to_owned()));
                 item.insert("variant".into(), Value::Str(row.variant()));
                 item.insert("genotype".into(), Value::Str(carrier_genotype(&gt, &row)));
+                item.insert(
+                    "zygosity".into(),
+                    Value::Str(zygosity_word(copies, ploidy).into()),
+                );
                 item.insert("significance".into(), Value::Str(row.significance.clone()));
                 item.insert("stars".into(), Value::Int(row.stars.into()));
+                item.insert("gq".into(), opt_int(row.gq));
+                item.insert("dp".into(), opt_int(row.dp));
+                item.insert("low_confidence".into(), Value::Bool(row.low_confidence));
                 item.insert("inheritance".into(), Value::Str(x.inheritance.clone()));
                 item.insert("condition".into(), Value::Str(x.condition.clone()));
                 if row.combined_allele != "." {
@@ -74,6 +246,21 @@ impl Carrier {
                 };
                 items.push(item);
                 aside.push(sev.is_some());
+                if row.low_confidence {
+                    low.insert((g.to_owned(), key.clone()));
+                }
+                if sev.is_none() && x.inheritance == "AR" && copies == 1 && ploidy == 2 {
+                    hets.entry(g.to_owned()).or_default().push((
+                        Het {
+                            key: key.clone(),
+                            gt: gt.clone(),
+                            ps: gt_field(r, "PS"),
+                            joined: joined_keys(r),
+                            low: row.low_confidence,
+                        },
+                        items.len() - 1,
+                    ));
+                }
                 // A record with no alt copy called is no hit to pair.
                 if copies > 0 && sev.is_none_or(|s| s.kind.as_deref() == Some("hypomorph")) {
                     variants.push((
@@ -95,17 +282,39 @@ impl Carrier {
                 }
             }
         }
+        for list in hets.values() {
+            // The same record twice (a duplicate line) is one allele.
+            let mut seen = HashSet::new();
+            let distinct: Vec<Het> = list
+                .iter()
+                .filter(|(h, _)| seen.insert(h.key.clone()))
+                .map(|(h, _)| h.clone())
+                .collect();
+            let Some((word, why)) = het_pair(&distinct) else {
+                continue;
+            };
+            for (_, at) in list {
+                let item = &mut items[*at];
+                if let Some(w) = &word {
+                    item.insert("pair".into(), Value::Str(w.clone()));
+                }
+                item.insert("phase".into(), Value::Str(why.clone()));
+            }
+        }
         let spans: Spans = genes
             .iter()
             .map(|(g, x)| (g.clone(), x.span.clone()))
             .collect();
         let (dels, read, unread) = gene_deletions(deletions, &spans);
         let vs: Vec<Variant> = variants.iter().map(|(v, _)| v.clone()).collect();
-        let found = two_hits(&vs, &dels);
+        let found = two_hits_with(&vs, &dels, |v| {
+            low.contains(&(v.gene.clone(), v.key.clone()))
+        });
         for (v, at) in &variants {
             if let Some(t) = found.hemi.get(&(v.gene.clone(), v.key.clone())) {
                 let item = &mut items[*at];
                 item.insert("genotype".into(), Value::Str("hemizygous".into()));
+                item.insert("zygosity".into(), Value::Str("hemizygous".into()));
                 item.insert(
                     "hemizygous".into(),
                     Value::Str(format!("called homozygous inside {t}")),
@@ -124,10 +333,17 @@ impl Carrier {
                 Value::Object(m)
             })
             .collect();
-        let (mut carriers, mut set_aside) = (Vec::new(), Vec::new());
+        let (mut carriers, mut both, mut set_aside) = (Vec::new(), Vec::new(), Vec::new());
         for (item, a) in items.into_iter().zip(aside) {
+            let zyg = match item.get("zygosity") {
+                Some(Value::Str(z)) => z.clone(),
+                _ => String::new(),
+            };
             if a {
                 set_aside.push(Value::Object(item));
+            } else if matches!(zyg.as_str(), "hom" | "hemizygous") {
+                // No unchanged copy left: not the pattern of a carrier.
+                both.push(Value::Object(item));
             } else {
                 carriers.push(Value::Object(item));
             }
@@ -137,6 +353,7 @@ impl Carrier {
             ("genes_on_list", Value::Int(genes.len() as i128)),
             ("list", Value::Str("assets/carrier_genes.tsv".into())),
             ("carriers", Value::Array(carriers)),
+            ("hom_or_hemizygous", Value::Array(both)),
             ("set_aside", Value::Array(set_aside)),
             (
                 "two_hits",

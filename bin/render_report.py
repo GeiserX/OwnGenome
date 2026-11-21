@@ -997,7 +997,7 @@ def section_keys(sid):
 
 
 def recheck_line(r):
-    """One line of run facts from the last database re-check (bin/owngenome_recheck.py)."""
+    """One line of run facts from the last database re-check (og recheck)."""
     newer = [i for i in r.get("items") or [] if i.get("class") not in ("no-newer-release", None)]
     head = f"Database re-check: {r.get('checked_utc') or 'unknown date'}: "
     if not newer:
@@ -2025,13 +2025,20 @@ def carrier_lines(c):
     """The sample's own carrier list (no partner), the same in both reports."""
     if c.get("unavailable"):
         return [f"Carrier list: not made, {c['unavailable']}"]
+    both = c.get("hom_or_hemizygous") or []  # no unchanged copy: listed apart, not counted as carriers
     lines = [f"Carrier list ({c['genes_on_list']} genes): {len(c['carriers'])} finding(s)"
+             + (f", {len(both)} with no unchanged copy" if both else "")
              + (f", {len(c['set_aside'])} set aside" if c["set_aside"] else "")]
     def hemi(x):
         return f" ({x['hemizygous']})" if x.get("hemizygous") else ""
     for x in c["carriers"]:
         lines.append(f"{x['gene']} ({x['condition']}; {x['inheritance']}): {x['variant']} {x['genotype']}{hemi(x)}, "
                      f"ClinVar {x['significance']}")
+    for x in both:
+        lines.append(f"{x['gene']} ({x['condition']}; {x['inheritance']}): {x['variant']} {x['genotype']}{hemi(x)}, "
+                     f"ClinVar {x['significance']}: "
+                     + ("two changed copies" if x["genotype"] == "hom" else "the only copy changed")
+                     + ", not the pattern of a carrier")
     for x in c["set_aside"]:
         lines.append(f"Set aside: {x['gene']} {x['variant']} {x['genotype']}{hemi(x)}: {x['name']} is a {x['kind']} "
                      "allele, not a carrier finding on its own")

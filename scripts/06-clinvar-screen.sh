@@ -67,7 +67,7 @@ done
 
 echo "=== ClinVar Pathogenic Screen: ${SAMPLE} ==="
 
-# bin/owngenome_recheck.py --refresh-clinvar holds this lock while it replaces the ClinVar files every sample
+# bin/og recheck --refresh-clinvar holds this lock while it replaces the ClinVar files every sample
 # shares; the screen holds it shared on fd 7 until it ends, so it waits for a refresh going on and a refresh
 # refuses while it reads. Without flock (macOS: brew install flock) nothing waits here.
 CVLOCK="${GENOME_DIR}/clinvar/.refresh.lock"

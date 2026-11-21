@@ -854,6 +854,7 @@ dependencies = [
  "og-pedigree",
  "og-render",
  "og-runlog",
+ "og-summary",
  "pycompat",
  "regex",
 ]

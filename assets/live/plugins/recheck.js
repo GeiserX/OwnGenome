@@ -8,7 +8,8 @@
   'use strict';
   if (!window.PGP) { return; }
   var NS = 'http://www.w3.org/2000/svg';
-  var banner = null, list = null, shownKey = null;
+  // shownKey starts undefined, so the first state draws the panel even when it has no re-check (null).
+  var banner = null, list = null, shownKey;
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -19,7 +20,7 @@
 
   function panel(box) {
     box.appendChild(el('h2', {}, 'Database re-check'));
-    banner = el('p', { 'class': 'muted' }, 'No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).');
+    banner = el('p', { 'class': 'muted' }, 'Waiting for the run\'s data.');
     list = el('ul', { 'class': 'plain recheck-steps' });
     box.appendChild(banner);
     box.appendChild(list);
@@ -58,7 +59,7 @@
     shownKey = key;
     list.textContent = '';
     if (!key) {
-      banner.textContent = 'No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).';
+      banner.textContent = 'No re-check yet: bin/og recheck writes one (docs/recheck.md).';
       document.documentElement.removeAttribute('data-owngenome-recheck');
       return;
     }

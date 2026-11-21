@@ -29,7 +29,7 @@ use super::clinvar::{
 };
 use super::text::{self, digits, format_map, gt_field, info_map};
 use super::two_hits::{
-    DeletionInputs, Entry, Spans, Variant, Verdict, gene_deletions, phase_haps, two_hits,
+    DeletionInputs, Entry, Spans, Variant, Verdict, gene_deletions, phase_haps, two_hits_with,
 };
 use indexmap::IndexMap;
 use pycompat::json::Value;
@@ -439,8 +439,9 @@ struct Cand {
 }
 
 /// One distinct variant of a gene as the verdict counts it: its alt
-/// copies, ploidy, GT and phase set, and whether it stands for a combined
-/// allele and its parts.
+/// copies, ploidy, GT and phase set, whether it stands for a combined
+/// allele and its parts, and whether a call of it is below step 06's call
+/// floor (low confidence).
 #[derive(Debug, Clone, PartialEq)]
 struct Allele {
     copies: usize,
@@ -448,6 +449,7 @@ struct Allele {
     gt: String,
     ps: Option<String>,
     combined: bool,
+    low: bool,
 }
 
 impl Allele {
@@ -458,6 +460,7 @@ impl Allele {
             gt: String::new(),
             ps: None,
             combined: false,
+            low: false,
         }
     }
 
@@ -618,15 +621,39 @@ fn sf_verdicts(
         };
         out.insert(k.clone(), why);
     }
+    // The count again without the low-confidence calls: a pair that needs
+    // one of them is only possible until the call is confirmed.
+    let firm: IndexMap<AKey, Allele> = kept
+        .iter()
+        .filter(|(_, a)| !a.low)
+        .map(|(k, a)| (k.clone(), a.clone()))
+        .collect();
+    let (n_firm, proof_firm, _) = copies_hit(&firm);
+    let low = |why: String| {
+        (
+            Verdict::LowConfidence.word(),
+            format!(
+                "a call it rests on is below the call floor (low confidence), so confirm it \
+                 first; {why}"
+            ),
+        )
+    };
     let pair = (counted && n >= 2).then(|| match (proof, deletion) {
-        (Some(p), _) => ("biallelic", p),
+        (Some(p), _) => match proof_firm {
+            Some(f) => ("biallelic", f),
+            None => low(p),
+        },
         (None, Some(e)) => (e.verdict.word(), format!("with {}: {}", e.deletion, e.why)),
-        (None, None) => (
-            Verdict::PossiblyBiallelic.word(),
-            "phase unknown: no read-backed phase links the variants, so they may sit on the \
-             same copy (cis)"
-                .to_owned(),
-        ),
+        (None, None) => {
+            let why = "phase unknown: no read-backed phase links the variants, so they may sit \
+                       on the same copy (cis)"
+                .to_owned();
+            if n_firm >= 2 {
+                (Verdict::PossiblyBiallelic.word(), why)
+            } else {
+                low(why)
+            }
+        }
     });
     let hypo: Vec<&str> = out
         .iter()
@@ -950,9 +977,11 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     // allele's own call stands for its parts.
     let (own, folded): (Vec<&Cand>, Vec<&Cand>) =
         small.iter().copied().partition(|x| unit(x) == x.key);
+    // A step 06 hit below its call floor (the ClinVar row's low_confidence).
+    let is_low = |x: &Cand| matches!(x.fields.get("low_confidence"), Some(Value::Bool(true)));
     for x in &own {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
-        alleles
+        let a = alleles
             .entry(x.gene.clone())
             .or_default()
             .entry(x.key.clone())
@@ -961,6 +990,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 ps: x.ps.clone(),
                 ..Allele::of(x.copies, p)
             });
+        a.low |= is_low(x);
     }
     for x in &folded {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
@@ -975,6 +1005,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             });
         a.copies = a.copies.max(x.copies);
         a.combined = true;
+        a.low |= is_low(x);
     }
     for x in &svs {
         alleles
@@ -1021,7 +1052,17 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             });
         }
     }
-    let found = two_hits(&variants, &dels);
+    let low: HashSet<(String, Key)> = own
+        .iter()
+        .filter(|x| is_low(x))
+        .filter_map(|x| match &x.key {
+            AKey::Small(k) => Some((x.gene.clone(), k.clone())),
+            _ => None,
+        })
+        .collect();
+    let found = two_hits_with(&variants, &dels, |v| {
+        low.contains(&(v.gene.clone(), v.key.clone()))
+    });
     let mut two: HashMap<(String, Key), String> = HashMap::new();
     for g in found.entries.keys() {
         if matches!(rules[g].report_if.as_str(), "biallelic" | "hemizygous") {

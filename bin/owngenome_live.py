@@ -299,7 +299,7 @@ def _h_clinvar(d, summary):
 
 def _h_carrier(d, summary):
     lines = _rr().carrier_lines(d)
-    return lines[0], bool(d.get("carriers"))
+    return lines[0], bool(d.get("carriers") or d.get("hom_or_hemizygous"))
 
 
 def _h_couple(d, summary):
