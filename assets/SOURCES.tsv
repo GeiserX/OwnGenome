@@ -38,9 +38,9 @@ assets/monitoring/	OwnGenome	-	GPL-3.0-or-later	-
 assets/output_contract.tsv	OwnGenome	-	GPL-3.0-or-later	-
 assets/ownhealth/VENDORED.tsv	OwnGenome	-	GPL-3.0-or-later	-
 assets/ownhealth/cpic_genes.tsv	OwnGenome, from the CPIC API guideline list	queried 2026-11-17	GPL-3.0-or-later	from the CPIC API
-assets/ownhealth/genome-facts.v1.json	OwnHealth, https://github.com/GeiserX/OwnHealth, data/genome-facts/genome-facts.v1.json, copied byte for byte (assets/ownhealth/VENDORED.tsv)	commit 117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	AGPL-3.0 (OwnHealth's licence)	-
+assets/ownhealth/genome-facts.v1.json	OwnHealth, https://github.com/GeiserX/OwnHealth, data/genome-facts/genome-facts.v1.json, copied byte for byte (assets/ownhealth/VENDORED.tsv)	commit 117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	AGPL-3.0-or-later (OwnHealth's licence)	-
 assets/ownhealth/grch38_refget.tsv	OwnGenome, written by scripts/ci/build-refget-table.sh from NCBI's RefSeq GRCh38 chromosome FASTA	GCF_000001405.26	GPL-3.0-or-later	NCBI's RefSeq GRCh38 chromosome FASTA (GCF_000001405.26)
-assets/ownhealth/sensitive_genes.tsv	OwnHealth, https://github.com/GeiserX/OwnHealth, data/genome/sensitive_genes.tsv, copied byte for byte (assets/ownhealth/VENDORED.tsv)	commit 117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	AGPL-3.0 (OwnHealth's licence)	-
+assets/ownhealth/sensitive_genes.tsv	OwnHealth, https://github.com/GeiserX/OwnHealth, data/genome/sensitive_genes.tsv, copied byte for byte (assets/ownhealth/VENDORED.tsv)	commit 117071ef325cd4e3c0bc3f6ade0aeef580a3b3aa	AGPL-3.0-or-later (OwnHealth's licence)	-
 assets/par_grch38.bed	Genome Reference Consortium, GRCh38 PAR1 and PAR2 coordinates, https://www.ncbi.nlm.nih.gov/grc/human (docs/03-variant-calling.md)	GRCh38	facts (coordinates), no restriction on use	-
 assets/paralog_loci.tsv	OwnGenome	-	GPL-3.0-or-later	-
 assets/paraphase_genes.tsv	OwnGenome	-	GPL-3.0-or-later	-
@@ -61,5 +61,5 @@ assets/sv_rule_regions.tsv	TRExplorer catalog (Broad Institute); GENCODE; HGNC; 
 assets/test_samplesheet.csv	OwnGenome	-	GPL-3.0-or-later	-
 assets/traits.tsv	OwnGenome, curated from the primary papers in the pmids column	-	GPL-3.0-or-later	Hand-curated from the primary papers in the pmids column; no text is taken from SNPedia
 assets/viewer/	OwnGenome	-	GPL-3.0-or-later	-
-assets/ystr_panel.tsv	FamilyTreeDNA Y-111 marker order and names (Y-STR Results Guide); HipSTR-references all_annot_markers.hg38.fixed.bed; NIST STRBase motifs	HipSTR-references commit cc9275210a10911721015ce908f30a12e4ea44ca, read 2026-10-25	marker order and names: reproduced for interoperability, no FamilyTreeDNA text copied; HipSTR-references: MIT; STRBase: NIST, not subject to US copyright	No FamilyTreeDNA text is copied | at commit cc9275210a10911721015ce908f30a12e4ea44ca (MIT)
+assets/ystr_panel.tsv	FamilyTreeDNA Y-111 marker order and names (Y-STR Results Guide); HipSTR-references all_annot_markers.hg38.fixed.bed; NIST STRBase motifs	HipSTR-references commit cc9275210a10911721015ce908f30a12e4ea44ca, read 2026-10-25	marker order and names: reproduced for interoperability, no FamilyTreeDNA text copied; HipSTR-references: MIT (NOTICE); STRBase: NIST, not subject to US copyright	No FamilyTreeDNA text is copied | at commit cc9275210a10911721015ce908f30a12e4ea44ca (MIT)
 tests/fixtures/consumer_export/sites.tsv.gz	23andme2vcf's 23andMe v5 site list (Rob Long); NCBI dbSNP b157 (tests/fixtures/consumer_export/README.md)	dbSNP b157	23andme2vcf: MIT (assets/licences/23andme2vcf-LICENSE.txt); dbSNP: no restriction on use	-
