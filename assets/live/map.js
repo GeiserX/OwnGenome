@@ -139,6 +139,8 @@
   // fetches the document again and keeps the camera.
   function create(opts) {
     var M = null, key = null, failure = null, t0 = 0;
+    // The demo (a replay) has no reads: its reads offers say so before the click.
+    var DEMO = document.documentElement.dataset.mode === 'replay';
     var fig = el('figure', { 'class': 'row fig1 gmap', id: 'genome-map', 'aria-labelledby': 'gm-title' });
     var main = el('div', { 'class': 'gm-main' });
     var head = el('div', { 'class': 'gm-head' });
@@ -170,7 +172,7 @@
     var canvas = el('canvas', { 'class': 'gm-canvas', tabindex: '0', role: 'img', 'aria-describedby': 'gm-narration' });
     var tip = el('div', { 'class': 'gm-tip', role: 'tooltip', hidden: 'hidden' });
     var toast = el('div', { 'class': 'gm-toast', role: 'status', hidden: 'hidden' });
-    var readsPill = el('button', { type: 'button', 'class': 'gm-reads-pill', hidden: 'hidden', 'aria-controls': 'gm-reads', 'aria-expanded': 'false' }, 'See the reads · R');
+    var readsPill = el('button', { type: 'button', 'class': 'gm-reads-pill', hidden: 'hidden', 'aria-controls': 'gm-reads', 'aria-expanded': 'false' }, DEMO ? 'Reads: not in the demo · R' : 'See the reads · R');
     var readsHint = el('p', { 'class': 'gm-reads-hint', hidden: 'hidden' }, 'Under 50 kb: the reads are one key away · R');
     add(stage, canvas, tip, toast, readsPill);
     var reads = el('section', { 'class': 'gm-reads', id: 'gm-reads', 'aria-label': 'Reads', hidden: 'hidden' });
@@ -1198,7 +1200,7 @@
       add(card, facts);
       if (r.phrase) { add(card, el('p', { 'class': 'gm-card-phrase' }, r.phrase)); }
       var foot = el('p', { 'class': 'gm-card-foot' });
-      var rb = button('See the reads', function () { openReads(r); }, 'gm-card-reads');
+      var rb = button(DEMO ? 'Reads: not in the demo' : 'See the reads', function () { openReads(r); }, 'gm-card-reads');
       rb.setAttribute('data-id', r.id);
       add(foot, el('a', { href: r.href }, 'The finding’s page ›'), ' ', rb, ' ', button('Close the card', function () { pick(null); canvas.focus({ preventScroll: true }); }));
       add(card, foot);
@@ -1269,9 +1271,8 @@
       readsView = exactView();
       readsWho.textContent = M.label + ' · run ' + (document.documentElement.dataset.run || M.id) +
         (r ? ' · ' + (r.gene || r.title) + (r.hgvs ? ' ' + r.hgvs : '') : '');
-      var demo = document.documentElement.dataset.mode === 'replay';
-      readsFull.hidden = demo;
-      if (demo) {
+      readsFull.hidden = DEMO;
+      if (DEMO) {
         readsBody.textContent = 'The genome viewer is not in the demo';
       } else if (!readsFrame) {
         readsBody.textContent = '';
@@ -1297,6 +1298,8 @@
       setReadsLocus(r ? findingLocus(r) : readsView);
       if (readsFrame && !readsFrame.parentNode) { add(readsBody, readsFrame); }
       readsClose.focus({ preventScroll: true });
+      // The panel opens under the map, often below the fold: bring it into view, at every width.
+      reads.scrollIntoView({ block: 'nearest' });
     }
     readsPill.addEventListener('click', function () { openReads(); });
     // The finding nearest the view when none of this chromosome's is in it: the closest one on this
