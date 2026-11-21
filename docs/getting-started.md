@@ -73,7 +73,7 @@ Pick your platform and run its steps in order. Each section ends with the same c
 
 ### Linux
 
-Run these in a terminal. The package names are Debian's and Ubuntu's; other distributions have the same packages under their own names. bash 4.4 or later comes with every current distribution.
+Run these in a terminal. The package names are Debian's and Ubuntu's; other distributions have the same packages under their own names. Debian 13 has no Java 17 package; there, install `openjdk-21-jre-headless` instead. bash 4.4 or later comes with every current distribution.
 
 ```bash
 # 1. Java 17, git and curl
@@ -157,7 +157,7 @@ java -version
 nextflow -version
 ```
 
-`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. If `java -version` crashes with `SIGBUS` in `CodeHeap::allocate`, run `csrutil status`: on Apple Silicon every Java crashes at start this way when System Integrity Protection is turned off, and turning it back on is the fix. Next: [Get the code](#get-the-code).
+`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. If `java -version` crashes with `SIGBUS` in `CodeHeap::allocate`, run `csrutil status`: Java on Apple Silicon can crash at start this way when System Integrity Protection is turned off ([OpenJDK bug JDK-8326663](https://bugs.openjdk.org/browse/JDK-8326663)), and turning it back on is the fix. Next: [Get the code](#get-the-code).
 
 ### Windows with WSL2
 
