@@ -5,7 +5,8 @@
 #     docker.runOptions adds --cpu-shares 300 and a label and whose
 #     process.containerOptions adds another label. The images.config PRS
 #     writes for pgsc_calc must carry both after -u and --network none (and
-#     the sex mount), without the outer --user root:root, and Docker's create
+#     the sex mount), without a word of the outer --user root:root or
+#     -u $(id -u):$(id -g), and Docker's create
 #     events must show pgsc_calc's own containers (its pgscatalog images)
 #     with both labels.
 #   - Nextflow, the same row stubbed under the docker profile alone: every
@@ -78,10 +79,11 @@ rm -rf "$NF_OUT" "$WORK"
 printf 'sample,vcf,vcf_index,gvcf,gvcf_index,sex\n%s,%s,%s,%s,%s,male\n' "$P" \
   "${D}/vcf/${P}.vcf.gz" "${D}/vcf/${P}.vcf.gz.tbi" "${D}/vcf/${P}.g.vcf.gz" "${D}/vcf/${P}.g.vcf.gz.tbi" > "$SHEET"
 # The outer flags: a low-priority share and a label each way. A user's
-# --user root:root and --network none, as a config could carry, must not
-# reach pgsc_calc.
+# --user root:root, the common -u $(id -u):$(id -g) (the last -u, so the
+# outer tasks run as the caller) and --network none, as a config could
+# carry, must not reach pgsc_calc, not one word of them.
 cat > "${CASE_TMP}/outer.config" <<'NFCONF'
-docker.runOptions = '--user root:root --cpu-shares 300 --label pgp.runopts=e2e'
+docker.runOptions = '--user root:root -u $(id -u):$(id -g) --cpu-shares 300 --label pgp.runopts=e2e'
 process.containerOptions = '--network none --label pgp.containeropts=e2e'
 NFCONF
 
@@ -129,6 +131,8 @@ sed "s/^docker\.runOptions = .*/docker.runOptions = '-u 1001:118 --network none 
 check "control: the line before this package (no outer flags) is refused" refused runopts_ok "${CASE_TMP}/main.config"
 sed "s/'\$/ --user root:root'/" "${CONFIG:-/dev/null}" > "${CASE_TMP}/root.config"
 check "control: a line that keeps the outer --user root:root is refused" refused runopts_ok "${CASE_TMP}/root.config"
+sed "s/ --cpu-shares 300/ -g) --cpu-shares 300/" "${CONFIG:-/dev/null}" > "${CASE_TMP}/split.config"
+check "control: a line with a stray word of the outer -u \$(id -u):\$(id -g) is refused" refused runopts_ok "${CASE_TMP}/split.config"
 
 # Docker's view: pgsc_calc's containers got both labels.
 echo "containers created: $(wc -l < "$EVENTS" | tr -d ' '); events errors: $(head -c 300 "${CASE_TMP}/events.err")"
