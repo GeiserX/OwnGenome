@@ -119,8 +119,10 @@
         <li><a href="#clinical-filter"><span class="dot dot-ok" title="Complete"></span>Clinical filter and secondary findings</a></li>
         <li><a href="#cpsr"><span class="dot dot-ok" title="Complete"></span>Cancer predisposition</a></li>
         <li><a href="#slivar"><span class="dot dot-ok" title="Complete"></span>Variant prioritization</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-incomplete" title="Part not run"></span>Structural variants</a></li>
         <li><a href="#expansions"><span class="dot dot-missing" title="Not run"></span>Repeat expansions</a></li>
         <li><a href="#mito"><span class="dot dot-missing" title="Not run"></span>Mitochondrial variants</a></li>
+        <li><a href="#mosaic"><span class="dot dot-missing" title="Not run"></span>Mosaic loss of chromosome Y or X</a></li>
       </ol>
     </li>
     <li><a href="#ch-carrier">Carrier</a>
@@ -155,6 +157,7 @@
         <li><a href="#not-assessed">Not assessed</a></li>
       </ol>
     </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
 <main>
@@ -201,6 +204,7 @@
     <h2>ClinVar Screening</h2>
     <p class="sec-meta">Step 06 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#clinvar">link to this section</a></p>
     <p class="caveat">Check every P/LP hit&#x27;s population frequency, a heterozygous hit in a dominant gene as well as a homozygous one: a hit above 1% in gnomAD is unlikely to be a high-penetrance finding, and a hit whose frequency is unknown has not been checked.</p>
+    <figure class="chart"><svg xmlns="http://www.w3.org/2000/svg" class="chart" data-chart="clinvar-stars" viewBox="0 0 640 188" width="100%" role="img" aria-label="ClinVar hits by review stars"><title>ClinVar hits by review stars</title><a href="#clinvar" data-mark="stars-4"><title>4 stars: 0 hits with 4 review stars</title><text x="182" y="25" font-size="12" text-anchor="end" fill="currentColor">4 stars</text><rect x="190" y="12" width="2" height="18" fill="#8a909b"/><text x="198" y="25" font-size="12" text-anchor="start" fill="currentColor">0</text></a><a href="#clinvar-hits" data-mark="stars-3"><title>3 stars: 2 hits with 3 review stars: BRCA1,NBR2 chr17:43057100 C&gt;T, HFE chr6:26092913 G&gt;A</title><text x="182" y="51" font-size="12" text-anchor="end" fill="currentColor">3 stars</text><rect x="190" y="38" width="260" height="18" rx="3" fill="#e0b94a"/><text x="456" y="51" font-size="12" text-anchor="start" fill="currentColor">2</text></a><a href="#clinvar-hits" data-mark="stars-2"><title>2 stars: 3 hits with 2 review stars: MUTYH chr1:45331556 C&gt;T, HBA1 chr16:176700 G&gt;A, SMN1 chr5:70951946 C&gt;T</title><text x="182" y="77" font-size="12" text-anchor="end" fill="currentColor">2 stars</text><rect x="190" y="64" width="390" height="18" rx="3" fill="#e0b94a"/><text x="586" y="77" font-size="12" text-anchor="start" fill="currentColor">3</text></a><a href="#clinvar-hits" data-mark="stars-1"><title>1 star: 1 hit with 1 review star: BTD chr3:15645186 G&gt;C</title><text x="182" y="103" font-size="12" text-anchor="end" fill="currentColor">1 star</text><rect x="190" y="90" width="130" height="18" rx="3" fill="#e0b94a"/><text x="326" y="103" font-size="12" text-anchor="start" fill="currentColor">1</text></a><a href="#clinvar-hits" data-mark="stars-0"><title>0 stars: 2 hits with 0 review stars: . chr2:100 A&gt;G, GLA chrX:101398000 C&gt;T</title><text x="182" y="129" font-size="12" text-anchor="end" fill="currentColor">0 stars</text><rect x="190" y="116" width="260" height="18" rx="3" fill="#e0b94a"/><text x="456" y="129" font-size="12" text-anchor="start" fill="currentColor">2</text></a><a href="#clinvar-hits" data-mark="low-confidence"><title>Low-confidence, not counted: 2 calls with GQ below None or DP below None: listed in the hits, not counted in the stars</title><text x="182" y="155" font-size="12" text-anchor="end" fill="currentColor">Low-confidence, not counted</text><rect x="190" y="142" width="260" height="18" rx="3" fill="#8a909b"/><text x="456" y="155" font-size="12" text-anchor="start" fill="currentColor">2</text></a></svg></figure>
     <div class="stat"><span class="label">ClinVar matches</span><span class="value"><span class="badge badge-yellow">8</span></span></div>
     <div class="stat"><span class="label">Low-confidence calls (GQ below None or DP below None), not counted</span><span class="value"><span class="badge badge-yellow">2</span></span></div>
     <div class="stat"><span class="label">By stars (4/3/2/1/0)</span><span class="value">0 / 2 / 3 / 1 / 2</span></div>
@@ -335,6 +339,29 @@
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
   </div>
   </section>
+  <section class="sec full-width" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-yellow">Part not run</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">3</span></div>
+  </div>
+  <div class="card full-width">
+    <h2>Structural Variants, Class 4 and 5 (AnnotSV)</h2>
+    <p class="caveat">A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV&#x27;s benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05&#x27;s rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene&#x27;s alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <p class="note">Class 4-5 SVs: 6 (single caller: 5; deletions on exon edges: 1; common: 1)</p>
+    <p class="note">Moved to class 3 by step 05&#x27;s rules, not counted above: 1</p>
+    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:45338000-45340000</td><td>5</td><td>MUTYH</td><td>2 callers (manta, delly)</td><td>on exon edges: </td><td><a class="locus" href="http://127.0.0.1:8765/#1:45338000-45340000" target="_blank" rel="noopener noreferrer">1:45338000-45340000</a></td></tr><tr><td>DEL chr2:47386000-47388000</td><td>4</td><td>EPCAM</td><td>single caller (Delly)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#chr2:47386000-47388000" target="_blank" rel="noopener noreferrer">chr2:47386000-47388000</a></td></tr><tr><td>DUP 17:43000000-43100000</td><td>4</td><td>BRCA1, NBR2</td><td>single caller (CNVpytor)</td><td>benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#17:43000000-43100000" target="_blank" rel="noopener noreferrer">17:43000000-43100000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>5</td><td>GJB2, NOTAGENE</td><td>single caller (Manta)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>4</td><td>GJB2, XYZ1</td><td>single caller (Manta)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>BTD</td><td>single caller (Manta)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table>
+    <h3>Moved to class 3 by step 05's rules</h3>
+    <table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>3</td><td>BTD</td><td>not named</td><td>no detail</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table>
+    <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
+  </div>
+  </section>
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
@@ -346,6 +373,13 @@
   <div class="card">
     <h2>Mitochondrial Analysis</h2>
     <p class="sec-meta">Step 20 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mito">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
@@ -576,6 +610,71 @@
       <li>Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)</li>
       <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
       <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <ul class="plain terms">
+      <li><strong>APC</strong>: <a href="#cpsr">Cancer predisposition (CPSR)</a></li>
+      <li><strong>BRCA1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a>, <a href="#cpsr">Cancer predisposition (CPSR)</a>, <a href="#clinical-filter">Clinical variant filter</a> (2)</li>
+      <li><strong>BRCA2</strong>: <a href="#cpsr">Cancer predisposition (CPSR)</a></li>
+      <li><strong>BTD</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a> (2), <a href="#clinical-filter">Clinical variant filter</a></li>
+      <li><strong>CFTR</strong>: <a href="#clinvar">ClinVar screen</a> (2), <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>CFTR_DEL</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>CYP2C19</strong>: <a href="#cpic">CPIC drug-gene recommendations</a></li>
+      <li><strong>CYP2C9</strong>: <a href="#cpic">CPIC drug-gene recommendations</a></li>
+      <li><strong>CYP2D6</strong>: <a href="#cpic">CPIC drug-gene recommendations</a></li>
+      <li><strong>DPYD</strong>: <a href="#cpic">CPIC drug-gene recommendations</a></li>
+      <li><strong>DUP1</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>EPCAM</strong>: <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a></li>
+      <li><strong>G1</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G10</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G11</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G12</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G13</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G14</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G15</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G16</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G17</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G18</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G19</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G2</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G20</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G3</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G4</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G5</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G6</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G7</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G8</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>G9</strong>: <a href="#slivar">Variant prioritization (slivar)</a></li>
+      <li><strong>GJB2</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a> (2)</li>
+      <li><strong>GJB6</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>GLA</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#clinical-filter">Clinical variant filter</a></li>
+      <li><strong>HBA1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>HFE</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#clinical-filter">Clinical variant filter</a> (2)</li>
+      <li><strong>MSH2</strong>: <a href="#cpsr">Cancer predisposition (CPSR)</a>, <a href="#clinical-filter">Clinical variant filter</a> (2)</li>
+      <li><strong>MUTYH</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a>, <a href="#clinical-filter">Clinical variant filter</a> (2)</li>
+      <li><strong>MYBPC3</strong>: <a href="#clinical-filter">Clinical variant filter</a></li>
+      <li><strong>NBR2</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a></li>
+      <li><strong>NOTAGENE</strong>: <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a></li>
+      <li><strong>SLCO1B1</strong>: <a href="#cyp2d6">pypgx</a></li>
+      <li><strong>SMN1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>UGT1A1</strong>: <a href="#cyp2d6">pypgx</a></li>
+      <li><strong>XYZ1</strong>: <a href="#structural-variants">Structural variants, class 4 and 5 (AnnotSV)</a></li>
+      <li><strong>rs113993960</strong>: <a href="#clinvar">ClinVar screen</a></li>
+      <li><strong>rs143838139</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>rs1800562</strong>: <a href="#clinvar">ClinVar screen</a></li>
+      <li><strong>rs36053993</strong>: <a href="#clinvar">ClinVar screen</a></li>
+      <li><strong>rs80338939</strong>: <a href="#clinvar">ClinVar screen</a></li>
+      <li><strong>rs99</strong>: <a href="#clinvar">ClinVar screen</a></li>
     </ul>
   </div>
   </section>

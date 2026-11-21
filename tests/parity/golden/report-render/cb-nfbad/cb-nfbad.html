@@ -119,8 +119,10 @@
         <li><a href="#clinical-filter"><span class="dot dot-failed" title="Failed"></span>Clinical filter and secondary findings</a></li>
         <li><a href="#cpsr"><span class="dot dot-missing" title="Not run"></span>Cancer predisposition</a></li>
         <li><a href="#slivar"><span class="dot dot-missing" title="Not run"></span>Variant prioritization</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-missing" title="Not run"></span>Structural variants</a></li>
         <li><a href="#expansions"><span class="dot dot-missing" title="Not run"></span>Repeat expansions</a></li>
         <li><a href="#mito"><span class="dot dot-missing" title="Not run"></span>Mitochondrial variants</a></li>
+        <li><a href="#mosaic"><span class="dot dot-missing" title="Not run"></span>Mosaic loss of chromosome Y or X</a></li>
       </ol>
     </li>
     <li><a href="#ch-carrier">Carrier</a>
@@ -155,6 +157,7 @@
         <li><a href="#not-assessed">Not assessed</a></li>
       </ol>
     </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
 <main>
@@ -201,6 +204,7 @@
     <h2>ClinVar Screening</h2>
     <p class="sec-meta">Step 06 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#clinvar">link to this section</a></p>
     <p class="caveat">Check every P/LP hit&#x27;s population frequency, a heterozygous hit in a dominant gene as well as a homozygous one: a hit above 1% in gnomAD is unlikely to be a high-penetrance finding, and a hit whose frequency is unknown has not been checked.</p>
+    <figure class="chart"><svg xmlns="http://www.w3.org/2000/svg" class="chart" data-chart="clinvar-stars" viewBox="0 0 640 188" width="100%" role="img" aria-label="ClinVar hits by review stars"><title>ClinVar hits by review stars</title><a href="#clinvar" data-mark="stars-4"><title>4 stars: 0 hits with 4 review stars</title><text x="182" y="25" font-size="12" text-anchor="end" fill="currentColor">4 stars</text><rect x="190" y="12" width="2" height="18" fill="#8a909b"/><text x="198" y="25" font-size="12" text-anchor="start" fill="currentColor">0</text></a><a href="#clinvar-hits" data-mark="stars-3"><title>3 stars: 2 hits with 3 review stars: BRCA1,NBR2 chr17:43057100 C&gt;T, HFE chr6:26092913 G&gt;A</title><text x="182" y="51" font-size="12" text-anchor="end" fill="currentColor">3 stars</text><rect x="190" y="38" width="260" height="18" rx="3" fill="#e0b94a"/><text x="456" y="51" font-size="12" text-anchor="start" fill="currentColor">2</text></a><a href="#clinvar-hits" data-mark="stars-2"><title>2 stars: 3 hits with 2 review stars: MUTYH chr1:45331556 C&gt;T, HBA1 chr16:176700 G&gt;A, SMN1 chr5:70951946 C&gt;T</title><text x="182" y="77" font-size="12" text-anchor="end" fill="currentColor">2 stars</text><rect x="190" y="64" width="390" height="18" rx="3" fill="#e0b94a"/><text x="586" y="77" font-size="12" text-anchor="start" fill="currentColor">3</text></a><a href="#clinvar-hits" data-mark="stars-1"><title>1 star: 1 hit with 1 review star: BTD chr3:15645186 G&gt;C</title><text x="182" y="103" font-size="12" text-anchor="end" fill="currentColor">1 star</text><rect x="190" y="90" width="130" height="18" rx="3" fill="#e0b94a"/><text x="326" y="103" font-size="12" text-anchor="start" fill="currentColor">1</text></a><a href="#clinvar-hits" data-mark="stars-0"><title>0 stars: 2 hits with 0 review stars: . chr2:100 A&gt;G, GLA chrX:101398000 C&gt;T</title><text x="182" y="129" font-size="12" text-anchor="end" fill="currentColor">0 stars</text><rect x="190" y="116" width="260" height="18" rx="3" fill="#e0b94a"/><text x="456" y="129" font-size="12" text-anchor="start" fill="currentColor">2</text></a><a href="#clinvar-hits" data-mark="low-confidence"><title>Low-confidence, not counted: 2 calls with GQ below 20 or DP below 8: listed in the hits, not counted in the stars</title><text x="182" y="155" font-size="12" text-anchor="end" fill="currentColor">Low-confidence, not counted</text><rect x="190" y="142" width="260" height="18" rx="3" fill="#8a909b"/><text x="456" y="155" font-size="12" text-anchor="start" fill="currentColor">2</text></a></svg></figure>
     <div class="stat"><span class="label">ClinVar matches</span><span class="value"><span class="badge badge-yellow">8</span></span></div>
     <div class="stat"><span class="label">Low-confidence calls (GQ below 20 or DP below 8), not counted</span><span class="value"><span class="badge badge-yellow">2</span></span></div>
     <div class="stat"><span class="label">By stars (4/3/2/1/0)</span><span class="value">0 / 2 / 3 / 1 / 2</span></div>
@@ -248,6 +252,18 @@
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
+  <section class="sec" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">N/A</span></div>
+  </div>
+  </section>
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
@@ -259,6 +275,13 @@
   <div class="card">
     <h2>Mitochondrial Analysis</h2>
     <p class="sec-meta">Step 20 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mito">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
   </div>
   </section>
@@ -454,6 +477,30 @@
       <li>Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)</li>
       <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
       <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <ul class="plain terms">
+      <li><strong>BRCA1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>BTD</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>CFTR</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>GJB2</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>GLA</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>HBA1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>HFE</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>MUTYH</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>NBR2</strong>: <a href="#clinvar">ClinVar screen</a></li>
+      <li><strong>SMN1</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>rs143838139</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
     </ul>
   </div>
   </section>

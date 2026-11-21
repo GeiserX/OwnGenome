@@ -8,9 +8,12 @@
 //! heterozygous hits of one recessive gene as two plain carrier rows, and a
 //! deletion plus a low-confidence call as a confident two-hit gene. These
 //! cases run the list on synthetic hits with the shipped
-//! `assets/carrier_genes.tsv`.
+//! `assets/carrier_genes.tsv`. The last cases run the ACMG SF card on the
+//! same hits (`assets/acmg_sf.tsv`): a pair that rests on a low-confidence
+//! call reads the same there.
 
 use indexmap::IndexMap;
+use og_summary::collect::acmg::{Inputs, acmg_sf};
 use og_summary::collect::carrier::Carrier;
 use og_summary::collect::clinvar::{Floor, HitRecords, HitsVcf};
 use og_summary::collect::two_hits::{DeletionInputs, SvRow};
@@ -21,6 +24,7 @@ const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
 // MUTYH and CFTR spans in assets/carrier_genes.tsv: chr1:45329163-45340893
 // and chr7:117287120-117715971. MUTYH is on the ACMG SF list, CFTR is not.
 const MUTYH_A: (&str, i128, &str, &str) = ("chr1", 45_331_556, "C", "T");
+const MUTYH_B: (&str, i128, &str, &str) = ("chr1", 45_332_803, "T", "C");
 const CFTR_A: (&str, i128, &str, &str) = ("chr7", 117_559_590, "ATCT", "A");
 const CFTR_B: (&str, i128, &str, &str) = ("chr7", 117_587_806, "G", "T");
 const OTC_A: (&str, i128, &str, &str) = ("chrX", 38_400_000, "C", "T");
@@ -334,4 +338,93 @@ fn a_deletion_plus_a_low_confidence_call_is_only_possibly_biallelic() {
         two_hit_verdict(&weak, "MUTYH"),
         "possibly biallelic (low-confidence call)"
     );
+}
+
+/// The ACMG SF card on step 06's hits alone (no clinical VCF).
+fn sf(hits: Vec<Vec<String>>, dels: &DeletionInputs) -> IndexMap<String, Value> {
+    let h: Result<HitRecords, String> = Ok((Floor::default(), hits));
+    obj(acmg_sf(&Inputs {
+        assets: ASSETS,
+        hits: Some(&h),
+        clinical: None,
+        deletions: dels,
+    })
+    .unwrap())
+}
+
+/// The `pair` word of each reported ClinVar row of `gene` on the SF card.
+fn sf_pairs(c: &IndexMap<String, Value>, gene: &str) -> Vec<String> {
+    let r = of(c, "clinvar_hits", gene);
+    assert!(!r.is_empty(), "{c:?}");
+    r.iter().map(|x| s(x, "pair").to_owned()).collect()
+}
+
+#[test]
+fn the_sf_card_caps_a_deletion_pair_on_a_low_confidence_call() {
+    let dels = mutyh_deletion("1|0", Some("9"));
+    let weak = sf(
+        vec![hit(MUTYH_A, "MUTYH", "GT:GQ:DP:PS", "0|1:5:4:9", "")],
+        &dels,
+    );
+    assert_eq!(
+        sf_pairs(&weak, "MUTYH"),
+        ["possibly biallelic (low-confidence call)"]
+    );
+    let sure = sf(vec![good(MUTYH_A, "MUTYH", "0|1", Some("9"))], &dels);
+    assert_eq!(sf_pairs(&sure, "MUTYH"), ["biallelic"]);
+}
+
+#[test]
+fn the_sf_card_caps_a_phased_pair_on_a_low_confidence_call() {
+    let weak = sf(
+        vec![
+            good(MUTYH_A, "MUTYH", "0|1", Some("9")),
+            hit(MUTYH_B, "MUTYH", "GT:GQ:DP:PS", "1|0:5:4:9", ""),
+        ],
+        &no_deletions(),
+    );
+    let low = "possibly biallelic (low-confidence call)";
+    assert_eq!(sf_pairs(&weak, "MUTYH"), [low, low]);
+    for x in of(&weak, "clinvar_hits", "MUTYH") {
+        assert!(s(x, "phase").contains("low confidence"), "{x:?}");
+    }
+    // Unphased, one of them weak: the same mark.
+    let unphased = sf(
+        vec![
+            good(MUTYH_A, "MUTYH", "0/1", None),
+            hit(MUTYH_B, "MUTYH", "GT:GQ:DP", "0/1:5:4", ""),
+        ],
+        &no_deletions(),
+    );
+    assert_eq!(sf_pairs(&unphased, "MUTYH"), [low, low]);
+    // Both confident: biallelic, and possibly biallelic unphased.
+    let sure = sf(
+        vec![
+            good(MUTYH_A, "MUTYH", "0|1", Some("9")),
+            good(MUTYH_B, "MUTYH", "1|0", Some("9")),
+        ],
+        &no_deletions(),
+    );
+    assert_eq!(sf_pairs(&sure, "MUTYH"), ["biallelic", "biallelic"]);
+    let open = sf(
+        vec![
+            good(MUTYH_A, "MUTYH", "0/1", None),
+            good(MUTYH_B, "MUTYH", "0/1", None),
+        ],
+        &no_deletions(),
+    );
+    assert_eq!(
+        sf_pairs(&open, "MUTYH"),
+        ["possibly biallelic", "possibly biallelic"]
+    );
+    // A confident homozygous call proves both copies on its own; a weak
+    // second variant does not weaken that.
+    let hom = sf(
+        vec![
+            good(MUTYH_A, "MUTYH", "1/1", None),
+            hit(MUTYH_B, "MUTYH", "GT:GQ:DP", "0/1:5:4", ""),
+        ],
+        &no_deletions(),
+    );
+    assert_eq!(sf_pairs(&hom, "MUTYH"), ["biallelic", "biallelic"]);
 }

@@ -96,6 +96,10 @@
     ... 3 more in the pairs table
   (A pair can hit both copies of the gene only in trans. cis: one copy carries both variants. unknown: fewer than 2 reads or read pairs cover both positions, the reads disagree, or there is no BAM; the pairs table gives the reason. A parent's genome or long reads can phase it. Every pair: slivar/<sample>_compound_het_pairs.tsv)
 
+## Structural Variants, Class 4 and 5 (AnnotSV)
+---
+  Class 4-5 SVs: 0
+
 ################################################################################
 #  3. CARRIER: What could I pass on to a child?
 ################################################################################

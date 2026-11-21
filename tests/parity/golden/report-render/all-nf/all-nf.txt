@@ -122,6 +122,28 @@
   No gene passed Exomiser's filters with a variant that fits a mode of inheritance.
   A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md). In words: exomiser/S_exomiser.txt
 
+## Structural Variants (Manta)
+---
+  Total SVs: 0  PASS: 0
+  Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.
+
+## Copy Number Variants (CNVpytor)
+---
+  [STALE: from an earlier run (2019-06-01 12:30 UTC); step 18 was skipped (opt-in) in the run of 2020-01-01 00:00 UTC]
+  Total CNVs: 2 (2 deletions, 0 duplications)
+  Significant (e-val < 0.01): 2
+  Significant after filters: 1 (left out: 1 on chrY of a declared female)
+  Filtered: e-value below 0.01, under half of the reads with mapping quality 0 (q0) and under half N bases (pN), no overlap with a centromere or heterochromatin band, and no chrY call when the declared sex is female.
+
+## SV Consensus Merge
+---
+  [STALE: from an earlier run (2019-06-01 12:30 UTC); step 22 was failed (exit 1) in the run of 2020-01-01 00:00 UTC]
+  Consensus SVs (2+ callers): 1
+
+## Structural Variants, Class 4 and 5 (AnnotSV)
+---
+  Class 4-5 SVs: 0
+
 ## Mobile Element Insertions (step 50)
 ---
   Insertions called: 0 (none)
@@ -386,6 +408,13 @@
   HHV-6: not assessed (no human depth)
   No read on any of the 1 viral genomes.
   From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/<sample>_viral.tsv.
+
+## Raw-Data Export (23andMe v5 layout)
+---
+  Sites with a genotype: 10 of 10 (100.0%); '--' at 0
+  Homozygous reference from the gVCF's reference blocks: 0
+  Files: consumer_export/. and consumer_export/.
+  These files stay on this machine. Uploading one to a service shares your genotypes with it, and with the relatives it matches you to: docs/40-export-consumer.md says what to weigh first.
 
 ## Steps Not Run
 ---

@@ -164,6 +164,40 @@
        chr2-1-A-G 1/1 splice c.1 ACMG VUS; D2
   A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md). In words: exomiser/S_exomiser.txt
 
+## Structural Variants (Manta)
+---
+  Total SVs: 3  PASS: 1
+  Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.
+
+## Structural Variants (Delly)
+---
+  Total SVs: 1  PASS: 1
+
+## Copy Number Variants (CNVpytor)
+---
+  Total CNVs: 8 (5 deletions, 3 duplications)
+  Significant (e-val < 0.01): 7
+  Significant after filters: 4 (left out: 1 q0 0.5 or more, 1 over N gaps (pN 0.5 or more), 1 over a centromere or heterochromatin band)
+  Filtered: e-value below 0.01, under half of the reads with mapping quality 0 (q0) and under half N bases (pN), no overlap with a centromere or heterochromatin band, and no chrY call when the declared sex is female.
+
+## SV Consensus Merge
+---
+  Consensus SVs (2+ callers): 3
+
+## Structural Variants, Class 4 and 5 (AnnotSV)
+---
+  Class 4-5 SVs: 3 (single caller: 1; deletions on exon edges: 1; common: 1)
+  Moved to class 3 by step 05's rules, not counted above: 1
+    DEL  1:1100-5100  class 5  GENE1, GENE2  support: 2 callers (manta, delly)
+         on exon edges: exon 2
+         benign-set AF 0.001 (gnomAD)
+    DUP  2:150-880  class 4  GENE3  support: 3 callers (manta, delly, tiddit, caller 4)
+    DEL  9:1-100  class 4  G9  support: single caller (tiddit)
+         benign-set AF 0.2 (gnomAD), common
+  Moved to class 3 by step 05's rules (from AnnotSV's class, with the reason):
+    INV 7:1-100  no gene  AnnotSV class 4 -> 3  (mhc: the MHC)
+  A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV's benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05's rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene's alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here.
+
 ## Mobile Element Insertions (step 50)
 ---
   Insertions called: 3 (ALU 2, L1 1)
@@ -257,6 +291,12 @@
   Too shallow or not on the reference: ASXL1, SRSF2.
   1 other protein changes listed, not counted: chip/S_chip.tsv.
   Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene's published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.
+
+## Mosaic loss of chromosome Y or X
+---
+  chrY or chrX: not detected above 10% (None)
+  From depth: estimated share of the cells that lost one X 2.0% (95% range -1.0% to 5.0%); None to autosome depth ratio 0.980, 1.0 expected
+  Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).
 
 ## Mosaic Chromosomal Alterations (MoChA, step 51)
 ---
@@ -556,6 +596,14 @@
   phiX: spike-in (500 reads, 100% of the genome)
   HHV-6B: inherited integrated HHV-6 likely (2000 reads, 99% of the genome, 1.0 copies per cell)
   From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/<sample>_viral.tsv.
+
+## Raw-Data Export (23andMe v5 layout)
+---
+  Sites with a genotype: 590000 of 600000 (98.3%); '--' at 10000
+  Homozygous reference from the gVCF's reference blocks: 0
+  Files: consumer_export/S_23andme.txt and consumer_export/.
+  '--' because: low depth 9000; filtered 1000
+  These files stay on this machine. Uploading one to a service shares your genotypes with it, and with the relatives it matches you to: docs/40-export-consumer.md says what to weigh first.
 
 ## Steps Not Run
 ---
