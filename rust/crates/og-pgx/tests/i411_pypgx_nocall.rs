@@ -300,3 +300,94 @@ fn a_combinations_second_drug_is_on_the_list() {
         "{rec}"
     );
 }
+
+// --- a combination written with a hyphen ------------------------------------
+
+/// `convert` with an inhibitor table of the given CYP2D6 drugs, each a
+/// strong inhibitor; the rows are invented for the test.
+fn convert_with(name: &str, drugs: &[&str], meds: &str) -> (String, String) {
+    let s = Scratch::new(name);
+    let rep = report(&[gene(
+        "CYP2D6",
+        "*1",
+        "*1",
+        "Normal Metabolizer",
+        Some("2.0"),
+    )]);
+    let list = s.put("meds.txt", meds);
+    let mut table =
+        "Drug\tGene\tStrength\tActivity_score_factor\tClass_source\tRule_source\n".to_owned();
+    for d in drugs {
+        table.push_str(&format!("{d}\tCYP2D6\tstrong\t0\tx\tx\n"));
+    }
+    let inh = s.put("inhibitors.tsv", &table);
+    let (rc, rec, rows, _) = run(&s, &rep, &["--medications", &list, "--inhibitors", &inh]);
+    assert_eq!(rc, 0, "{rec}");
+    let col = row(&rows, "CYP2D6")
+        .and_then(|r| r.get(4).cloned())
+        .unwrap_or_default();
+    (col, rec)
+}
+
+#[test]
+fn a_hyphenated_combination_is_checked_for_each_drug() {
+    let (col, rec) = convert("olafluo-hyphen", &POOR, "olanzapine-fluoxetine 6/25 mg\n");
+    assert_eq!(
+        col, "Poor Metabolizer (phenoconverted by fluoxetine)",
+        "{rec}"
+    );
+    assert!(!rec.contains("Not in the inhibitor table"), "{rec}");
+    let (col, rec) = convert("nalbup-hyphen", &NORMAL, "Naltrexone-Bupropion 8/90 mg\n");
+    assert_eq!(
+        col, "Poor Metabolizer (phenoconverted by bupropion)",
+        "{rec}"
+    );
+    assert!(!rec.contains("Not in the inhibitor table"), "{rec}");
+    // The second drug of a hyphenated combination is on the list for the
+    // drug contraindications too.
+    let want = "  WARNING: valproic acid -- POLG chr15:89300000 C>T, genotype 0/1, ClinVar Likely_pathogenic; ON THE MEDICATION LIST.";
+    let rec = contra("contra-hyphen", "lamotrigine-valproate 100/500 mg\n");
+    assert!(rec.lines().any(|l| l == want), "{rec}");
+}
+
+#[test]
+fn a_hyphenated_drug_name_of_the_table_still_matches_whole() {
+    let (col, rec) = convert_with("whole", &["co-trimoxazole"], "Co-trimoxazole 960 mg\n");
+    assert_eq!(
+        col, "Poor Metabolizer (phenoconverted by co-trimoxazole)",
+        "{rec}"
+    );
+    // A control, green before and after hyphen parts were added: the
+    // whole name matches, and its parts add nothing.
+    assert!(
+        rec.contains(
+            "WARNING: CYP2D6 genotype phenotype Normal Metabolizer; phenoconverted phenotype Poor Metabolizer (phenoconverted by co-trimoxazole), activity score adjusted to 0."
+        ) && !rec.contains("Not in the inhibitor table"),
+        "{rec}"
+    );
+}
+
+#[test]
+fn a_hyphen_part_gives_no_false_hit() {
+    // With the shipped table none of these names an inhibitor, whole or by
+    // its parts, so each line stays unchecked.
+    for line in [
+        "co-trimoxazole 960 mg",
+        "L-dopa 100 mg",
+        "L 5 mg",
+        "5-HTP 100 mg",
+    ] {
+        let (col, rec) = convert("parts", &NORMAL, &format!("{line}\n"));
+        assert_eq!(col, "-", "{line}: {rec}");
+        assert!(
+            rec.contains(&format!("Not in the inhibitor table: {line}.")),
+            "{line}: {rec}"
+        );
+    }
+    // A prefix, a lone letter and a number are never drugs: a table that
+    // lists them as names still gives no hit for these lines.
+    for line in ["co-trimoxazole 960 mg", "L-dopa 100 mg", "5-HTP 100 mg"] {
+        let (col, rec) = convert_with("short-parts", &["co", "l", "5"], &format!("{line}\n"));
+        assert_eq!(col, "-", "{line}: {rec}");
+    }
+}

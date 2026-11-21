@@ -144,11 +144,6 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
-          key: freshness
-
       - name: Build og
         working-directory: rust
         run: cargo build --release --locked -p og --no-default-features
@@ -209,11 +204,6 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
-          key: freshness
-
       - name: Build og
         working-directory: rust
         run: cargo build --release --locked -p og --no-default-features
@@ -266,11 +256,6 @@ jobs:
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal
           rustc --version
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
-          key: freshness
 
       - name: Build og
         working-directory: rust

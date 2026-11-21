@@ -151,11 +151,6 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
-          key: fake-docker
-
       - name: Build og into bin/.og
         working-directory: rust
         run: |
@@ -224,10 +219,6 @@ jobs:
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal
           rustc --version
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
 
       - name: Build og
         working-directory: rust
@@ -358,9 +349,15 @@ jobs:
           rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy
           rustc --version
 
+      # The one Guard job a cache speeds up (clippy and the tests, 1 to 2
+      # minutes). It saves on main only: a branch reads main's entry, and the
+      # per-branch entries of every job filled the 10 GB the E2E image and
+      # data caches need. The jobs that only build og --release have no
+      # cache: it did not make that build faster.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: rustfmt
         run: cargo fmt --all --check
@@ -1008,10 +1005,6 @@ jobs:
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal
           rustc --version
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
 
       - name: Build og
         working-directory: rust

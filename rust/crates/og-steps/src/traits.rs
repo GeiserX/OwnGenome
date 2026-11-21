@@ -714,17 +714,17 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
         if ps.is_empty() || *ps == "." || !gt.contains('|') {
             continue;
         }
-        let bases: Vec<_> = std::iter::once(c[3]).chain(c[4].split(',')).collect();
+        let mut bases = vec![c[3]];
+        if c[4] != "." {
+            bases.extend(c[4].split(','));
+        }
         let idx: Option<Vec<_>> = gt
             .split('|')
             .map(|i| {
                 pycompat::num::parse_int(i)
                     .ok()
-                    .and_then(|i| i.to_string().parse::<isize>().ok())
-                    .and_then(|i| {
-                        let n = if i < 0 { bases.len() as isize + i } else { i };
-                        usize::try_from(n).ok().and_then(|n| bases.get(n).copied())
-                    })
+                    .and_then(|i| usize::try_from(i).ok())
+                    .and_then(|i| bases.get(i).copied())
             })
             .collect();
         if let Some(al) = idx
@@ -1562,6 +1562,25 @@ mod tests {
         let gt = read_genotypes(&path, &[first, &second]).unwrap();
         assert_eq!(genotype(first, &gt).status, Status::OtherAllele);
         assert_eq!(genotype(&second, &gt).status, Status::Called);
+    }
+
+    #[test]
+    fn phase_skips_records_with_indexes_that_name_no_allele() {
+        let scratch = Scratch::new();
+        let path = scratch.put(
+            "phased.vcf",
+            "chr20\t100\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|-1:7\n\
+             chr20\t200\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|3:7\n\
+             chr20\t300\t.\tA\t.\t.\tPASS\t.\tGT:PS\t0|1:7\n\
+             chr20\t400\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|2:7\n",
+        );
+        let key = |pos: u64| ("chr20".to_owned(), pos.to_string());
+        let wanted = [100, 200, 300, 400].into_iter().map(key).collect();
+
+        assert_eq!(
+            read_phased(&path, &wanted).unwrap(),
+            HashMap::from([(key(400), ("A".into(), "G".into(), "7".into()))])
+        );
     }
 
     #[test]
