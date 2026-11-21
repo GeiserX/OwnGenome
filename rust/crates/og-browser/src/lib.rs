@@ -1,6 +1,7 @@
 //! Test support for OwnGenome's browser checks: a headless Chrome driven
 //! over the DevTools protocol, a static file server for the pages and the
-//! scan of the live site's assets. No product code depends on it.
+//! scan of the live site's assets. No pipeline step depends on it; `og dev
+//! pictures` uses it to take the docs pictures.
 //!
 //! - [`find_chrome`] and [`chrome_or_skip`]: which Chrome to run, and what a
 //!   test does without one (skip on a laptop, fail in CI).

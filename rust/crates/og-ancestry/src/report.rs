@@ -43,6 +43,32 @@ pub const CHROM_LEN: [u64; 22] = [
 /// Grey where nothing is painted.
 const UNPAINTED: [u8; 3] = [225, 225, 225];
 
+/// The rows of numbers of a whitespace-separated matrix (`.Q`, `.P`),
+/// blank lines skipped.
+pub fn read_matrix(path: &Path) -> Result<Vec<Vec<f64>>> {
+    let mut out = Vec::new();
+    let mut n = 0u64;
+    crate::for_each_line(path, |line| {
+        n += 1;
+        let mut row = Vec::new();
+        for w in crate::split_ws(line) {
+            let x = pycompat::num::parse_float(w).map_err(|_| {
+                Fail(format!(
+                    "{}: line {n}: not a number: {}",
+                    path.display(),
+                    crate::repr(w)
+                ))
+            })?;
+            row.push(x);
+        }
+        if !row.is_empty() {
+            out.push(row);
+        }
+        Ok(())
+    })?;
+    Ok(out)
+}
+
 /// One level of `levels.tsv`: its name, K and the group codes in the `.P`
 /// column order.
 #[derive(Debug, Clone)]
@@ -116,7 +142,7 @@ pub fn fractions(
     let k = row.k;
     let name = &row.name;
     let q_name = format!("{sample}_{name}.{k}.Q");
-    let q = crate::order::read_matrix(&Path::new(adm_dir).join(&q_name))?;
+    let q = read_matrix(&Path::new(adm_dir).join(&q_name))?;
     if q.len() != 1 || q[0].len() as i64 != k {
         return Err(Fail(format!(
             "{adm_dir}/{q_name} is not one row of {k} values"
@@ -124,7 +150,7 @@ pub fn fractions(
     }
     let boot_path = Path::new(adm_dir).join(format!("{sample}_{name}.boot.Q"));
     let boot = if boot_path.is_file() {
-        crate::order::read_matrix(&boot_path)?
+        read_matrix(&boot_path)?
     } else {
         Vec::new()
     };
