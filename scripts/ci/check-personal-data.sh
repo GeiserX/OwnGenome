@@ -146,6 +146,10 @@ CONTRIBUTING.md                               /mnt/user\|internal-host\|/home/
 CONTRIBUTING.md                               (`/mnt/user/`, `/home/username/`, etc.)
 modules/local/cyrius/main.nf                  ${prefix}\\t*1/*1\\tPASS
 tests/fake-docker/reports-stale-step.sh       sample1\t*1/*1\tPASS
+tests/parity/golden/report-render/*/*         rs10455872: A/G (1 risk allele)
+tests/parity/golden/report-render/*/*         rs3798220: T|C (1 risk allele)
+tests/parity/golden/report-render/*/*         HTT      17/20      normal,normal
+tests/parity/golden/report-render/*/*         ATXN1    30/37      not sized
 tests/test_collect_summary.py                 S\t*1/*4\tPASS
 tests/test_collect_summary.py                 strec("HTT", "17/30"
 tests/test_collect_summary.py                 strec("C9ORF72", "2/8"
