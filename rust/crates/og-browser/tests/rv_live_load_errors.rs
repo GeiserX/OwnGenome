@@ -40,7 +40,7 @@ const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; st
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
 const UNREAD: &str = "This page could not read this run's state, so it keeps its results closed.";
 const WAITING: &str = "Waiting for the run's data.";
-const NO_RECHECK: &str = "No re-check yet: bin/owngenome_recheck.py writes one (docs/recheck.md).";
+const NO_RECHECK: &str = "No re-check yet: bin/og recheck writes one (docs/recheck.md).";
 const BANNER: &str = "Database re-check of 2026-01-02T11:05:40Z: ClinVar 2026-01 is newer than the one this run used.";
 
 /// How the stub answers one path.
