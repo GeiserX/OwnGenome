@@ -1190,7 +1190,7 @@ jobs:
     steps: *leg-steps
 
   # The required check. Green when e2e-scope finds nothing to run; otherwise
-  # green only when the plan and every leg succeeded, every picked case
+  # green only when the plan, og and every leg succeeded, every picked case
   # reported exactly one pass (one table of every case goes to the summary)
   # and each parity check whose cases ran passed once. Red when e2e-scope
   # did not succeed. A leg that was skipped, failed or cut by its time limit
@@ -1199,7 +1199,7 @@ jobs:
   # cancelled with it and reads cancelled, not failed: nothing ran to fail.
   # A cancelled check blocks a merge as a red one does.
   e2e:
-    needs: [e2e-scope, e2e-plan, e2e-base, e2e-shards]
+    needs: [e2e-scope, e2e-plan, og, e2e-base, e2e-shards]
     if: >-
       ${{ !cancelled() && (
         github.event_name == 'pull_request' ||
@@ -1238,6 +1238,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.run_id }}
           PLAN: ${{ needs.e2e-plan.result }}
+          OG: ${{ needs.og.result }}
           BASE: ${{ needs.e2e-base.result }}
           LEGS: ${{ needs.e2e-shards.result }}
           SHARDS: ${{ needs.e2e-plan.outputs.shards }}
@@ -1250,10 +1251,10 @@ jobs:
             tr ' ' '\n' <<< "$SELECT" > "${RUNNER_TEMP}/select.txt"
             export E2E_SELECT="${RUNNER_TEMP}/select.txt"
           fi
-          if [ "$PLAN" != success ] || [ "$BASE" != success ] || [ "$LEGS" != success ]; then
+          if [ "$PLAN" != success ] || [ "$OG" != success ] || [ "$BASE" != success ] || [ "$LEGS" != success ]; then
             # The run was not cancelled (then this job would not run), so a
             # job that ended cancelled was cut by its time limit.
-            echo "::error::The plan job ended ${PLAN:-unknown}, the base leg ${BASE:-unknown} and the shard legs ${LEGS:-unknown}; e2e needs all three to succeed. A job that ended cancelled in a run that was not cancelled hit its time limit."
+            echo "::error::The plan job ended ${PLAN:-unknown}, the job og ${OG:-unknown}, the base leg ${BASE:-unknown} and the shard legs ${LEGS:-unknown}; e2e needs all four to succeed. A job that ended cancelled in a run that was not cancelled hit its time limit."
             rc=1
           fi
           dir="${RUNNER_TEMP}/reports"
