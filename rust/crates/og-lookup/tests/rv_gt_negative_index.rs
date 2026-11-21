@@ -91,3 +91,28 @@ fn a_negative_genotype_index_is_no_call() {
 
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn gene_coverage_requires_an_index_that_names_an_allele() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("rv_gt_coverage_lookup");
+    fs::create_dir_all(&dir).unwrap();
+    let gvcf = dir.join("g.vcf");
+    fs::write(
+        &gvcf,
+        "##fileformat=VCFv4.2\n\
+         #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
+         chr7\t100\t.\tA\tT\t30\tPASS\tEND=109\tGT\t-1/-1\n\
+         chr7\t200\t.\tA\tT\t30\tPASS\tEND=219\tGT\t2/2\n\
+         chr7\t300\t.\tA\t.\t30\tPASS\tEND=302\tGT\t1/1\n\
+         chr7\t400\t.\tA\tT,G\t30\tPASS\tEND=404\tGT\t2|-1\n\
+         chr7\t500\t.\tA\t<*>\t30\tPASS\tEND=506\tGT\t0/.\n",
+    )
+    .unwrap();
+    let out = lookup(gvcf.to_str().unwrap(), &["GENEA"]);
+
+    assert!(
+        out.contains("12 of 611 bases have a genotype call"),
+        "{out}"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}

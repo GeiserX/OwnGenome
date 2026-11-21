@@ -2,10 +2,10 @@
 # What the 1000 Genomes ancestry panel costs on a GitHub-hosted runner, for
 # docs/25-prs.md: the download, the disk at its fullest and the memory at its
 # highest while pgsc_calc projects a genome-wide target onto the panel and
-# scores it. Runs on an E2E run dispatched on a branch other than main, or
-# with PGSC_MEASURE=1: it adds about 40 minutes, more than the monthly, pull
-# request and main dispatched runs have left in their 150 (a dispatched run
-# that carried it hit that limit twice).
+# scores it. Runs on an E2E run dispatched on a branch other than main and not
+# traced, or with PGSC_MEASURE=1: it adds 35 to 80 minutes to its shard, which
+# the monthly, pull request and main runs do not pay. A traced run skips it, so
+# the time table keeps its row at 0 s and the one traced leg stays in its limit.
 #
 #   --download   (started in the background by case prs-1, so the download
 #                runs while other cases do) fetches the panel with 8 byte
@@ -25,9 +25,13 @@
 #                used until then.
 # Case prs-2 projects HG002 onto the small synthetic panel on every run.
 # Removes the panel and everything else it made.
+# Its own limit, above the runner's 3600 s: the wait for the download (up to
+# 30 minutes, when EBI is slow), the site list, the target and pgsc_calc's 35
+# minutes add up to about 80.
+# case-timeout: 5400
 . "$(dirname "$0")/lib.sh"
 
-measure_on() { [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ]; }; }
+measure_on() { [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ] && [ "${E2E_TRACE:-false}" != true ]; }; }
 RES=https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources
 DIR="${GENOME_DIR}/reference/pgsc_calc"
 PANEL="${DIR}/${PGSC_PANEL}.tar.zst"
@@ -65,7 +69,7 @@ if [ "${1:-}" = --download ]; then
 fi
 
 if ! measure_on; then
-  NO_CHECKS_REASON="the 1000 Genomes panel measurement runs on an E2E run dispatched on a branch other than main, or with PGSC_MEASURE=1"
+  NO_CHECKS_REASON="the 1000 Genomes panel measurement runs on an E2E run dispatched on a branch other than main and not traced, or with PGSC_MEASURE=1"
   finish
 fi
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }

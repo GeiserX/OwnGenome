@@ -14,8 +14,9 @@
 # drugs does not follow).
 # Gene: the HGNC symbol, as ClinVar's GENEINFO writes it.
 # Drug: the drug as CPIC names it.
-# Names: the first words a medication list may use for it, comma-separated,
-# lower case; a drug on the list is marked in the report.
+# Names: the words a medication list may use for it, comma-separated, lower
+# case. Every word of a medication line is matched, the second drug of a
+# combination product too; a drug on the list is marked in the report.
 # CPIC_level: the pair's CPIC level, printed as provisional.
 # Note: what the label says.
 # Label_source: the FDA label (DailyMed) the note quotes.

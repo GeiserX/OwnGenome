@@ -7,6 +7,7 @@
 #        scripts/ci/e2e-shards.sh cover FILE
 #        scripts/ci/e2e-shards.sh merge EXPECTED RESULTS...
 #        scripts/ci/e2e-shards.sh times TRACE...
+#        scripts/ci/e2e-shards.sh seconds
 #        scripts/ci/e2e-shards.sh check
 #
 #   base     prints the base cases, one per line, in name order. The job
@@ -36,6 +37,8 @@
 #            scripts/ci/e2e-run.sh with E2E_TRACE=true). Keeps each case's
 #            stage and needs, adds the traced needs. Exits 1 when the trace
 #            saw no case read another case's files, which means it saw nothing.
+#   seconds  prints "CASE<TAB>SECONDS" for every case, the time plan and
+#            count weigh it by: its row, or E2E_SECONDS where that names it.
 #   check    exits 1 unless the table is well formed and every case has a
 #            row, naming each case with none (tests/test_e2e_shards.sh runs it
 #            on the real table). The split itself still runs a case with no
@@ -46,6 +49,11 @@
 #      E2E_SELECT    a file of shard case names (scripts/ci/e2e-scope.sh
 #                    select): plan and count only those. Every case one of
 #                    them needs must be listed too.
+#      E2E_SECONDS   "CASE=SECONDS ..." times that replace the table's for
+#                    this run, for a case whose cost depends on the run:
+#                    prs-3-panel-measure measures only on a dispatched run on
+#                    a branch, which is where e2e.yml sets it. Every job of a
+#                    run must see the same value, or their splits differ.
 #      E2E_SHARD_FLOOR  the least seconds of cases worth a shard job of its
 #                    own (default 900: a shard job spends 18 to 20 minutes
 #                    besides its cases, run 41847167444)
@@ -57,6 +65,7 @@ TIMES=${E2E_TIMES:-${REPO}/scripts/ci/e2e-case-times.tsv}
 DEFAULT_SECONDS=300
 SELECT=${E2E_SELECT:-}
 SHARD_FLOOR=${E2E_SHARD_FLOOR:-900}
+OVERRIDE=${E2E_SECONDS:-}
 export LC_ALL=C
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -71,8 +80,36 @@ cases() {
   done | sort
 }
 
-# rows: the table without comments and blank lines.
-rows() { grep -vE '^[[:space:]]*(#|$)' "$TIMES" || true; }
+# table_rows: the table without comments and blank lines.
+table_rows() { grep -vE '^[[:space:]]*(#|$)' "$TIMES" || true; }
+
+# check_override: a name in E2E_SECONDS that has no row, or a time that is
+# not a whole number, stops the script. Runs in the main shell, before any
+# command, since rows runs in subshells where a stop would go unseen.
+check_override() {
+  local bad
+  [ -n "$OVERRIDE" ] || return 0
+  bad=$(table_rows | awk -F'\t' -v o="$OVERRIDE" '
+    { have[$1] = 1 }
+    END {
+      n = split(o, kv, " ")
+      for (i = 1; i <= n; i++) {
+        if (kv[i] !~ /^[^=]+=[0-9]+$/) { print "E2E_SECONDS: " kv[i] " is not CASE=SECONDS"; continue }
+        split(kv[i], p, "=")
+        if (!(p[1] in have)) print "E2E_SECONDS names " p[1] ", which has no row in the table"
+      }
+    }')
+  [ -z "$bad" ] || die "$bad"
+}
+
+# rows: table_rows with the seconds of E2E_SECONDS.
+rows() {
+  [ -n "$OVERRIDE" ] || { table_rows; return; }
+  table_rows | awk -F'\t' -v OFS='\t' -v o="$OVERRIDE" '
+    BEGIN { n = split(o, kv, " "); for (i = 1; i <= n; i++) { split(kv[i], p, "="); s[p[1]] = p[2] } }
+    ($1 in s) { $3 = s[$1] }
+    { print }'
+}
 
 # check_table: a malformed, duplicate or stale row, or a need that cannot be
 # met, stops the split instead of silently moving a case.
@@ -283,7 +320,14 @@ times() {
         }
         printf "%s\t%s\t%d\t%s\n", c, st, s, (out == "" ? "-" : out)
       }
-    }' <(cases) <(rows) "$@"
+    }' <(cases) <(table_rows) "$@"
+}
+
+# seconds: the weight of every case, as groups() reads it.
+seconds() {
+  check_table
+  awk -F'\t' -v def="$DEFAULT_SECONDS" 'FILENAME == ARGV[1] { s[$1] = $3; next }
+    { printf "%s\t%d\n", $1, ($1 in s) ? s[$1] : def }' <(rows) <(cases)
 }
 
 # check: the table checks of every command, plus a row for every case.
@@ -299,6 +343,7 @@ check() {
 
 cmd=${1:-}
 [ "$#" -gt 0 ] && shift
+[ -r "$TIMES" ] && check_override
 case "$cmd" in
   base)  base ;;
   plan)  plan "${1:?Usage: $0 plan N}" ;;
@@ -306,6 +351,7 @@ case "$cmd" in
   cover) cover "${1:?Usage: $0 cover FILE}" ;;
   merge) [ "$#" -ge 1 ] || die "Usage: $0 merge EXPECTED RESULTS..."; merge "$@" ;;
   times) times "$@" ;;
+  seconds) seconds ;;
   check) check ;;
-  *) sed -n '2,51p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,59p' "$0" >&2; exit 2 ;;
 esac
