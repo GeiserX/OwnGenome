@@ -70,6 +70,13 @@ while IFS=$'\t' read -r case inputs args; do
   done
   (cd "$dir" && "$og" summary collect "${keep[@]}" --out "../../${case}.json" > /dev/null 2>&1) \
     || rm -f "${case}.json"
+  # The time of writing, fixed, so a report-render golden of a collected
+  # summary (or of a change of one) stays true on every run.
+  if [ -s "${case}.json" ]; then
+    # sed, not jq: a summary may hold NaN or Infinity on purpose.
+    sed -E 's/^( *"generated_utc": )"[^"]*"/\1"2026-01-02 03:04 UTC"/' "${case}.json" > "${case}.json.t"
+    mv "${case}.json.t" "${case}.json"
+  fi
 done < folders/cases.tsv
 rm -rf folders
 

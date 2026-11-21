@@ -836,9 +836,9 @@ ANNOTSV_NOTE = ("A class 4 or 5 SV made by one caller, a deletion on the exon ed
                "those calls are listed apart with the reason and are not counted here.")
 
 
-def annotsv_support_text(x):
+def annotsv_support_text(x, consensus=None):
     if x["support"] is None:
-        return "not known (no step 22 consensus)"
+        return "not known (step 22's consensus cannot tell)" if consensus else "not known (no step 22 consensus)"
     if x["support"] == 1:
         return f"single caller ({x['caller']})"
     return f"{x['support']} callers ({', '.join(x['support_callers'])})"
@@ -874,7 +874,7 @@ def annotsv_lines(d):
     """Step 05's class 4-5 lines, the same in both reports."""
     head = f"Class 4-5 SVs: {d['count']}"
     if d["count"]:
-        head += (f" (single caller: {d['single_caller'] if d['consensus'] else 'not known'}; deletions on exon edges: "
+        head += (f" (single caller: {str(d['single_caller']) + (f', not known: {m}' if (m := sum(x['support'] is None for x in d.get('rows') or [])) else '') if d['consensus'] else 'not known'}; deletions on exon edges: "
                  f"{d['exon_edge'] if d['exon_edge_checked'] else 'not checked'}; common: {d['common']})")
     lines = [head]
     if d.get("downgraded"):
@@ -1343,7 +1343,7 @@ def text_report(s):
             w(f"  {line}")
         for x in d["rows"]:
             w(f"    {x['type']:<4} {x['sv']}  class {x['acmg_class']}  {annotsv_genes_text(x)}  "
-              f"support: {annotsv_support_text(x)}")
+              f"support: {annotsv_support_text(x, d['consensus'])}")
             for f in annotsv_flags(x):
                 w(f"         {f}")
         if d.get("downgraded"):
@@ -1553,7 +1553,7 @@ def text_report(s):
               f"{len(sf['clinvar_hits'])} ClinVar P/LP, {high_rare(sf)} rare HIGH impact" + high_apart(sf)
               + (f", {len(sf['structural'])} class 4/5 SV(s)" if sf.get("structural_checked") else "")
               + (f", {len(sf['not_reported'])} not reported by the gene's rule" if sf.get("not_reported") else ""))
-            for g, v, z, ev in sf_rows(sf):
+            for g, v, z, ev in sf_rows(sf, (S.get("annotsv", MISSING).get("data") or {}).get("consensus")):
                 w(f"    {g:<8} {v}  {z}  {ev}")
             for line in sf_apart_lines(sf):
                 w(f"    {line}")
@@ -1991,7 +1991,7 @@ CARRIER_NOTE = ("Carrier list: the ClinVar P/LP hits of this sample in the genes
                 "change in the same gene (step 39). A hypomorph or pseudodeficiency allele is set aside.")
 
 
-def sf_rows(sf):
+def sf_rows(sf, consensus=None):
     """The secondary findings as (gene, variant, genotype, evidence) rows,
     the same in both reports: ClinVar hits, rare HIGH-impact records, then
     class 4 and 5 SVs."""
@@ -2004,7 +2004,7 @@ def sf_rows(sf):
              for x in sf["high_impact"]]
     def support(x):
         if x["support"] is None:
-            return "caller support not known (no step 22 consensus)"
+            return "caller support not known (step 22's consensus cannot tell)" if consensus else "caller support not known (no step 22 consensus)"
         return f"single caller ({x['caller']})" if x["support"] == 1 else f"{x['support']} callers"
     rows += [(x["gene"], x["variant"], ".", f"AnnotSV class {x['acmg_class']}, {support(x)}"
               + (f"; through {x['via']}" if x.get("via") else "") + extra(x)) for x in sf.get("structural", [])]
@@ -2843,7 +2843,7 @@ def html_report(s, index=None):
         if av.get("rows"):
             body.append(f"    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th>{VIEWER_TH}</tr>"
                         + "".join(f"<tr><td>{E(x['type'] + ' ' + x['sv'])}</td><td>{E(x['acmg_class'])}</td>"
-                                  f"<td>{E(annotsv_genes_text(x))}</td><td>{E(annotsv_support_text(x))}</td>"
+                                  f"<td>{E(annotsv_genes_text(x))}</td><td>{E(annotsv_support_text(x, av['consensus']))}</td>"
                                   f"<td>{E('; '.join(annotsv_flags(x)) or 'none')}</td>{viewer_td_of(x['sv'])}</tr>"
                                   for x in av["rows"])
                         + "</table>")
@@ -3062,7 +3062,7 @@ def html_report(s, index=None):
     if sf and (sf["clinvar_hits"] or sf["high_impact"] or sf.get("structural") or sf.get("not_reported")
                or sf.get("unavailable")):
         rows = "".join(f"<tr><td>{E(g)}</td><td>{E(v)}</td><td>{E(z)}</td><td>{E(ev)}</td>{viewer_td_of(v)}</tr>\n"
-                       for g, v, z, ev in sf_rows(sf))
+                       for g, v, z, ev in sf_rows(sf, (S.get("annotsv", MISSING).get("data") or {}).get("consensus")))
         a("clinical", card(S["clinical"], f"Secondary-Findings Genes ({sf['version']})",
                ["    <table>", f"      <tr><th>Gene</th><th>Variant</th><th>Genotype</th><th>Evidence</th>{VIEWER_TH}</tr>",
                 rows.rstrip("\n"), "    </table>"]

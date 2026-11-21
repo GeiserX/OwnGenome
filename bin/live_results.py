@@ -250,7 +250,7 @@ def a_structural(S, s):
              ["Consensus SVs (2+ callers)", sv.get("consensus", ".")],
              ["AnnotSV class 4 and 5", av.get("count", ".")]]
     rows = [[x.get("type"), x.get("sv"), x.get("gt"), x.get("length"), x.get("acmg_class"),
-             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x),
+             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x, av.get("consensus")),
              "; ".join(rr.annotsv_flags(x)) if "exon_edge" in x else "."]
             for x in av.get("rows") or []]
     return {"facts": facts, "table": table(["Type", "Where", "Genotype", "Length", "Class", "Genes", "Support",
@@ -889,7 +889,7 @@ def finding_rows(summary):
                           f"A {x.get('type') or 'structural change'} of {abs(int(num(x.get('length')) or 0)):,} bases that "
                           f"AnnotSV ranks class {x.get('acmg_class')}. Short reads can misplace large changes: confirm it.",
                           gene=(x.get("genes") or [None])[0], detail=x.get("sv"),
-                          evidence=[["Class", x.get("acmg_class")], ["Callers", rr.annotsv_support_text(x)],
+                          evidence=[["Class", x.get("acmg_class")], ["Callers", rr.annotsv_support_text(x, _data(S, "annotsv").get("consensus"))],
                                     ["Genotype", x.get("gt")]], viewer=str(x.get("sv") or "").replace(" ", "") or None))
     # 6. Repeat expansions outside Stranger's "normal", or in an intermediate zone.
     for l in _items(_data(S, "expansions").get("loci")):
