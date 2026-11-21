@@ -125,7 +125,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The runner's own binary only (rust/og.sh): pycompat runs og on the
+      # host. The images job above builds all four.
       - name: Build og with scripts/setup.sh --og
+        env:
+          OG_ARCHES: x86_64
+          OG_DARWIN_ARCHES: ''
         run: |
           scripts/setup.sh --og
           bin/og version
