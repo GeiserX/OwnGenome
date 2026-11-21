@@ -5,10 +5,16 @@
 # places inside the fixture's regions).
 #   1. step 40 writes both zips; the strict reader passes both;
 #   2. every site gets the genotype a second, independent reading of the
-#      gVCF gives it (each site looked up among all gVCF records), almost
-#      every site is called, and almost none lacks a gVCF record;
+#      gVCF gives it (each site looked up among all gVCF records, after the
+#      reference calls below the D10 floor, GQ under 20 or a FILTER other
+#      than PASS, . or RefCall, are made no-calls), almost every site is
+#      called, almost none lacks a gVCF record, and the summary counts as
+#      weak exactly the sites the floor took;
 #   3. a planted hole (the gVCF record over one called site removed) makes
 #      that site '--' and changes no other site;
+#  3b. a planted weak block (GQ 3 on the reference block over one called
+#      site) makes that site '--', and the summary counts as weak exactly the
+#      sites the floor takes, so the floor checks hold on any fixture;
 #   4. round trip: scripts/chip-to-vcf.sh reads the exported 23andMe file and
 #      the AncestryDNA file back (bcftools tsv2vcf on GRCh37, UCSC's
 #      hg19ToHg38 chain, Picard LiftoverVcf): each lifted record lands on the
@@ -115,11 +121,38 @@ for line in gzip.open(sites, "rt"):
     print(f"{rsid}\t{''.join(sorted(letters)) if letters else '--'}")
 PY
 }
-expected_calls "$GVCF" "$SITES" > "${CASE_TMP}/expected.tsv"
+# weak_as_nocall IN OUT: IN with the GT of every weak reference call (GT all
+# 0 with GQ under 20, or a FILTER other than PASS, . or RefCall) set to ./.,
+# so expected_calls reads those as no-calls; a missing GQ stays readable (D10).
+weak_as_nocall() {
+  gzip -dc "$1" | awk -F'\t' -v OFS='\t' '
+    /^#/ || NF < 10 { print; next }
+    {
+      n = split($9, k, ":"); mv = split($10, v, ":"); gi = 0; qi = 0
+      for (i = 1; i <= n; i++) { if (k[i] == "GT") gi = i; if (k[i] == "GQ") qi = i }
+      if (gi == 0 || gi > mv) { print; next }
+      m = split(v[gi], a, /[\/|]/); ref = 1
+      for (i = 1; i <= m; i++) if (a[i] != "0") ref = 0
+      weak = ($7 != "PASS" && $7 != "." && $7 != "RefCall") || (qi > 0 && v[qi] ~ /^[0-9]+$/ && v[qi] + 0 < 20)
+      if (ref && weak) {
+        v[gi] = "./."; s = v[1]
+        for (i = 2; i <= mv; i++) s = s ":" v[i]
+        $10 = s
+      }
+      print
+    }' | gzip -c > "$2"
+}
+weak_as_nocall "$GVCF" "${CASE_TMP}/floored.g.vcf.gz"
+expected_calls "${CASE_TMP}/floored.g.vcf.gz" "$SITES" > "${CASE_TMP}/expected.tsv"
+expected_calls "$GVCF" "$SITES" > "${CASE_TMP}/expected_nofloor.tsv"
 grep -v '^#' "${CASE_TMP}/export_23andme.txt" | cut -f1,4 > "${CASE_TMP}/exported.tsv"
 DIFF=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/exported.tsv") | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
 head -n 5 < <(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/exported.tsv") | awk -F'\t' '$2 != $3')
 check_eq "sites whose exported genotype differs from the independent reading of the gVCF" "$DIFF" 0
+FLOORED=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/expected_nofloor.tsv") \
+  | awk -F'\t' '$2 == "--" && $3 != "--"' | wc -l | tr -d ' ')
+WEAK=$(val 'no_call: weak reference call (GQ below 20, or filtered)' "$SUM")
+check_eq "sites the GQ 20 floor makes -- (independent reading) against the summary's weak reference calls" "${WEAK:-0}" "$FLOORED"
 CALLED=$(val called "$SUM")
 check_ge "sites called, in percent of ${N_SITES}" "$(( ${CALLED:-0} * 100 / N_SITES ))" 90
 NOREC=$(val 'no_call: no gVCF record' "$SUM")
@@ -164,7 +197,8 @@ check_step_exit "40-export-consumer.sh (planted hole)"
 unz "${G}/${H}/consumer_export/${H}_23andme_v5.zip" "${CASE_TMP}/hole.txt"
 check_eq "the planted hole's site ${HOLE_ID:-none} is --" "$(awk -F'\t' -v r="${HOLE_ID:-none}" '$1 == r {print $4}' "${CASE_TMP}/hole.txt")" "--"
 # Only sites the removed record covered may change.
-expected_calls "${G}/${H}/vcf/${H}.g.vcf.gz" "$SITES" > "${CASE_TMP}/hole_expected.tsv"
+weak_as_nocall "${G}/${H}/vcf/${H}.g.vcf.gz" "${CASE_TMP}/hole_floored.g.vcf.gz"
+expected_calls "${CASE_TMP}/hole_floored.g.vcf.gz" "$SITES" > "${CASE_TMP}/hole_expected.tsv"
 HDIFF=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/hole_expected.tsv") <(grep -v '^#' "${CASE_TMP}/hole.txt" | cut -f1,4 | LC_ALL=C sort) \
   | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
 check_eq "planted hole: sites that differ from the independent reading of the holed gVCF" "$HDIFF" 0
@@ -172,6 +206,58 @@ CHANGED=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/exported.tsv") <(grep -v '^
   | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
 check "planted hole: 1 to 50 sites changed, all of them to -- (${CHANGED})" test "$CHANGED" -ge 1 -a "$CHANGED" -le 50
 rm -rf "${G:?}/${H}"
+
+# --- 3b. a planted weak reference block --------------------------------------------
+# The fixture need not hold a weak reference call on a site of the slice, so
+# one is planted: GQ 3 on the first chr20 reference block (GQ 20 or more,
+# FILTER PASS, . or RefCall) that covers a called site after its first base.
+# That site must read -- and count as weak; a reading without the floor
+# gives it the reference bases and no weak row.
+K=HG002CXW
+rm -rf "${G:?}/${K}"
+mkdir -p "${G}/${K}/vcf"
+awk -F'\t' 'NR == FNR { if ($2 != "--") c[$1] = 1; next } !/^#/ && $2 == "20" && ($1 in c) { print $5 "\t" $1 }' \
+  "${CASE_TMP}/exported.tsv" <(gzip -dc "$SITES") | sort -n -k1,1 > "${CASE_TMP}/called_chr20.tsv"
+gzip -dc "$GVCF" | awk -F'\t' -v OFS='\t' -v pick="${CASE_TMP}/weak_site.txt" '
+  FILENAME == ARGV[1] { sp[++n] = $1; sid[n] = $2; next }
+  done || /^#/ || $1 != "chr20" || NF < 10 { print; next }
+  {
+    while (j < n && sp[j + 1] <= $2) j++
+    na = split($5, al, ","); sym = 1
+    for (i = 1; i <= na; i++) if (al[i] != "<*>" && al[i] != "<NON_REF>" && al[i] != ".") sym = 0
+    nk = split($9, k, ":"); nv = split($10, v, ":"); gi = 0; qi = 0
+    for (i = 1; i <= nk; i++) { if (k[i] == "GT") gi = i; if (k[i] == "GQ") qi = i }
+    end = $2; if (match($8, /(^|;)END=[0-9]+/)) { e = substr($8, RSTART, RLENGTH); sub(/.*END=/, "", e); end = e + 0 }
+    ref = gi > 0 && gi <= nv; m = split(v[gi], a, /[\/|]/)
+    for (i = 1; i <= m; i++) if (a[i] != "0") ref = 0
+    ok = ($7 == "PASS" || $7 == "." || $7 == "RefCall") && qi > 0 && qi <= nv && v[qi] ~ /^[0-9]+$/ && v[qi] + 0 >= 20
+    if (sym && ref && ok && j < n && sp[j + 1] <= end) {
+      v[qi] = 3; s = v[1]
+      for (i = 2; i <= nv; i++) s = s ":" v[i]
+      $10 = s; done = 1
+      print sid[j + 1], sp[j + 1], $2, end > pick
+    }
+    print
+  }' "${CASE_TMP}/called_chr20.tsv" - | gzip -c > "${G}/${K}/vcf/${K}.g.vcf.gz"
+read -r WEAK_ID WEAK_POS WEAK_FROM WEAK_TO < "${CASE_TMP}/weak_site.txt" 2>/dev/null
+echo "planted weak block: chr20:${WEAK_FROM:-?}-${WEAK_TO:-?} at GQ 3, over ${WEAK_ID:-no site} (${WEAK_POS:-?})"
+check "planted weak block: a block over a called chr20 site was found" test -n "${WEAK_ID:-}"
+run_step 40-export-consumer.sh "$K" male
+check_step_exit "40-export-consumer.sh (planted weak block)"
+unz "${G}/${K}/consumer_export/${K}_23andme_v5.zip" "${CASE_TMP}/weak.txt"
+check_eq "planted weak block: the site ${WEAK_ID:-none} is --" "$(awk -F'\t' -v r="${WEAK_ID:-none}" '$1 == r {print $4}' "${CASE_TMP}/weak.txt")" "--"
+weak_as_nocall "${G}/${K}/vcf/${K}.g.vcf.gz" "${CASE_TMP}/weak_floored.g.vcf.gz"
+expected_calls "${CASE_TMP}/weak_floored.g.vcf.gz" "$SITES" > "${CASE_TMP}/weak_expected.tsv"
+expected_calls "${G}/${K}/vcf/${K}.g.vcf.gz" "$SITES" > "${CASE_TMP}/weak_nofloor.tsv"
+WDIFF=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/weak_expected.tsv") <(grep -v '^#' "${CASE_TMP}/weak.txt" | cut -f1,4 | LC_ALL=C sort) \
+  | awk -F'\t' '$2 != $3' | wc -l | tr -d ' ')
+check_eq "planted weak block: sites that differ from the independent reading of the weakened gVCF" "$WDIFF" 0
+WFLOORED=$(join -t $'\t' <(LC_ALL=C sort "${CASE_TMP}/weak_expected.tsv") <(LC_ALL=C sort "${CASE_TMP}/weak_nofloor.tsv") \
+  | awk -F'\t' '$2 == "--" && $3 != "--"' | wc -l | tr -d ' ')
+WWEAK=$(val 'no_call: weak reference call (GQ below 20, or filtered)' "${G}/${K}/consumer_export/${K}_consumer_export.tsv")
+check_ge "planted weak block: sites the floor makes --" "$WFLOORED" 1
+check_eq "planted weak block: the summary's weak reference calls against the sites the floor makes --" "${WWEAK:-0}" "$WFLOORED"
+rm -rf "${G:?}/${K}"
 
 # --- 4. round trip through chip-to-vcf.sh ------------------------------------------
 # chip-to-vcf.sh reads GRCh37: a FASTA with the table's GRCh37 base at each

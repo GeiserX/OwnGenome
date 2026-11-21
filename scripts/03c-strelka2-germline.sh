@@ -43,22 +43,35 @@ for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
 done
 
 
-# A finished run is not repeated: the configure script refuses a runDir
-# that already holds a workflow, so a second run used to fail.
-if [ -f "${OUTPUT_DIR}/results/variants/variants.vcf.gz" ] && [ -f "${OUTPUT_DIR}/results/variants/variants.vcf.gz.tbi" ]; then
+# A run is reused only when it was configured on this BAM: RUN_FILE, written
+# right after the configure script, holds the BAM's path, the reference and
+# the image on its first line, then the BAM's input_stamp (size, modification
+# time and the sha256 of its first and last MiB). With it a finished run is
+# not repeated (the configure script refuses a runDir that already holds a
+# workflow, so a second run used to fail) and an interrupted one is resumed.
+# Without it, or with another BAM (realigned or replaced, even under the same
+# name), the old run is removed and the BAM is called again.
+RUN_FILE="${OUTPUT_DIR}/${SAMPLE}.run"
+RUN_DESC="bam=${BAM} reference=${REF_FASTA} image=${STRELKA_IMAGE}"
+BAM_STAMP=$(input_stamp "$BAM")
+RUN_KEY="${RUN_DESC}
+${BAM_STAMP}"
+SAME_RUN=false
+if [ -f "$RUN_FILE" ] && [ "$(cat "$RUN_FILE")" = "$RUN_KEY" ]; then SAME_RUN=true; fi
+if [ "$SAME_RUN" = true ] && [ -f "${OUTPUT_DIR}/results/variants/variants.vcf.gz" ] && [ -f "${OUTPUT_DIR}/results/variants/variants.vcf.gz.tbi" ]; then
   echo "Strelka2 already done for ${SAMPLE}: ${OUTPUT_DIR}/results/variants/variants.vcf.gz"
   echo "To run it again, delete ${OUTPUT_DIR}/ first."
   exit 0
 fi
 
 # Step 1: Configure Strelka2 germline workflow (skipped when an interrupted
-# run can be resumed)
-if [ -f "${OUTPUT_DIR}/runWorkflow.py" ]; then
+# run of this BAM can be resumed)
+if [ "$SAME_RUN" = true ] && [ -f "${OUTPUT_DIR}/runWorkflow.py" ]; then
   echo "[1/2] Found an unfinished Strelka2 run in ${OUTPUT_DIR}/; resuming it."
 else
   if [ -d "$OUTPUT_DIR" ]; then
     # --root: a directory left by an earlier version of this script belongs to root.
-    echo "Removing leftover ${OUTPUT_DIR}/ (no workflow and no results)..."
+    echo "Removing ${OUTPUT_DIR}/: it holds no run configured on ${RUN_DESC} with this BAM..."
     run_in --root "$STRELKA_IMAGE" \
       rm -rf "/genome/${SAMPLE}/vcf_strelka2"
   fi
@@ -70,6 +83,7 @@ else
       --bam "/genome/${SAMPLE}/${ALIGN_DIR}/${SAMPLE}_sorted.bam" \
       --referenceFasta "${REF_FASTA_C}" \
       --runDir "/genome/${SAMPLE}/vcf_strelka2"
+  printf '%s\n' "$RUN_KEY" > "$RUN_FILE"
 fi
 
 # Step 2: Run the workflow

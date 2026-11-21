@@ -28,11 +28,17 @@ for ext in amb ann bwt pac sa bwt.2bit.64; do echo placeholder > "$G/reference/G
 . /repo/versions.env
 mkdir -p "$G/vep_cache/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38" "$G/pcgr_data/${PCGR_DATA_BUNDLE}/data"
 echo species > "$G/vep_cache/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt"
-# TIDDIT writes <prefix>.vcf; bcftools stats answers a count.
+# TIDDIT writes <prefix>.vcf; Octopus a finished bgzipped VCF and its index
+# (step 03d checks both); bcftools stats answers a count.
 cat > /work/hook <<'HOOK'
 #!/usr/bin/env bash
 args=" ${*:2} "
 case "$args" in
+  *" octopus "*)
+    o=$(echo "$args" | sed -n 's/.* -o \([^ ]*\) .*/\1/p')
+    { printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n' | gzip -c
+      printf '\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00'; } > "/work/genome${o#/genome}"
+    printf 'TBI\001' > "/work/genome${o#/genome}.tbi" ;;
   *" tiddit "*)
     o=$(echo "$args" | sed -n 's/.* -o \([^ ]*\) .*/\1/p')
     mkdir -p "$(dirname "/work/genome${o#/genome}")"

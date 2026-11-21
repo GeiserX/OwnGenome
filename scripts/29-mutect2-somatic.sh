@@ -14,7 +14,8 @@
 # CalculateContamination) runs when the common-sites VCF is in somatic/.
 # INTERVALS=genome is scattered: Mutect2 runs once per unit (chr1-22, X, Y
 # and M one each, the other contigs together), SCATTER_JOBS at a time
-# (default THREADS/2, 2 CPUs and 8 GB each), and MergeVcfs and
+# (default THREADS/2, fewer when their 8 GB each do not fit in the container
+# engine's memory; 2 CPUs and 8 GB each), and MergeVcfs and
 # MergeMutectStats join the calls and their statistics; the orientation model
 # learns from every unit's counts. SCATTER=false calls the genome in one process.
 #
@@ -60,26 +61,6 @@ esac
 echo "Output: ${OUTPUT_DIR}/"
 echo ""
 
-# Check for idempotent skip. A finished result is reused only when it was
-# called the way this run would call it: RUN_FILE holds the INTERVALS value and
-# which optional resources (gnomAD, Panel of Normals, common sites) were there,
-# and is written last. A CHIP result never stands in for a whole-genome
-# request, a result filtered without the contamination estimate is redone once
-# the common-sites VCF is installed, and a result without the record (from an
-# older version of this step) is called again.
-FINAL_OUTPUT="${OUTPUT_DIR}/${SAMPLE}_somatic_filtered.vcf.gz"
-RUN_FILE="${OUTPUT_DIR}/${SAMPLE}_somatic_filtered.run"
-RUN_KEY="INTERVALS=${INTERVALS} germline_resource=${HAVE_GNOMAD} panel_of_normals=${HAVE_PON} common_sites=${HAVE_COMMON}"
-if have_output "$FINAL_OUTPUT" && [ -f "$RUN_FILE" ] && [ "$(cat "$RUN_FILE")" = "$RUN_KEY" ]; then
-  echo "Output already exists: ${FINAL_OUTPUT} (${RUN_KEY})"
-  echo "Skipping. Delete the file to re-run."
-  exit 0
-fi
-if [ -e "$FINAL_OUTPUT" ]; then
-  echo "Calling again: ${FINAL_OUTPUT} is unfinished or was not called with ${RUN_KEY}."
-fi
-rm -f "$RUN_FILE"
-
 # Validate required inputs
 for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
   if [ ! -f "$f" ]; then
@@ -87,6 +68,33 @@ for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
     exit 1
   fi
 done
+
+# Check for idempotent skip. A finished result is reused only when it was
+# called the way this run would call it: RUN_FILE holds the INTERVALS value and
+# which optional resources (gnomAD, Panel of Normals, common sites) were there,
+# then the BAM's path, the reference and the image, then the BAM's
+# input_stamp (size, modification time and the sha256 of its first and last
+# MiB), and is written last. A CHIP result never stands in for a whole-genome
+# request, a result filtered without the contamination estimate is redone once
+# the common-sites VCF is installed, a realigned or replaced BAM is called
+# again, and so is a result without the record (from an older version of this
+# step).
+FINAL_OUTPUT="${OUTPUT_DIR}/${SAMPLE}_somatic_filtered.vcf.gz"
+RUN_FILE="${OUTPUT_DIR}/${SAMPLE}_somatic_filtered.run"
+RUN_DESC="INTERVALS=${INTERVALS} germline_resource=${HAVE_GNOMAD} panel_of_normals=${HAVE_PON} common_sites=${HAVE_COMMON}"
+BAM_STAMP=$(input_stamp "$BAM")
+RUN_KEY="${RUN_DESC}
+bam=${BAM} reference=${REF_FASTA} image=${GATK_IMAGE}
+${BAM_STAMP}"
+if have_output "$FINAL_OUTPUT" && [ -f "$RUN_FILE" ] && [ "$(cat "$RUN_FILE")" = "$RUN_KEY" ]; then
+  echo "Output already exists: ${FINAL_OUTPUT} (${RUN_DESC}, the same BAM)"
+  echo "Skipping. Delete the file to re-run."
+  exit 0
+fi
+if [ -e "$FINAL_OUTPUT" ]; then
+  echo "Calling again: ${FINAL_OUTPUT} is unfinished or was not called with ${RUN_DESC} on this BAM."
+fi
+rm -f "$RUN_FILE"
 
 # GATK needs .dict file
 if [ ! -f "$REF_DICT" ]; then
@@ -157,7 +165,7 @@ if [ "${#UNITS[@]}" -le 1 ]; then
     "$GATK_IMAGE" \
     "${MUTECT2_CMD[@]}"
 else
-  SCATTER_JOBS=${SCATTER_JOBS:-$(( THREADS / 2 > 1 ? THREADS / 2 : 1 ))}
+  SCATTER_JOBS=$(scatter_jobs 8)
   echo "  Scattered: ${#UNITS[@]} units, ${SCATTER_JOBS} at a time"
   # call_unit BED: the same command over one unit, into scatter/<unit>.*
   call_unit() {

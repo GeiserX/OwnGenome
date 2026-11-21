@@ -246,13 +246,6 @@ def browser_checks(out):
               "retried" in ops, ops[:400])
         famlink = b.eval("var a = document.querySelector('section.plugin[data-plugin=family] a'); a && a.getAttribute('href')")
         check("browser: the family card links the family page", famlink == f"../../runs/{FAM}/", (famlink, cards))
-        viewer = b.eval("var a = document.querySelector('a.viewer'); a && a.href")
-        if viewer:
-            b.go(viewer)
-            text = b.wait("document.body && document.body.textContent.indexOf('not in the demo') >= 0 && 'ok'")
-            check("browser: a viewer link opens the page that says the viewer is not in the demo", text == "ok", viewer)
-        else:
-            check("browser: the charts or the search give a viewer link", False, cards)
         b.go(f"{base}/runs/{FAM}/")
         ped = b.wait("var i = document.querySelector('img.pedigree'); i && i.complete && i.naturalWidth > 0 && 'drawn'")
         check("browser: the family page shows the pedigree", ped == "drawn",

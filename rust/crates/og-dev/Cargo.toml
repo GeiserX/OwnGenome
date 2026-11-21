@@ -15,6 +15,7 @@ pycompat.workspace = true
 og-io.workspace = true
 og-nf.workspace = true
 og-intervals.workspace = true
+og-browser.workspace = true
 flate2.workspace = true
 indexmap.workspace = true
 png = "0.18"

@@ -18,10 +18,10 @@ Step 26b skipped: no fine-grained ancestry panel at <genome_dir>/reference/ances
 
 Each choice is the tool with a maintained, pinned BioContainers image that fits a GitHub runner on a reduced panel.
 
-- **ADMIXTURE** 1.3.0 (Alexander et al., Genome Research 2009) for the fractions. The panel's allele frequencies of each group are fitted once, in supervised mode (every reference person's group is given), and your genome is projected on them (`-P`). SCOPE, the faster alternative, has no BioContainers image.
+- **ADMIXTURE** 1.3.0 (Alexander et al., Genome Research 2009) for the fractions. Your genome is projected (`-P`) on each group's allele frequencies, which the install counts from the panel's reference people with `og ancestry-fine freqs`. That count is the exact maximum a supervised ADMIXTURE run (every reference person's group given) climbs to, so the install needs no ADMIXTURE run and no plink2. SCOPE, the faster alternative, has no BioContainers image.
 - **Beagle** 5.5 (Browning et al., AJHG 2021; GPL-3.0) phases your genotypes against the panel, since the painting needs the two copies apart.
 - **RFMix** 2.03 (Maples et al., AJHG 2013) for the painting. FLARE, the other candidate, has no BioContainers image.
-- **og ancestry-fine**, OwnGenome's Rust binary (`rust/crates/og-ancestry`), writes the panel's sample table, ADMIXTURE's input, the bootstrap script and the outputs. `scripts/setup.sh` builds it (`--og` builds only it).
+- **og ancestry-fine**, OwnGenome's Rust binary (`rust/crates/og-ancestry`), writes the panel's sample table, each group's allele frequencies, ADMIXTURE's input, the bootstrap script and the outputs. `scripts/setup.sh` builds it (`--og` builds only it).
 
 **Licences: ADMIXTURE is free for academic use, and RFMix for academic research use only.** [RFMix's notice](https://github.com/slowkoni/rfmix) says that commercial users and non-profits whose use is not academic research need a separate licence from Stanford's Office of Technology Licensing, so a personal analysis is not covered by it either; the program prints "licensed for non-commercial academic research use only" when it starts. ADMIXTURE's licence, as its Bioconda recipe gives it, is "Free for Academic Use". Check both before you run the step.
 
@@ -70,7 +70,7 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 
 ## Docker Images
 
-`ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE`, with `BCFTOOLS_IMAGE`, `PYTHON_IMAGE` and, for the install, `BCFTOOLS_HTTPS_IMAGE` (the panel is read over https; `BCFTOOLS_IMAGE` has no CA certificates) and `PLINK2_IMAGE`. All are pinned in `versions.env`; [Image versions](versions.md) lists the tags. `ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE` and `BCFTOOLS_HTTPS_IMAGE` are `# optional`: `setup.sh --ancestry-fine-panel` pulls them, a plain `setup.sh` does not.
+`ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE`, with `BCFTOOLS_IMAGE`, `PYTHON_IMAGE` and, for the install, `BCFTOOLS_HTTPS_IMAGE` (the panel is read over https; `BCFTOOLS_IMAGE` has no CA certificates). All are pinned in `versions.env`; [Image versions](versions.md) lists the tags. `ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE` and `BCFTOOLS_HTTPS_IMAGE` are `# optional`: `setup.sh --ancestry-fine-panel` pulls them, a plain `setup.sh` does not.
 
 ## Input
 
