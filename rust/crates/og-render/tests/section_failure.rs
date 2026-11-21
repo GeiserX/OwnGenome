@@ -201,3 +201,127 @@ fn charts_that_cannot_be_made_leave_an_empty_charts_file_and_the_rest_of_the_run
         "the other sections are written"
     );
 }
+
+#[test]
+fn a_search_index_that_cannot_be_built_leaves_an_empty_index_and_the_rest_of_the_run() {
+    // A section that is not an object, and sections that are not an
+    // object: the index cannot be built from either.
+    let cases = [
+        (
+            SUMMARY.replacen(
+                "\"sections\": {",
+                "\"sections\": {\n  \"clinvar\": \"x\",",
+                1,
+            ),
+            "unreadable 1",
+        ),
+        (
+            SUMMARY
+                .split_once("\"sections\": {")
+                .map(|(head, rest)| {
+                    let tail = rest.split_once("\n },").map_or("", |x| x.1);
+                    format!("{head}\"sections\": [1],{tail}")
+                })
+                .unwrap_or_default(),
+            "none readable",
+        ),
+    ];
+    for (n, (body, counted)) in cases.iter().enumerate() {
+        let scratch = Scratch::new(&format!("index-failure-{n}"));
+        let d = &scratch.0;
+        let sum = d.join("summary.json");
+        std::fs::write(&sum, body).expect("written");
+        let (txt, page) = (d.join("r.txt"), d.join("r.html"));
+        let (index, charts) = (d.join("index.json"), d.join("charts.json"));
+        let flag = |f: &str| std::path::PathBuf::from(f);
+        let args = args_of(&[
+            &flag("--summary"),
+            &sum,
+            &flag("-o"),
+            &txt,
+            &flag("-o"),
+            &page,
+            &flag("--search-index"),
+            &index,
+            &flag("--charts-json"),
+            &charts,
+        ]);
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = render::cli_using(&args, &mut out, &mut err, chapters::writer);
+        let (out, err) = (
+            String::from_utf8(out).expect("utf-8"),
+            String::from_utf8(err).expect("utf-8"),
+        );
+        assert_eq!(code, 0, "case {n}: {err}");
+        assert!(
+            err.contains("og report render: WARNING: ") && err.contains("terms ("),
+            "case {n}: {err}"
+        );
+        assert!(
+            out.starts_with("Sections: ") && out.contains(counted),
+            "case {n}: {out}"
+        );
+        let i = std::fs::read_to_string(&index).expect("the search index is written");
+        assert!(
+            i.contains("\"schema_version\": 1")
+                && i.contains("\"sample\": \"S1\"")
+                && i.contains("\"terms\": {}"),
+            "case {n}: {i}"
+        );
+        assert!(charts.is_file(), "case {n}: the charts file is written");
+        assert!(txt.is_file(), "case {n}: the text report is written");
+        let h = std::fs::read_to_string(&page).expect("the HTML report");
+        assert!(
+            h.trim_end().ends_with("</html>"),
+            "case {n}: the page is whole"
+        );
+    }
+}
+
+/// In the child process only (see the test below): installs og's panic
+/// hook, panics inside `guarded`, then on a worker thread outside it.
+const HOOK_CHILD: &str = "OG_TEST_SECTION_FAILURE_HOOK_CHILD";
+
+#[test]
+fn hook_child_entry() {
+    if std::env::var_os(HOOK_CHILD).is_none() {
+        return;
+    }
+    chapters::abort_outside_guarded();
+    let caught = chapters::guarded(|| -> Result<(), Malformed> { panic!("planted in a section") });
+    assert!(caught.is_err());
+    println!("the section's panic was caught");
+    // A worker whose panic only ends its thread: with unwinding the caller
+    // reads that as the end of the work and goes on.
+    let _ = std::thread::spawn(|| panic!("planted in a worker")).join();
+    println!("the worker's panic was missed");
+    std::process::exit(0);
+}
+
+#[test]
+fn og_s_panic_hook_spares_a_report_section_and_aborts_on_a_worker_thread() {
+    let out = std::process::Command::new(std::env::current_exe().expect("the test binary"))
+        .args([
+            "hook_child_entry",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(HOOK_CHILD, "1")
+        .output()
+        .expect("the child runs");
+    let so = String::from_utf8_lossy(&out.stdout);
+    let se = String::from_utf8_lossy(&out.stderr);
+    assert!(so.contains("the section's panic was caught"), "{so}\n{se}");
+    assert!(se.contains("planted in a worker"), "{so}\n{se}");
+    assert!(
+        !so.contains("the worker's panic was missed") && !out.status.success(),
+        "a panic outside a section must abort: {:?}\n{so}\n{se}",
+        out.status
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(out.status.signal(), Some(6), "{so}\n{se}");
+    }
+}

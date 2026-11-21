@@ -22,7 +22,9 @@
 //! not read, or its writer stops on an internal error) says so in its place
 //! in both reports, and the rest of the report is still written: one
 //! warning on stderr counts those parts and names them, and the exit code
-//! stays 0. The last line on stdout counts the summary's sections by state.
+//! stays 0. A search index or charts that cannot be made are written empty
+//! and named in that warning. The last line on stdout counts the summary's
+//! sections by state.
 
 use std::io::Write;
 
@@ -92,15 +94,18 @@ fn parse(args: &[String]) -> Result<Args, String> {
 }
 
 /// `Sections: missing 28, ok 20`: the sections counted by state, by name.
-fn state_counts(s: &Summary) -> Result<String, String> {
+/// The reports and side files are written by then and this line is a log,
+/// so it never fails: a section with no state to read (not an object)
+/// counts as unreadable, and sections that are not an object say so.
+fn state_counts(s: &Summary) -> String {
     let mut counts: Vec<(String, usize)> = Vec::new();
     let Some(Value::Object(secs)) = s.get("sections") else {
-        return Err("summary.sections is not an object".to_owned());
+        return "Sections: none readable (summary.sections is not an object)".to_owned();
     };
     for (key, sec) in secs {
         let state = crate::model::need(sec, "state", &format!("sections.{key}"))
             .and_then(py)
-            .map_err(|e| e.to_string())?;
+            .unwrap_or_else(|_| "unreadable".to_owned());
         match counts.iter_mut().find(|(k, _)| *k == state) {
             Some((_, n)) => *n += 1,
             None => counts.push((state, 1)),
@@ -108,7 +113,7 @@ fn state_counts(s: &Summary) -> Result<String, String> {
     }
     counts.sort();
     let parts: Vec<String> = counts.iter().map(|(k, n)| format!("{k} {n}")).collect();
-    Ok(format!("Sections: {}", parts.join(", ")))
+    format!("Sections: {}", parts.join(", "))
 }
 
 fn write(path: &str, body: &str) -> std::io::Result<()> {
@@ -155,6 +160,24 @@ fn collect(a: &Args, dest: &str, err: &mut dyn Write) -> Result<String, String> 
         ));
     }
     std::fs::read_to_string(dest).map_err(|e| format!("{dest}: {e}"))
+}
+
+/// The search index with no term, for a run whose index cannot be built:
+/// `og report index`'s frame, with the summary's sample and date.
+fn empty_index(root: &Value) -> Value {
+    let field = |k: &str| match root {
+        Value::Object(o) => o.get(k).cloned().unwrap_or(Value::Null),
+        _ => Value::Null,
+    };
+    let mut m = indexmap::IndexMap::new();
+    m.insert(
+        "schema_version".to_owned(),
+        Value::Int(index::SCHEMA_VERSION),
+    );
+    m.insert("sample".to_owned(), field("sample"));
+    m.insert("generated_utc".to_owned(), field("generated_utc"));
+    m.insert("terms".to_owned(), Value::Object(indexmap::IndexMap::new()));
+    Value::Object(m)
 }
 
 /// `og report render ARGS`.
@@ -258,8 +281,16 @@ pub fn cli_using(
         }
     }
     if let Some(dest) = &a.search_index {
-        let Some(i) = &idx else {
-            return fail(err, format!("{dest}: the search index could not be built"));
+        // An index that cannot be built is written empty, as charts that
+        // cannot be made leave an empty charts file, and `failed` names it
+        // ("terms"); an index that cannot be written still stops the verb.
+        let empty;
+        let i = match &idx {
+            Some(i) => i,
+            None => {
+                empty = empty_index(s.root());
+                &empty
+            }
         };
         if let Err(why) = json_text(i).and_then(|b| write(dest, &b).map_err(|e| e.to_string())) {
             return fail(err, format!("{dest}: {why}"));
@@ -302,11 +333,6 @@ pub fn cli_using(
             named.join("; ")
         );
     }
-    match state_counts(&s) {
-        Ok(line) => {
-            let _ = writeln!(out, "{line}");
-            0
-        }
-        Err(why) => fail(err, format!("{path}: {why}")),
-    }
+    let _ = writeln!(out, "{}", state_counts(&s));
+    0
 }

@@ -167,7 +167,11 @@ pub struct Failed {
 
 /// Runs one part of a report: its error, or a panic inside it, comes back
 /// as the error that part shows, so one bad part never stops the report.
+/// While it runs, the hook of [`abort_outside_guarded`] lets a panic on
+/// this thread unwind to here instead of ending the process.
 pub fn guarded<T>(f: impl FnOnce() -> Result<T, Malformed>) -> Result<T, Malformed> {
+    GUARDED.with(|g| g.set(g.get() + 1));
+    let _depth = Depth;
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(r) => r,
         Err(p) => {
@@ -179,6 +183,37 @@ pub fn guarded<T>(f: impl FnOnce() -> Result<T, Malformed>) -> Result<T, Malform
             Err(Malformed(format!("internal error: {msg}")))
         }
     }
+}
+
+thread_local! {
+    /// How many [`guarded`] calls are running on this thread.
+    static GUARDED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Leaves one [`guarded`] call, also when its closure panics.
+struct Depth;
+
+impl Drop for Depth {
+    fn drop(&mut self) {
+        GUARDED.with(|g| g.set(g.get().saturating_sub(1)));
+    }
+}
+
+/// Makes a panic end the process at once, as `panic = "abort"` does,
+/// unless it happens inside [`guarded`] on the same thread. og is built
+/// with `panic = "unwind"` only so that [`guarded`] can catch a panic in
+/// one part of a report; everywhere else an unwinding panic could end a
+/// worker thread quietly (a reader whose channel closes reads as the end
+/// of its input) and og would write a cut file and exit 0. og's main calls
+/// this once, first. The panic message is printed as always.
+pub fn abort_outside_guarded() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default(info);
+        if GUARDED.try_with(std::cell::Cell::get).unwrap_or(0) == 0 {
+            std::process::abort();
+        }
+    }));
 }
 
 /// The writers of section `sid`, or `None` for an anchor no section has.
