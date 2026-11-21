@@ -1170,10 +1170,11 @@ workflow {
     // for every selected step it shows, the SV consensus merge included.
     // The ACMG SF rules, the carrier list, the gene callability table, the
     // confirmed mtDNA variants and the two paralog catalogs (step 35's loci,
-    // step 35b's regions) the report applies (bin/ is the only repository
+    // step 35b's regions) the report applies, and the step catalogue, which
+    // maps each --tools name to its sections (bin/ is the only repository
     // folder a task sees).
     def report_assets = ["acmg_sf.tsv", "carrier_genes.tsv", "callability_genes.tsv", "mito_confirmed.tsv",
-                         "paralog_loci.tsv", "paraphase_genes.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
+                         "paralog_loci.tsv", "paraphase_genes.tsv", "steps.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
     ch_report_inputs = ch_vcf
         .map { meta, vcf, idx -> [meta.id, meta, vcf] }
         .join(PGX.out.clinvar_dir.map             { meta, f -> [meta.id, f] }, remainder: true)
@@ -1272,11 +1273,15 @@ workflow {
         // gvcf columns) go in the list too, with their names in meta.gvcf:
         // HTML_REPORT links them as vcf/<id>.g.vcf.gz, where the bash report
         // finds step 03's gVCF. A sample without a gVCF gets no meta.gvcf.
+        // meta.tools is the run's tool list (--tools, with exomiser when
+        // --hpo added it): HTML_REPORT records it, so a selected step that
+        // wrote nothing reads "selected, no result" instead of not run.
         .map { meta, vcf, files -> [meta.id, meta, vcf, files] }
         .join(ch_gvcf.map { meta, gvcf, idx -> [meta.id, [gvcf, idx]] }, remainder: true)
         .filter { items -> items[1] != null }
         .map { id, meta, vcf, files, gvcf ->
-            gvcf ? [meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [meta, vcf, files]
+            def report_meta = meta + [tools: tools_list]
+            gvcf ? [report_meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [report_meta, vcf, files]
         }
 
     // QC files for MultiQC (mosdepth summaries)
