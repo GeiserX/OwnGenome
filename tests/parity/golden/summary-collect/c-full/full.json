@@ -793,11 +793,8 @@
        "GENE2"
       ],
       "caller": "manta",
-      "support": 2,
-      "support_callers": [
-       "manta",
-       "delly"
-      ],
+      "support": null,
+      "support_callers": [],
       "exon_edge": "yes",
       "exon_edge_detail": "exon 2",
       "population_af": 0.001,
@@ -818,13 +815,8 @@
        "GENE3"
       ],
       "caller": "delly",
-      "support": 3,
-      "support_callers": [
-       "manta",
-       "delly",
-       "tiddit",
-       "caller 4"
-      ],
+      "support": null,
+      "support_callers": [],
       "exon_edge": "no",
       "exon_edge_detail": "",
       "population_af": null,
@@ -845,10 +837,8 @@
        "G9"
       ],
       "caller": "tiddit",
-      "support": 1,
-      "support_callers": [
-       "tiddit"
-      ],
+      "support": null,
+      "support_callers": [],
       "exon_edge": "no",
       "exon_edge_detail": "",
       "population_af": 0.2,
@@ -869,10 +859,8 @@
       "acmg_class": "3",
       "genes": [],
       "caller": "manta",
-      "support": 1,
-      "support_callers": [
-       "manta"
-      ],
+      "support": null,
+      "support_callers": [],
       "exon_edge": "not checked",
       "exon_edge_detail": "",
       "population_af": null,
@@ -885,7 +873,7 @@
     ],
     "consensus": "sv_merged/S_sv_consensus.vcf.gz",
     "consensus_note": null,
-    "single_caller": 1,
+    "single_caller": 0,
     "exon_edge": 1,
     "exon_edge_checked": true,
     "common": 1

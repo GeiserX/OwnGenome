@@ -6,6 +6,7 @@
 use super::roh::masked_overlap;
 use super::util::{Obj, at, base, cells, count, int, lines, number, s, strs, table, vcf_lines};
 use super::{Ctx, Found, Out};
+use og_steps::sv::postfilter::{ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use std::collections::HashMap;
@@ -159,133 +160,34 @@ pub fn cnvpytor_sex_filter(v: &mut Value, declared_sex: Option<&str>) {
 
 // --- step 05, AnnotSV class 4 and 5 ---------------------------------------------
 
-/// Two breakpoints within this many bases of a consensus record's are the
-/// same SV.
-const CONSENSUS_BP: i128 = 1000;
-
-/// AnnotSV writes chromosomes without `chr`; step 22 writes them with it.
-fn chrom_key(c: &str) -> &str {
-    if c.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("chr")) {
-        &c[3..]
-    } else {
-        c
-    }
-}
-
-fn info_value<'a>(info: &'a str, key: &str) -> &'a str {
-    info.split(';')
-        .find_map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
-            (k == key).then_some(v)
-        })
-        .unwrap_or("")
-}
-
-fn kind(t: &str) -> String {
-    let t = pycompat::text::upper(t);
-    if t.starts_with("DUP") {
-        "DUP".into()
-    } else {
-        t
-    }
-}
-
-struct Rec {
-    pos: i128,
-    end: i128,
-    supp: i128,
-    vec: String,
-}
-
-/// Step 22's consensus: caller names, and the records by (chrom, type).
-/// The header and the records of the consensus VCF by (chrom, id).
-type Consensus = (Vec<String>, HashMap<(String, String), Vec<Rec>>);
-
-fn read_consensus(path: &str) -> Result<Consensus, String> {
-    let mut names = Vec::new();
-    let mut by: HashMap<(String, String), Vec<Rec>> = HashMap::new();
-    for line in lines(path)? {
-        if line.starts_with("##") {
-            continue;
-        }
-        let c: Vec<&str> = line.split('\t').collect();
-        if line.starts_with("#CHROM") {
-            names = c.iter().skip(9).map(|x| (*x).to_owned()).collect();
-            continue;
-        }
-        if c.len() < 8 {
-            continue;
-        }
-        let Ok(pos) = crate::int(c[1]) else { continue };
-        let end = match info_value(c[7], "END") {
-            "" => Ok(pos),
-            v => crate::int(v),
-        };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Ok(0),
-            v => crate::int(v),
-        };
-        let (Ok(end), Ok(supp)) = (end, supp) else {
-            continue;
-        };
-        by.entry((chrom_key(c[0]).to_owned(), kind(info_value(c[7], "SVTYPE"))))
-            .or_default()
-            .push(Rec {
-                pos,
-                end,
-                supp,
-                vec: info_value(c[7], "SUPP_VEC").to_owned(),
-            });
-    }
-    Ok((names, by))
-}
-
-/// Support and the supporting callers of each row from the consensus: the
-/// record of the same type whose two breakpoints lie within 1,000 bp (the
-/// nearest, the first of a tie), else 1 and the row's own caller; `None`
-/// for both without a consensus file.
+/// Support and callers from the SURVIVOR event containing the source call.
+/// A row in no event has its own caller alone. Both values are null when
+/// the membership is not known ([`Membership::Unknown`]) and without a
+/// consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Result<Vec<(Value, Value)>, String> {
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
         return Ok(rows.iter().map(|_| (Value::Null, Value::Null)).collect());
     };
-    let (names, by) = read_consensus(path)?;
-    let mut out = Vec::new();
-    for r in rows {
-        let cell = |k: &str| r.get(k).flatten().unwrap_or_default();
-        let mut best: Option<(i128, &Rec)> = None;
-        if let (Ok(start), Ok(end)) = (crate::int(cell("SV_start")), crate::int(cell("SV_end"))) {
-            let key = (
-                chrom_key(cell("SV_chrom")).to_owned(),
-                kind(cell("SV_type")),
-            );
-            for rec in by.get(&key).map_or(&[][..], Vec::as_slice) {
-                let (dp, de) = ((rec.pos - start).abs(), (rec.end - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, rec));
-                }
-            }
-        }
-        out.push(match best {
-            Some((_, rec)) => {
-                let callers: Vec<String> = rec
-                    .vec
-                    .chars()
-                    .enumerate()
-                    .filter(|&(_, x)| x == '1')
-                    .map(|(i, _)| {
-                        names
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| format!("caller {}", i + 1))
-                    })
-                    .collect();
-                (int(rec.supp), s(&callers.join(",")))
-            }
-            None => (int(1), s(&super::util::or(r, "Caller", "."))),
-        });
+    let mut consensus = ConsensusSupport::default();
+    for line in lines(path)? {
+        consensus.add_line(&line);
     }
-    Ok(out)
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let cell = |key| row.get(key).flatten().unwrap_or_default();
+            match consensus.membership(
+                cell("SV_chrom"),
+                cell("SV_type"),
+                cell("Caller"),
+                cell("ID"),
+            ) {
+                Membership::Member(callers) => (count(callers.len()), s(&callers.join(","))),
+                Membership::NotMember => (int(1), s(&super::util::or(row, "Caller", "."))),
+                Membership::Unknown => (Value::Null, Value::Null),
+            }
+        })
+        .collect())
 }
 
 /// `{FORMAT key: value}` of the sample column (the column after FORMAT,
@@ -463,4 +365,200 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
         .set("common", count(common));
     let _ = cells;
     Ok(Some((p, data.val())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const REPORT_HEADER: &str = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tGene_name\tExon_edge\tExon_edge_detail\tPopulation_AF\tPopulation_source\tCommon\tAnnotSV_class\tRule\tRule_detail\n";
+    const REPORT_ROWS: &str = concat!(
+        "MantaDEL:1:0\t20\t1000\t5000\tDEL\t5\tmanta\tG1;G2;G3;G4;G5\tno\t\t\t\tno\t5\t\t\n",
+        "NEARBY\t20\t3000\t7000\tDEL\t4\tmanta\tFIXG1\tyes\texon 1 and exon 3 edges\t0.05\tfixture\tyes\t4\t\t\n",
+        "OTHER\t20\t3100\t7100\tDEL\t4\tmanta\tG9\tno\t\t\t\tno\t4\t\t\n",
+    );
+    const REPORT_LAST: &str = "RULE\t20\t50000\t55000\tDEL\t4\tmanta\tRULEG\tno\t\t\t\tno\t4\t\t\n";
+    const REPORT_MOVED: &str = "RULE\t20\t50000\t55000\tDEL\t3\tmanta\tRULEG\tno\t\t\t\tno\t4\tig_tr_locus\tinside the IG locus\n";
+    const REPORT_CONSENSUS: &str = concat!(
+        "##fileformat=VCFv4.2\n",
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n",
+        "chr20\t3000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=7000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:MantaDEL_1_0\t0/1:DEL:D1\n",
+    );
+
+    fn report_field<'a>(value: &'a Value, key: &str) -> &'a Value {
+        let Value::Object(fields) = value else {
+            panic!("expected an object for {key}: {value:?}");
+        };
+        &fields[key]
+    }
+
+    fn report_rows<'a>(data: &'a Value, key: &str) -> &'a [Value] {
+        let Value::Array(rows) = report_field(data, key) else {
+            panic!("expected rows in {key}");
+        };
+        rows
+    }
+
+    fn report_counts(data: &Value) -> [&Value; 4] {
+        ["count", "single_caller", "exon_edge", "common"].map(|key| report_field(data, key))
+    }
+
+    #[test]
+    fn annotsv_report_payload_tracks_membership_and_rule_downgrades() {
+        use crate::collect::{Group, Input, collect};
+        use crate::testutil::Dir;
+
+        let dir = Dir::new("annotsv-report-support");
+        dir.put_gz("S/sv_merged/S_sv_consensus.vcf.gz", REPORT_CONSENSUS);
+        let paired = |last: &str| {
+            dir.put(
+                "S/annotsv/S_sv_class4_5_checked.tsv",
+                format!("{REPORT_HEADER}{REPORT_ROWS}{last}"),
+            );
+            let summary = collect(&Input {
+                sample: "S".into(),
+                sample_dir: dir.path("S"),
+                declared_sex: None,
+                assets: dir.path("assets"),
+                group: Group::C,
+                tables: dir.path("bin"),
+            })
+            .unwrap()
+            .to_json();
+            let section = report_field(report_field(&summary, "sections"), "annotsv");
+            assert_eq!(report_field(section, "state"), &s("ok"));
+            report_field(section, "data").clone()
+        };
+        let full = paired(REPORT_LAST);
+        let moved = paired(REPORT_MOVED);
+        let rows = report_rows(&full, "rows");
+        let member = &rows[0];
+        let nearby = &rows[1];
+        let two_callers = report_field(member, "support") == &int(2)
+            && report_field(member, "support_callers") == &strs(["manta", "delly"]);
+        let one_caller = report_field(nearby, "support") == &int(1)
+            && report_field(nearby, "support_callers") == &strs(["manta"]);
+        let [total, single, edge, common] = report_counts(&full);
+        let [after_total, after_single, after_edge, after_common] = report_counts(&moved);
+        let downgraded = &report_rows(&moved, "downgraded")[0];
+
+        // These checks read summary.json fields only; the text and HTML reports
+        // render them, and og-render's own tests cover the labels. Keep every
+        // migrated assertion visible in the control, even when several fail.
+        let checks = [
+            (
+                "summary support and support_callers of a member",
+                two_callers,
+            ),
+            (
+                "summary single_caller, exon_edge and common counts",
+                (single, edge, common) == (&int(3), &int(1), &int(1)),
+            ),
+            (
+                "summary count with the single_caller, exon_edge and common counts",
+                (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1)),
+            ),
+            (
+                "summary sv, type, acmg_class and genes of the two-caller deletion",
+                two_callers
+                    && report_field(member, "sv") == &s("20:1000-5000")
+                    && report_field(member, "type") == &s("DEL")
+                    && report_field(member, "acmg_class") == &s("5")
+                    && report_field(member, "genes") == &strs(["G1", "G2", "G3", "G4", "G5"]),
+            ),
+            (
+                "summary support of a member and of a nearby non-member, with its caller",
+                two_callers && one_caller && report_field(nearby, "caller") == &s("manta"),
+            ),
+            (
+                "summary counts with exon_edge_checked",
+                (total, single, edge, common) == (&int(4), &int(3), &int(1), &int(1))
+                    && report_field(&full, "exon_edge_checked") == &Value::Bool(true),
+            ),
+            (
+                "summary counts after excluding a downgraded call",
+                (after_single, after_edge, after_common) == (&int(2), &int(1), &int(1)),
+            ),
+            (
+                "summary counts and the downgraded row after a rule moved it",
+                (after_total, after_single, after_edge, after_common)
+                    == (&int(3), &int(2), &int(1), &int(1))
+                    && report_field(downgraded, "sv") == &s("20:50000-55000")
+                    && report_field(downgraded, "annotsv_class") == &s("4")
+                    && report_field(downgraded, "acmg_class") == &s("3")
+                    && report_field(downgraded, "rule") == &s("ig_tr_locus")
+                    && report_rows(&moved, "rows")
+                        .iter()
+                        .all(|row| report_field(row, "sv") != &s("20:50000-55000")),
+            ),
+            (
+                "summary exon_edge_detail, population and common fields of a row",
+                report_field(nearby, "exon_edge_detail") == &s("exon 1 and exon 3 edges")
+                    && report_field(nearby, "population_af") == &Value::Float(0.05)
+                    && report_field(nearby, "population_source") == &s("fixture")
+                    && report_field(nearby, "common") == &Value::Bool(true),
+            ),
+        ];
+        let failed: Vec<&str> = checks
+            .into_iter()
+            .filter_map(|(name, passed)| (!passed).then_some(name))
+            .collect();
+        assert!(failed.is_empty(), "failed report checks: {failed:#?}");
+    }
+
+    #[test]
+    fn reports_and_two_hit_rules_use_the_original_member_id() {
+        let d = std::env::temp_dir().join(format!("og-summary-sv-support-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let checked = d.join("checked.tsv").to_string_lossy().into_owned();
+        let consensus = d.join("consensus.vcf").to_string_lossy().into_owned();
+        std::fs::write(
+            &checked,
+            concat!(
+                "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n",
+                "MantaDEL:1:0\t20\t1000\t5000\tDEL\t4\tmanta\tno\t\tno\n",
+                "UNLISTED\t20\t2000\t6000\tDEL\t4\tmanta\tno\t\tno\n",
+                ".\t20\t2000\t6000\tDEL\t4\tmanta\tno\t\tno\n",
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &consensus,
+            concat!(
+                "##fileformat=VCFv4.2\n",
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\n",
+                "chr20\t2000\tCLUSTER\tN\t<DEL>\t.\tPASS\tSVTYPE=DEL;END=6000;SUPP=2;SUPP_VEC=11\tGT:TY:ID\t0/1:DEL:MantaDEL_1_0\t0/1:DEL:D1\n",
+            ),
+        )
+        .unwrap();
+        let rows = table(&checked, false).unwrap().rows;
+        let report = consensus_support(&rows, Some(&consensus)).unwrap();
+        let two_hits = crate::collect::two_hits::read_annotsv(
+            Some((checked, "checked.tsv".to_owned())),
+            Some(consensus),
+        )
+        .unwrap()
+        .unwrap();
+        // A row with ID `.` cannot be matched to a member: its support is
+        // not known (null), as without a consensus, never single caller.
+        assert_eq!(
+            (
+                &report[..],
+                two_hits[0].support,
+                two_hits[1].support,
+                two_hits[2].support
+            ),
+            (
+                &[
+                    (int(2), s("manta,delly")),
+                    (int(1), s("manta")),
+                    (Value::Null, Value::Null)
+                ][..],
+                Some(2),
+                Some(1),
+                None
+            ),
+        );
+        std::fs::remove_dir_all(d).unwrap();
+    }
 }
