@@ -64,7 +64,7 @@ VCF
   splice_track 707 AT > "$ANNOT/spliceai_scores.masked.indel.hg38.vcf"
 
   docker run --rm --user "$(id -u):$(id -g)" --network none \
-    -v "${GENOME_DIR}:/genome" -w /genome "$GATK_IMAGE" bash -ec '
+    -v "${GENOME_DIR}:/genome" -w /genome "${BCFTOOLS_HTTPS_IMAGE:?}" bash -ec '
       for file in annotations/*.tsv; do
         bgzip -c "$file" > "$file.gz"
         tabix -s 1 -b 2 -e 2 "$file.gz"
