@@ -1,8 +1,9 @@
 name: Public evidence
 
-# Runs two opt-in steps whole, on public data only (GIAB's HG002 and the
-# public archaic and ancient panels), and writes what they measured to the
-# job summary. Not a gate.
+# Runs three opt-in steps whole, on public data only (GIAB's HG002 and the
+# public archaic and ancient panels, 1000 Genomes men with published Y
+# haplogroups), and writes what they measured to the job summary. No pull
+# request runs it, so none of its jobs gates a merge.
 #
 #   archaic-sites      the 1000 Genomes sites file setup.sh --archaic reads,
 #                      downloaded once (its md5 checked) and indexed, for
@@ -32,6 +33,15 @@ name: Public evidence
 #                      then step 44 on HG002, each with the peak memory of
 #                      its containers (the cgroup's memory.peak), the peak
 #                      disk use and the time. The ancient input off skips it.
+#   y-benchmark        step 37 on the chrY of 1000 Genomes men (NYGC 30x
+#                      CRAMs) with published Y haplogroups (Poznik et al.
+#                      2016), and og dev evidence y-bench: each tool's
+#                      call (Yleaf, og y tree-place) against the published
+#                      one on the current YFull tree. Its gate fails when a
+#                      tool puts fewer than Y_MIN of the men on the
+#                      published branch or below it; the same calls handed
+#                      to other men are the red control and must fail it.
+#                      The full 58-man table is in docs/37-y-haplogroup.md.
 #
 # It runs by hand only (workflow_dispatch). Public repo: the GitHub-hosted
 # runner is free here.
@@ -58,6 +68,14 @@ on:
         description: "Autosomes for the archaic-same-person job, separated by spaces or commas, or none"
         type: string
         default: none
+      y_benchmark:
+        description: "Run the y-benchmark job"
+        type: boolean
+        default: true
+      y_samples:
+        description: "1000 Genomes men for the y-benchmark job, separated by spaces or commas (3 or more, from different haplogroups: the red control hands each man's calls to another; the docs table has 58)"
+        type: string
+        default: HG01890 HG02588 NA18952 HG01583 HG00530 HG00107
 
 permissions:
   contents: read
@@ -69,9 +87,21 @@ concurrency:
 env:
   NCBI_REF: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids
   GIAB_HG002: https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark
+  # y-benchmark: Poznik et al. 2016's calls (column 3, the most derived
+  # SNP seen), the index of the NYGC 30x CRAMs, and chrY of the reference
+  # those CRAMs were aligned to (its M5 is the CRAM header's).
+  Y_CALLS: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/chrY/1000Y.sample_level_haplogroup_calls.ver5.txt
+  Y_CALLS_SHA256: a7975573a1aa2d708ee09d1a11aa3d6feb4efe6ac3db3db5bdba5069d512df42
+  Y_HC_INDEX: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/1000G_2504_high_coverage.sequence.index
+  Y_HC_INDEX_SHA256: 0ac5fdda0b60b6575b1867827f53e39d723f915b325b10bf023b2dc3d71c08f2
+  Y_REF: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
+  Y_REF_CHRY_MD5: ce3e31103314a704255f3cd90369ecce
+  Y_MIN: "0.95"
 
 jobs:
   archaic-sites:
+    # Only the archaic jobs read the sites file.
+    if: inputs.hg002 || inputs.same_person_chromosomes != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -744,4 +774,143 @@ jobs:
         with:
           name: ancient-footprint
           path: ${{ env.EV }}/measure
+          if-no-files-found: ignore
+
+  y-benchmark:
+    if: inputs.y_benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build og as scripts/setup.sh --og does (og dev evidence)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
+
+      - name: Yleaf's data, the current tree, chrY of the reference and the published calls
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          D="${RUNNER_TEMP}/yb"; G="${D}/genome"
+          mkdir -p "${G}/reference"
+          echo "D=${D}" >> "$GITHUB_ENV"
+          echo "G=${G}" >> "$GITHUB_ENV"
+          scripts/setup.sh --yleaf-data "$G"
+          curl -fsSL --retry 5 -o "${D}/published.txt" "$Y_CALLS"
+          echo "${Y_CALLS_SHA256}  ${D}/published.txt" | sha256sum -c
+          curl -fsSL --retry 5 -o "${D}/hc.index" "$Y_HC_INDEX"
+          echo "${Y_HC_INDEX_SHA256}  ${D}/hc.index" | sha256sum -c
+          # The image has no CA bundle: htslib reads the runner's.
+          docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}/reference:/r" \
+            "$SAMTOOLS_IMAGE" sh -c 'samtools faidx "$1" chrY > /r/chrY.fa && samtools faidx /r/chrY.fa' _ "$Y_REF"
+          m5=$(docker run --rm -v "${G}/reference:/r:ro" "$SAMTOOLS_IMAGE" samtools dict /r/chrY.fa | grep -o 'M5:[0-9a-f]*')
+          [ "$m5" = "M5:${Y_REF_CHRY_MD5}" ] || { echo "chrY of ${Y_REF} has ${m5}, not M5:${Y_REF_CHRY_MD5}"; exit 1; }
+
+      - name: Step 37 on each man's chrY, from his 30x CRAM
+        env:
+          SAMPLES: ${{ inputs.y_samples }}
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          export GENOME_DIR="$G" REF_FASTA=reference/chrY.fa
+          read -ra want <<< "$(printf '%s' "$SAMPLES" | tr ',\r\n' '   ')"
+          [ "${#want[@]}" -ge 3 ] || { echo "y_samples: name 3 men or more (the red control hands each man's calls to another)"; exit 1; }
+          # The red control hands each man the calls of the man half the list
+          # away. It can fail only when most of those pairs sit on different
+          # lines, so check that on the tree before any CRAM is read: each
+          # man's published branch, then his partner's against it.
+          TREE="${G}/reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/current_tree.json"
+          printf 'sample\tpublished\ttool\tcall\n' > "${D}/pub.tsv"
+          for s in "${want[@]}"; do
+            [[ "$s" =~ ^(HG|NA)[0-9]{5}$ ]] || { echo "y_samples: '${s}' is not a 1000 Genomes sample id"; exit 1; }
+            pub=$(awk -v s="$s" '$1 == s {print $3}' "${D}/published.txt")
+            [ -n "$pub" ] || { echo "${s}: no published call"; exit 1; }
+            printf '%s\t%s\tpublished\t\n' "$s" "$pub" >> "${D}/pub.tsv"
+          done
+          bin/og dev evidence y-bench "$TREE" "${D}/pub.tsv" "${D}/pub.out.tsv" 0 > /dev/null
+          awk -F'\t' -v OFS='\t' 'NR == 1 {print "sample", "published", "tool", "call"; next} {s[++n] = $1; p[n] = $2; b[n] = $5}
+            END {for (i = 1; i <= n; i++) print s[i], p[i], "partner", b[(i - 1 + int(n / 2)) % n + 1]}' "${D}/pub.out.tsv" > "${D}/partner.tsv"
+          bin/og dev evidence y-bench "$TREE" "${D}/partner.tsv" "${D}/partner.out.tsv" 0 > /dev/null
+          awk -F'\t' -v min="$Y_MIN" 'NR > 1 {n++; if ($7 == "exact" || $7 == "below" || $7 == "ancestor") {k++; print "y_samples: " $1 " (" $2 ") is on one line with his partner, " $6}}
+            END {if (k / n >= min) {printf "y_samples: %d of %d men share a line with the man whose calls the red control hands them; name men from different haplogroups\n", k, n; exit 1}}' "${D}/partner.out.tsv"
+          # col FILE NAME: the value of column NAME in the one data row of FILE
+          col() { awk -F'\t' -v n="$2" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} NR == 2 {print $c[n]}' "$1"; }
+          # slice URL MAN: MAN's chrY reads from his CRAM at URL, as a BAM with
+          # its index. EBI fails a read now and then (a .crai that does not
+          # parse, a region that still fails after htslib's own reconnects),
+          # so try 4 times, 1, 2 and 4 minutes apart, then stop the job. Each
+          # try starts clean: samtools keeps the .crai it fetched in /g and
+          # would read a bad copy again. A retry reads the same file again and
+          # nothing else: the calls and the gate below do not change.
+          slice() {
+            local crai="${G}/${1##*/}.crai" bam="${G}/$2/aligned/$2_sorted.bam" n
+            for n in 1 2 3 4; do
+              rm -f "$crai" "$bam" "${bam}.bai"
+              if docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w /g "$SAMTOOLS_IMAGE" \
+                sh -c 'samtools view -b -T reference/chrY.fa -o "$2/aligned/$2_sorted.bam" "$1" chrY && samtools index "$2/aligned/$2_sorted.bam"' \
+                _ "$1" "$2"; then
+                rm -f "$crai"
+                return 0
+              fi
+              [ "$n" -lt 4 ] || break
+              echo "::warning::$2: reading chrY from $1 failed (try $n of 4); next try in $((60 << (n - 1))) s"
+              sleep $((60 << (n - 1)))
+            done
+            echo "::error::$2: reading chrY from $1 failed 4 times; no calls are made for him, so the job stops"
+            return 1
+          }
+          printf 'sample\tpublished\ttool\tcall\n' > "${D}/calls.tsv"
+          for s in "${want[@]}"; do
+            pub=$(awk -v s="$s" '$1 == s {print $3}' "${D}/published.txt")
+            url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
+            [ -n "$pub" ] && [ -n "$url" ] || { echo "${s}: no published call or no 30x CRAM"; exit 1; }
+            mkdir -p "${G}/${s}/aligned" "${G}/${s}/indexcov"
+            slice "$url" "$s"
+            # A chrY slice has no autosomes for indexcov to read the sex from:
+            # the men are men in the 1000 Genomes panel, so the row says male.
+            printf '#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\tCNchrX\tCNchrY\n%s\t%s\t-9\t-9\t1\t-9\t1.0\t1.0\n' \
+              "$s" "$s" > "${G}/${s}/indexcov/indexcov-indexcov.ped"
+            scripts/37-y-haplogroup.sh "$s"
+            O="${G}/${s}/y_haplogroup"
+            printf '%s\t%s\tYleaf %s\t%s\n' "$s" "$pub" "$YLEAF_DATA_VERSION" "$(col "${O}/${s}_y_haplogroup.txt" Hg)" >> "${D}/calls.tsv"
+            printf '%s\t%s\tog y tree-place\t%s\n' "$s" "$pub" "$(col "${O}/${s}_y_tree.txt" Hg)" >> "${D}/calls.tsv"
+            rm -rf "${G:?}/${s}"
+          done
+          cat "${D}/calls.tsv"
+
+      - name: The calls against the published ones (the gate), and the red control
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          TREE="${G}/reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/current_tree.json"
+          {
+            echo "### Y placement against Poznik et al. 2016 (YFull YTree ${YTREE_VERSION})"
+            echo ""
+            bin/og dev evidence y-bench "$TREE" "${D}/calls.tsv" "${D}/bench.tsv" "$Y_MIN"
+            echo ""
+            echo "Gate: every tool puts at least ${Y_MIN} of the men on the published branch or below it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+          # Red control: each tool's calls handed to the man half the list
+          # away must fail the gate, and fail it as the gate.
+          awk -F'\t' -v OFS='\t' 'NR == 1 {print; next} {s[$3, ++n[$3]] = $1; p[$3, n[$3]] = $2; c[$3, n[$3]] = $4; if (!($3 in seen)) {seen[$3]; t[++k] = $3}}
+            END {for (j = 1; j <= k; j++) {m = n[t[j]]; for (i = 1; i <= m; i++) print s[t[j], i], p[t[j], i], t[j], c[t[j], (i - 1 + int(m / 2)) % m + 1]}}' \
+            "${D}/calls.tsv" > "${D}/rotated.tsv"
+          if bin/og dev evidence y-bench "$TREE" "${D}/rotated.tsv" "${D}/rotated.out.tsv" "$Y_MIN" 2> "${D}/rotated.err"; then
+            echo "red control: the rotated calls passed the gate"; exit 1
+          fi
+          cat "${D}/rotated.err"
+          grep -q '^og dev evidence: y-bench gate: ' "${D}/rotated.err" || { echo "red control: failed, but not on the gate"; exit 1; }
+
+      - name: Upload the calls and their results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: y-benchmark
+          path: |
+            ${{ env.D }}/calls.tsv
+            ${{ env.D }}/bench.tsv
           if-no-files-found: ignore
