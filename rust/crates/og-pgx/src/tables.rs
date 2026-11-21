@@ -226,6 +226,20 @@ fn dose_word(w: &str) -> bool {
     w.starts_with(|c: char| c.is_ascii_digit() || c == '.') || DOSE_WORDS.contains(&w)
 }
 
+/// The parts of a hyphenated word that can name a drug, in order: each part
+/// that starts with a letter, has three or more characters and is no dose
+/// word. `olanzapine-fluoxetine` gives olanzapine and fluoxetine; the `co`
+/// of `co-trimoxazole`, the `l` of `l-dopa` and the `5` of `5-htp` are
+/// never drugs, so they give nothing. A word without a hyphen has no parts.
+fn hyphen_parts(w: &str) -> impl Iterator<Item = &str> {
+    w.split('-').filter(move |p| {
+        *p != w
+            && p.chars().count() >= 3
+            && p.starts_with(char::is_alphabetic)
+            && !dose_word(p)
+    })
+}
+
 /// The lines of a medication list, one product per line; `#` starts a
 /// comment and blank lines are skipped. Every word of a line can name a
 /// drug, so each drug of a combination product is checked: whitespace,
@@ -234,7 +248,12 @@ fn dose_word(w: &str) -> bool {
 /// `and` is dropped (`olanzapine/fluoxetine`, `naltrexone/bupropion 8/90 mg`
 /// and `lopinavir and ritonavir` each name two drugs; `Contrave
 /// (naltrexone/bupropion)` names three words). Doses, units and frequencies
-/// (`20`, `mg`, `daily`) are dropped too. A line of nothing but those keeps
+/// (`20`, `mg`, `daily`) are dropped too. A hyphenated word names itself
+/// first, so a hyphenated name of a table still matches whole, then its
+/// parts (`hyphen_parts`), so `olanzapine-fluoxetine` is checked for
+/// fluoxetine. A part is only a name: it hits only when it is itself a name
+/// of a table, and no table name is a part of another one (a test checks
+/// the shipped tables). A line of nothing but those keeps
 /// its first word, so it is still listed as not checked; a line of only
 /// separators and punctuation is skipped.
 pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
@@ -253,8 +272,13 @@ pub fn read_medications(path: &str) -> Result<Vec<Medication>, PyErr> {
             .collect();
         let mut names: Vec<String> = Vec::new();
         for w in &words {
-            if w != "and" && !dose_word(w) && !names.contains(w) {
-                names.push(w.clone());
+            if w == "and" || dose_word(w) {
+                continue;
+            }
+            for n in std::iter::once(w.as_str()).chain(hyphen_parts(w)) {
+                if !names.iter().any(|m| m == n) {
+                    names.push(n.to_owned());
+                }
             }
         }
         if names.is_empty()
@@ -428,14 +452,14 @@ mod tests {
     fn medication_lines_name_every_drug() {
         let p = tmp(
             "meds.txt",
-            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\nnaltrexone/bupropion 8/90 mg\nOlanzapine + fluoxetine; olanzapine\nlopinavir and ritonavir\n20 mg\nContrave (naltrexone/bupropion) 8/90 mg\nEpilim (sodium valproate) 500 mg\nDepakote(divalproex sodium) [delayed-release]\nparoxetine.\n( )\n",
+            "Paroxetine 20 mg daily\n, paroxetine\n;\n# a comment\n\nlopinavir/ritonavir 400/100 mg\r\nValproate  # evening\nnaltrexone/bupropion 8/90 mg\nOlanzapine + fluoxetine; olanzapine\nlopinavir and ritonavir\n20 mg\nContrave (naltrexone/bupropion) 8/90 mg\nEpilim (sodium valproate) 500 mg\nDepakote(divalproex sodium) [delayed-release]\nparoxetine.\nolanzapine-fluoxetine 6/25 mg\nCo-trimoxazole 960 mg\nL-dopa 100 mg\n5-HTP 100 mg\n( )\n",
         );
         let got: Vec<(String, Vec<String>)> = read_medications(&p)
             .unwrap()
             .into_iter()
             .map(|m| (m.text, m.names))
             .collect();
-        let want: [(&str, &[&str]); 12] = [
+        let want: [(&str, &[&str]); 16] = [
             ("Paroxetine 20 mg daily", &["paroxetine"]),
             (", paroxetine", &["paroxetine"]),
             (
@@ -463,15 +487,59 @@ mod tests {
             ),
             (
                 "Depakote(divalproex sodium) [delayed-release]",
-                &["depakote", "divalproex", "sodium", "delayed-release"],
+                &[
+                    "depakote",
+                    "divalproex",
+                    "sodium",
+                    "delayed-release",
+                    "delayed",
+                    "release",
+                ],
             ),
             ("paroxetine.", &["paroxetine"]),
+            // A hyphenated word names itself, then each part that can name
+            // a drug: never a prefix, a lone letter or a number.
+            (
+                "olanzapine-fluoxetine 6/25 mg",
+                &["olanzapine-fluoxetine", "olanzapine", "fluoxetine"],
+            ),
+            ("Co-trimoxazole 960 mg", &["co-trimoxazole", "trimoxazole"]),
+            ("L-dopa 100 mg", &["l-dopa", "dopa"]),
+            ("5-HTP 100 mg", &["5-htp"]),
         ];
         let want: Vec<(String, Vec<String>)> = want
             .iter()
             .map(|(t, n)| ((*t).to_owned(), n.iter().map(|s| (*s).to_owned()).collect()))
             .collect();
         assert_eq!(got, want);
+    }
+
+    /// The names of `names` that are a hyphen part of another of them.
+    fn part_clashes(names: &[String]) -> Vec<String> {
+        names
+            .iter()
+            .flat_map(|n| hyphen_parts(n).filter(|p| names.iter().any(|m| m == p)))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn no_table_name_is_a_hyphen_part_of_another() {
+        // A hyphen part of a medication word is checked even when the whole
+        // word is a table name; that adds no hit only while no name of the
+        // tables is a part of another one.
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets/");
+        let inh = read_inhibitors(&format!("{root}pgx_inhibitors.tsv")).unwrap();
+        let contra = read_contraindications(&format!("{root}pgx_contraindications.tsv")).unwrap();
+        let mut names: Vec<String> = inh.keys().map(|(d, _)| d.clone()).collect();
+        for r in &contra {
+            names.extend(r.names.split(',').map(norm_drug).filter(|n| !n.is_empty()));
+        }
+        assert!(names.len() > 40, "{names:?}");
+        assert_eq!(part_clashes(&names), Vec::<String>::new());
+        // Control: a planted clash is found.
+        let planted = ["co-trimoxazole".to_owned(), "trimoxazole".to_owned()];
+        assert_eq!(part_clashes(&planted), ["trimoxazole"]);
     }
 
     #[test]
