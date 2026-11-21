@@ -110,6 +110,9 @@ fn gene_coverage_requires_an_index_that_names_an_allele() {
     .unwrap();
     let out = lookup(gvcf.to_str().unwrap(), &["GENEA"]);
 
-    assert!(out.contains("12 of 611 bases have a genotype call"), "{out}");
+    assert!(
+        out.contains("12 of 611 bases have a genotype call"),
+        "{out}"
+    );
     fs::remove_dir_all(&dir).unwrap();
 }

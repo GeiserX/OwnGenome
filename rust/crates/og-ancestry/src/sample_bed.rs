@@ -143,13 +143,10 @@ fn gt_alleles(gt: &str) -> Option<[&str; 2]> {
 /// A1, 2 heterozygous, 3 homozygous A2; `None` for no call (an index that
 /// is no allele, or an allele the `.bim` does not have).
 pub fn bed_code(alleles: &[&str], idx: [&str; 2], a1: &str, a2: &str) -> Option<u8> {
-    let n = alleles.len() as i64;
     let (mut n1, mut n2) = (0, 0);
     for i in idx {
         let i = crate::int(i)?;
-        // A negative index counts from the end, as Python's list indexing.
-        let at = if i < 0 { n + i } else { i };
-        let called = *alleles.get(usize::try_from(at).ok()?)?;
+        let called = *alleles.get(usize::try_from(i).ok()?)?;
         n1 += usize::from(called == a1);
         n2 += usize::from(called == a2);
     }

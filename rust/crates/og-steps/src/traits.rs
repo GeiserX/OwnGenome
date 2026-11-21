@@ -714,17 +714,17 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
         if ps.is_empty() || *ps == "." || !gt.contains('|') {
             continue;
         }
-        let bases: Vec<_> = std::iter::once(c[3]).chain(c[4].split(',')).collect();
+        let mut bases = vec![c[3]];
+        if c[4] != "." {
+            bases.extend(c[4].split(','));
+        }
         let idx: Option<Vec<_>> = gt
             .split('|')
             .map(|i| {
                 pycompat::num::parse_int(i)
                     .ok()
-                    .and_then(|i| i.to_string().parse::<isize>().ok())
-                    .and_then(|i| {
-                        let n = if i < 0 { bases.len() as isize + i } else { i };
-                        usize::try_from(n).ok().and_then(|n| bases.get(n).copied())
-                    })
+                    .and_then(|i| usize::try_from(i).ok())
+                    .and_then(|i| bases.get(i).copied())
             })
             .collect();
         if let Some(al) = idx

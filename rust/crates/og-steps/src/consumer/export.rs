@@ -36,7 +36,7 @@ use std::num::NonZero;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use og_io::{AtomicFile, Lines, Utf8};
-use pycompat::num::parse_int;
+use pycompat::num::{ParseError, parse_int};
 use rustc_hash::FxHashSet;
 
 use super::check::{self, Layout};
@@ -443,15 +443,19 @@ fn parse_record(line: &[u8]) -> Result<Option<Rec<'_>>, String> {
     }))
 }
 
-/// `nonref_gt`: the record's genotype carries an allele other than REF.
-/// A negative index names no allele, so it is not one (VCF numbers alleles
-/// from 0; the Python read -1 as the last ALT).
+/// Whether GT marks a record as non-reference for deletion masking.
+/// Numeric indexes must name an ALT. Other malformed parts retain the
+/// conservative masking behavior of the original export.
 fn nonref_gt(r: &Rec) -> bool {
-    if r.sample.is_none() {
-        return false;
-    }
     r.gt().is_some_and(|gt| {
-        gt_parts(gt).any(|i| !matches!(i, b"0" | b"." | b"") && int(i).is_none_or(|k| k >= 0))
+        let n_alleles = 1 + r.alts().count() as i128;
+        gt_parts(gt)
+            .filter(|i| !matches!(*i, b"0" | b"." | b""))
+            .any(|i| match std::str::from_utf8(i).map(parse_int) {
+                Ok(Ok(k)) => (1..n_alleles).contains(&k),
+                Ok(Err(ParseError::TooLarge)) => false,
+                _ => true,
+            })
     })
 }
 

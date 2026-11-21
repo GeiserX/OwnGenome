@@ -104,10 +104,11 @@ fn a_past_the_end_index_does_not_hide_the_reference_block() {
              chr20\t169\t.\tT\t<*>\t0\t.\tEND=179\tGT:GQ\t0/0:30\n"
         );
         let (calls, _) = run(label, &text);
+        let rsid = format!("rs{}", 104);
         calls
             .into_iter()
-            .find(|(id, _)| id == &format!("rs{}", 104))
-            .expect("site in the export")
+            .find(|(id, _)| id == &rsid)
+            .unwrap_or_else(|| panic!("{rsid} in the export"))
             .1
     };
 
