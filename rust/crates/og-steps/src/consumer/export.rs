@@ -26,6 +26,9 @@
 //!   good export removes the `.txt` files a failed one left;
 //! - a call of more than two alleles stops the export, naming the site,
 //!   where the Python wrote a file that then failed its own strict reader;
+//! - a negative GT index names no allele: the site is an unreadable
+//!   genotype (`--`) and the record is not a called deletion, where the
+//!   Python read -1 as the last ALT;
 //! - a site row whose positions are not whole numbers from 0 to 2^32 - 1,
 //!   or whose GRCh38 base is not one character, is refused as not a site
 //!   row;
@@ -481,12 +484,15 @@ fn parse_record(line: &[u8], col: usize) -> Result<Option<Rec<'_>>, String> {
 }
 
 /// `nonref_gt`: the record's genotype carries an allele other than REF.
+/// A negative index names no allele, so it is not one (VCF numbers alleles
+/// from 0; the Python read -1 as the last ALT).
 fn nonref_gt(r: &Rec) -> bool {
     if r.sample.is_none() {
         return false;
     }
-    r.gt()
-        .is_some_and(|gt| gt_parts(gt).any(|i| !matches!(i, b"0" | b"." | b"")))
+    r.gt().is_some_and(|gt| {
+        gt_parts(gt).any(|i| !matches!(i, b"0" | b"." | b"") && int(i).is_none_or(|k| k >= 0))
+    })
 }
 
 /// `call_from_record`: the bases at `pos` from one record, or why none.
@@ -500,13 +506,11 @@ fn call_from_record(r: &Rec, pos: i64, ref38: u8, tally: &mut Tally) -> Result<C
     if gt_parts(gt).any(|i| matches!(i, b"." | b"")) {
         return Ok(Call::No(Why::NoCallInGvcf));
     }
-    // alleles = [ref] + alts, indexed as a Python list (negative from the end).
+    // alleles = [ref] + alts, numbered from 0. An index outside them,
+    // negative included, is unreadable (the Python read -1 as the last ALT).
     let n_alleles = 1 + r.alts().count() as i64;
     let allele = |i: &[u8]| -> Option<&[u8]> {
-        let mut k = int(i)?;
-        if k < 0 {
-            k += n_alleles;
-        }
+        let k = int(i)?;
         if !(0..n_alleles).contains(&k) {
             return None;
         }

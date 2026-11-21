@@ -1,0 +1,9 @@
+AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	AnnotSV_ranking_score	Caller	Exon_edge	Exon_edge_detail	Population_AF	Population_source	Common	AnnotSV_class	Depth_support	Rule	Rule_detail	Support	Support_callers	FORMAT	S1
+20_1000200_1009800_DEL_1	"Q""UOTE"	20	1000200	1009800	-9600	DEL	"G""1;G2"	4	0.99	manta	yes	NM_900001 (FIXG1): exon 1 and exon 3 edges			no	4	yes					GT:DHFFC:DHFFC	0/1:0.9:0.5
+20_40000000_40300000_DEL_1	D075	20	40000000	40300000	-300000	DEL	G9	3	0.99	manta	no				no	4	no	no_depth_support	read depth does not show the change (duphold DHFFC 0.75)			GT:DHFFC	0/1:0.75
+chr20_1000200_1009800_del_1	CHR	chr20	1000200	1009800	9600	del	FIXG1	3	0.99	manta	yes	NM_900001 (FIXG1): exon 1 and exon 3 edges			no	4	no	no_depth_support	read depth does not show the change (duphold DHFFC inf)			GT:DHFFC	0/1:inf
+20_5000_5000_INS_1	INS	20	5000	5000	0	INS	G3	5	0.99	manta	.				no	5	.					GT	0/1
+6_31000000_31100000_INV_1	INV	6	31000000	31100000	100000	INV	HLA-C	3	0.99	delly	.				no	5	.	mhc	100% inside the MHC (6:28510120-33480577), whose haplotypes differ widely between people; gnomAD-SV marks such SVs low confidence (IGH_MHC_OVERLAP)			GT	0/1
+20_5000_9000_DUP_1	NAN	20	5000	9000	4000	DUP	G4	nan	0.99	manta	.				no	nan	no	no_depth_support	read depth does not show the change (duphold DHBFC 1)			GT:DHBFC	0/1:1.0
+X_2781000_2900000_DEL_1	XDEL	X	2781000	2900000	-119000	DEL	G5	4	0.99	delly	no				no	4	yes					GT:RDCN	0/1:1
+20_1000_3000_DUP_1	EXTRA	20	1000	3000	2000	DUP	G6	4	0.99	manta	.				no	4	not checked					GT	0/1
