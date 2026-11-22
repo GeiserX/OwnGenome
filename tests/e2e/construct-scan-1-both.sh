@@ -51,19 +51,20 @@ T="${SAMPLE}cs"
 copy "$T"
 in_user faidx reference/GRCh38_no_alt_analysis_set.fasta "${CHR}:$((X + 1))-$((E3E + 200))" > "${CASE_TMP}/region.fa"
 in_user view -H "${SAMPLE}/aligned/${SAMPLE}_sorted.bam" > "${CASE_TMP}/spliced.sam"
-python3 - "${CASE_TMP}/region.fa" "$CHR" "$X" "$E1E" "$E2S" "$E2E" "$E3S" >> "${CASE_TMP}/spliced.sam" <<'PY'
-import sys
-fa, chrom = sys.argv[1], sys.argv[2]
-x, e1e, e2s, e2e, e3s = (int(v) for v in sys.argv[3:8])
-g = "".join(l.strip() for l in open(fa) if not l.startswith(">")).upper()
-base = lambda a, b: g[a - x:b - x]
-for name, end, start in (("j12", e1e, e2s), ("j23", e2e, e3s), ("j13", e1e, e3s)):
-    for i in range(6):
-        a = 60 + 4 * i
-        c = 100 - a
-        print(f"{name}_{i}\t0\t{chrom}\t{end - a + 1}\t60\t{a}M{c}S\t*\t0\t0\t{base(end - a, end) + base(start, start + c)}"
-              f"\t{'I' * 100}\tSA:Z:{chrom},{start + 1},+,{a}S{c}M,60,0;")
-PY
+# Six spliced reads per junction (1 to 2, 2 to 3, 1 to 3), clipped at the
+# exon end, the rest an SA alignment at the next exon's start.
+awk -v chrom="$CHR" -v x="$X" -v e1e="$E1E" -v e2s="$E2S" -v e2e="$E2E" -v e3s="$E3S" '
+  function base(a, b) { return substr(g, a - x + 1, b - a) }
+  !/^>/ { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); g = g toupper($0) }
+  END {
+    q = ""; for (k = 0; k < 100; k++) q = q "I"
+    split("j12 j23 j13", nm, " "); split(e1e " " e2e " " e1e, en, " "); split(e2s " " e3s " " e3s, st, " ")
+    for (j = 1; j <= 3; j++) for (i = 0; i < 6; i++) {
+      a = 60 + 4 * i; c = 100 - a; end = en[j]; start = st[j]
+      print nm[j] "_" i "\t0\t" chrom "\t" end - a + 1 "\t60\t" a "M" c "S\t*\t0\t0\t" base(end - a, end) base(start, start + c) \
+        "\t" q "\tSA:Z:" chrom "," start + 1 ",+," a "S" c "M,60,0;"
+    }
+  }' "${CASE_TMP}/region.fa" >> "${CASE_TMP}/spliced.sam"
 cp "${CASE_TMP}/spliced.sam" "${GENOME_DIR}/${T}/aligned/spliced.sam"
 in_user sort -o "${T}/aligned/spliced.bam" "${T}/aligned/spliced.sam"
 in_user merge -f -c -p -o "${T}/aligned/${T}_sorted.bam" "${SAMPLE}/aligned/${SAMPLE}_sorted.bam" "${T}/aligned/spliced.bam"
@@ -118,7 +119,7 @@ check_eq "the rows are the list's sites, in its order" \
   "$(awk -F'\t' 'NR > 1 {print $5 ":" $6}' "$DEEP" 2>/dev/null | paste -sd, -)" \
   "$(awk -F'\t' '!/^#/ && $1 != "chrom" {print $5 ":" $6}' "$LIST" | paste -sd, -)"
 check_eq "every row has a call and a detail" "$(awk -F'\t' 'NR > 1 && ($8 == "" || $9 == "")' "$DEEP" 2>/dev/null | wc -l | tr -d ' ')" 0
-python3 "${REPO}/bin/render_report.py" --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
+"${REPO}/bin/og" report render --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
   -o "${CASE_TMP}/t.txt" -o "${CASE_TMP}/t.html"
 check "the text report has the always-report list" has "Known deep intronic sites \(always reported\)" "$(cat "${CASE_TMP}/t.txt" 2>/dev/null)"
 check_eq "the text report prints every site" \

@@ -45,7 +45,7 @@ check_step_exit 07-pharmacogenomics.sh
 check "step 07 passed the outside calls" has '^Outside calls \(step 36\)' "$(cat "$STEP_LOG")"
 # source REPORT GENE: PharmCAT's callSource for GENE
 source_of() {
-  python3 -c 'import json, sys; g = json.load(open(sys.argv[1]))["genes"][sys.argv[2]]; print(g.get("callSource", ""))' "$1" "$2" 2>/dev/null
+  jq -r --arg g "$2" '.genes[$g] | .callSource // ""' "$1" 2>/dev/null
 }
 JSON="${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.report.json"
 for g in HLA-A HLA-B; do

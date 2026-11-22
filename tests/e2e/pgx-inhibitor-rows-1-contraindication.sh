@@ -129,12 +129,10 @@ done
 # shellcheck disable=SC2016  # ${projectDir} is Nextflow's, matched as written
 LINE='Channel.value(file("${projectDir}/assets/pgx_contraindications.tsv", checkIfExists: true))'
 check_eq "control: main.nf has the ch_contraindications line once" "$(grep -cF "$LINE" "${CTRL}/main.nf")" 1
-python3 - "${CTRL}/main.nf" "$LINE" <<'PY'
-import sys
-p, line = sys.argv[1], sys.argv[2]
-s = open(p).read()
-open(p, "w").write(s.replace(line, "Channel.value([])"))
-PY
+# The line swapped as written (no pattern), the file's last newline kept.
+MAIN=$(cat "${CTRL}/main.nf"; printf x)
+MAIN=${MAIN%x}
+printf '%s' "${MAIN//"$LINE"/Channel.value([])}" > "${CTRL}/main.nf"
 check_eq "control: the copy's main.nf no longer reads the table" "$(grep -cF "$LINE" "${CTRL}/main.nf")" 0
 CTRL_OUT="${G}/nf-contra-control"
 rm -rf "${CTRL_OUT:?}"

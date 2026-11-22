@@ -69,26 +69,19 @@ sample() {
 # mt REPORT: PharmCAT's callSource and diplotype label for MT-RNR1, then the
 # drugs with a recommendation for that label, one per line.
 mt() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable report.json: {e}")
-    sys.exit(0)
-g = (d.get("genes") or {}).get("MT-RNR1") or {}
-dips = g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or [{}]
-label = dips[0].get("label") or (dips[0].get("allele1") or {}).get("name") or "?"
-print(f"{g.get('callSource', 'absent')}\t{label}")
-for src, by_drug in (d.get("drugs") or {}).items():
-    for name, rep in (by_drug or {}).items():
-        for gl in rep.get("guidelines") or []:
-            for ann in gl.get("annotations") or []:
-                labels = {dp.get("label") for gt in ann.get("genotypes") or []
-                          for dp in gt.get("diplotypes") or [] if dp.get("gene") == "MT-RNR1"}
-                if label in labels and " ".join(str(ann.get("drugRecommendation") or "").split()):
-                    print(f"drug\t{rep.get('name') or name}\t{src}")
-PY
+  # alt(f): the value, or f when it is empty (null, false, 0, "", [] or {}).
+  jq -r 'def alt(f): if . == null or . == false or . == 0 or . == "" or . == [] or . == {} then f else . end;
+    def p: if . == null then "None" else tostring end;
+    ((.genes | alt({}))["MT-RNR1"] | alt({})) as $g
+    | ($g.sourceDiplotypes | alt($g.recommendationDiplotypes | alt([{}])))[0] as $d
+    | ($d.label | alt(($d.allele1 | alt({})).name | alt("?"))) as $label
+    | "\($g | if has("callSource") then .callSource | p else "absent" end)\t\($label | p)",
+      ((.drugs | alt({})) | to_entries[] | .key as $src | (.value | alt({})) | to_entries[] | .key as $name | .value
+        | . as $rep | (.guidelines | alt([]))[] | (.annotations | alt([]))[]
+        | select(any((.genotypes | alt([]))[] | (.diplotypes | alt([]))[] | select(.gene == "MT-RNR1"); .label == $label))
+        | select(.drugRecommendation | alt("") | tostring | test("\\S"))
+        | "drug\t\($rep.name | alt($name))\t\($src)")' "$1" 2>/dev/null \
+    || echo "unreadable report.json: $1"
 }
 denied() { grep -c 'pharmcat\.log (Permission denied)' <<< "$1" || true; }
 
