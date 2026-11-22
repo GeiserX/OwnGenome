@@ -605,6 +605,36 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
             );
             continue;
         }
+        // Step 27 marks a called gene incomplete when its call rests on
+        // positions PharmCAT never read and its phenotype names no changed
+        // function: a normal call there is not proven, so no call goes in,
+        // as for an ambiguous gene, and the gene is partial.
+        if status == "incomplete" && !step36 {
+            ctx.leave_out(
+                gene,
+                &format!("{gene} {diplotype}"),
+                "PharmCAT never read a position that defines one of its alleles, so its call is not proven",
+            );
+            continue;
+        }
+        // A non-normal call keeps step 27's mark of the positions PharmCAT
+        // never read on its phenotype. The fact keeps the phenotype without
+        // it, at medium confidence, and the gene is partial.
+        if let Some((base, rest)) = phenotype.split_once(" [incomplete: positions not read: ") {
+            let unread = rest.trim_end_matches(']').to_owned();
+            phenotype = base.to_owned();
+            if !step36 {
+                (conf, basis) = (
+                    "medium",
+                    format!("PharmCAT never read a defining position: {unread}"),
+                );
+                ctx.leave_out(
+                    gene,
+                    &format!("{gene} at {unread}"),
+                    "not read by PharmCAT, so the call may hide an allele defined there",
+                );
+            }
+        }
         if let Some((_, weakest)) = low_gq.iter().find(|(g, _)| g == gene)
             && conf == "high"
         {
