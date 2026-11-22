@@ -141,4 +141,6 @@ output_has vcf_nochr_vcf "chromosome names without the 'chr' prefix"
 [ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$calls" ] || fail "Nextflow ran with a wrong-build input the run reads"
 run_expect 0 vcf_wrong_build_bam "${validate[@]}" INPUT=vcf BAM_CHR1_LENGTH=249250621 "${launcher[@]}"
 output_has vcf_wrong_build_bam 'INPUT=vcf: the BAM is not read, so it is not checked'
+output_has vcf_wrong_build_bam 'INPUT=vcf: the BAM is not read — BAM-dependent steps \(4, 10, 15, 16, 18, 19, 20\) will be skipped\.'
+output_lacks vcf_wrong_build_bam 'No BAM found'
 [ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$((calls + 1))" ] || fail "VCF run did not start Nextflow"

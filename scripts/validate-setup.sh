@@ -1254,6 +1254,8 @@ if [ -n "$SAMPLE" ]; then
       echo "       or step by step, starting with:  ./scripts/06-clinvar-screen.sh ${SAMPLE}"
       if $HAS_BAM; then
         echo "       BAM also available — all pipeline steps can run."
+      elif [ -f "$BAM" ]; then
+        echo "       INPUT=vcf: the BAM is not read — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       else
         echo "       No BAM found — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       fi
