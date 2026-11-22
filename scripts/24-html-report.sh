@@ -44,7 +44,7 @@ echo "Reading pipeline outputs and writing the report..."
 rm -f "$OUTPUT" "${SAMPLE_DIR}/${SAMPLE}_search_index.json" "${SAMPLE_DIR}/${SAMPLE}_charts.json"
 # assets/: the ACMG SF rules (acmg_sf.tsv) and the carrier list (carrier_genes.tsv).
 # og is the static binary, so the python image runs it.
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${OG_IMAGE}" \
   /pgp-bin/og report render \
     --assets /pgp-assets \
     --sample "$SAMPLE" \

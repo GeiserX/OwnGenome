@@ -44,7 +44,8 @@ process PARAPHASE_CHECK {
     """
     og paraphase check-bam ${bam} > ${meta.id}_paraphase_check.txt
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -53,7 +54,8 @@ process PARAPHASE_CHECK {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }
@@ -126,7 +128,8 @@ process PARAPHASE_REPORT {
         --out-cn ${meta.id}_paraphase_copy_number.tsv \\
         --out-variants ${meta.id}_paraphase_variants.tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -136,7 +139,8 @@ process PARAPHASE_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

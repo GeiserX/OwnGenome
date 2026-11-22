@@ -32,7 +32,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image SAMTOOLS_IMAGE MINIMAP2_IMAGE PYTHON_IMAGE
+require_image SAMTOOLS_IMAGE MINIMAP2_IMAGE OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 BAM="${S}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam"
@@ -86,7 +86,7 @@ run_in --cpus 2 --memory 4g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
     samtools view -F 4 "$1_viral_reads.bam" > "$1_viral_hits.tsv"' _ "$O"
 
 echo "[4/4] Calls (og viral report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og viral report --sample "$SAMPLE" --viral-fasta "$V" \
     --viral-coverage "${O}_viral_coverage.tsv" --viral-depth "${O}_viral_depth.tsv" \
     --human-coverage "${O}_human_coverage.tsv" --viral-hits "${O}_viral_hits.tsv" \

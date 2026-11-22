@@ -177,7 +177,8 @@ process HTML_REPORT {
         --search-index ${id}_search_index.json \\
         --charts-json ${id}_charts.json
 
-    printf '"%s":\\n    python: %s\\n    og: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    og: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -186,7 +187,8 @@ process HTML_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

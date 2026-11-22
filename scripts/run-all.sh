@@ -120,7 +120,7 @@ FAM=""
 famplan() {  # famplan [run_in options] -- [plan options]: og family plan on the FAMILIES file
   local o=(); while [ "$1" != -- ]; do o+=("$1"); shift; done; shift
   run_in ${o[@]+"${o[@]}"} --cpus 1 --memory 1g -v "${FAMILIES}:/pgp/families.tsv:ro" -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
-    "$PYTHON_IMAGE" /pgp-bin/og family plan --families /pgp/families.tsv "$@"
+    "$OG_IMAGE" /pgp-bin/og family plan --families /pgp/families.tsv "$@"
 }
 if [ -n "${FAMILIES:-}" ]; then
   [ -f "$FAMILIES" ] || { echo "ERROR: FAMILIES=${FAMILIES}: no such file (assets/families.example.tsv shows the format)" >&2; exit 2; }
@@ -262,7 +262,7 @@ hifi() {
   [ -n "$NOBAM" ] || return 0
   [ -n "$fb" ] || { echo 'not PacBio HiFi: a FASTQ row is aligned as short reads'; return 0; }
   local rc=0
-  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og paraphase check-bam "/genome/${fb#"$G"/}" \
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og paraphase check-bam "/genome/${fb#"$G"/}" \
     > /dev/null 2>&1 || rc=$?
   [ "$rc" -ne 3 ] || echo 'not PacBio HiFi: a read group of the BAM is not PL:PACBIO'
 }

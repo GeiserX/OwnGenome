@@ -50,7 +50,7 @@ if [ $# -eq 0 ]; then
   echo "Usage: $0 <sample_name> <rsID|chr:pos|GENE> [more queries...]" >&2
   exit 2
 fi
-require_image PYTHON_IMAGE
+require_image OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 REF_DIR=${REF_DIR:-${GENOME_DIR}/reference}
@@ -87,7 +87,7 @@ echo "Annotation: ${ANN:-none (step 13 writes vep/${SAMPLE}_vep.vcf.gz)}"
 echo "Reports:    ${SUMMARY:-none (generate-report.sh writes summary.json)}"
 echo ""
 
-# og runs in PYTHON_IMAGE (it needs no tool of its own; any image would do),
+# og runs in OG_IMAGE (it needs no tool of its own; any image would do),
 # which sees GENOME_DIR at /genome and, when REF_DIR is elsewhere, REF_DIR
 # read-only at /pgp-ref.
 MOUNTS=(-v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro")
@@ -111,6 +111,6 @@ ARGS=(--gvcf "$(cpath "$GVCF")" --table /pgp-assets/traits.tsv --table /pgp-asse
 # Each answer ends with a blank line. The exit code is the last failing
 # query's: 3 for one found nowhere, 2 for one that is not a query.
 rc=0
-run_in "${MOUNTS[@]}" --cpus 2 --memory 1g "$PYTHON_IMAGE" \
+run_in "${MOUNTS[@]}" --cpus 2 --memory 1g "$OG_IMAGE" \
   /pgp-bin/og lookup query "${ARGS[@]}" -- "$@" || rc=$?
 exit "$rc"

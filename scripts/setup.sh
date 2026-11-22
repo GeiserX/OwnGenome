@@ -529,10 +529,8 @@ need_og() {
 # have GRC_MASKED_REF_SHA256, or MASKED_REF_SHA256 when that is set (a source
 # other than NCBI's file, as the CI case's chr21), or it is deleted. The
 # masking is og's `og setup mask-fasta` (rust/crates/og-intervals), run in
-# PYTHON_IMAGE with bin/ mounted, so og is built first when it is missing or
-# stale. It runs from the reference's directory with relative paths, so
-# bin/og's shadow mode (OG_SHADOW, tests/parity/README.md) can run the
-# Python it replaced beside it in CI.
+# OG_IMAGE with bin/ mounted, so og is built first when it is missing or
+# stale. The command uses relative paths from the reference directory.
 install_masked_reference() {
   local src=$REF_FASTA dest bed want got dir log
   case "$src" in
@@ -563,8 +561,7 @@ install_masked_reference() {
       return 1
     fi
     echo "Masking the false duplications of $(basename "$src") (under a minute for GRCh38)..."
-    # -e OG_SHADOW passes the variable only when it is set (CI).
-    if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$dir")" "$PYTHON_IMAGE" \
+    if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$dir")" "$OG_IMAGE" \
           /pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"); then
       rm -f "${dest}.part"
       echo "[WARN] Could not write the masked reference."
@@ -618,7 +615,7 @@ install_exomiser_data() {
     fi
     rm -rf "${dest}/unpack.part"
     need_og "unpacks Exomiser's data" || return 1
-    if ! run_in --rw "$dest" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dest" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og setup unzip "$(cpath "$zip")" "$(cpath "${dest}/unpack.part")" \
         || [ ! -d "${dest}/unpack.part/${EXOMISER_DATA_VERSION}_${part}" ]; then
       rm -rf "${dest}/unpack.part"
@@ -710,9 +707,7 @@ install_megane_kmers() {
 # the catalogs inside their images. catalog.stamp names the inputs and the
 # converter's output format, so a changed one converts again: bump format
 # below whenever og str catalog writes something different.
-# og runs from the catalog's directory with relative paths, so bin/og's
-# shadow mode (OG_SHADOW, tests/parity/README.md) can run the Python it
-# replaced beside it in CI.
+# og uses relative paths from the catalog's directory in OG_IMAGE.
 # STR_EXTRA_LOCI=yes (opt-in) also appends assets/str_extra_loci.json, the
 # repeats STRchive leaves out (CFTR TG/poly-T, UGT1A1 TA): ExpansionHunter
 # sizes them and Stranger leaves them ungraded (docs/09-str-expansions.md).
@@ -747,9 +742,8 @@ install_strchive_data() {
       return 1
     fi
   done
-  # -e OG_SHADOW passes the variable only when it is set (CI).
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" -e OG_SHADOW \
-       -w "$(cpath "$dir")" "$PYTHON_IMAGE" /pgp-bin/og str catalog \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" \
+       -w "$(cpath "$dir")" "$OG_IMAGE" /pgp-bin/og str catalog \
        --eh "$eh" --loci "$loci" --release "$STRCHIVE_VERSION" \
        --out catalog.json --ranges str_ranges.tsv ${extra_args[@]+"${extra_args[@]}"} \
        || [ ! -s "${dir}/catalog.json" ] || [ ! -s "${dir}/str_ranges.tsv" ]; then
@@ -796,7 +790,7 @@ install_tandem_repeats() {
 # (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
 # of a liftover and lists every site it drops with the reason. It reads the
 # BGZF file on 4 cores and looks at the ID column of a line before anything
-# else, so no grep pass runs first. It runs in PYTHON_IMAGE with bin/
+# else, so no grep pass runs first. It runs in OG_IMAGE with bin/
 # mounted, so og is built first when it is missing or stale.
 # The dbSNP file is deleted once the table is built. The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
@@ -840,7 +834,7 @@ install_consumer_sites() {
   fi
   echo "Building the site table (reads the whole dbSNP file once)..."
   # The table is written to reference/consumer/, outside any sample directory.
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$PYTHON_IMAGE" \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$OG_IMAGE" \
        /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
        --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
        --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
@@ -938,7 +932,7 @@ install_ancient_panel() {
   echo "  [1/5] Choosing the present-day reference people and the ancient people to project..."
   echo "  [2/5] Placing the 1240K sites on GRCh38..."
   # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
-  if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$PYTHON_IMAGE" \
+  if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$OG_IMAGE" \
          bash -euo pipefail -c '
            /pgp-bin/og ancient select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
              --out-ind "$2/panel.ind" --poplist "$2/poplist.txt" --ancients "$2/ancients.tsv"
@@ -965,7 +959,7 @@ install_ancient_panel() {
     echo "[WARN] EIGENSOFT failed on the AADR files (logs in ${part}); run: $0 --ancient-panel ${GENOME_DIR}"
     return 1
   fi
-  if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+  if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
          /pgp-bin/og ancient align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
     echo "[WARN] The two smartpca runs on the same present-day people gave different axes (logs in ${part})."
     return 1
@@ -1182,7 +1176,7 @@ install_fine_maps() {
   need_og "unpacks the genetic map" || return 1
   # SC2086: one argument per chromosome.
   # shellcheck disable=SC2086
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og setup genetic-map \
       --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
@@ -1226,7 +1220,7 @@ install_ancestry_fine_panel() {
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
   echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
-  for v in BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
   if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
     echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
@@ -1283,13 +1277,13 @@ install_ancestry_fine_panel() {
     head -n 1 "$smap" | grep -q $'^sample\tpopulation\tcontinent\tregion\treference\tpaint$' \
       || { echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} does not start with the header of samples.tsv"; return 1; }
     cp "$smap" "${dir}/samples.tsv.part"
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og ancestry-fine check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
       rm -f "${dir}/samples.tsv.part"
       echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} has a group too small to model"
       return 1
     fi
-  elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
           --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
@@ -1362,7 +1356,7 @@ install_ancestry_fine_panel() {
           for c in $4; do echo "$3/$c.bcf"; done > "$3/bcfs.txt"
           bcftools concat -f "$3/bcfs.txt" -Oz -o "$3/adm.vcf.gz"' \
           _ "$(cpath "${dir}/panel")" "$(cpath "${tmp}/ref.txt")" "$(cpath "$tmp")" "$chroms" \
-       || ! fit=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine freqs \
+       || ! fit=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og ancestry-fine freqs \
               --vcf "$(cpath "${tmp}/adm.vcf.gz")" --samples "$(cpath "${dir}/samples.tsv")" --out "$(cpath "$tmp")"); then
       echo "[WARN] Could not count the reference groups' allele frequencies"
       return 1
@@ -1453,7 +1447,7 @@ install_mocha_data() {
   # og writes each map whole or not at all. SC2086: one argument per chromosome.
   need_og "unpacks the genetic map" || return 1
   # shellcheck disable=SC2086
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og setup genetic-map \
       --zip "$(cpath "$map")" --out "$(cpath "${dir}/maps")" $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
@@ -1922,7 +1916,7 @@ install_archaic() {
   local genomes="Altai:Altai Vindija33.19:Vindija Denisova:Denisova"
   cpath "$dir" >/dev/null || return 1
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
-  for v in BCFTOOLS_IMAGE PICARD_IMAGE PYTHON_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
+  for v in BCFTOOLS_IMAGE PICARD_IMAGE OG_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
   mkdir -p "${dir}/md5" "${dir}/download" "${dir}/work" "${dir}/mask" "${dir}/exclude"
@@ -2049,7 +2043,7 @@ install_archaic() {
           done' _ "$(cpath "${dir}/download")" "$c" "$(cpath "$wk")" "$(cpath "${wk}/regions.bed")"; then
       echo "[WARN] Could not read the archaic genotypes of chr${c}"; return 1
     fi
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og archaic table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
             --archaic "Altai=$(cpath "${wk}/Altai.tsv")" --archaic "Vindija=$(cpath "${wk}/Vindija33.19.tsv")" \
             --archaic "Denisova=$(cpath "${wk}/Denisova.tsv")" \
@@ -2083,7 +2077,7 @@ install_archaic() {
     if [ ! -s "${wk}/strict.bed" ]; then
       echo "[WARN] the GRCh38 strict mask has no interval on chr${c}: ${dir}/strict_GRCh38.bed"; return 1
     fi
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og archaic strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
             --rows "$(cpath "${wk}/lifted.tsv")" --out "$(cpath "${wk}/marked.tsv")"; then
       echo "[WARN] Could not mark the strict mask on chr${c}"; return 1
@@ -2177,7 +2171,7 @@ install_clinical_data() {
 case "$OPT_IN" in
   ancestry-panel) install_ancestry_panel; exit $? ;;
   ancestry-fine-panel) install_ancestry_fine_panel; exit $? ;;
-  cyrius) install_cyrius; exit $? ;;
+  cyrius) ensure_image PYTHON_IMAGE 21 && install_cyrius; exit $? ;;
   parascopy-data) install_parascopy_data && ensure_image PARASCOPY_IMAGE 35; exit $? ;;
   kir-data) install_kir_data; exit $? ;;
   yleaf-data) install_yleaf_data && ensure_image YLEAF_IMAGE 37; exit $? ;;

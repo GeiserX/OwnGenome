@@ -47,14 +47,15 @@ process CHIP_PREPARE {
         exit 1
     fi
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch chip.gff3
     printf 'chr2\\t25234268\\t25234430\\tDNMT3A\\n' > chip.bed
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -179,13 +180,14 @@ process CHIP_REPORT {
     og chip report --genes ${genes} --gff ${gff} --bed ${bed} --calls ${calls} --depth ${pileup} \\
         --sample ${meta.id} --out ${meta.id}_chip.tsv --depth-out ${meta.id}_chip_depth.tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     printf 'gene\\tchrom\\tpos\\tref\\talt\\tconsequence\\tprotein_change\\texon\\tvaf\\talt_reads\\tdepth\\tfilter\\tstatus\\tclass\\tnote\\n' > ${meta.id}_chip.tsv
     printf 'gene\\ttranscript\\tchrom\\tcoding_bases\\tmean_depth\\tdetection_limit_vaf\\tstatus\\tcallable_fraction\\tassessable_fraction\\n' > ${meta.id}_chip_depth.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

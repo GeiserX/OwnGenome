@@ -51,7 +51,7 @@ unset SAMPLE
 . "$(dirname "$0")/lib/common.sh"
 # The family name names its folder, so it follows the sample-name rule.
 validate_sample "$FAMILY"
-require_image PYTHON_IMAGE
+require_image OG_IMAGE
 OUT="${GENOME_DIR}/${FAMILY}"
 OUT_C="/genome/${FAMILY}"
 PEDIGREE=${PEDIGREE:-${OUT}/pedigree.tsv}
@@ -91,7 +91,7 @@ if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
   NEW_OUT=$([ -d "$OUT" ] || echo yes)
   mkdir -p "$OUT"
   [ "$PEDIGREE" -ef "${OUT}/families.tsv" ] || cp -f "$PEDIGREE" "${OUT}/families.tsv"
-  if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
       /pgp-bin/og family plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
       > /dev/null; then
     echo "  (families.tsv is the step's copy of ${PEDIGREE})" >&2
@@ -153,7 +153,7 @@ for s in ${NAMED[@]+"${NAMED[@]}"}; do rm -f "${GENOME_DIR}/${s}/couple/${s}_cou
 [ "$PEDIGREE" -ef "${OUT}/pedigree.tsv" ] || cp -f "$PEDIGREE" "${OUT}/pedigree.tsv"
 run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro" -v "${GENES}:/pgp/carrier_genes.tsv:ro" \
-  "$PYTHON_IMAGE" /pgp-bin/og couple screen --pedigree "${OUT_C}/pedigree.tsv" \
+  "$OG_IMAGE" /pgp-bin/og couple screen --pedigree "${OUT_C}/pedigree.tsv" \
     --genes /pgp/carrier_genes.tsv --par-bed /pgp/par_grch38.bed ${ARGS[@]+"${ARGS[@]}"} --out-dir "$OUT_C"
 
 # Each partner's copy, where its own reports read it.

@@ -50,7 +50,7 @@ THREADS=${THREADS:-4}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image SOMALIER_IMAGE VERIFYBAMID2_IMAGE PYTHON_IMAGE
+require_image SOMALIER_IMAGE VERIFYBAMID2_IMAGE OG_IMAGE
 SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 BAM="${SAMPLE_DIR}/aligned/${SAMPLE}_sorted.bam"
 OUT="${SAMPLE_DIR}/qc"
@@ -175,7 +175,7 @@ tail -n 3 "$VB_LOG"
 # process and read again by the reports.
 echo ""
 echo "--- verdict"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og qc sample \
     --sample "$SAMPLE" \
     --somalier-id "$SOMALIER_ID" \
@@ -208,7 +208,7 @@ done
 if [ -s "${SAMPLE_DIR}/vcf/${SAMPLE}.vcf.gz" ]; then
   MOSAIC_ARGS+=(--vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz")
 fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og qc sex-loss --table "/genome/${SAMPLE}/qc/${SAMPLE}_sample_qc.tsv" "${MOSAIC_ARGS[@]}"
 
 echo ""

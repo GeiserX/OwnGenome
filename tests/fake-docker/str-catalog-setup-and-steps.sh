@@ -13,7 +13,7 @@
 #      --strchive-data exits 1, keeps neither that file nor a catalog, and
 #      never runs the converter (the control that the sha256 check fails).
 #   2. The real files: setup.sh --strchive-data writes catalog.json with 82
-#      loci through og str catalog in PYTHON_IMAGE, run from the catalog's
+#      loci through og str catalog in OG_IMAGE, run from the catalog's
 #      folder with relative paths (so OG_SHADOW can check it), and a second run
 #      downloads nothing and converts nothing.
 #   2b. A catalog whose stamp no longer matches, with a refetch that fails
@@ -134,8 +134,8 @@ output_has setup-bad "\[WARN\] Could not install STRchive's ${EH_FILE//./\\.}"
 FAKE_DOWNLOAD_DIR="$SERVED" run_expect 0 setup "${SCRIPTS}/setup.sh" --strchive-data "$GENOME_DIR"
 output_has setup "\[OK\] STRchive ${STRCHIVE_VERSION//./\\.} catalog \(steps 09 and 9b\): "
 [ "$(fetches)" -eq 2 ] || fail "setup.sh downloaded the STRchive files $(fetches) times, expected 2"
-docker_log_has "image=${PYTHON_IMAGE//./\\.} .* -w /genome/reference/strchive-${STRCHIVE_VERSION//./\\.} .*/pgp-bin/og str catalog --eh ${EH_FILE//./\\.} " \
-  "setup.sh did not run og str catalog in PYTHON_IMAGE from the catalog's folder"
+docker_log_has "image=${OG_IMAGE//./\\.} .* -w /genome/reference/strchive-${STRCHIVE_VERSION//./\\.} .*/pgp-bin/og str catalog --eh ${EH_FILE//./\\.} " \
+  "setup.sh did not run og str catalog in OG_IMAGE from the catalog's folder"
 N=$(jq length "${DIR}/catalog.json" 2>/dev/null || echo 0)
 [ "$N" -eq 82 ] || fail "catalog.json has ${N} loci, expected 82"
 : > "$FAKE_DOCKER_LOG"

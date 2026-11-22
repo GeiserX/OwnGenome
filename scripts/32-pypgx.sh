@@ -92,7 +92,7 @@ fi
 HDR="${OUTPUT_DIR}/bam_header.part"
 rc=0
 if run_in --cpus 1 --memory 1g "${SAMTOOLS_IMAGE}" samtools view -H "$(cpath "$BAM")" > "$HDR"; then
-  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
     /pgp-bin/og cn check-bam --header "$(cpath "$HDR")" || rc=$?
   rm -f "$HDR"
   if [ "$rc" -eq 4 ]; then
@@ -150,16 +150,15 @@ GQ_FLOOR=${PYPGX_GQ_FLOOR:-20}
 # og pgx cyp2d6-bed). Beside the verdict, og pgx cyp2d6-measure counts the
 # MAPQ >= 20 depth and the gene body without REP6 from the BAM, as the PYPGX
 # module does; it runs in the pypgx image, where the Python it replaced ran.
-# og runs from its output directory with relative paths, so bin/og's shadow
-# mode (OG_SHADOW, set only in CI: tests/parity/README.md) can run that Python
-# beside it. A missing og stops the step (exit 127), even in `measure`.
+# The measurement uses relative paths for the parity oracle (OG_SHADOW).
+# A missing og stops the step (exit 127), even in `measure`.
 DEPTH_DIR="${OUTPUT_DIR}/cyp2d6_depth"
 CHECK="${OUTPUT_DIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
 SHARES="${DEPTH_DIR}/mapq_shares.tsv"
 mkdir -p "$DEPTH_DIR"
 rm -f "$CHECK" "$SHARES"
 echo "CYP2D6 depth check..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "${OG_IMAGE}" \
   /pgp-bin/og pgx cyp2d6-bed > "${DEPTH_DIR}/regions.bed"
 for Q in 0 1; do
   run_in --cpus 2 --memory 2g "${MOSDEPTH_IMAGE}" \
@@ -177,7 +176,7 @@ else
   echo "WARNING: the MAPQ >= 20 and gene-body depth at CYP2D6 was not measured; the check says 'not measured'"
   rm -f "$SHARES"
 fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "${OG_IMAGE}" \
   /pgp-bin/og pgx cyp2d6-check \
     --all cyp2d6_depth/q0.regions.bed.gz \
     --mapq1 cyp2d6_depth/q1.regions.bed.gz \
@@ -197,7 +196,7 @@ if [ "${#NEED[@]}" -gt 0 ]; then
   for n in "${NEED[@]}"; do CONTIGS+=("${n#*$'\t'}"); done
   rc=0
   # The BAM's contig names, from its header (og bam contigs).
-  REFS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" /pgp-bin/og bam contigs "$(cpath "$BAM")") || rc=$?
+  REFS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" /pgp-bin/og bam contigs "$(cpath "$BAM")") || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "ERROR: could not read the contigs of ${BAM} (exit ${rc})" >&2
     exit 1

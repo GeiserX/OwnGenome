@@ -32,7 +32,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image BCFTOOLS_IMAGE PYTHON_IMAGE WHATSHAP_IMAGE
+require_image BCFTOOLS_IMAGE OG_IMAGE WHATSHAP_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 GVCF="${S}/vcf/${SAMPLE}.g.vcf.gz"
@@ -118,7 +118,7 @@ else
 fi
 
 echo "[3/3] Reading each genotype and each rule against the tables..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
   /pgp-bin/og traits table --table /pgp-assets/traits.tsv --rules /pgp-assets/genotype_rules.tsv \
     --genotypes "$(cpath "$GENOTYPES")" ${PHASE_ARGS[@]+"${PHASE_ARGS[@]}"} --sample "$SAMPLE" \
     --out "$(cpath "$OUT")" --rules-out "$(cpath "$RULES_OUT")"

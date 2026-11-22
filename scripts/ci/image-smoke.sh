@@ -814,6 +814,7 @@ run_row() {  # run_row INDEX K
   start=$(date +%s)
   local -a args=(run --rm --env-file "$ENV_FILE" -e HOME=/tmp -v "${IN}:/in:ro" -v "${SMOKE_DIR}:/smoke:ro"
                  -v "${ROW_DIR}:/out" -w /out --entrypoint sh)
+  if [ "$var" = OG_IMAGE ]; then args+=(-v "${REPO}/bin:/pgp-bin:ro"); fi
   # An image may set a non-root USER, so root is asked for, not assumed.
   if has_opt "$opts" root; then args+=(--user 0:0); else args+=(--user "$ME"); fi
   has_opt "$opts" net || args+=(--network none)
