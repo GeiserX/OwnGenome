@@ -41,7 +41,7 @@ pub fn hhv6_reading<'a>(reading: &'a str, found: &[Value]) -> &'a str {
             |row| matches!(row, Value::Object(fields) if is_str(fields.get("call"), BELOW_THRESHOLD)),
         )
     {
-        "no evidence of inherited integrated HHV-6 in these reads"
+        "no integration detected"
     } else {
         reading
     }

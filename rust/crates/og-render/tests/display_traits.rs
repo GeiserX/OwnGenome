@@ -84,7 +84,7 @@ fn viral_reads_below_threshold_do_not_read_as_a_positive_or_a_negative() {
     for report in reports("viral", data) {
         assert!(report.contains("below threshold"));
         assert!(report.contains("under the 10 a call needs"));
-        assert!(report.contains("no evidence of inherited integrated HHV-6 in these reads"));
+        assert!(report.contains("no integration detected"));
         assert!(!report.contains("No read on any"));
     }
 }
