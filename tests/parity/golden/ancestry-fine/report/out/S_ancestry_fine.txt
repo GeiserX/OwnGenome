@@ -1,0 +1,29 @@
+Fine-grained ancestry of S (step 26b)
+Reference panel: test; 37 of the 40 SNVs ADMIXTURE uses genotyped
+
+Left out of the model: Oceania (continental and regional group), Southern Africa (regional group). The panel has fewer than 10 unrelated
+reference people for it, too few to stand for a population, so the model has no such group and
+any ancestry from it is spread over the groups below.
+
+Continental groups (projection on the frequencies of 3 groups, 11 bootstrap replicates):
+  West Eurasia (Europe, Middle East, North Africa)     90%  (80% to 90%)
+  East Asia                                             5%  (5% to 5%)
+  Africa                                                5%  (5% to 15%)
+
+Regional groups (projection on the frequencies of 4 groups, 7 bootstrap replicates):
+  Iberia                                               60%  (55% to 67%)
+  Italy                                                39%  (32% to 44%)
+
+Chromosome painting (RFMix, continental groups) of chr2, chr20, chrX: share of the 546.0 Mb painted on the two haplotypes
+  West Eurasia (Europe, Middle East, North Africa)     59%
+  East Asia                                            18%
+  Oceania                                              18%
+  Africa                                                5%
+  Not painted: RFMix failed on chr3, chr19 (the step's log has its last lines).
+
+What this means: each name is a group of reference populations we put together and named,
+not a nationality. The fractions say which groups your genome is most similar to; the range
+after each is the 2.5 to 97.5 percentile of the bootstrap. Continental groups are well apart;
+neighbouring regions are not: splits within Iberia are weak for every method, and Greek and
+Southern Italian ancestry overlap (the panel has no Greek population at all). Read a regional
+fraction with its range, never as one exact percentage. See docs/26b-ancestry-fine.md.
