@@ -95,19 +95,25 @@ fn post(port: u16, path: &str, body: &str, extra: &[(&str, &str)]) -> Resp {
     raw(port, &head, body.as_bytes())
 }
 
-/// The first line of the answer to a hand-made request, or "" when the
-/// server closed without one.
+/// The first line of the answer to a hand-made request, read up to its
+/// line break; what came before the server closed or went quiet when it
+/// sent no whole line ("" for nothing).
 fn status_line(port: u16, head: &str, body: &[u8]) -> String {
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     let _ = s.write_all(head.as_bytes());
     let _ = s.write_all(body);
+    let mut got = Vec::new();
     let mut buf = [0u8; 200];
-    let n = s.read(&mut buf).unwrap_or(0);
-    String::from_utf8_lossy(&buf[..n])
-        .split("\r\n")
-        .next()
-        .unwrap_or("")
+    while !got.contains(&b'\n') {
+        match s.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+        }
+    }
+    let end = got.iter().position(|&b| b == b'\n').unwrap_or(got.len());
+    String::from_utf8_lossy(&got[..end])
+        .trim_end_matches('\r')
         .to_owned()
 }
 
@@ -267,31 +273,34 @@ fn a_session_ends_after_its_hours_or_idle_minutes() {
     let w = Work::new("expire");
     make_root(&w);
     let mut c = locked_config(&w);
+    // The limits are seconds long and every wait passes them by a second,
+    // so a slow machine cannot turn a right answer into a wrong one.
     let mut a = Auth::new(c.auth.hash.clone());
-    a.session_idle_minutes = 0.01; // 0.6 s
+    a.session_idle_minutes = 3.0 / 60.0; // 3 s
     c.auth = Arc::new(a);
     let srv = start(c);
     let p = srv.port();
     let (_, cookie) = login(p, PASSWORD);
     let cookie = cookie.unwrap();
     assert_eq!(with_cookie(p, "GET", "/runs.json", &cookie).status, 200);
-    thread::sleep(Duration::from_millis(900));
+    thread::sleep(Duration::from_secs(4));
     assert_eq!(with_cookie(p, "GET", "/runs.json", &cookie).status, 401);
     let w2 = Work::new("expire-hours");
     make_root(&w2);
     let mut c = locked_config(&w2);
     let mut a = Auth::new(c.auth.hash.clone());
-    a.session_hours = 0.0002; // 0.72 s
+    a.session_hours = 3.0 / 3600.0; // 3 s
     c.auth = Arc::new(a);
     let srv = start(c);
     let p = srv.port();
     let (_, cookie) = login(p, PASSWORD);
+    let logged_in = Instant::now();
     let cookie = cookie.unwrap();
     for _ in 0..3 {
         assert_eq!(with_cookie(p, "GET", "/runs.json", &cookie).status, 200);
-        thread::sleep(Duration::from_millis(150));
+        thread::sleep(Duration::from_millis(300));
     }
-    thread::sleep(Duration::from_millis(600));
+    thread::sleep((logged_in + Duration::from_secs(4)).saturating_duration_since(Instant::now()));
     assert_eq!(
         with_cookie(p, "GET", "/runs.json", &cookie).status,
         401,
@@ -642,4 +651,122 @@ fn a_silent_client_does_not_hold_up_https_and_the_cookie_is_secure() {
         b"",
     );
     assert!(!line.starts_with("HTTP/"), "{line}");
+}
+
+#[test]
+fn a_short_body_is_refused_and_a_broken_tail_never_joins_a_message() {
+    let (w, srv) = locked_site("ingest-short");
+    let ip = srv.ingest_port().expect("an ingest listener");
+    let path = ingest_path(&w, RUN);
+    let message = r#"{"event":"started"}"#;
+    // The body ends before its Content-Length: nothing is stored.
+    let mut s = TcpStream::connect(("127.0.0.1", ip)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let head = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{message}",
+        message.len() + 20
+    );
+    s.write_all(head.as_bytes()).unwrap();
+    s.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut answer = String::new();
+    let _ = s.read_to_string(&mut answer);
+    assert!(answer.starts_with("HTTP/1.1 400 "), "{answer}");
+    assert!(!events_path(&w, RUN).exists(), "a cut-off body was stored");
+    // An events file that ends mid-line (a write that failed part way):
+    // the next message still gets a line of its own.
+    let p = events_path(&w, RUN);
+    fs::create_dir_all(p.parent().unwrap()).unwrap();
+    fs::write(&p, r#"{"event":"sta"#).unwrap();
+    assert_eq!(post(ip, &path, message, &[]).status, 200);
+    let text = fs::read_to_string(&p).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines, [r#"{"event":"sta"#, message], "{text:?}");
+}
+
+#[test]
+fn every_x_forwarded_for_field_counts_and_the_last_entry_is_the_client() {
+    let w = Work::new("xff-fields");
+    make_root(&w);
+    let mut c = locked_config(&w);
+    c.trust_proxy = vec![auth::Net::parse("127.0.0.1/32").unwrap()];
+    let srv = start(c);
+    let p = srv.port();
+    let body = b"password=wrong&next=/";
+    let head = format!(
+        "POST /login HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nContent-Type: \
+         application/x-www-form-urlencoded\r\nX-Forwarded-For: 198.51.100.7\r\n\
+         X-Forwarded-For: 203.0.113.9\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    raw(p, &head, body);
+    let rows = log_rows(&w);
+    assert!(
+        rows.iter().any(|r| r[1] == "203.0.113.9"),
+        "the proxy's own field names the client: {rows:?}"
+    );
+    assert!(!rows.iter().any(|r| r[1] == "198.51.100.7"), "{rows:?}");
+}
+
+#[test]
+fn the_bound_address_must_be_loopback_without_a_password_and_always_for_ingest() {
+    let w = Work::new("bound-any");
+    make_root(&w);
+    let mut c = config(&w);
+    c.bind = "0.0.0.0".into();
+    let e = Server::start(c)
+        .err()
+        .expect("no password and an address off loopback");
+    assert!(e.contains("not loopback"), "{e}");
+    let w2 = Work::new("bound-ingest-any");
+    make_root(&w2);
+    let mut c = locked_config(&w2);
+    c.ingest = Some(("0.0.0.0".into(), 0));
+    let e = Server::start(c).err().expect("an ingest port off loopback");
+    assert!(e.contains("not loopback"), "{e}");
+}
+
+#[test]
+fn a_tls_client_that_sends_a_byte_at_a_time_is_cut_off_after_the_handshake_limit() {
+    let w = Work::new("tls-trickle");
+    make_root(&w);
+    let Some((cert, key)) = test_certificate(&w.dir) else {
+        return;
+    };
+    let mut c = locked_config(&w);
+    c.tls = Some((cert, key));
+    let srv = start(c);
+    let mut s = TcpStream::connect(("127.0.0.1", srv.port())).unwrap();
+    s.set_read_timeout(Some(Duration::from_millis(900)))
+        .unwrap();
+    // A handshake record that says 512 bytes follow, then one byte a second:
+    // every read gets a byte well within the socket timeout.
+    let began = Instant::now();
+    let _ = s.write_all(&[0x16, 0x03, 0x01, 0x02, 0x00, 0x01]);
+    let mut closed = None;
+    while began.elapsed() < Duration::from_secs(16) {
+        let mut buf = [0u8; 64];
+        match s.read(&mut buf) {
+            Ok(0) => {
+                closed = Some(began.elapsed());
+                break;
+            }
+            Ok(_) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
+            Err(_) => {
+                closed = Some(began.elapsed());
+                break;
+            }
+        }
+        if s.write_all(&[0]).is_err() {
+            closed = Some(began.elapsed());
+            break;
+        }
+    }
+    let closed = closed.expect("the server still held the handshake after 16 s");
+    assert!(closed < Duration::from_secs(13), "closed after {closed:?}");
 }

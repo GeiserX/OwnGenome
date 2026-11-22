@@ -21,7 +21,7 @@ use pycompat::json::{self, Value};
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -223,6 +223,18 @@ fn token_shape(t: &str) -> bool {
 /// value someone chose) is replaced with a new random token.
 pub fn token(state_dir: &Path) -> Result<String, String> {
     let path = state_dir.join(TOKEN_FILE);
+    let err = |e: io::Error| format!("{}: {e}", path.display());
+    // Two servers started at once on one state folder must end with the
+    // same token: one reads or writes it at a time (the lock ends with the
+    // file handle).
+    let guard = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(state_dir.join(format!("{TOKEN_FILE}.lock")))
+        .map_err(err)?;
+    guard.lock().map_err(err)?;
     if let Ok(meta) = fs::symlink_metadata(&path)
         && meta.file_type().is_file()
         && meta.permissions().mode() & 0o077 == 0
@@ -231,7 +243,6 @@ pub fn token(state_dir: &Path) -> Result<String, String> {
     {
         return Ok(text.trim().to_owned());
     }
-    let err = |e: io::Error| format!("{}: {e}", path.display());
     let t = new_token().map_err(err)?;
     let tmp = state_dir.join(format!("{TOKEN_FILE}.{}", std::process::id()));
     let _ = fs::remove_file(&tmp);
@@ -244,6 +255,7 @@ pub fn token(state_dir: &Path) -> Result<String, String> {
     f.write_all(format!("{t}\n").as_bytes()).map_err(err)?;
     drop(f);
     fs::rename(&tmp, &path).map_err(err)?;
+    drop(guard);
     Ok(t)
 }
 
@@ -253,15 +265,33 @@ const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<r
 /// One writer at a time for every events file.
 static APPEND: Mutex<()> = Mutex::new(());
 
-/// Appends message `ev` to `run`'s events file.
+/// Appends message `ev` to `run`'s events file, as a line of its own: a
+/// write that fails part way is cut off again, and a file that still ends
+/// in the middle of a line (the cut failed too) gets a line break first, so
+/// the broken line is skipped on reading and never joins this message.
 pub fn append(live: &Live, run: &str, ev: &Value) -> io::Result<()> {
     let p = live.store.path(run);
     let _g = lock(&APPEND);
     if let Some(d) = p.parent() {
         fs::create_dir_all(d)?;
     }
-    let mut f = OpenOptions::new().create(true).append(true).open(p)?;
-    f.write_all(format!("{}\n", dumps_compact(ev)).as_bytes())
+    let mut f = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(p)?;
+    let start = f.metadata()?.len();
+    let mut line = format!("{}\n", dumps_compact(ev));
+    if start > 0 {
+        let mut last = [0u8];
+        f.read_exact_at(&mut last, start - 1)?;
+        if last[0] != b'\n' {
+            line.insert(0, '\n');
+        }
+    }
+    f.write_all(line.as_bytes()).inspect_err(|_| {
+        let _ = f.set_len(start);
+    })
 }
 
 /// The answer: `code` and one line of text.
@@ -340,7 +370,7 @@ fn answer(
         return (413, "too large".into());
     }
     let mut raw = Vec::with_capacity(n as usize);
-    if body.take(n as u64).read_to_end(&mut raw).is_err() {
+    if body.take(n as u64).read_to_end(&mut raw).is_err() || raw.len() as i64 != n {
         return (400, "not a message: the body was cut off".into());
     }
     let ev = match parse(&raw) {
@@ -397,6 +427,32 @@ mod tests {
 
     fn obj(text: &str) -> Value {
         json::loads(text).unwrap()
+    }
+
+    #[test]
+    fn servers_started_together_on_one_state_folder_get_one_token() {
+        let dir = std::env::temp_dir().join(format!("og-live-token-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let go = Arc::new(std::sync::Barrier::new(8));
+        let all: Vec<String> = (0..8)
+            .map(|_| {
+                let (dir, go) = (dir.clone(), Arc::clone(&go));
+                thread::spawn(move || {
+                    go.wait();
+                    token(&dir).unwrap()
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect();
+        let on_disk = fs::read_to_string(dir.join(TOKEN_FILE)).unwrap();
+        assert!(
+            all.iter().all(|t| *t == on_disk.trim()),
+            "{all:?} {on_disk}"
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

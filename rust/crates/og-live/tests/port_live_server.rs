@@ -680,7 +680,13 @@ fn the_command_line_refuses_what_it_cannot_do_yet() {
         let code = server::cli(&args, &mut out, &mut err);
         (code, String::from_utf8_lossy(&err).into_owned())
     };
-    let (code, err) = run(&["--root", &root, "--bind", "0.0.0.0", "--port", "0"]);
+    // Through configure_with with no hash: an exported
+    // OWNGENOME_LIVE_PASSWORD_HASH would let cli start and never return.
+    let bind_any: Vec<String> = ["--root", &root, "--bind", "0.0.0.0", "--port", "0"]
+        .iter()
+        .map(|x| (*x).to_owned())
+        .collect();
+    let (code, err) = server::configure_with(&bind_any, None).err().unwrap();
     assert!(code == 2 && err.contains("password"), "{code} {err}");
     let (code, err) = run(&["--root", &root, "--password-file", "/nonexistent"]);
     assert!(code == 1 && err.contains("password hash"), "{code} {err}");

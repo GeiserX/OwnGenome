@@ -20,7 +20,7 @@ use std::net::{IpAddr, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The rounds `hash-password` writes.
 pub const ITERATIONS: u32 = 600_000;
@@ -159,16 +159,26 @@ pub fn verify_password(password: &str, encoded: &str) -> bool {
 
 /// The hash from `--password-file` (else `env`, the value of
 /// `OWNGENOME_LIVE_PASSWORD_HASH`): `None` for none set, an error for a file
-/// that cannot be read or a value that is not a hash line.
+/// that cannot be read, an empty file (a login was asked for) or a value
+/// that is not a hash line.
 pub fn read_password_hash(
     file: Option<&Path>,
     env: Option<&str>,
 ) -> Result<Option<String>, String> {
     let h = match file {
-        Some(p) => std::fs::read_to_string(p)
-            .map_err(|e| format!("{}: {e}", p.display()))?
-            .trim()
-            .to_owned(),
+        Some(p) => {
+            let h = std::fs::read_to_string(p)
+                .map_err(|e| format!("{}: {e}", p.display()))?
+                .trim()
+                .to_owned();
+            if h.is_empty() {
+                return Err(format!(
+                    "{}: the file is empty: write a hash into it with 'og live serve hash-password'",
+                    p.display()
+                ));
+            }
+            h
+        }
         None => env.unwrap_or("").trim().to_owned(),
     };
     if h.is_empty() {
@@ -307,7 +317,10 @@ impl Auth {
     pub fn new_session(&self) -> io::Result<String> {
         let token = new_token()?;
         let t = now();
-        lock(&self.sessions).insert(
+        let mut all = lock(&self.sessions);
+        // A cookie that is never shown again would keep its session here.
+        all.retain(|_, s| !self.expired(*s, t));
+        all.insert(
             session_id(&token),
             Session {
                 created: t,
@@ -356,8 +369,12 @@ impl Auth {
     pub fn reserve_attempt(&self, client: &str) -> bool {
         let t = now();
         let mut all = lock(&self.failures);
+        // Clients that never come back must not grow the table.
+        all.retain(|_, f| {
+            f.retain(|x| t - x < FAIL_WINDOW_SECONDS);
+            !f.is_empty()
+        });
         let f = all.entry(client.to_owned()).or_default();
-        f.retain(|x| t - x < FAIL_WINDOW_SECONDS);
         if f.len() >= self.login_max_failures {
             return false;
         }
@@ -599,19 +616,63 @@ pub fn tls_config(cert: &Path, key: &Path) -> Result<Arc<rustls::ServerConfig>, 
     Ok(Arc::new(cfg))
 }
 
+/// A socket whose every read and write gets only what is left of one
+/// deadline, so many slow steps cannot stretch the time past it.
+struct Deadline<'a> {
+    tcp: &'a TcpStream,
+    end: Instant,
+}
+
+impl Deadline<'_> {
+    /// The time left, set as the socket's timeouts; an error once it is gone.
+    fn arm(&self) -> io::Result<()> {
+        let left = self.end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "TLS handshake took too long",
+            ));
+        }
+        self.tcp.set_read_timeout(Some(left))?;
+        self.tcp.set_write_timeout(Some(left))
+    }
+}
+
+impl Read for Deadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.arm()?;
+        (&*self.tcp).read(buf)
+    }
+}
+
+impl Write for Deadline<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.arm()?;
+        (&*self.tcp).write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        (&*self.tcp).flush()
+    }
+}
+
 /// A connection after its TLS handshake, done in the connection's own
-/// thread within [`TLS_HANDSHAKE`], so a client that connects and sends
-/// nothing holds up no other; `None` when the handshake fails.
+/// thread within [`TLS_HANDSHAKE`] in all, so a client that connects and
+/// sends nothing, or sends a byte at a time, holds up no other; `None` when
+/// the handshake fails.
 pub fn accept_tls(
     cfg: &Arc<rustls::ServerConfig>,
-    mut tcp: TcpStream,
+    tcp: TcpStream,
 ) -> Option<rustls::StreamOwned<rustls::ServerConnection, TcpStream>> {
     let mut conn = rustls::ServerConnection::new(Arc::clone(cfg)).ok()?;
+    let mut io = Deadline {
+        tcp: &tcp,
+        end: Instant::now() + TLS_HANDSHAKE,
+    };
+    while conn.is_handshaking() {
+        conn.complete_io(&mut io).ok()?;
+    }
     tcp.set_read_timeout(Some(TLS_HANDSHAKE)).ok()?;
     tcp.set_write_timeout(Some(TLS_HANDSHAKE)).ok()?;
-    while conn.is_handshaking() {
-        conn.complete_io(&mut tcp).ok()?;
-    }
     Some(rustls::StreamOwned::new(conn, tcp))
 }
 
@@ -695,6 +756,41 @@ mod tests {
         for bad in ["", "nope", "203.0.113.0/33", "203.0.113.0/x"] {
             assert!(Net::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_empty_password_file_is_refused_and_no_hash_means_no_login() {
+        let p = std::env::temp_dir().join(format!("og-live-empty-pw-{}", std::process::id()));
+        std::fs::write(&p, " \n").unwrap();
+        let e = read_password_hash(Some(&p), Some("")).unwrap_err();
+        assert!(e.contains("empty"), "{e}");
+        std::fs::remove_file(&p).unwrap();
+        assert_eq!(read_password_hash(None, Some("  ")), Ok(None));
+        assert_eq!(read_password_hash(None, None), Ok(None));
+    }
+
+    #[test]
+    fn expired_sessions_and_old_failures_of_clients_gone_for_good_are_dropped() {
+        let a = Auth::new(None);
+        let old = now() - 13.0 * 3600.0;
+        lock(&a.sessions).insert(
+            "gone".into(),
+            Session {
+                created: old,
+                seen: old,
+            },
+        );
+        a.new_session().unwrap();
+        let ids: Vec<String> = lock(&a.sessions).keys().cloned().collect();
+        assert_eq!(ids.len(), 1);
+        assert!(!ids.contains(&"gone".to_owned()));
+        lock(&a.failures).insert(
+            "198.51.100.7".into(),
+            vec![now() - FAIL_WINDOW_SECONDS - 1.0],
+        );
+        assert!(a.reserve_attempt("203.0.113.9"));
+        assert!(!lock(&a.failures).contains_key("198.51.100.7"));
+        assert_eq!(lock(&a.failures)["203.0.113.9"].len(), 1);
     }
 
     #[test]

@@ -894,11 +894,15 @@ fn serve_io(live: &Live, peer: &str, reader: &mut dyn BufRead, out: &mut dyn Wri
             return;
         }
     };
-    let forwarded_for = headers
+    // Every X-Forwarded-For field in the order sent, as one list: a proxy
+    // may add its entry as a field of its own.
+    let forwarded_for: Vec<&str> = headers
         .iter()
-        .find(|(k, _)| k == "x-forwarded-for")
-        .map(|(_, v)| v.as_str());
-    let client = auth::client(peer, forwarded_for, &live.cfg.trust_proxy);
+        .filter(|(k, _)| k == "x-forwarded-for")
+        .map(|(_, v)| v.as_str())
+        .collect();
+    let forwarded_for = (!forwarded_for.is_empty()).then(|| forwarded_for.join(","));
+    let client = auth::client(peer, forwarded_for.as_deref(), &live.cfg.trust_proxy);
     let mut req = Req {
         live,
         method: m.into(),
@@ -948,8 +952,23 @@ impl Server {
         };
         let listener = listen(&cfg.bind, cfg.port, "")?;
         let addr = listener.local_addr().map_err(|e| e.to_string())?;
+        // The address that was bound, not the name: with no password the
+        // site, and always the ingest port, stay on loopback.
+        if cfg.auth.hash.is_none() && !addr.ip().is_loopback() {
+            return Err(format!(
+                "--bind {} listens on {addr}, not loopback, and no password hash is set",
+                cfg.bind
+            ));
+        }
         let ingest_listener = match &cfg.ingest {
-            Some((bind, port)) => Some(listen(bind, *port, " for ingest")?),
+            Some((bind, port)) => {
+                let l = listen(bind, *port, " for ingest")?;
+                let a = l.local_addr().map_err(|e| e.to_string())?;
+                if !a.ip().is_loopback() {
+                    return Err(format!("--ingest-bind {bind} listens on {a}, not loopback"));
+                }
+                Some(l)
+            }
             None => None,
         };
         if ingest_listener.is_some() {
@@ -1291,10 +1310,20 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
     let hash = auth::read_password_hash(path("password_file").as_deref(), env_hash)
         .map_err(|e| (1, format!("ERROR: password hash: {e}")))?;
     let mut a = Auth::new(hash);
-    if let Some(h) = number::<f64>(&f, "session_hours", "float").map_err(usage)? {
+    // NaN or inf would make a login last for ever.
+    let limit = |k: &str| -> Result<Option<f64>, (u8, String)> {
+        match number::<f64>(&f, k, "float").map_err(usage)? {
+            Some(v) if !v.is_finite() => Err(usage(format!(
+                "argument --{}: invalid float value: '{v}'",
+                k.replace('_', "-")
+            ))),
+            v => Ok(v),
+        }
+    };
+    if let Some(h) = limit("session_hours")? {
         a.session_hours = h;
     }
-    if let Some(m) = number::<f64>(&f, "session_idle_minutes", "float").map_err(usage)? {
+    if let Some(m) = limit("session_idle_minutes")? {
         a.session_idle_minutes = m;
     }
     if let Some(n) = number::<usize>(&f, "login_max_failures", "int").map_err(usage)? {
@@ -1417,6 +1446,15 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     serve_cli(cfg, err)
 }
 
+/// `bind` as the host of a URL: an IPv6 address in brackets.
+fn url_host(bind: &str) -> String {
+    if bind.contains(':') && !bind.starts_with('[') {
+        format!("[{bind}]")
+    } else {
+        bind.to_owned()
+    }
+}
+
 /// Prints the start notes, starts the site of `cfg` and serves until the
 /// process ends; 1 when it cannot start.
 pub fn serve_cli(cfg: Config, err: &mut dyn Write) -> u8 {
@@ -1435,13 +1473,15 @@ pub fn serve_cli(cfg: Config, err: &mut dyn Write) -> u8 {
     };
     let _ = write!(
         err,
-        "og live serve: browser {scheme}://{bind}:{}/",
+        "og live serve: browser {scheme}://{}:{}/",
+        url_host(&bind),
         srv.port()
     );
     if let (Some(p), Some((ib, _))) = (srv.ingest_port(), &srv.live().cfg.ingest) {
         let _ = write!(
             err,
-            " ; ingest http://{ib}:{p}/<token>/ingest/<run> (the token is in {})",
+            " ; ingest http://{}:{p}/<token>/ingest/<run> (the token is in {})",
+            url_host(ib),
             srv.live().cfg.state_dir.join("ingest-token").display()
         );
     }
@@ -1484,7 +1524,7 @@ mod tests {
         assert!(cfg.quiet);
         assert_eq!(cfg.viewer_fasta.as_deref(), Some(Path::new("/r.fa")));
         assert_eq!(cfg.state_dir, dir.join(".owngenome-live"));
-        let refused = |a: &[&str]| configure(&args(a)).err().map(|e| e.0);
+        let refused = |a: &[&str]| configure_with(&args(a), None).err().map(|e| e.0);
         let root = dir.to_str().unwrap();
         assert_eq!(refused(&["--root", root, "--password-file", "/x"]), Some(1));
         assert_eq!(refused(&["--root", root, "--bind", "0.0.0.0"]), Some(2));
@@ -1493,6 +1533,18 @@ mod tests {
         assert_eq!(refused(&["--root", root, "--nope"]), Some(2));
         assert_eq!(refused(&["--port", "1"]), Some(2));
         assert_eq!(refused(&["--root", root, "--ingest-port", "8788"]), None);
+        for v in ["nan", "inf", "-inf"] {
+            assert_eq!(
+                refused(&["--root", root, "--session-hours", v]),
+                Some(2),
+                "{v}"
+            );
+            assert_eq!(
+                refused(&["--root", root, "--session-idle-minutes", v]),
+                Some(2),
+                "{v}"
+            );
+        }
         fs::write(&c, "nope=1\n").unwrap();
         assert_eq!(refused(&["--config", c.to_str().unwrap()]), Some(2));
         fs::remove_dir_all(&dir).unwrap();
