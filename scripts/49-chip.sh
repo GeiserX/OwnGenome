@@ -36,7 +36,7 @@ THREADS=${THREADS:-4}   # common.sh defaults to 8
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image GATK_IMAGE BCFTOOLS_IMAGE PYTHON_IMAGE
+require_image GATK_IMAGE BCFTOOLS_IMAGE OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 ALIGN_DIR=${ALIGN_DIR:-aligned}
@@ -66,7 +66,7 @@ mkdir -p "$OUTDIR"
 rm -f "${P}.tsv" "${P}_depth.tsv"
 # Containers see GENOME_DIR only: the table is copied beside the outputs.
 cp "$GENES" "${OUTDIR}/chip_genes.tsv"
-OG=(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" /pgp-bin/og chip)
+OG=(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" /pgp-bin/og chip)
 
 echo "[1/4] The CHIP genes' MANE Select transcripts and coding exons (Ensembl ${ENSEMBL_GFF_RELEASE})..."
 "${OG[@]}" prepare --gff "$(cpath "$GFF")" --genes "$(cpath "${OUTDIR}/chip_genes.tsv")" --fai "${REF_FASTA_C}.fai" \

@@ -1,6 +1,6 @@
 """owngenome_live_results.py: a person's results on the live site, a plugin of bin/owngenome_live.py.
 
-  GET /runs/<run>/results.json   bin/live_results.py's build() of the run's summary: the
+  GET /runs/<run>/results.json   og live results of the run's summary: the
                                  report's seven chapters, one card per section with its
                                  facts, its rows, its caveats and its attention flag, and
                                  the Journal's findings, levels, lead and ten sections
@@ -17,7 +17,10 @@ summary.json is never served: no run_file glob is added, and results.json holds
 what the report prints. Every request writes one access-log row.
 """
 import html
+import json
 import os
+import re
+import subprocess
 import sys
 import urllib.parse
 
@@ -25,6 +28,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 NAME = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+FINDING_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
+
+
+def og_results(summary, *args, files=(), og=None):
+    """Run the results command on a summary already read by Python."""
+    og = og or os.environ.get("OG") or os.path.join(HERE, "og")
+    paths = [arg for f in sorted(files) for arg in ("--file", f)]
+    p = subprocess.run([og, "live", "results", "-", *args, *paths],
+                       input=json.dumps(summary), text=True, capture_output=True, timeout=30, check=True)
+    return json.loads(p.stdout)
 
 
 def register(app):
@@ -38,12 +51,11 @@ def register(app):
         d = run["dir"] or os.path.join(live.root, name)
         out = {"schema_version": 1, "sample": name, "chapters": [], "note": None}
         try:
-            import live_results
             st = live.base_state(run)
             summary = live.summary(name, d, st)
             if summary:
                 files = live.run_files(run) if run["dir"] else set()
-                out = live_results.build(name, summary, files)
+                out = og_results(summary, "--sample", name, files=files)
                 # For a child whose report the server keeps closed (family.json leaves its count out): the
                 # flagged-card count of summary.json, as family.json counts it otherwise. The family page shows it
                 # once every result to act on is opened there (assets/live/core.js released).
@@ -76,11 +88,11 @@ def register(app):
         run = live.run(m.group(1))
         fid = m.group(2)
         ok = False
-        if run and run.get("kind") != "family" and live_results_mod().FINDING_ID.match(fid):
+        if run and run.get("kind") != "family" and FINDING_ID.match(fid):
             try:
                 d = run["dir"] or os.path.join(live.root, run["name"])
                 summary = live.summary(run["name"], d, live.base_state(run))
-                found = live_results_mod().build(run["name"], summary)["findings"] if summary else []
+                found = og_results(summary, "--sample", run["name"])["findings"] if summary else []
                 ok = any(f["id"] == fid for f in found) or (
                     any(f["level"] == "act" for f in found) and child_run(live, run["name"]))
             except Exception as e:  # a reader bug is a 404 here, never a 500
@@ -103,9 +115,3 @@ def child_run(live, name):
     """Whether the person page treats NAME as a child's run: the one rule of the page and the home page
     (bin/owngenome_live.py child_of)."""
     return live.child(name)
-
-
-def live_results_mod():
-    import live_results
-    return live_results
-

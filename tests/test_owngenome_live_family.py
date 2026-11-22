@@ -394,13 +394,13 @@ ACT_SUMMARY = {"sections": {"cpsr": {"state": "ok", "data": {"plp": [
 def finding_route_checks(live, get, root):
     """A child with a result to act on: every well-formed finding id answers the same page, so a guessed address
     cannot tell whether the child has that result. An adult keeps the plain 404 for an id that is not a finding."""
-    import live_results
+    from owngenome_live_results import og_results
     status = os.path.join(root, "loner", "logs", "run_status.tsv")
     with open(status, "w") as f:
         f.write("meta\tstarted_epoch\t1767347940\nstep\t06\tplanned\n")
     real = live.summary
     live.summary = lambda name, d, st: ACT_SUMMARY if name in ("child_a", "loner") else real(name, d, st)
-    act = next(f["id"] for f in live_results.build("child_a", ACT_SUMMARY)["findings"] if f["level"] == "act")
+    act = next(f["id"] for f in og_results(ACT_SUMMARY, "--sample", "child_a")["findings"] if f["level"] == "act")
 
     def answers(run):
         # The page names the id it was asked for (data-finding), as the address does: the rest is the same.
@@ -412,25 +412,24 @@ def finding_route_checks(live, get, root):
               [c[0] for c in child] == [200] * 3 and len({c[1] for c in child}) == 1, [c[0] for c in child])
         check("an adult's finding route: the page for its finding, 404 for any other id",
               [c[0] for c in adult] == [200, 404, 404], [c[0] for c in adult])
-        # The server loads its plugins itself: patch every loaded copy of the module.
-        mods = [m for m in list(sys.modules.values()) if getattr(m, "child_run", None) is not None and hasattr(m, "register")]
-        keep = [m.child_run for m in mods]
-        for m in mods:
-            m.child_run = lambda *a: False
+        # Patch the registered handler's plugin instance.
+        plugin = next(fn.__globals__ for method, route, fn, _ in live.app.routes
+                      if method == "GET" and route.fullmatch(f"/runs/child_a/finding/{act}/"))
+        keep = plugin["child_run"]
+        plugin["child_run"] = lambda *a: False
         try:
             control("a server that tells a child's guessed finding id apart",
-                    bool(mods) and [c[0] for c in answers("child_a")] == [200] * 3)
+                    [c[0] for c in answers("child_a")] == [200] * 3)
         finally:
-            for m, k in zip(mods, keep):
-                m.child_run = k
+            plugin["child_run"] = keep
     finally:
         live.summary = real
         os.remove(status)
 
 
 def browser_checks(port, work):
-    sys.path.insert(0, os.path.join(REPO, "tests"))
-    import test_owngenome_live as tpl
+    sys.path.insert(0, os.path.join(REPO, "tests", "browser"))
+    import cdp as tpl
     chrome = tpl.find_chrome()
     if not chrome:
         ci = os.environ.get("CI") == "true"
@@ -482,7 +481,7 @@ NO_ACT = {"sections": {"clinvar": {"state": "ok", "data": {"hits": []}}, "annots
 def gate_server_checks(live, get, root, port, work):
     """The report gate's server side and its live-mode requests (docstring, check 9)."""
     import owngenome_live
-    import live_results
+    from owngenome_live_results import og_results
     sys.path.insert(0, os.path.join(REPO, "tests"))
     fams = [{"name": "b", "members": [{"sample": "x", "father": None, "mother": None}]},
             {"name": "a", "members": [{"sample": "x", "father": "p", "mother": None}]},
@@ -537,7 +536,7 @@ def gate_server_checks(live, get, root, port, work):
         live.summary = real
         run("child_a")
         # The same two results to act on in one card or in two: the flagged-card count differs (0 and 1).
-        counts = [live_results.overview(x)["attention"] for x in (TWO_IN_ONE_CARD, TWO_CARDS)]
+        counts = [og_results(x, "--overview")["attention"] for x in (TWO_IN_ONE_CARD, TWO_CARDS)]
         assert counts[0] != counts[1], counts
         seen = []
         for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
@@ -547,13 +546,13 @@ def gate_server_checks(live, get, root, port, work):
               seen[0] == seen[1] and seen[0] and seen[0]["attention"] is None, seen)
         run("father_a", NO_ACT)
         n = family()["runs"]["father_a"]["attention"]
-        check("family.json: a child with no result to act on keeps its count", n == live_results.overview(NO_ACT)["attention"], n)
+        check("family.json: a child with no result to act on keeps its count", n == og_results(NO_ACT, "--overview")["attention"], n)
         flags = {k: v.get("child") for k, v in family()["runs"].items()}
         check("family.json: each member run says whether its pages treat it as a child, by the one rule",
               flags.get("father_a") is True and flags.get("gf_a") is False, flags)
         # A no-act child while summary.json is older than a finished step: the home page keeps the numbers it had
         # without the gate (summary.json's), as long as neither summary has a result to act on.
-        stale, now = live_results.overview(STALE_SUMMARY), live_results.overview(NO_ACT)
+        stale, now = og_results(STALE_SUMMARY, "--overview"), og_results(NO_ACT, "--overview")
         assert (stale["levels"], stale["top"], stale["lead"]) != (now["levels"], now["top"], now["lead"])
         run("father_a", STALE_SUMMARY)
         live.summary = lambda name, d, st: NO_ACT if name == "father_a" else real(name, d, st)
@@ -922,13 +921,13 @@ def family_gate_checks(b, base, live, run):
     its summary.json cannot be read. A person who is a child in one family and a partner in another is closed on both
     family pages, keeps the partner role there (no child counted, the couple line kept), and stays a child when the
     family where it is a partner sorts first (a child in any family is one)."""
-    import live_results
+    from owngenome_live_results import og_results
     # summary.json is older than the results the page reads: its count is the one family.json gives without the gate.
     saved = {"sections": dict(TWO_CARDS["sections"], **STALE_SUMMARY["sections"])}
     run("father_a", saved)
     prev = live.summary
     live.summary = lambda name, d, st: TWO_CARDS if name == "father_a" else prev(name, d, st)
-    n, now = live_results.overview(saved)["attention"], live_results.overview(TWO_CARDS)["attention"]
+    n, now = og_results(saved, "--overview")["attention"], og_results(TWO_CARDS, "--overview")["attention"]
     assert n and n != now, (n, now)
     gf = os.path.join(live.root, "gf_a", "summary.json")
     with open(gf, "w") as f:

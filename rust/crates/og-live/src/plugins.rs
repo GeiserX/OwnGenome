@@ -15,9 +15,8 @@
 //! | search  | [`crate::search`] | | `*_search_index.json` | |
 //! | viewer  | | `/runs/<run>/viewer/...` ([`crate::viewer`]) | | its links point here |
 //!
-//! The results are a seam ([`ResultsFns`]): `og live results` fills it when
-//! it lands. Until then `results.json` carries a note and no card, a
-//! finding's page is 404 and the map is not built.
+//! `og live serve` configures [`ResultsFns`] with the same producer as
+//! `og live results`.
 
 use crate::family::{self, inside, realpath};
 use crate::ops::{self, Asker, Ctx};
@@ -436,11 +435,11 @@ fn family_page(live: &Live, name: &str, d: &Path) -> Result<Value, String> {
 
 /// `GET /metrics`: every run's health in Prometheus' text format. Without a
 /// password the site is loopback only and `/metrics` is open, like every
-/// page.
+/// page; with one it needs a login or `--metrics-token-file`'s bearer token.
 fn metrics(req: &mut Req<'_>) -> io::Result<()> {
     let who = Asker {
-        login_required: false,
-        logged_in: false,
+        login_required: req.live.cfg.auth.hash.is_some(),
+        logged_in: req.sid.is_some(),
         authorization: req.header("authorization"),
     };
     let token = req.live.cfg.metrics_token_file.clone();

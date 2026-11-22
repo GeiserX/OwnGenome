@@ -97,7 +97,7 @@ Pipeline helpers (the steps run these):
   og family plan|prepare|check|report|segments [args]
   og family ibd [args]
   og consumer build-sites|export|check [args]
-  og ancestry-fine panel-map|check-map|sample-bed|chroms|report [args]
+  og ancestry-fine panel-map|check-map|chroms|report [args]
   og ancestry-fine freqs [args]
   og ancestry-fine project [args]
   og ancestry-fine paint [args]
@@ -187,7 +187,7 @@ const OWN_HELP: &[&str] = &[
     "qc sex-loss",
     "report render",
     "couple screen|genes",
-    "ancestry-fine panel-map|check-map|freqs|sample-bed|chroms|report|simulate",
+    "ancestry-fine panel-map|check-map|freqs|project|chroms|report|simulate",
     "archaic table|strict|genotypes|report",
     "vntyper report",
     "locityper report",
@@ -543,8 +543,18 @@ fn main() -> ExitCode {
             _ => usage_error("og summary takes collect"),
         },
         "report" => match rest.first().map(String::as_str) {
-            Some("render") => io(og_render::render::cli, &rest[1..]),
-            Some("index") => io(og_render::index::cli, &rest[1..]),
+            Some("render") => io(
+                |args, out, err| {
+                    og_render::render::cli_with_spans(args, out, err, og_live::results::closable_of)
+                },
+                &rest[1..],
+            ),
+            Some("index") => io(
+                |args, out, err| {
+                    og_render::index::cli_using(args, out, err, og_live::results::closable_of)
+                },
+                &rest[1..],
+            ),
             Some("charts") => io(og_render::charts::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown report tool '{other}'")),
             None => usage_error("the following arguments are required: report tool"),

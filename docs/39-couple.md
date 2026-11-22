@@ -59,7 +59,7 @@ A ClinVar hit in a gene outside the list (a gene with only a dominant condition,
 
 ## Docker Image
 
-- `PYTHON_IMAGE`
+- `OG_IMAGE`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 

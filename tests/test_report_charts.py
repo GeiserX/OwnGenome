@@ -34,6 +34,7 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
@@ -105,13 +106,70 @@ def demo_checks(work):
           page.count('<a id="clinvar-hits"></a>') == 1 and len(re.findall(r"<tr><td>chr", page)) >= 50)
 
 
+# The Python live server and its genome folder for check 10, moved from
+# tests/test_owngenome_live.py (its checks are cargo tests of og live serve now).
+FIX = os.path.join(REPO, "tests", "fixtures", "live")
+RUN = "DEMO-001"
+PASSWORD = "synthetic test password 7"
+
+
+def make_root(work):
+    root = os.path.join(work, "genome")
+    d = os.path.join(root, RUN)
+    shutil.copytree(os.path.join(FIX, RUN), d)
+    os.makedirs(os.path.join(d, "clinvar"))
+    os.makedirs(os.path.join(d, "extra"))
+    with open(os.path.join(d, "clinvar", "hits.tsv"), "w") as f:
+        f.write("gene\tvariant\nGENEA\tchr1:100 A>G\n")
+    with open(os.path.join(d, "clinvar", "unlinked.tsv"), "w") as f:
+        f.write("not linked\n")
+    with open(os.path.join(d, "extra", "note.txt"), "w") as f:
+        f.write("plugin file\n")
+    outside = os.path.join(work, "outside.txt")
+    with open(outside, "w") as f:
+        f.write("outside the root\n")
+    os.symlink(outside, os.path.join(d, "clinvar", "escape.tsv"))
+    # The report links CPSR's folder, which holds its HTML report and its table
+    os.makedirs(os.path.join(d, "cpsr"))
+    with open(os.path.join(d, "cpsr", f"{RUN}.cpsr.grch38.html"), "w") as f:
+        f.write("<!doctype html><title>CPSR</title>\n")
+    with open(os.path.join(d, "cpsr", f"{RUN}.cpsr.grch38.classification.tsv.gz"), "w") as f:
+        f.write("not linked\n")
+    os.makedirs(os.path.join(d, "twopages"))
+    for n in ("a.html", "b.html"):
+        with open(os.path.join(d, "twopages", n), "w") as f:
+            f.write("<!doctype html>\n")
+    with open(os.path.join(d, f"{RUN}_report.html"), "w") as f:
+        f.write('<!doctype html><html><head><style>body{color:#eee}</style></head><body>'
+                '<a href="clinvar/hits.tsv">hits</a> <a href="clinvar/escape.tsv">escape</a> '
+                '<a href="cpsr/">the cpsr folder</a> <a href="twopages/">two pages</a> '
+                '<a href="https://example.org/x">outside</a></body></html>\n')
+    return root
+
+
+def serve(argv, app=None):
+    import owngenome_live
+    live, web, ingest = owngenome_live.start(argv, app)
+    for s in (web, ingest):
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    return live, web, ingest
+
+
+def stop(*servers):
+    for live, web, ingest in servers:
+        live.stopping = True
+        web.shutdown()
+        ingest.shutdown()
+        web.server_close()
+        ingest.server_close()
+
+
 def page_problems(b, base, run):
     """What is wrong with the live page's charts after a sign-in, from a click on a ClinVar tick."""
-    import test_owngenome_live as tl
     b.go(f"{base}/runs/{run}/")
     if not b.wait("location.pathname === '/login' && !!document.getElementById('password')"):
         return ["no login form"]
-    b.eval(f"document.getElementById('password').value = {json.dumps(tl.PASSWORD)}; "
+    b.eval(f"document.getElementById('password').value = {json.dumps(PASSWORD)}; "
            "document.querySelector('form').submit(); true")
     if not b.wait(f"location.pathname === '/runs/{run}/' && document.documentElement.dataset.pgpStatus === 'ready'"):
         return ["the run page did not load"]
@@ -170,21 +228,21 @@ def live_checks(work, charts_file):
     if not os.path.isfile(os.path.join(REPO, "bin", "owngenome_live.py")):
         print("[SKIP] 10. the live page in Chrome: bin/owngenome_live.py is not on this branch")
         return
-    sys.path.insert(0, os.path.join(REPO, "tests"))
+    sys.path.insert(0, os.path.join(REPO, "tests", "browser"))
+    import cdp
     import owngenome_live
-    import test_owngenome_live as tl
-    chrome = tl.find_chrome()
+    chrome = cdp.find_chrome()
     if not chrome:
         ci = os.environ.get("CI") == "true"
         print(("[FAIL] " if ci else "[SKIP] ") + "10. no Chrome or Chromium to load the live page in")
         if ci:
             check("10. Chrome in CI", False)
         return
-    root = tl.make_root(work)
-    shutil.copy(charts_file, os.path.join(root, tl.RUN, f"{tl.RUN}_charts.json"))
+    root = make_root(work)
+    shutil.copy(charts_file, os.path.join(root, RUN, f"{RUN}_charts.json"))
     pw = os.path.join(work, "password")
     with open(pw, "w") as f:
-        f.write(owngenome_live.hash_password(tl.PASSWORD) + "\n")
+        f.write(owngenome_live.hash_password(PASSWORD) + "\n")
     bare = os.path.join(work, "assets-without-charts")
     shutil.copytree(os.path.join(REPO, "assets", "live"), bare)
     os.remove(os.path.join(bare, "plugins", "charts.js"))
@@ -192,13 +250,13 @@ def live_checks(work, charts_file):
         argv = ["--root", root, "--state-dir", os.path.join(work, f"state-{tag}"), "--port", "0", "--ingest-port",
                 "0", "--password-file", pw, "--assets", assets, "--quiet"]
         with contextlib.redirect_stderr(io.StringIO()):
-            srv = tl.serve(argv, owngenome_live.App())
-        b = tl.Chrome(chrome, os.path.join(work, f"chrome-{tag}"))
+            srv = serve(argv, owngenome_live.App())
+        b = cdp.Chrome(chrome, os.path.join(work, f"chrome-{tag}"))
         try:
-            problems = page_problems(b, f"http://127.0.0.1:{srv[1].server_address[1]}", tl.RUN)
+            problems = page_problems(b, f"http://127.0.0.1:{srv[1].server_address[1]}", RUN)
         finally:
             b.close()
-            tl.stop(srv)
+            stop(srv)
         if tag == "live":
             check("10. live page: five charts; a click on a ClinVar tick opens the panel with its caveat and a "
                   "viewer/# link; nothing fetched off the origin; nothing blocked", problems == [], problems)

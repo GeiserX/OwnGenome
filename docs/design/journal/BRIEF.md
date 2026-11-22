@@ -15,7 +15,7 @@ The owner's verdict on today's site is that the UI and the UX are both bad. You 
   - Variant ids, HGVS and coordinates: `ui-monospace, "SF Mono", Menlo, monospace`.
   - Charts, numbers and figures stay in the sans. (The dataviz guidance says "no serif anywhere". The owner wants a serif for headings, so the serif goes in page headings only, never inside a chart.)
 - **Screenshots.** Playwright, headless Chromium. Desktop is 1440x900 with `fullPage: true`. Mobile is 390x844 at `deviceScaleFactor: 2`. Name files `NN-screen.png`.
-- **The site's own honesty rules stay** (`docs/live-site.md`; they are tested in `tests/test_live_results.py`):
+- **The site's honesty rules** are described in `docs/live-site.md`. `rust/crates/og-live/tests/results_journal.rs` and the `live_results_veil` browser test cover the journal's wording and gates.
   - **Never an all-clear.** No page says "normal", "fine", "healthy" or "nothing found" about a person's health. An empty section reads *"No finding in what this step assessed"*, followed by its caveat and what it does not see.
   - **APOE stays behind a gate** that the person opens on purpose.
   - **Polygenic scores show only with an ancestry-matched percentile.**

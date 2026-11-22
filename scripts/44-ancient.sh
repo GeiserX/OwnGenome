@@ -31,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image BCFTOOLS_IMAGE PYTHON_IMAGE EIGENSOFT_IMAGE
+require_image BCFTOOLS_IMAGE OG_IMAGE EIGENSOFT_IMAGE
 
 PANEL=${ANCIENT_PANEL_DIR:-${GENOME_DIR}/reference/ancient/aadr_${AADR_VERSION}}
 if [ "$PANEL" = none ] || [ ! -s "${PANEL}/DONE" ]; then
@@ -79,7 +79,7 @@ run_in --cpus 2 --memory 4g "$BCFTOOLS_IMAGE" \
   || { echo "ERROR: step 44 could not genotype ${GVCF} at the panel's sites (the line above says why)." >&2; exit 1; }
 
 echo "[2/4] Adding ${SAMPLE} to the present-day panel..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og ancient person-geno --sites "${P}/sites_grch38.tsv" --genotypes "${W}/genotypes.tsv" \
     --snp "${P}/moderns.snp" --moderns-geno "${P}/moderns.geno" --out "${W}/merged.geno" --stats "${W}/stats.tsv"
 { cat "${PANEL}/moderns.ind"; printf '%s\tU\tPerson\n' "$SAMPLE"; } > "${WORK}/merged.ind"
@@ -94,7 +94,7 @@ run_in --cpus "$THREADS" --memory 8g "$EIGENSOFT_IMAGE" smartpca -p "${W}/run.pa
   || { tail -n 20 "${WORK}/smartpca.log" >&2; echo "ERROR: smartpca failed (log: ${WORK}/smartpca.log)." >&2; exit 1; }
 
 echo "[4/4] The nearest ancient groups..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og ancient report --panel-evec "${P}/panel.evec" --run-evec "${W}/run.evec" \
     --ancients "${P}/ancients.tsv" --sample "$SAMPLE" --release "$RELEASE" --stats "${W}/stats.tsv" \
     --out-tsv "${O}/${SAMPLE}_ancient.tsv" --out-info "${O}/${SAMPLE}_ancient_info.tsv" \

@@ -230,7 +230,7 @@
     });
   }
   function random() { var b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] / 4294967296; }
-  // The results to act on, one record each: the findings of level "act" (bin/live_results.py). null when unreadable.
+  // The results to act on, one record each: the findings of level "act" from og live results. null when unreadable.
   function actsOf(r) {
     if (!r || !Array.isArray(r.findings)) { return null; }
     var acts = [], seen = {};

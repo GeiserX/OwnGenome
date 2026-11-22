@@ -141,6 +141,7 @@ image	HAPPY_IMAGE	BENCHMARK	-	benchmark-variants.sh
 image	YLEAF_IMAGE	y_haplogroup	-	step 37
 image	HIPSTR_IMAGE	y_str	-	step 45
 image	OPTITYPE_IMAGE	HLA_QC	-	step 08 with HLA_QC=true
+image	PYTHON_IMAGE	cyrius	-	step 21, pulled by setup.sh --cyrius
 image	PARASCOPY_IMAGE	parascopy	-	step 35
 image	PARAPHASE_IMAGE	paraphase	-	step 35b
 image	MEGANE_IMAGE	mei	-	step 50

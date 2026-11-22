@@ -104,7 +104,7 @@ pub fn findings_count() -> [(&'static str, Vec<Piece>); 3] {
     ]
 }
 
-/// The page's words for a level (`LEVEL_WORDS` in bin/live_results.py).
+/// The page's words for a level, as used by `og live results`.
 pub fn level_words(level: &str) -> &'static str {
     match level {
         "act" => "Take to a doctor",

@@ -212,7 +212,7 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
       exit "$(( RC > 0 ? RC : 1 ))"
     fi
     cp "$OUT" "$OT_RESULT"
-    run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+    run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
       /pgp-bin/og pgx hla-concordance \
         --t1k "/genome/${SAMPLE}/hla_t1k/${SAMPLE}_hla_genotype.tsv" \
         --optitype "/genome/${SAMPLE}/hla_optitype/${SAMPLE}_optitype_result.tsv" \

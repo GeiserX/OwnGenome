@@ -61,7 +61,7 @@ DEPTH="${S}/pypgx/${SAMPLE}_cyp2d6_depth_check.tsv"
 input "CYP2D6 depth check" --depth-check "$DEPTH"
 
 rm -f "$CALLS" "$CONSENSUS"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
   /pgp-bin/og pgx outside-calls \
     --calls "$(cpath "$CALLS")" \
     --consensus "$(cpath "$CONSENSUS")" \

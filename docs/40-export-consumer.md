@@ -14,11 +14,11 @@ The step writes files on this machine and sends nothing anywhere. Uploading one 
 
 ## Tool
 
-- `og consumer export` (this repository, `rust/crates/og-steps`), part of OwnGenome's Rust binary `og` (`scripts/setup.sh --og` builds it; [Rust tools](rust.md)). It walks the gVCF once, reading the BGZF file on up to 4 cores, and runs in `PYTHON_IMAGE`, which only supplies the Linux userland.
+- `og consumer export` (this repository, `rust/crates/og-steps`), part of OwnGenome's Rust binary `og` (`scripts/setup.sh --og` builds it; [Rust tools](rust.md)). It walks the gVCF once, reading the BGZF file on up to 4 cores, and runs in `OG_IMAGE`, the stock Ubuntu runtime.
 
 ## Docker Image
 
-- `PYTHON_IMAGE`
+- `OG_IMAGE`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 

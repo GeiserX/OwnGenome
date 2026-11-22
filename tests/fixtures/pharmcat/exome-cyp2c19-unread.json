@@ -1,0 +1,59 @@
+{
+ "pharmcatVersion": "3.4.0",
+ "genes": {
+  "CYP2C19": {
+   "geneSymbol": "CYP2C19",
+   "chr": "chr10",
+   "callSource": "MATCHER",
+   "sourceDiplotypes": [
+    {
+     "allele1": {"name": "*1"},
+     "allele2": {"name": "*1"},
+     "label": "*1/*1",
+     "phenotypes": ["Normal Metabolizer"]
+    }
+   ],
+   "relatedDrugs": [{"name": "clopidogrel"}],
+   "variants": [
+    {"gene": "CYP2C19", "chromosome": "chr10", "position": 94761900, "dbSnpId": "rs12248560", "call": "C/C", "alleles": ["*17"], "phased": false, "referenceAllele": "C", "hasUndocumentedVariations": false, "warnings": []},
+    {"gene": "CYP2C19", "chromosome": "chr10", "position": 94780653, "dbSnpId": "rs4986893", "call": "G/G", "alleles": ["*3"], "phased": false, "referenceAllele": "G", "hasUndocumentedVariations": false, "warnings": []},
+    {"gene": "CYP2C19", "chromosome": "chr10", "position": 94781859, "dbSnpId": "rs4244285", "call": null, "alleles": ["*2"], "phased": false, "referenceAllele": "G", "hasUndocumentedVariations": false, "warnings": []}
+   ]
+  },
+  "CYP2C9": {
+   "geneSymbol": "CYP2C9",
+   "chr": "chr10",
+   "callSource": "MATCHER",
+   "sourceDiplotypes": [
+    {
+     "allele1": {"name": "*1"},
+     "allele2": {"name": "*2"},
+     "label": "*1/*2",
+     "phenotypes": ["Intermediate Metabolizer"]
+    }
+   ],
+   "relatedDrugs": [{"name": "warfarin"}],
+   "variants": [
+    {"gene": "CYP2C9", "chromosome": "chr10", "position": 94942290, "dbSnpId": "rs1799853", "call": "C/T", "alleles": ["*2"], "phased": false, "referenceAllele": "C", "hasUndocumentedVariations": false, "warnings": []},
+    {"gene": "CYP2C9", "chromosome": "chr10", "position": 94981296, "dbSnpId": "rs1057910", "call": null, "alleles": ["*3"], "phased": false, "referenceAllele": "A", "hasUndocumentedVariations": false, "warnings": []}
+   ]
+  },
+  "CYP3A5": {
+   "geneSymbol": "CYP3A5",
+   "chr": "chr7",
+   "callSource": "MATCHER",
+   "sourceDiplotypes": [
+    {
+     "allele1": {"name": "*3"},
+     "allele2": {"name": "*3"},
+     "label": "*3/*3",
+     "phenotypes": ["Poor Metabolizer"]
+    }
+   ],
+   "relatedDrugs": [{"name": "tacrolimus"}],
+   "variants": [
+    {"gene": "CYP3A5", "chromosome": "chr7", "position": 99672916, "dbSnpId": "rs776746", "call": "C/C", "alleles": ["*3"], "phased": false, "referenceAllele": "T", "hasUndocumentedVariations": false, "warnings": []}
+   ]
+  }
+ }
+}

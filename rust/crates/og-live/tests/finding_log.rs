@@ -8,7 +8,7 @@
 //! serves; the check runs that site on a made-up run with one ClinVar hit in
 //! an invented gene. A control runs the same site with the route's old log
 //! line (the finding id in the section column): the check must fail there.
-//! A check that cannot fail is no check.
+//! Set OG or run cargo build -p og before running this test on its own.
 
 use pycompat::json::{Value, loads};
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ fn make_run(root: &Path) {
 /// Starts the Python site on a new made-up run (`plugin_dir` in place of
 /// `bin/` for its plugins when given), opens the run's one finding page,
 /// and returns the finding's id and the access log.
-fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
+fn open_finding(og: &Path, plugin_dir: Option<&Path>) -> Result<(String, String), String> {
     let base = tmp();
     let root = base.join("root");
     let state_dir = base.join("state");
@@ -140,6 +140,7 @@ fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
             "--quiet",
         ])
         .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
+        .env("OG", og)
         .stdout(Stdio::null())
         .stderr(std::fs::File::create(&err_log).unwrap());
     if let Some(d) = plugin_dir {
@@ -169,7 +170,12 @@ fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
             Some(Value::Str(id)) => id.clone(),
             other => return Err(format!("the first finding has no id: {other:?}")),
         },
-        other => return Err(format!("results.json has no findings: {other:?}")),
+        other => {
+            return Err(format!(
+                "results.json has no findings ({other:?}). {}",
+                why()
+            ));
+        }
     };
     match get(port, &format!("/runs/{RUN}/finding/{fid}/")) {
         Some((200, _)) => {}
@@ -228,7 +234,20 @@ fn opening_a_finding_page_writes_no_finding_id_into_the_access_log() {
         eprintln!("bin/owngenome_live.py is gone: the Python site check retired with it");
         return;
     }
-    let (fid, log) = open_finding(None).unwrap_or_else(|e| panic!("{e}"));
+    let Some(og) = std::env::var_os("OG")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            let test = std::env::current_exe().ok()?;
+            let binary = test.parent()?.parent()?.join("og");
+            binary.is_file().then_some(binary)
+        })
+    else {
+        assert_ne!(std::env::var("CI").as_deref(), Ok("true"), "build og in CI");
+        eprintln!("[SKIP] build og to check the finding access log");
+        return;
+    };
+    let (fid, log) = open_finding(&og, None).unwrap_or_else(|e| panic!("{e}"));
     let bad = log_problems(&fid, &log);
     assert!(bad.is_empty(), "{bad:?}\n{log}");
 
@@ -244,7 +263,7 @@ fn opening_a_finding_page_writes_no_finding_id_into_the_access_log() {
         src.replacen(FIXED, OLD, 1),
     )
     .unwrap();
-    let (fid, log) = open_finding(Some(&dir)).unwrap_or_else(|e| panic!("control: {e}"));
+    let (fid, log) = open_finding(&og, Some(&dir)).unwrap_or_else(|e| panic!("control: {e}"));
     assert!(
         !log_problems(&fid, &log).is_empty(),
         "the check passed the route that logs the finding id:\n{log}"

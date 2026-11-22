@@ -137,7 +137,7 @@ if [ ! -s "${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz" ]; then
   echo "ERROR: NuMTFilterTool wrote no ${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz" >&2
   exit 1
 fi
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og mito annotate \
     --vcf "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz" \
     --clinvar "$(cpath "$CLINVAR_VCF")" \
@@ -148,7 +148,7 @@ run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
 echo "[7/8] mtDNA copy number (chrM against autosomal reads, from the BAM index)..."
 run_in --cpus 1 --memory 1g "$SAMTOOLS_IMAGE" \
   bash -c "samtools idxstats /genome/${SAMPLE}/aligned/${SAMPLE}_sorted.bam > /genome/${SAMPLE}/mito/${SAMPLE}_idxstats.txt"
-run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og mito copies \
     --idxstats "/genome/${SAMPLE}/mito/${SAMPLE}_idxstats.txt" \
     --out "/genome/${SAMPLE}/mito/${SAMPLE}_mtdna_copies.tsv"
@@ -172,7 +172,7 @@ CSV=$(find "${EK_DIR}/out" -name eKLIPse_deletions.csv | head -n 1)
 if [ -z "$CSV" ]; then
   echo "  WARNING: eKLIPse exited 0 but wrote no eKLIPse_deletions.csv under ${EK_DIR}/out: no deletion table."
 else
-  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og mito deletions \
       --eklipse "/genome/${SAMPLE}/mito/eklipse/out/${CSV#"${EK_DIR}/out/"}" \
       --out "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_deletions.tsv"

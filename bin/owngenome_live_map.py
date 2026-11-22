@@ -35,14 +35,15 @@ NO_OG = "The map needs og on this host: run scripts/setup.sh --og\n"
 
 def results_body(live, run):
     """What GET /runs/<run>/results.json sends (bin/owngenome_live_results.py), built the same way."""
-    import live_results
+    from owngenome_live_results import og_results
     name = run["name"]
     d = run["dir"] or os.path.join(live.root, name)
     summary = live.summary(name, d, live.base_state(run))
     if not summary:
         return {"schema_version": 1, "sample": name, "chapters": [],
                 "note": "No step has finished yet: the results appear here as the steps end."}
-    return live_results.build(name, summary, live.run_files(run) if run["dir"] else set())
+    files = live.run_files(run) if run["dir"] else set()
+    return og_results(summary, "--sample", name, files=files)
 
 
 def relay(app, req, args, stdin, run, section):

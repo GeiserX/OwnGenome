@@ -12,7 +12,7 @@ STR expansions cause ~40 known neurological/neuromuscular diseases including Hun
 
 ## Docker Image
 - `EXPANSIONHUNTER_IMAGE`
-- `PYTHON_IMAGE` (setup only) runs the converter, `og str catalog`
+- `OG_IMAGE` (setup only) runs the converter, `og str catalog`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 

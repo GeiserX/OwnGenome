@@ -71,7 +71,8 @@ process COUPLE_CARRIER {
     og couple screen --pedigree pedigree.tsv --genes carrier_genes.tsv --par-bed ${par_bed} \\
         ${args} ${ex} ${bn} ${sx} --out-dir .
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -79,6 +80,6 @@ process COUPLE_CARRIER {
     """
     touch couple_${pair.join('_')}.tsv couple_${pair.join('_')}.md
     ${pair.collect { i -> "touch ${i}_couple_carrier.tsv" }.join('\n    ')}
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

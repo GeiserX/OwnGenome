@@ -31,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image MOCHA_IMAGE BEAGLE_IMAGE PYTHON_IMAGE
+require_image MOCHA_IMAGE BEAGLE_IMAGE OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 OUTDIR="${S}/mosaic"
@@ -146,7 +146,7 @@ run_in --cpus 2 --memory 8g "$MOCHA_IMAGE" bash -euo pipefail -c '
 echo "  $(cat "${W}/mocha_version.txt")"
 
 echo "[4/4] Calls above the floor (og mocha report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og mocha report --sample "$SAMPLE" --calls "${O}_mocha_calls_raw.tsv" --stats "${O}_mocha_stats.tsv" \
     --sites "${O}_mocha_sites.tsv" --phasing "$PHASING" --out-calls "${O}_mocha.tsv" --out-summary "${O}_mocha_summary.tsv"
 cp "${W}/mocha.log" "${P}_mocha.log"

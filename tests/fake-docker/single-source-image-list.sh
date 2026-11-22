@@ -7,8 +7,10 @@
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
 COPY="${CASE_WORK}/repo"
-mkdir -p "$COPY"
+mkdir -p "${COPY}/rust"
 cp -R "${REPO_ROOT}/scripts" "${REPO_ROOT}/versions.env" "$COPY/"
+cp "${REPO_ROOT}/rust/og.sh" "${COPY}/rust/"
+ln -s "${REPO_ROOT}/bin" "${COPY}/bin"
 cat >> "${COPY}/versions.env" <<'ENV'
 FOO_IMAGE="example/foo:1.0"
 BAR_IMAGE="example/bar:2.0"  # optional: a tool no default step runs

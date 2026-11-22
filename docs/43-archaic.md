@@ -38,7 +38,7 @@ So the frequency IBDmix uses at a site is (the stand-ins' ALT count + yours) / 2
 
 ## Docker Image
 
-- `IBDMIX_IMAGE` for IBDmix, `PYTHON_IMAGE` for the genotype files and the report
+- `IBDMIX_IMAGE` for IBDmix, `OG_IMAGE` for the genotype files and the report
 - `setup.sh --archaic` also uses `BCFTOOLS_IMAGE` and `PICARD_IMAGE` (the liftover)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.

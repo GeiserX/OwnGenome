@@ -974,10 +974,10 @@ else
   fi
 
   # An opt-in step's image (`# optional` in versions.env) matters once its
-  # data is installed: setup.sh --parascopy-data, --yleaf-data and
-  # --ancestry-fine-panel pull it.
+  # data or the tool is installed. The corresponding setup.sh flag pulls it.
   if [ -n "${GENOME_DIR:-}" ]; then
-    for opt in "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
+    for opt in "PYTHON_IMAGE|21|tools/cyrius-${CYRIUS_VERSION}/INSTALLED|cyrius" \
+               "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
                "YLEAF_IMAGE|37|reference/yleaf-${YLEAF_DATA_VERSION}/data/hg38/new_positions.txt|yleaf-data" \
                "ADMIXTURE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
                "BEAGLE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
@@ -995,18 +995,20 @@ else
 fi
 
 # --- OwnGenome's og binary (bin/.og, scripts/setup.sh --og) ---
-# One built from another rust/ than this checkout's would give results from
-# other code than the checkout says, so it fails; none at all is a note until
-# a step calls og (rust/og.sh, REQUIRED).
 header "OwnGenome binary"
-# A partial copy of the scripts (some tests make one) has no rust/og.sh.
-OG_MSG="NOTE: rust/og.sh is not here, so og was not checked"
-[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || true
-case "$OG_MSG" in
-  OK:*) pass "${OG_MSG#OK: }" ;;
-  NOTE:*) info "${OG_MSG#NOTE: }" ;;
-  *) fail "${OG_MSG#ERROR: }" ;;
-esac
+# A single build is enough on x86_64. Check both when both were installed,
+# or on Arm where tools may run in amd64 images under emulation.
+og_arches="${OG_ARCHES:-x86_64 aarch64}"
+if [ -z "${OG_ARCHES:-}" ] && [ "$(uname -m)" = x86_64 ] && [ ! -e "${PGP_ROOT}/bin/.og/og-linux-aarch64" ]; then
+  og_arches=x86_64
+fi
+if [ ! -x "${PGP_ROOT}/bin/og" ]; then
+  fail "bin/og is missing or not executable. Restore it from the checkout and run scripts/setup.sh --og."
+elif OG_MSG=$(OG_ARCHES="$og_arches" bash "${PGP_ROOT}/rust/og.sh" check --required 2>&1); then
+  pass "${OG_MSG#OK: }"
+else
+  fail "${OG_MSG#ERROR: }"
+fi
 
 ###############################################################################
 # 5. Sample Data (optional — only if $1 is provided)

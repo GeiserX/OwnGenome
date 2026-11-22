@@ -42,7 +42,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image EXOMISER_IMAGE PYTHON_IMAGE
+require_image EXOMISER_IMAGE OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 OUTDIR="${S}/exomiser"
@@ -98,7 +98,7 @@ mkdir -p "$OUTDIR"
 rm -f "${P}"* "${OUTDIR}/${SAMPLE}_analysis.yml"
 O=$(cpath "$OUTDIR")
 echo "[1/3] HPO terms and the analysis (og exomiser prepare)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
   /pgp-bin/og exomiser prepare --hpo "$HPO" ${OBO:+--obo "$(cpath "$OBO")"} --sample "$SAMPLE" \
     --vcf "$(cpath "$VCF")" --assembly "$ASSEMBLY" --out-dir "$O" --analysis "${O}/${SAMPLE}_analysis.yml" \
     --terms "$(cpath "${P}_terms.tsv")" ${ARGS[@]+"${ARGS[@]}"}
@@ -112,7 +112,7 @@ run_in --cpus "$THREADS" --memory "${MEM}g" --entrypoint /usr/local/bin/exomiser
   "$EXOMISER_IMAGE" analyse --analysis "${O}/${SAMPLE}_analysis.yml"
 [ -f "${P}.variants.tsv" ] || { echo "ERROR: Exomiser wrote no ${P}.variants.tsv" >&2; exit 1; }
 echo "[3/3] The top genes in words..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
   /pgp-bin/og exomiser report --sample "$SAMPLE" --variants "${O}/${SAMPLE}_exomiser.variants.tsv" \
     --terms "$(cpath "${P}_terms.tsv")" --out "$(cpath "${P}_top.tsv")" --text "$(cpath "${P}.txt")"
 

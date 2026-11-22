@@ -122,7 +122,7 @@ if [ ! -f "$CONSENSUS" ]; then
   # call. Step 07's MT-RNR1 outside call comes from step 20, not step 36, so it
   # is not listed and never asks for step 36. A report it cannot read lists
   # nothing: the parser below then writes its PARSING FAILED report.
-  STEP36_OUTSIDE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+  STEP36_OUTSIDE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
     /pgp-bin/og pgx step36-outside --report "$(cpath "$PHARMCAT_JSON")" | paste -sd' ' -) \
     || STEP36_OUTSIDE=""
 fi
@@ -147,7 +147,7 @@ echo "Parsing PharmCAT results..."
 rm -f "$OUTPUT" "${OUTDIR}/${SAMPLE}_phenotypes.tsv"
 RC=0
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" \
-  ${MED_MOUNT[@]+"${MED_MOUNT[@]}"} "${PYTHON_IMAGE}" \
+  ${MED_MOUNT[@]+"${MED_MOUNT[@]}"} "${OG_IMAGE}" \
   /pgp-bin/og pgx cpic-report \
     --sample "$SAMPLE" \
     --report "$(cpath "$PHARMCAT_JSON")" \

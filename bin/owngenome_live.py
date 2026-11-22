@@ -69,6 +69,7 @@ REPO = os.path.dirname(HERE)
 ASSETS = os.path.join(REPO, "assets", "live")
 sys.path.insert(0, HERE)
 import run_state  # noqa: E402
+from owngenome_live_results import og_results  # noqa: E402
 
 PBKDF2_ITERATIONS = 600000
 COOKIE = "owngenome_live"
@@ -545,8 +546,8 @@ class Live:
         self.streams = threading.BoundedSemaphore(cfg.max_streams)
         self.headline_cache = {}
         self.attention_cache = {}
-        self.live_overview = {}  # run -> (the headline cache key, live_results.overview of that summary)
-        self.summary_overviews = {}  # run -> (the summary summary() gave, live_results.overview of it)
+        self.live_overview = {}  # run -> (the headline cache key, og live results --overview of that summary)
+        self.summary_overviews = {}  # run -> (the summary summary() gave, og live results --overview of it)
         self.allowed = set(LOOPBACK_HOSTS) | {h.lower() for h in cfg.allowed_host or []}
         if cfg.bind not in ("0.0.0.0", "::"):
             self.allowed.add(cfg.bind.strip("[]").lower())
@@ -810,7 +811,7 @@ class Live:
         return (o["attention"] if o else None), mtime
 
     def overview(self, d):
-        """(live_results.overview of <run>/summary.json, mtime), cached by its mtime; (None, None) without one:
+        """(og live results --overview of <run>/summary.json, mtime), cached by its mtime; (None, None) without one:
         the attention count, the counts by level, the first findings and the lead the home page shows."""
         p = os.path.join(d, "summary.json") if d else None
         if not p or not self.inside(p, os.path.realpath(d)) or not self.inside(p, self.root):
@@ -825,9 +826,8 @@ class Live:
             return hit[1], mtime
         n = None
         try:
-            import live_results
             with open(p) as f:
-                n = live_results.overview(json.load(f))
+                n = og_results(json.load(f), "--overview")
         except Exception as e:  # one bad file must not take the home page down
             print(f"owngenome_live: {os.path.basename(os.path.dirname(p))}/summary.json not read: {type(e).__name__}",
                   file=sys.stderr)
@@ -840,7 +840,7 @@ class Live:
         return child_of([r for r in (runs or self.runs()).values() if r.get("kind") == "family"], name)
 
     def summary_overview(self, name, d, st):
-        """live_results.overview of the summary results.json reads now (summary()), cached with that summary;
+        """og live results --overview of the summary results.json reads now (summary()), cached with that summary;
         None while there is none."""
         s = self.summary(name, d, st)
         if not s:
@@ -848,8 +848,7 @@ class Live:
         hit = self.summary_overviews.get(name)
         if not hit or hit[0] is not s:
             try:
-                import live_results
-                hit = (s, live_results.overview(s))
+                hit = (s, og_results(s, "--overview"))
             except Exception as e:  # one bad summary must not take a page down
                 print(f"owngenome_live: overview of {name} not built: {type(e).__name__}", file=sys.stderr)
                 hit = (s, None)
@@ -906,8 +905,7 @@ class Live:
                     lo = self.live_overview.get(name)
                     if not lo or lo[0] != hit[0]:
                         try:
-                            import live_results
-                            lo = (hit[0], live_results.overview(hit[2]))
+                            lo = (hit[0], og_results(hit[2], "--overview"))
                         except Exception as e:  # one bad summary must not take the home page down
                             print(f"owngenome_live: overview of {name} not built: {type(e).__name__}", file=sys.stderr)
                             lo = (hit[0], None)

@@ -37,7 +37,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image PYTHON_IMAGE SAMTOOLS_IMAGE
+require_image OG_IMAGE SAMTOOLS_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 BAM="${S}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam"
@@ -59,7 +59,7 @@ rm -f "$TABLE" "$DEPTH" "$DEPTH_Q1" "$PILEUP" "$NULL" "$BED" "$SITES"
 
 echo "[1/3] The regions (og cn bed --locus LPA_KIV2) and the 4925G>A sites..."
 # shellcheck disable=SC2016  # $1 and $2 belong to the inner shell
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
   sh -c '/pgp-bin/og cn bed --locus LPA_KIV2 > "$1" &&
     /pgp-bin/og cn marker-regions LPA_KIV2_4925 > "$2"' _ "$(cpath "$BED")" "$(cpath "$SITES")"
 
@@ -91,7 +91,7 @@ echo "[3/3] The count, its interval and KIV-2 4925G>A beside it (og cn call --lo
 # then says not assessed, and the step goes on. The LPA process writes the
 # same table.
 rc=0
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
   /pgp-bin/og cn call --locus LPA_KIV2 --bedcov "$(cpath "$DEPTH")" \
     --bedcov-mapq1 "$(cpath "$DEPTH_Q1")" --table "$(cpath "$TABLE")" \
     --marker LPA_KIV2_4925 --marker-pileup "$(cpath "$PILEUP")" --marker-out "$(cpath "$NULL")" || rc=$?

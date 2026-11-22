@@ -13,8 +13,8 @@
 #                       how to install it
 #   steps 21 and 32     run the CYP2D6 depth check with og (og pgx cyp2d6-bed,
 #                       -measure in step 32, -check) from their output
-#                       directory with relative outputs and OG_SHADOW passed
-#                       on, and never the Python it replaced;
+#                       directory with relative outputs. The bed and check
+#                       use OG_IMAGE and the measurement keeps its parity oracle;
 #                       mark a CYP2D6 call when the depth check fails, and a
 #                       caller that stops after writing its result leaves no
 #                       call where step 36 reads it
@@ -117,8 +117,8 @@ if grep -q 'pip install' <<<"$RUNS"; then fail "step 21 still installs with pip"
 og_runs() {  # og_runs STEP OUTDIR: the depth check runs og from OUTDIR, never the Python
   local verb
   for verb in bed check; do
-    grep -q -- "-e OG_SHADOW -w ${2} .*/pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
-      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} with OG_SHADOW passed on: ${RUNS}"
+    grep -Fq -- "-w ${2} ${OG_IMAGE} /pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
+      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} in OG_IMAGE: ${RUNS}"
   done
   grep -q -- "--all cyp2d6_depth/q0.regions.bed.gz --mapq1 cyp2d6_depth/q1.regions.bed.gz" <<<"$RUNS" \
     || fail "$1 did not give og pgx cyp2d6-check relative inputs"
@@ -129,7 +129,7 @@ og_runs "step 21" /genome/sample1/cyrius
 # --- step 36 and step 07 ----------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 consensus "${SCRIPTS}/36-pgx-consensus.sh" sample1
-grep -q '^run image=[^ ]*python[^ ]* :: .*/pgp-bin/og pgx outside-calls --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv' \
+grep -q "^run image=${OG_IMAGE//./\\.} :: .*/pgp-bin/og pgx outside-calls --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv" \
   "$FAKE_DOCKER_LOG" || fail "step 36 did not run og pgx outside-calls"
 grep -q -- '--cyrius /genome/sample1/cyrius/sample1_cyp2d6.tsv' "$FAKE_DOCKER_LOG" || fail "step 36 did not read Cyrius's TSV"
 
