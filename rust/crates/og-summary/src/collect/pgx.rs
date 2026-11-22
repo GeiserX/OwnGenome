@@ -174,7 +174,7 @@ impl Cpic {
     }
 
     pub fn to_json(&self) -> Value {
-        obj([
+        let mut pairs = vec![
             (
                 "genes",
                 Value::Array(
@@ -195,12 +195,23 @@ impl Cpic {
             ("ambiguous", self.count("ambiguous")),
             ("not_called", self.count("not called")),
             ("unclassified", self.count("unclassified")),
+        ];
+        // The genes whose call rests on positions PharmCAT never read
+        // (step 27's `incomplete`). Written only when there is one, so a
+        // summary without such a gene stays as it was; a reader takes a
+        // missing count as 0.
+        let incomplete = self.count("incomplete");
+        if incomplete != Value::Int(0) {
+            pairs.push(("incomplete", incomplete));
+        }
+        pairs.extend([
             ("parse_failed", Value::Bool(self.parse_failed)),
             (
                 "warnings",
                 Value::Array(self.warnings.iter().cloned().map(Value::Str).collect()),
             ),
-        ])
+        ]);
+        obj(pairs)
     }
 }
 
@@ -561,7 +572,10 @@ impl Cyp2d6 {
         let pharmcat = match pc {
             Some(g) => {
                 let st = &g.status;
-                if matches!(st, Value::Str(s) if s == "not called" || s == "ambiguous") {
+                // A call that is not one result, or that rests on positions
+                // PharmCAT never read, shows as its status.
+                if matches!(st, Value::Str(s) if s == "not called" || s == "ambiguous" || s == "incomplete")
+                {
                     st.clone()
                 } else {
                     g.diplotype.clone()
