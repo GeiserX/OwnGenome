@@ -49,11 +49,16 @@ impl Drop for Scratch {
 /// `og pgx cpic-report` on the report text: (exit code, recommendations
 /// text, phenotypes table).
 fn run(name: &str, report: &str) -> (u8, String, String) {
+    run_with(name, report, None)
+}
+
+/// The same, with step 32's pypgx summary when one is given.
+fn run_with(name: &str, report: &str, pypgx: Option<&str>) -> (u8, String, String) {
     let s = Scratch::new(name);
     let rep = s.0.join("report.json");
     fs::write(&rep, report).unwrap();
     let out = s.0.join("out");
-    let args: Vec<String> = [
+    let mut args: Vec<String> = [
         "cpic-report",
         "--sample",
         "S",
@@ -66,6 +71,11 @@ fn run(name: &str, report: &str) -> (u8, String, String) {
     ]
     .map(str::to_owned)
     .to_vec();
+    if let Some(tsv) = pypgx {
+        let p = s.0.join("pypgx.tsv");
+        fs::write(&p, tsv).unwrap();
+        args.extend(["--pypgx".to_owned(), p.to_string_lossy().into_owned()]);
+    }
     let rc = og_pgx::main(&args);
     (
         rc,
@@ -246,8 +256,11 @@ fn only_an_unread_position_that_defines_an_allele_counts() {
         format!(r#"{{"position": 94781859, "dbSnpId": "rs4244285"{call}, "alleles": ["*2"]}}"#)
     };
     for (call, why) in [
-        ("", "no call field (PharmCAT leaves a null out)"),
-        (r#", "call": null"#, "a null call"),
+        ("", "no call field, read the same as a null"),
+        (
+            r#", "call": null"#,
+            "a null call, as PharmCAT 3.4.0 writes it",
+        ),
         (r#", "call": "  ""#, "a blank call"),
     ] {
         assert_eq!(
@@ -314,4 +327,11 @@ fn not_called_ambiguous_and_outside_genes_are_left_as_they_were() {
         "ambiguous",
         "several possible results stay ambiguous"
     );
+}
+
+#[test]
+fn a_pypgx_call_of_an_incomplete_gene_is_shown_with_the_unread_positions() {
+    let pypgx = "Gene\tDiplotype\tPhenotype\nCYP2C19\t*1/*2\tIntermediate Metabolizer\n";
+    let (_, text, _) = run_with("pypgx", &fixture("exome-cyp2c19-unread.json"), Some(pypgx));
+    assert!(text.contains("  WARNING: PharmCAT has a call that rests on positions it never read (rs4244285) for CYP2C19, but pypgx (step 32) called *1/*2 (Intermediate Metabolizer)."), "{text}");
 }
