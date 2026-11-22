@@ -10,8 +10,10 @@
 //! another account on the machine cannot post fake progress. Nextflow's
 //! weblog cannot send a header, so the token is the first part of the
 //! path: `OWNGENOME_LIVE_URL=http://127.0.0.1:8788/<token>`. The state
-//! folder must be the server account's own ([`trusted_dir`]), and no file
-//! in it is opened through a symlink.
+//! folder and the run folders in it must be the server account's own
+//! ([`trusted_dir`]), and no file in them is opened through a symlink. The
+//! locks that order two writers are on mode 600 lock files (`lock_file`),
+//! never on a folder, so no other account can take them.
 
 use crate::auth::{new_token, same_secret};
 use crate::runs::valid_run;
@@ -21,14 +23,14 @@ use crate::viewer::unquote;
 use indexmap::IndexMap;
 use pycompat::json::{self, Value};
 use rustix::fs::{AtFlags, Mode, OFlags};
-use std::fs::File;
+use std::fs::{File, TryLockError};
 use std::io::{self, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::fs::{FileExt, MetadataExt};
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// The weblog's task fields kept. The work directory and the parameters
 /// other than [`PARAM_KEYS`] are paths or personal: they never reach a page.
@@ -263,23 +265,123 @@ pub fn trusted_dir(dir: &Path) -> Result<File, String> {
     }
 }
 
-/// The folder `name` in `parent`, made (mode 755) when missing, never
-/// through a symlink.
-fn sub_dir(parent: &File, name: &str) -> io::Result<File> {
+/// `e` with the path `shown` in front.
+fn at(shown: &Path, e: io::Error) -> io::Error {
+    io::Error::new(e.kind(), format!("{}: {e}", shown.display()))
+}
+
+/// The folder `name` in `parent` (`shown` is its path, for errors), made
+/// (mode 755, less under a stricter umask) when missing, never through a
+/// symlink. Like the state folder, it must be the server account's own: in
+/// a folder another account can write to, that account could put a hard
+/// link to any file the server can write.
+fn sub_dir(parent: &File, name: &str, shown: &Path) -> io::Result<File> {
     match rustix::fs::mkdirat(
         parent,
         name,
         Mode::RWXU | Mode::RGRP | Mode::XGRP | Mode::ROTH | Mode::XOTH,
     ) {
         Ok(()) | Err(rustix::io::Errno::EXIST) => {}
-        Err(e) => return Err(e.into()),
+        Err(e) => return Err(at(shown, e.into())),
     }
-    open_at(
+    let f = open_at(
         parent,
         name,
         OFlags::RDONLY | OFlags::DIRECTORY,
         Mode::empty(),
     )
+    .map_err(|e| at(shown, e))?;
+    if own(&f).map_err(|e| at(shown, e))? {
+        Ok(f)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} must be owned by the account the server runs as, and no other account may \
+                 write to it: chown it to this account and run 'chmod go-w {}'",
+                shown.display(),
+                shown.display()
+            ),
+        ))
+    }
+}
+
+/// The lock file of the token, in the state folder.
+const TOKEN_LOCK: &str = "ingest-token.lock";
+/// The lock file of a run's events file, in the run's folder.
+const EVENTS_LOCK: &str = "events.jsonl.lock";
+
+/// How long a writer waits for a lock another one holds. A writer holds it
+/// only while it reads or replaces the token, or appends one message, so a
+/// lock held longer is a stuck process: the wait ends in an error, never a
+/// silent hang.
+const LOCK_WAIT: Duration = if cfg!(test) {
+    Duration::from_secs(3)
+} else {
+    Duration::from_secs(10)
+};
+
+/// The lock file `name` in the server's own folder `dir` (`shown` is its
+/// path, for errors), opened (made with mode 600 when missing, never
+/// through a symlink) and locked: an exclusive lock that ends with the
+/// handle. Only the server account can open the file, so no other account
+/// can take the lock and hold the server up. (A folder is never what is
+/// locked: any account can open a folder of mode 755 and lock it.) The
+/// wait for another holder ends after [`LOCK_WAIT`] with an error.
+fn lock_file(dir: &File, name: &str, shown: &Path) -> io::Result<File> {
+    // macOS can fail an `openat` that makes a name another thread makes at
+    // the same moment with ENOENT. The folder is open, so ENOENT can only
+    // be that race: try again, a bounded number of times.
+    let mut tries = 0;
+    let f = loop {
+        match rustix::fs::openat(
+            dir,
+            name,
+            OFlags::RDWR | OFlags::CREATE | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::RUSR | Mode::WUSR,
+        ) {
+            Err(rustix::io::Errno::NOENT) if tries < 50 => {
+                tries += 1;
+                thread::sleep(Duration::from_millis(1));
+            }
+            got => break File::from(got.map_err(|e| at(shown, e.into()))?),
+        }
+    };
+    let m = f.metadata().map_err(|e| at(shown, e))?;
+    if !m.file_type().is_file() || m.uid() != me() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{}: not a plain file of the account the server runs as",
+                shown.display()
+            ),
+        ));
+    }
+    if m.mode() & 0o077 != 0 {
+        // Only this account can make a file here; keep it to this account.
+        rustix::fs::fchmod(&f, Mode::RUSR | Mode::WUSR).map_err(|e| at(shown, e.into()))?;
+    }
+    let began = Instant::now();
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Ok(f),
+            Err(TryLockError::WouldBlock) if began.elapsed() < LOCK_WAIT => {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(TryLockError::WouldBlock) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "{}: another process of this account has held this lock for over {} s \
+                         (a stuck og live serve on the same state folder?)",
+                        shown.display(),
+                        LOCK_WAIT.as_secs()
+                    ),
+                ));
+            }
+            Err(TryLockError::Error(e)) => return Err(at(shown, e)),
+        }
+    }
 }
 
 /// The token the ingest port takes. The one in `STATE_DIR/ingest-token` is
@@ -293,11 +395,10 @@ pub fn token(state_dir: &Path) -> Result<String, String> {
     let dir = trusted_dir(state_dir)?;
     let err = |name: &str, e: io::Error| format!("{}: {e}", state_dir.join(name).display());
     // Two servers started at once on one state folder must end with the
-    // same token: one reads or writes it at a time. The lock is on the
-    // folder itself and ends with its handle. (A lock file would race:
-    // macOS can fail an `openat` that creates a name another thread
-    // creates at the same moment, with ENOENT.)
-    dir.lock().map_err(|e| err("", e))?;
+    // same token: one reads or writes it at a time, under the lock file,
+    // held to the end of this function.
+    let _locked =
+        lock_file(&dir, TOKEN_LOCK, &state_dir.join(TOKEN_LOCK)).map_err(|e| e.to_string())?;
     if let Ok(mut f) = open_at(&dir, TOKEN_FILE, OFlags::RDONLY, Mode::empty())
         && let Ok(meta) = f.metadata()
         && meta.file_type().is_file()
@@ -332,24 +433,41 @@ const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<r
                            STATE_DIR/ingest-token";
 
 /// `run`'s events file (`STATE_DIR/runs/<run>/events.jsonl`, the file
-/// [`crate::state::Store`] reads), opened to append, and its folder, locked
-/// (an exclusive lock that ends with the folder's handle). The state folder
-/// must be the server account's own, and neither the folders below it nor
-/// the file are followed through a symlink. The lock is taken before the
-/// file is opened, so two writers never create it at the same moment
-/// (which macOS can fail with ENOENT).
+/// [`crate::state::Store`] reads), opened to append, and the run's lock
+/// file (`events.jsonl.lock`), locked ([`lock_file`]). The state folder,
+/// `runs` and the run's folder must be the server account's own, and none
+/// of them nor the file is followed through a symlink. The lock is taken
+/// before the file is opened, so two writers never create it at the same
+/// moment (which macOS can fail with ENOENT). The file must be a plain file
+/// of the server account with no other name: `O_NOFOLLOW` stops a symlink,
+/// not a hard link.
 fn open_events(state_dir: &Path, run: &str) -> io::Result<(File, File)> {
     let dir = trusted_dir(state_dir).map_err(io::Error::other)?;
-    let runs = sub_dir(&dir, "runs")?;
-    let folder = sub_dir(&runs, run)?;
-    folder.lock()?;
+    let runs_path = state_dir.join("runs");
+    let runs = sub_dir(&dir, "runs", &runs_path)?;
+    let folder_path = runs_path.join(run);
+    let folder = sub_dir(&runs, run, &folder_path)?;
+    let locked = lock_file(&folder, EVENTS_LOCK, &folder_path.join(EVENTS_LOCK))?;
+    let shown = folder_path.join("events.jsonl");
     let f = open_at(
         &folder,
         "events.jsonl",
         OFlags::RDWR | OFlags::APPEND | OFlags::CREATE,
         Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
-    )?;
-    Ok((f, folder))
+    )
+    .map_err(|e| at(&shown, e))?;
+    let m = f.metadata().map_err(|e| at(&shown, e))?;
+    if !m.file_type().is_file() || m.uid() != me() || m.nlink() != 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{}: refused: it must be a plain file of the account the server runs as, with \
+                 no other name (a hard link)",
+                shown.display()
+            ),
+        ));
+    }
+    Ok((f, locked))
 }
 
 /// Appends message `ev` to `run`'s events file, as a line of its own: a
@@ -360,7 +478,7 @@ pub fn append(live: &Live, run: &str, ev: &Value) -> io::Result<()> {
     append_with(&live.cfg.state_dir, run, ev, |f, line| f.write_all(line))
 }
 
-/// [`append`], with `write` writing the line. The run's folder stays
+/// [`append`], with `write` writing the line. The run's lock file stays
 /// locked (an exclusive lock every writer takes, in this process or in
 /// another `og live serve` on the same state folder) from reading the
 /// file's length to the cut after a failed write, so the cut never removes
@@ -395,6 +513,7 @@ fn reply(out: &mut dyn Write, code: u16, text: &str) -> io::Result<()> {
         404 => "Not Found",
         411 => "Length Required",
         413 => "Request Entity Too Large",
+        500 => "Internal Server Error",
         _ => "Not Implemented",
     };
     let body = format!("{text}\n");
@@ -475,10 +594,7 @@ fn answer(
     match append(live, &run, &ev) {
         Ok(()) => (200, "ok".into()),
         Err(e) => {
-            eprintln!(
-                "og live serve: ingest: cannot store a message of {run}: {}",
-                e.kind()
-            );
+            eprintln!("og live serve: ingest: cannot store a message of {run}: {e}");
             (500, "not stored".into())
         }
     }
@@ -635,6 +751,153 @@ mod tests {
 
     fn obj(text: &str) -> Value {
         json::loads(text).unwrap()
+    }
+
+    /// A new state folder `<name>-<pid>` with `runs/R1` in it, all mode 755.
+    fn fresh(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("runs/R1")).unwrap();
+        for p in [dir.clone(), dir.join("runs"), dir.join("runs/R1")] {
+            fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        dir
+    }
+
+    /// What `f` returns, on a thread of its own; `None` when it has not
+    /// returned after `secs` seconds (it then runs on, detached).
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(Duration::from_secs(secs)).ok()
+    }
+
+    /// One message appended to run R1 of `dir`, on a thread of its own:
+    /// `None` when it has not returned after `secs` seconds.
+    fn append_within(secs: u64, dir: &Path) -> Option<Result<(), (io::ErrorKind, String)>> {
+        let dir = dir.to_owned();
+        within(secs, move || {
+            append_with(&dir, "R1", &obj(r#"{"event":"a"}"#), |f, l| f.write_all(l))
+                .map_err(|e| (e.kind(), e.to_string()))
+        })
+    }
+
+    #[test]
+    fn the_locks_are_mode_600_files_and_a_locked_folder_holds_nothing_up() {
+        let dir = fresh("og-live-lock-files");
+        // Any account can open a folder of mode 755 and lock it. With the
+        // state folder, runs and the run's folder locked that way, the
+        // token and an append still go through.
+        let held: Vec<File> = [dir.clone(), dir.join("runs"), dir.join("runs/R1")]
+            .iter()
+            .map(|p| {
+                let f = File::open(p).unwrap();
+                f.lock().unwrap();
+                f
+            })
+            .collect();
+        let d = dir.clone();
+        let got = within(10, move || token(&d));
+        assert!(
+            matches!(got, Some(Ok(_))),
+            "the token waited on a lock on the state folder: {got:?}"
+        );
+        let got = append_within(10, &dir);
+        assert!(
+            matches!(got, Some(Ok(()))),
+            "the append waited on a lock on a folder: {got:?}"
+        );
+        drop(held);
+        for lock in ["ingest-token.lock", "runs/R1/events.jsonl.lock"] {
+            let m = fs::symlink_metadata(dir.join(lock)).unwrap_or_else(|e| panic!("{lock}: {e}"));
+            assert!(m.is_file(), "{lock}");
+            assert_eq!(m.mode() & 0o777, 0o600, "{lock}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_lock_held_too_long_is_an_error_not_a_hang() {
+        let dir = fresh("og-live-lock-held");
+        // A stuck process of this account holds both lock files; one made
+        // with mode 644 is set back to 600.
+        let held: Vec<File> = ["ingest-token.lock", "runs/R1/events.jsonl.lock"]
+            .iter()
+            .map(|n| {
+                let f = File::options()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(dir.join(n))
+                    .unwrap();
+                f.set_permissions(fs::Permissions::from_mode(0o644))
+                    .unwrap();
+                f.lock().unwrap();
+                f
+            })
+            .collect();
+        let d = dir.clone();
+        match within(20, move || token(&d)) {
+            Some(Err(e)) => assert!(e.contains("ingest-token.lock") && e.contains("held"), "{e}"),
+            other => panic!("the token did not wait for its lock, or never stopped: {other:?}"),
+        }
+        match append_within(20, &dir) {
+            Some(Err((kind, e))) => {
+                assert_eq!(kind, io::ErrorKind::TimedOut, "{e}");
+                assert!(e.contains("events.jsonl.lock"), "{e}");
+            }
+            other => panic!("the append did not wait for its lock, or never stopped: {other:?}"),
+        }
+        assert!(!dir.join("runs/R1/events.jsonl").exists());
+        drop(held);
+        assert!(token(&dir).is_ok());
+        assert!(matches!(append_within(10, &dir), Some(Ok(()))));
+        for lock in ["ingest-token.lock", "runs/R1/events.jsonl.lock"] {
+            let m = fs::metadata(dir.join(lock)).unwrap();
+            assert_eq!(m.mode() & 0o777, 0o600, "{lock}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_run_folder_another_account_can_write_to_is_refused() {
+        let dir = fresh("og-live-open-run");
+        for (folder, mode) in [("runs", 0o775), ("runs/R1", 0o775), ("runs/R1", 0o757)] {
+            let p = dir.join(folder);
+            fs::set_permissions(&p, fs::Permissions::from_mode(mode)).unwrap();
+            match append_within(10, &dir) {
+                Some(Err((_, e))) => {
+                    assert!(
+                        e.contains("chmod go-w") && e.contains(&*p.to_string_lossy()),
+                        "{folder}: {e}"
+                    );
+                }
+                other => panic!("{folder} {mode:o}: {other:?}"),
+            }
+            assert!(!dir.join("runs/R1/events.jsonl").exists(), "{folder}");
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert!(matches!(append_within(10, &dir), Some(Ok(()))));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_events_file_with_a_second_name_is_refused() {
+        let dir = fresh("og-live-hard-link");
+        // A hard link, made by an account that could write to the run's
+        // folder once, to a file the server account can write.
+        let precious = dir.join("precious");
+        fs::write(&precious, "keep\n").unwrap();
+        fs::hard_link(&precious, dir.join("runs/R1/events.jsonl")).unwrap();
+        match append_within(10, &dir) {
+            Some(Err((_, e))) => assert!(e.contains("hard link"), "{e}"),
+            other => panic!("a hard-linked events file was written: {other:?}"),
+        }
+        assert_eq!(fs::read_to_string(&precious).unwrap(), "keep\n");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

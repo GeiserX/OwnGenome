@@ -984,4 +984,65 @@ fn the_ingest_port_needs_a_state_folder_of_its_own_and_follows_no_symlink() {
         "",
         "the events file link was followed"
     );
+    // An events file with a second name (a hard link) is not written.
+    fs::remove_file(events_path(&w, RUN)).unwrap();
+    fs::hard_link(&target, events_path(&w, RUN)).unwrap();
+    assert_eq!(post(ip, &ingest_path(&w, RUN), message, &[]).status, 500);
+    assert_eq!(
+        fs::read_to_string(&target).unwrap(),
+        "",
+        "the hard-linked events file was written"
+    );
+    // A run folder another account can write to is not written in.
+    fs::remove_file(events_path(&w, RUN)).unwrap();
+    let run_dir = w.state().join("runs").join(RUN);
+    fs::set_permissions(&run_dir, fs::Permissions::from_mode(0o775)).unwrap();
+    assert_eq!(post(ip, &ingest_path(&w, RUN), message, &[]).status, 500);
+    assert!(!events_path(&w, RUN).exists());
+    fs::set_permissions(&run_dir, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(post(ip, &ingest_path(&w, RUN), message, &[]).status, 200);
+}
+
+#[test]
+fn an_https_request_sent_a_byte_at_a_time_is_cut_off_after_the_handshake() {
+    let w = Work::new("tls-drip");
+    make_root(&w);
+    let Some((cert, key)) = test_certificate(&w.dir) else {
+        return;
+    };
+    let mut c = locked_config(&w);
+    c.tls = Some((cert, key));
+    c.request_timeout = Duration::from_secs(1);
+    let srv = start(c);
+    // openssl makes the handshake; then the request head comes a byte
+    // every 100 ms and never ends.
+    let mut client = Command::new("openssl")
+        .args(["s_client", "-connect"])
+        .arg(format!("127.0.0.1:{}", srv.port()))
+        .args(["-quiet", "-ign_eof"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("openssl s_client");
+    let began = Instant::now();
+    let mut stdin = client.stdin.take().unwrap();
+    let mut bytes = b"GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Slow: "
+        .iter()
+        .copied()
+        .chain(std::iter::repeat(b'x'));
+    let mut gone = None;
+    while began.elapsed() < Duration::from_secs(10) {
+        if client.try_wait().unwrap().is_some() {
+            gone = Some(began.elapsed());
+            break;
+        }
+        let _ = stdin.write_all(&[bytes.next().unwrap()]);
+        let _ = stdin.flush();
+        thread::sleep(Duration::from_millis(100));
+    }
+    let _ = client.kill();
+    let _ = client.wait();
+    let gone = gone.expect("the server still held the HTTPS request after 10 s");
+    assert!(gone < Duration::from_secs(4), "closed after {gone:?}");
 }

@@ -1029,8 +1029,8 @@ impl Server {
     /// any free port) and the ingest listener of `cfg.ingest`, and serves.
     pub fn start(mut cfg: Config) -> Result<Server, String> {
         let steps = og_runlog::steps::read_steps(&cfg.steps).map_err(|e| format!("steps: {e}"))?;
-        // Mode 755, whatever the umask: the ingest port needs a state folder
-        // no other account can write to.
+        // Mode 755 (less under a stricter umask): the ingest port needs a
+        // state folder no other account can write to.
         fs::DirBuilder::new()
             .recursive(true)
             .mode(0o755)
