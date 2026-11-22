@@ -15,7 +15,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
 
-# og is the static binary, so the python image runs it. Without summary.json
+# og is the static binary, so OG_IMAGE (stock Ubuntu) runs it. Without summary.json
 # (step 24 or generate-report.sh writes it) or the reference and its .fai, og
 # facts says which file is missing and exits 1. There is no host-side check:
 # the fake-docker cases run run-all.sh with no reference on disk. An earlier
