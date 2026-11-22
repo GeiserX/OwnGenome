@@ -18,3 +18,7 @@ regex.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "live_results_veil"
+path = "../../../tests/browser/live_results_veil.rs"
