@@ -666,13 +666,16 @@ mod tests {
     fn trusted_proxies_and_the_forwarded_client() {
         let trust = [
             Net::parse("127.0.0.1").unwrap(),
-            Net::parse("10.1.2.3/8").unwrap(),
+            Net::parse("203.0.113.3/24").unwrap(),
         ];
         assert_eq!(
             client("127.0.0.1", Some("192.0.2.1, 198.51.100.7"), &trust),
             "198.51.100.7"
         );
-        assert_eq!(client("10.9.9.9", Some("192.0.2.1"), &trust), "192.0.2.1");
+        assert_eq!(
+            client("203.0.113.9", Some("192.0.2.1"), &trust),
+            "192.0.2.1"
+        );
         assert_eq!(
             client("192.0.2.5", Some("198.51.100.7"), &trust),
             "192.0.2.5"
@@ -689,7 +692,7 @@ mod tests {
                 .unwrap()
                 .contains("192.0.2.1".parse().unwrap())
         );
-        for bad in ["", "nope", "10.0.0.0/33", "10.0.0.0/x"] {
+        for bad in ["", "nope", "203.0.113.0/33", "203.0.113.0/x"] {
             assert!(Net::parse(bad).is_err(), "{bad}");
         }
     }
