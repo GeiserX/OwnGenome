@@ -891,7 +891,7 @@ const USAGE: &str = "usage: og paraphase check-bam BAM
                           --out-variants OUT_VARIANTS [--genes GENES]
 ";
 
-const LICENCE_NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with data from PacBio instruments. See docs/35-paralogs.md.";
+const LICENCE_NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio. See docs/35-paralogs.md.";
 
 /// `og paraphase ARGS`.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -1108,5 +1108,26 @@ mod tests {
             "the copy-number table stands alone"
         );
         let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// The help text of `og paraphase` and of `og paraphase check-bam`.
+    fn help(args: &[&str]) -> String {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&args, &mut out, &mut err), 0);
+        String::from_utf8(out).unwrap()
+    }
+
+    const NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with \
+                          data generated on a PacBio instrument or provided by PacBio.";
+
+    #[test]
+    fn help_names_the_paraphase_licence() {
+        assert!(help(&["--help"]).contains(NOTICE));
+    }
+
+    #[test]
+    fn check_bam_help_names_the_paraphase_licence() {
+        assert!(help(&["check-bam", "--help"]).contains(NOTICE));
     }
 }

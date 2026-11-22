@@ -16,7 +16,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
 ## Annotation Data
 
-AnnotSV's annotation bundle includes third-party data with their own terms. The [AnnotSV manual](https://www.lbgi.fr/AnnotSV/Documentation/README.AnnotSV_latest.pdf) lists the sources and versions, including OMIM-derived annotations. GeneHancer and COSMIC require separate licences and come separately.
+AnnotSV's annotation bundle includes third-party data with their own terms. The [AnnotSV manual](https://www.lbgi.fr/AnnotSV/Documentation/README.AnnotSV_latest.pdf) lists the sources and versions, including OMIM-derived annotations. GeneHancer and COSMIC require separate licences and come separately. The pipeline does not redistribute the bundle: `setup.sh` downloads it from AnnotSV's server.
 
 The image holds AnnotSV's code only. Its annotation data (genes, known pathogenic SVs, population frequencies) is a separate 5.3 GB download that unpacks to about 20 GB, and AnnotSV exits with an error without it. The server is slow (about 0.8 MB/s measured from a GitHub runner), so the download can take 1-2 hours; `curl -C -` resumes it. `./scripts/setup.sh` downloads and unpacks it into `${GENOME_DIR}/annotsv_annotations/`. To do it by hand:
 

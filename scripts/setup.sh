@@ -233,7 +233,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  The REVEL authors make the scores freely available for non-commercial use."
   echo "  ${UCSC_CHAIN_TERMS}"
   echo "  Illumina's DRAGEN ORA Decompression Software requires acceptance of its end-user licence."
-  echo "  The PacBio Software License Agreement permits Paraphase use only with data from PacBio instruments."
+  echo "  The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio."
   echo ""
   echo "Example:"
   echo "  ./scripts/setup.sh /data/genomics"
@@ -1940,7 +1940,8 @@ install_archaic() {
   local regions=${ARCHAIC_REGIONS:-} rstamp=all chroms="" c g v k stamp wk n
   local genomes="Altai:Altai Vindija33.19:Vindija Denisova:Denisova"
   cpath "$dir" >/dev/null || return 1
-  echo "  ${UCSC_CHAIN_TERMS} See docs/43-archaic.md."
+  { [ -s "${dir}/hg19ToHg38.over.chain.gz" ] && [ "$(_digest sha256 "${dir}/hg19ToHg38.over.chain.gz")" = "$ARCHAIC_CHAIN_SHA256" ]; } \
+    || echo "  ${UCSC_CHAIN_TERMS} See docs/43-archaic.md."
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
   for v in BCFTOOLS_IMAGE PICARD_IMAGE PYTHON_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1

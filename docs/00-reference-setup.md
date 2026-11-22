@@ -201,7 +201,7 @@ Required for step 17 (CPSR cancer predisposition screening). Includes ClinVar, g
 
 > **Important:** PCGR 2.3.2 bundles VEP 115, which requires a **release-115** cache — different from the release-116 cache used by step 13 above. See the next section for the VEP 115 download. The bundle date (`PCGR_DATA_BUNDLE`) and the cache release (`PCGR_VEP_CACHE_RELEASE`) are in `versions.env` and move with `PCGR_IMAGE`.
 
-PCGR/CPSR reference data includes third-party databases with their own terms. Review the licences in the [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) before installing. Setup prints the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) before it downloads the bundle.
+PCGR/CPSR reference data includes third-party databases with their own terms. The [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) lists the sources and licences of the newest bundle release. Setup installs release 20260620 (`PCGR_DATA_BUNDLE`), so that list can differ from the installed bundle. Setup prints the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) before it downloads the bundle.
 
 Setup installs it by default. To add the clinical data to an existing setup:
 
@@ -435,9 +435,13 @@ The release is `ENSEMBL_GFF_RELEASE` in `versions.env`, and the download is chec
 
 ## Exomiser Data (Optional, for Step 48, ~37 GB)
 
+Exomiser's hg38 and phenotype bundles include third-party data with their own terms. Review Exomiser's [data source notes](https://exomiser.readthedocs.io/en/15.1.0/advanced_analysis.html#pathogenicitysources) before installing.
+
 Only needed for step 48, the symptom-driven ranking that runs when you give HPO terms. `./scripts/setup.sh --exomiser-data ${GENOME_DIR}` downloads Exomiser's data release `EXOMISER_DATA_VERSION` (hg38 and phenotype archives, 37 GB, each checked against its sha256 in `versions.env`), unpacks it into `${GENOME_DIR}/reference/exomiser-<release>/` (58 GB; about 72 GB free while it runs), deletes the archives and pulls `EXOMISER_IMAGE`. An interrupted download resumes when the command runs again. See [Step 48](48-exomiser.md).
 
 ## AADR Ancient Panel (Optional, for Step 44, ~1.05 GB kept, 9.6 GiB at the peak)
+
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
 
 Only needed for step 44, the placement among ancient genomes. `./scripts/setup.sh --ancient-panel ${GENOME_DIR}` downloads the AADR release `AADR_VERSION` (1240K, the 7.1 GB `.geno` and three small files, each checked against its md5 in `versions.env`) and UCSC's hg19ToHg38 chain, then builds the panel in `${GENOME_DIR}/reference/ancient/aadr_<release>/` with convertf and two smartpca runs. On a 4-CPU GitHub runner it took 61 minutes, peaked at 9.6 GiB of extra disk and kept 1.05 GiB; its smartpca container gets 12 GB, and the setup's containers held 7.6 GiB of anonymous memory at most (any setup container, convertf included). See [Step 44](44-ancient.md#runtime).
 

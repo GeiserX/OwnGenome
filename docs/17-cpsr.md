@@ -25,7 +25,7 @@ PCGR 2.3.2 bundles VEP 115, which requires the **release-115** cache (~24 GB). T
 
 ### 2. PCGR ref data bundle
 PCGR 2.x uses a separate ref data bundle (`20260620`, about 7 GB).
-PCGR/CPSR reference data includes third-party databases with their own terms. Review the licences in the [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) before installing.
+PCGR/CPSR reference data includes third-party databases with their own terms. The [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) lists the sources and licences of the newest bundle release. Setup installs release `20260620`, so that list can differ from the installed bundle.
 
 A plain setup installs the VEP 115 cache and this bundle by default, alongside VEP 116 for step 13.
 For an existing setup, install or retry all three with:
