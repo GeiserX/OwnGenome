@@ -477,14 +477,15 @@
     rows.forEach(function (r) { add(dl, el('dt', {}, r[0]), el('dd', {}, r[1])); });
     return dl;
   }
-  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys).
-  function caveatNote(list, key) {
+  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys). title: the finding's
+  // title, so each More is named for its own finding; with its detail line when another finding has the same title.
+  function caveatNote(list, key, title) {
     if (!list || !list.length) { return null; }
     var box = el('div', {});
     var lead = U.firstSentence(list[0]);
     add(box, el('span', {}, lead + ' '));
     var d = el('details', key ? { 'data-card': 'cav-' + key } : {});
-    add(d, el('summary', { 'class': 'toggle' }, 'More'));
+    add(d, el('summary', { 'class': 'toggle', 'aria-label': title ? 'More of the caveat: ' + title : null }, 'More'));
     list.forEach(function (t) { add(d, el('p', {}, t)); });
     add(box, d);
     return note('Caveat', box, 'caveat-note');
@@ -526,6 +527,18 @@
       return [U.LEVEL_WORDS[f.level] || f.level, f.title, f.viewer];
     });
   }
+  // The name of a finding's More. Two hits in one gene share a title ("Pathogenic change in <gene>"): a detail line
+  // no other finding of that title has tells them apart; with no such line (none, or the same as another's), the
+  // finding's place among them does ("(2 of 2)"), so no two Mores are named alike.
+  function moreName(f) {
+    var group = findingsNow().filter(function (g) { return g.title === f.title; });
+    if (group.length < 2) { return f.title; }
+    var detail = function (g) { return String(g.detail == null ? '' : g.detail).trim(); };
+    var mine = detail(f);
+    var alone = mine && group.filter(function (g) { return detail(g) === mine; }).length === 1;
+    var at = group.map(function (g) { return g.id; }).indexOf(f.id) + 1;
+    return f.title + ' (' + (alone ? mine : at + ' of ' + group.length) + ')';
+  }
   function findingArticle(f, big) {
     var row = el('div', { 'class': 'row' });
     var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
@@ -547,7 +560,7 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    add(side, caveatNote(f.caveat, f.id));
+    add(side, caveatNote(f.caveat, f.id, moreName(f)));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r; });
     if (rel.length) {
       var box = el('div', {});
