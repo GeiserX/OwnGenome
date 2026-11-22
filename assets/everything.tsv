@@ -69,6 +69,7 @@ switch	EXTRA_CALLERS	gatk,freebayes,strelka2,octopus	-	scripts 03a to 03d after 
 switch	BENCHMARK	true	-	benchmark-variants.sh after the extra callers
 input	HPO	setup.sh --exomiser-data	-	the symptoms as HPO ids; only the user knows them
 input	FAMILIES	-	-	who is related to whom; steps 38 and 39 run when the family has what they need
+input	INPUT	-	-	the sample input to start from
 input	ALIGN_DIR	-	-	the BAM of another aligner (script 02a writes aligned_bwamem2/)
 input	REF_FASTA	-	-	another GRCh38 build
 input	EH_CATALOG	-	-	another catalog for steps 09 and 9b

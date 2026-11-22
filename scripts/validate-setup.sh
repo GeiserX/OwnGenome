@@ -1097,6 +1097,22 @@ if [ -n "$SAMPLE" ]; then
 
     check_stale_indexes "$SAMPLE_DIR"
 
+    case "${INPUT:-auto}" in
+      fastq)
+        $HAS_BAM && info "INPUT=fastq: the existing BAM is not read, so it is not checked"
+        $HAS_VCF && info "INPUT=fastq: the existing VCF is not read, so it is not checked"
+        HAS_BAM=false HAS_VCF=false
+        ;;
+      bam)
+        $HAS_VCF && info "INPUT=bam: the existing VCF is not read, so it is not checked"
+        HAS_VCF=false
+        ;;
+      vcf)
+        $HAS_BAM && info "INPUT=vcf: the BAM is not read, so it is not checked"
+        HAS_BAM=false
+        ;;
+    esac
+
     # Validate genome build (GRCh38) if BAM or VCF exists
     if $HAS_BAM && command -v "$CONTAINER_ENGINE" >/dev/null 2>&1; then
       echo ""
