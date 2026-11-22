@@ -59,7 +59,7 @@ while IFS='|' read -r fn key var page; do
   if ! awk -v fn="$fn" -v want="echo \"  \${${var}} See docs/${page}.\"" '
     $1 == fn "()" { on = 1; next }
     on && /^}/ { exit }
-    on && !seen && index($0, want) { seen = NR }
+    on && !seen && $0 !~ /^[[:space:]]*#/ && index($0, want) { seen = NR }
     on && !first && $0 !~ /^[[:space:]]*#/ && $0 ~ /(^|[^_[:alnum:]])fetch / { first = NR }
     END { exit !(seen && first && seen < first) }
   ' "$repo/scripts/setup.sh"; then
