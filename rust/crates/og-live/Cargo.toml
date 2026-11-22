@@ -29,6 +29,9 @@ og-summary.workspace = true
 # HTTPS (--tls-cert), with ring as its only crypto, built from source.
 sha2 = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The ingest port's state folder: files opened relative to it, never
+# through a symlink, and the account the server runs as.
+rustix = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 regex.workspace = true

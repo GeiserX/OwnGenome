@@ -9,24 +9,26 @@
 //! the server made ([`token`], `STATE_DIR/ingest-token`, mode 600), so
 //! another account on the machine cannot post fake progress. Nextflow's
 //! weblog cannot send a header, so the token is the first part of the
-//! path: `OWNGENOME_LIVE_URL=http://127.0.0.1:8788/<token>`.
+//! path: `OWNGENOME_LIVE_URL=http://127.0.0.1:8788/<token>`. The state
+//! folder must be the server account's own ([`trusted_dir`]), and no file
+//! in it is opened through a symlink.
 
 use crate::auth::{new_token, same_secret};
 use crate::runs::valid_run;
-use crate::server::{REQUEST_SECONDS, read_head};
-use crate::state::{Live, dumps_compact, lock};
+use crate::server::{ReadBy, accept_loop, read_head};
+use crate::state::{Live, dumps_compact};
 use crate::viewer::unquote;
 use indexmap::IndexMap;
 use pycompat::json::{self, Value};
-use std::fs::{self, OpenOptions};
+use rustix::fs::{AtFlags, Mode, OFlags};
+use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{FileExt, MetadataExt};
 use std::path::Path;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::Instant;
 
 /// The weblog's task fields kept. The work directory and the parameters
 /// other than [`PARAM_KEYS`] are paths or personal: they never reach a page.
@@ -216,70 +218,160 @@ fn token_shape(t: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// The token the ingest port takes. The one in `STATE_DIR/ingest-token` is
-/// kept when it is a plain file only its owner can read and has the shape
-/// of a token the server makes, so a restart does not cut off a run that
-/// is posting. Anything else there (a link, a file others can read, a
-/// value someone chose) is replaced with a new random token.
-pub fn token(state_dir: &Path) -> Result<String, String> {
-    let path = state_dir.join(TOKEN_FILE);
-    let err = |e: io::Error| format!("{}: {e}", path.display());
-    // Two servers started at once on one state folder must end with the
-    // same token: one reads or writes it at a time (the lock ends with the
-    // file handle).
-    let guard = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(state_dir.join(format!("{TOKEN_FILE}.lock")))
-        .map_err(err)?;
-    guard.lock().map_err(err)?;
-    if let Ok(meta) = fs::symlink_metadata(&path)
-        && meta.file_type().is_file()
-        && meta.permissions().mode() & 0o077 == 0
-        && let Ok(text) = fs::read_to_string(&path)
-        && token_shape(text.trim())
-    {
-        return Ok(text.trim().to_owned());
+/// The account the server runs as.
+fn me() -> u32 {
+    rustix::process::geteuid().as_raw()
+}
+
+/// Opens `name` in folder `dir`, never through a symlink: a link there is
+/// an error (`ELOOP`), not followed.
+fn open_at(dir: &File, name: &str, flags: OFlags, mode: Mode) -> io::Result<File> {
+    rustix::fs::openat(dir, name, flags | OFlags::NOFOLLOW | OFlags::CLOEXEC, mode)
+        .map(File::from)
+        .map_err(io::Error::from)
+}
+
+/// Whether the open file `f` is the server account's own: owned by it, and
+/// no other account may write to it.
+fn own(f: &File) -> io::Result<bool> {
+    let m = f.metadata()?;
+    Ok(m.uid() == me() && m.mode() & 0o022 == 0)
+}
+
+/// The state folder `dir`, opened, when it is the server account's own: a
+/// folder owned by the account the server runs as that no other account
+/// can write to, so no one else can put a file or a link in it. The checks
+/// are on the open folder, so swapping the path afterwards changes nothing.
+pub fn trusted_dir(dir: &Path) -> Result<File, String> {
+    let f = rustix::fs::open(
+        dir,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map(File::from)
+    .map_err(|e| format!("{}: {}", dir.display(), io::Error::from(e)))?;
+    if own(&f).map_err(|e| format!("{}: {e}", dir.display()))? {
+        Ok(f)
+    } else {
+        Err(format!(
+            "the state folder {} must be owned by the account the server runs as, and no other \
+             account may write to it, because it holds the ingest token: chown it to this account \
+             and run 'chmod go-w {}'",
+            dir.display(),
+            dir.display()
+        ))
     }
-    let t = new_token().map_err(err)?;
-    let tmp = state_dir.join(format!("{TOKEN_FILE}.{}", std::process::id()));
-    let _ = fs::remove_file(&tmp);
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)
-        .map_err(err)?;
-    f.write_all(format!("{t}\n").as_bytes()).map_err(err)?;
+}
+
+/// The folder `name` in `parent`, made (mode 755) when missing, never
+/// through a symlink.
+fn sub_dir(parent: &File, name: &str) -> io::Result<File> {
+    match rustix::fs::mkdirat(
+        parent,
+        name,
+        Mode::RWXU | Mode::RGRP | Mode::XGRP | Mode::ROTH | Mode::XOTH,
+    ) {
+        Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+        Err(e) => return Err(e.into()),
+    }
+    open_at(
+        parent,
+        name,
+        OFlags::RDONLY | OFlags::DIRECTORY,
+        Mode::empty(),
+    )
+}
+
+/// The token the ingest port takes. The one in `STATE_DIR/ingest-token` is
+/// kept when it is a plain file the server account owns and only it can
+/// read, and has the shape of a token the server makes, so a restart does
+/// not cut off a run that is posting. Anything else there (a link, a file
+/// others can read or another account owns, a value someone chose) is
+/// replaced with a new random token. A state folder that is not the server
+/// account's own ([`trusted_dir`]) is an error: the port does not start.
+pub fn token(state_dir: &Path) -> Result<String, String> {
+    let dir = trusted_dir(state_dir)?;
+    let err = |name: &str, e: io::Error| format!("{}: {e}", state_dir.join(name).display());
+    // Two servers started at once on one state folder must end with the
+    // same token: one reads or writes it at a time. The lock is on the
+    // folder itself and ends with its handle. (A lock file would race:
+    // macOS can fail an `openat` that creates a name another thread
+    // creates at the same moment, with ENOENT.)
+    dir.lock().map_err(|e| err("", e))?;
+    if let Ok(mut f) = open_at(&dir, TOKEN_FILE, OFlags::RDONLY, Mode::empty())
+        && let Ok(meta) = f.metadata()
+        && meta.file_type().is_file()
+        && meta.uid() == me()
+        && meta.mode() & 0o077 == 0
+    {
+        let mut text = String::new();
+        if f.read_to_string(&mut text).is_ok() && token_shape(text.trim()) {
+            return Ok(text.trim().to_owned());
+        }
+    }
+    let t = new_token().map_err(|e| err(TOKEN_FILE, e))?;
+    let tmp = format!("{TOKEN_FILE}.{}", std::process::id());
+    let _ = rustix::fs::unlinkat(&dir, tmp.as_str(), AtFlags::empty());
+    let mut f = open_at(
+        &dir,
+        &tmp,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL,
+        Mode::RUSR | Mode::WUSR,
+    )
+    .map_err(|e| err(&tmp, e))?;
+    f.write_all(format!("{t}\n").as_bytes())
+        .map_err(|e| err(&tmp, e))?;
     drop(f);
-    fs::rename(&tmp, &path).map_err(err)?;
-    drop(guard);
+    rustix::fs::renameat(&dir, tmp.as_str(), &dir, TOKEN_FILE)
+        .map_err(|e| err(TOKEN_FILE, e.into()))?;
+    drop(dir);
     Ok(t)
 }
 
 const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<run>, with the token of \
                            STATE_DIR/ingest-token";
 
-/// One writer at a time for every events file.
-static APPEND: Mutex<()> = Mutex::new(());
+/// `run`'s events file (`STATE_DIR/runs/<run>/events.jsonl`, the file
+/// [`crate::state::Store`] reads), opened to append, and its folder, locked
+/// (an exclusive lock that ends with the folder's handle). The state folder
+/// must be the server account's own, and neither the folders below it nor
+/// the file are followed through a symlink. The lock is taken before the
+/// file is opened, so two writers never create it at the same moment
+/// (which macOS can fail with ENOENT).
+fn open_events(state_dir: &Path, run: &str) -> io::Result<(File, File)> {
+    let dir = trusted_dir(state_dir).map_err(io::Error::other)?;
+    let runs = sub_dir(&dir, "runs")?;
+    let folder = sub_dir(&runs, run)?;
+    folder.lock()?;
+    let f = open_at(
+        &folder,
+        "events.jsonl",
+        OFlags::RDWR | OFlags::APPEND | OFlags::CREATE,
+        Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
+    )?;
+    Ok((f, folder))
+}
 
 /// Appends message `ev` to `run`'s events file, as a line of its own: a
 /// write that fails part way is cut off again, and a file that still ends
 /// in the middle of a line (the cut failed too) gets a line break first, so
 /// the broken line is skipped on reading and never joins this message.
 pub fn append(live: &Live, run: &str, ev: &Value) -> io::Result<()> {
-    let p = live.store.path(run);
-    let _g = lock(&APPEND);
-    if let Some(d) = p.parent() {
-        fs::create_dir_all(d)?;
-    }
-    let mut f = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .append(true)
-        .open(p)?;
+    append_with(&live.cfg.state_dir, run, ev, |f, line| f.write_all(line))
+}
+
+/// [`append`], with `write` writing the line. The run's folder stays
+/// locked (an exclusive lock every writer takes, in this process or in
+/// another `og live serve` on the same state folder) from reading the
+/// file's length to the cut after a failed write, so the cut never removes
+/// another writer's message.
+fn append_with(
+    state_dir: &Path,
+    run: &str,
+    ev: &Value,
+    write: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
+) -> io::Result<()> {
+    let (mut f, _locked) = open_events(state_dir, run)?;
     let start = f.metadata()?.len();
     let mut line = format!("{}\n", dumps_compact(ev));
     if start > 0 {
@@ -289,7 +381,7 @@ pub fn append(live: &Live, run: &str, ev: &Value) -> io::Result<()> {
             line.insert(0, '\n');
         }
     }
-    f.write_all(line.as_bytes()).inspect_err(|_| {
+    write(&mut f, line.as_bytes()).inspect_err(|_| {
         let _ = f.set_len(start);
     })
 }
@@ -366,11 +458,14 @@ fn answer(
         None | Some(Err(_)) => return (411, "Content-Length required".into()),
         Some(Ok(n)) => n,
     };
-    if n < 0 || n > live.cfg.max_body_kb as i64 * 1024 {
+    let Ok(n) = u64::try_from(n) else {
+        return (413, "too large".into());
+    };
+    if n > max_body_bytes(live.cfg.max_body_kb) {
         return (413, "too large".into());
     }
-    let mut raw = Vec::with_capacity(n as usize);
-    if body.take(n as u64).read_to_end(&mut raw).is_err() || raw.len() as i64 != n {
+    let mut raw = Vec::new();
+    if body.take(n).read_to_end(&mut raw).is_err() || raw.len() as u64 != n {
         return (400, "not a message: the body was cut off".into());
     }
     let ev = match parse(&raw) {
@@ -389,14 +484,24 @@ fn answer(
     }
 }
 
+/// The largest body, in bytes, of a `--max-body-kb` of `kb` (validated by
+/// the command line; a value set in code that would overflow means no
+/// limit below the largest length).
+pub fn max_body_bytes(kb: usize) -> u64 {
+    u64::try_from(kb).map_or(u64::MAX, |kb| kb.saturating_mul(1024))
+}
+
 fn serve_conn(live: &Live, stream: TcpStream) {
-    let timeout = Some(Duration::from_secs(REQUEST_SECONDS));
-    let _ = stream.set_read_timeout(timeout);
-    let _ = stream.set_write_timeout(timeout);
+    let timeout = live.cfg.request_timeout;
+    let _ = stream.set_write_timeout(Some(timeout));
     let Ok(read_half) = stream.try_clone() else {
         return;
     };
-    let mut reader = BufReader::new(read_half);
+    // The head and the body share one deadline.
+    let mut reader = BufReader::new(ReadBy {
+        tcp: read_half,
+        end: Instant::now() + timeout,
+    });
     let mut out = io::BufWriter::new(&stream);
     let (code, text) = match read_head(&mut reader) {
         None => (400, "bad request".to_owned()),
@@ -409,21 +514,124 @@ fn serve_conn(live: &Live, stream: TcpStream) {
 
 /// Serves `listener` on threads until `live` is stopping.
 pub fn serve(live: Arc<Live>, listener: TcpListener) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        for conn in listener.incoming() {
-            if live.stopping.load(Ordering::SeqCst) {
-                break;
-            }
-            let Ok(stream) = conn else { continue };
-            let l = Arc::clone(&live);
-            thread::spawn(move || serve_conn(&l, stream));
-        }
-    })
+    accept_loop(live, listener, serve_conn)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::Duration;
+
+    /// Set by [`a_failed_append_never_cuts_another_servers_message`] for
+    /// the copy of this test binary it starts: the state folder the second
+    /// server appends to.
+    const OTHER_WRITER: &str = "OG_LIVE_TEST_OTHER_WRITER";
+
+    /// The second server: another process that appends one message to the
+    /// run of the state folder in [`OTHER_WRITER`]. Run only by the test
+    /// below, as a process of its own.
+    #[test]
+    #[ignore = "run by a_failed_append_never_cuts_another_servers_message"]
+    fn other_writer() {
+        let Ok(dir) = std::env::var(OTHER_WRITER) else {
+            return;
+        };
+        let dir = Path::new(&dir);
+        fs::write(dir.join("other-is-writing"), "").unwrap();
+        append_with(dir, "R1", &obj(r#"{"event":"b"}"#), |f, l| f.write_all(l)).unwrap();
+    }
+
+    #[test]
+    fn a_failed_append_never_cuts_another_servers_message() {
+        let dir = std::env::temp_dir().join(format!("og-live-two-writers-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut other = None;
+        let got = append_with(&dir, "R1", &obj(r#"{"event":"a"}"#), |f, line| {
+            // While this write is under way, another server on the same
+            // state folder posts a message of the same run.
+            let child = Command::new(std::env::current_exe().unwrap())
+                .args(["ingest::tests::other_writer", "--exact", "--ignored"])
+                .env(OTHER_WRITER, &dir)
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let began = Instant::now();
+            while !dir.join("other-is-writing").exists()
+                && began.elapsed() < Duration::from_secs(20)
+            {
+                thread::sleep(Duration::from_millis(20));
+            }
+            thread::sleep(Duration::from_millis(500));
+            other = Some(child);
+            // Then this write fails part way, and its part is cut off.
+            f.write_all(&line[..4])?;
+            Err(io::Error::other("the disk is full"))
+        });
+        assert!(got.is_err());
+        let status = other.unwrap().wait().unwrap();
+        assert!(status.success(), "the second server's append failed");
+        let text = fs::read_to_string(dir.join("runs/R1/events.jsonl")).unwrap();
+        assert_eq!(
+            text, "{\"event\":\"b\"}\n",
+            "the cut removed the other server's message"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn messages_posted_at_once_to_a_new_run_are_all_stored() {
+        let dir = std::env::temp_dir().join(format!("og-live-first-posts-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        for round in 0..20 {
+            let run = format!("R{round}");
+            let go = Arc::new(std::sync::Barrier::new(8));
+            let done: Vec<io::Result<()>> = (0..8)
+                .map(|_| {
+                    let (dir, run, go) = (dir.clone(), run.clone(), Arc::clone(&go));
+                    thread::spawn(move || {
+                        go.wait();
+                        append_with(&dir, &run, &obj(r#"{"event":"a"}"#), |f, l| f.write_all(l))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect();
+            assert!(done.iter().all(Result::is_ok), "{run}: {done:?}");
+            let text =
+                fs::read_to_string(dir.join("runs").join(&run).join("events.jsonl")).unwrap();
+            assert_eq!(text.lines().count(), 8, "{run}: {text:?}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_state_folder_another_account_can_write_to_is_refused() {
+        let dir = std::env::temp_dir().join(format!("og-live-open-state-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for mode in [0o775, 0o757] {
+            fs::set_permissions(&dir, fs::Permissions::from_mode(mode)).unwrap();
+            let e = token(&dir).expect_err("a state folder others can write to");
+            assert!(e.contains("chmod go-w"), "{e}");
+            assert!(!dir.join(TOKEN_FILE).exists());
+            let e = append_with(&dir, "R1", &obj(r#"{"event":"a"}"#), |f, l| f.write_all(l));
+            assert!(
+                e.is_err(),
+                "a message was stored in a state folder others can write to"
+            );
+        }
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(token(&dir).is_ok());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn obj(text: &str) -> Value {
         json::loads(text).unwrap()

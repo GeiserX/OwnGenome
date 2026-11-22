@@ -49,16 +49,21 @@ use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-/// How long a client may take to send its request (an event stream writes
-/// every [`HEARTBEAT`]).
+/// How long a client may take to send its whole request, head and body
+/// (after the TLS handshake); each write of the answer gets as long. An
+/// event stream, which only writes once its request is read, lives on.
 pub const REQUEST_SECONDS: u64 = 60;
+/// The connections each listener serves at once; one more is closed at
+/// once.
+pub const MAX_CONNECTIONS: usize = 256;
 /// How often an open event stream writes when nothing happens.
 pub const HEARTBEAT: Duration = Duration::from_secs(15);
 /// The largest request head read.
@@ -137,6 +142,10 @@ pub struct Config {
     /// The token the ingest listener takes, made by [`Server::start`]
     /// (`STATE_DIR/ingest-token`); `None`: it takes no message.
     pub ingest_token: Option<String>,
+    /// How long a client may take to send its request ([`REQUEST_SECONDS`]).
+    pub request_timeout: Duration,
+    /// The connections each listener serves at once ([`MAX_CONNECTIONS`]).
+    pub max_connections: usize,
 }
 
 /// The first ancestor of this binary that holds `rel`.
@@ -182,6 +191,8 @@ impl Config {
             ingest: None,
             max_body_kb: 1024,
             ingest_token: None,
+            request_timeout: Duration::from_secs(REQUEST_SECONDS),
+            max_connections: MAX_CONNECTIONS,
         }
     }
 }
@@ -806,9 +817,40 @@ pub(crate) fn read_head(r: &mut dyn BufRead) -> Option<(String, String, Headers)
     Some((method.to_owned(), target.to_owned(), headers))
 }
 
+/// A socket whose reads share one deadline, so a client that sends its
+/// request a byte at a time cannot hold the connection past it. A write
+/// keeps the socket's own write timeout.
+pub(crate) struct ReadBy {
+    pub(crate) tcp: TcpStream,
+    pub(crate) end: Instant,
+}
+
+impl Read for ReadBy {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let left = self.end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the request took too long",
+            ));
+        }
+        self.tcp.set_read_timeout(Some(left))?;
+        (&self.tcp).read(buf)
+    }
+}
+
+impl Write for ReadBy {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&self.tcp).write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        (&self.tcp).flush()
+    }
+}
+
 /// One TLS connection, read and written by turns from the one thread that
 /// serves it.
-struct Shared(Rc<RefCell<rustls::StreamOwned<rustls::ServerConnection, TcpStream>>>);
+struct Shared(Rc<RefCell<rustls::StreamOwned<rustls::ServerConnection, ReadBy>>>);
 
 impl Read for Shared {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -830,14 +872,16 @@ fn serve_conn(live: &Live, stream: TcpStream, tls: Option<&Arc<rustls::ServerCon
         .peer_addr()
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|_| "-".into());
-    let timeout = Some(Duration::from_secs(REQUEST_SECONDS));
+    let timeout = live.cfg.request_timeout;
     let Some(cfg) = tls else {
-        let _ = stream.set_read_timeout(timeout);
-        let _ = stream.set_write_timeout(timeout);
+        let _ = stream.set_write_timeout(Some(timeout));
         let Ok(read_half) = stream.try_clone() else {
             return;
         };
-        let mut reader = BufReader::new(read_half);
+        let mut reader = BufReader::new(ReadBy {
+            tcp: read_half,
+            end: Instant::now() + timeout,
+        });
         let mut out = io::BufWriter::new(&stream);
         serve_io(live, &peer, &mut reader, &mut out);
         drop(out);
@@ -845,16 +889,21 @@ fn serve_conn(live: &Live, stream: TcpStream, tls: Option<&Arc<rustls::ServerCon
         // What the client still sends is read and dropped once the answer
         // is out, so closing does not reset the connection before the
         // client has read it.
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+        reader.get_mut().end = Instant::now() + Duration::from_secs(1);
         let _ = io::copy(&mut reader.take(MAX_HEAD as u64), &mut io::sink());
         return;
     };
     let Some(tls) = auth::accept_tls(cfg, stream) else {
         return;
     };
-    let _ = tls.sock.set_read_timeout(timeout);
-    let _ = tls.sock.set_write_timeout(timeout);
-    let tls = Rc::new(RefCell::new(tls));
+    // The request's deadline starts after the handshake, which has its own.
+    let (conn, sock) = tls.into_parts();
+    let _ = sock.set_write_timeout(Some(timeout));
+    let sock = ReadBy {
+        tcp: sock,
+        end: Instant::now() + timeout,
+    };
+    let tls = Rc::new(RefCell::new(rustls::StreamOwned::new(conn, sock)));
     let mut reader = BufReader::new(Shared(Rc::clone(&tls)));
     let mut out = io::BufWriter::new(Shared(Rc::clone(&tls)));
     serve_io(live, &peer, &mut reader, &mut out);
@@ -862,7 +911,45 @@ fn serve_conn(live: &Live, stream: TcpStream, tls: Option<&Arc<rustls::ServerCon
     let mut t = tls.borrow_mut();
     t.conn.send_close_notify();
     let _ = t.flush();
-    let _ = t.sock.shutdown(Shutdown::Write);
+    let _ = t.sock.tcp.shutdown(Shutdown::Write);
+}
+
+/// One connection being served; dropping it frees its place.
+struct Slot(Arc<AtomicUsize>);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Serves each connection of `listener` with `serve`, on a thread of its
+/// own, until `live` is stopping. At most `cfg.max_connections` are served
+/// at once: one more is closed at once, so a flood of connections cannot
+/// start a thread each.
+pub(crate) fn accept_loop<F>(live: Arc<Live>, listener: TcpListener, serve: F) -> JoinHandle<()>
+where
+    F: Fn(&Live, TcpStream) + Clone + Send + 'static,
+{
+    thread::spawn(move || {
+        let open = Arc::new(AtomicUsize::new(0));
+        for conn in listener.incoming() {
+            if live.stopping.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(stream) = conn else { continue };
+            let before = open.fetch_add(1, Ordering::SeqCst);
+            let slot = Slot(Arc::clone(&open));
+            if before >= live.cfg.max_connections {
+                continue; // drops the stream, which closes it, and the slot
+            }
+            let (l, serve) = (Arc::clone(&live), serve.clone());
+            thread::spawn(move || {
+                let _slot = slot;
+                serve(&l, stream);
+            });
+        }
+    })
 }
 
 /// Reads one request from `reader` and answers it on `out`.
@@ -942,7 +1029,12 @@ impl Server {
     /// any free port) and the ingest listener of `cfg.ingest`, and serves.
     pub fn start(mut cfg: Config) -> Result<Server, String> {
         let steps = og_runlog::steps::read_steps(&cfg.steps).map_err(|e| format!("steps: {e}"))?;
-        fs::create_dir_all(&cfg.state_dir)
+        // Mode 755, whatever the umask: the ingest port needs a state folder
+        // no other account can write to.
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o755)
+            .create(&cfg.state_dir)
             .map_err(|e| format!("--state-dir {}: {e}", cfg.state_dir.display()))?;
         let access = AccessLog::new(&cfg.access_log, cfg.access_log_max_mb)
             .map_err(|e| format!("--access-log {}: {e}", cfg.access_log.display()))?;
@@ -990,17 +1082,8 @@ impl Server {
             ),
             None => (None, None),
         };
-        let l2 = Arc::clone(&live);
-        let accept = thread::spawn(move || {
-            for conn in listener.incoming() {
-                if l2.stopping.load(Ordering::SeqCst) {
-                    break;
-                }
-                let Ok(stream) = conn else { continue };
-                let l3 = Arc::clone(&l2);
-                let tls = tls.clone();
-                thread::spawn(move || serve_conn(&l3, stream, tls.as_ref()));
-            }
+        let accept = accept_loop(Arc::clone(&live), listener, move |l, s| {
+            serve_conn(l, s, tls.as_ref())
         });
         Ok(Server {
             live,
@@ -1270,6 +1353,15 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
         .unwrap_or(8788);
     cfg.ingest = Some((ingest_bind, ingest_port));
     if let Some(n) = number::<usize>(&f, "max_body_kb", "int").map_err(usage)? {
+        // A Content-Length is read as a signed 64-bit number.
+        if n.checked_mul(1024)
+            .is_none_or(|b| i64::try_from(b).is_err())
+        {
+            return Err(usage(format!(
+                "argument --max-body-kb: {n} is too large (at most {})",
+                i64::MAX / 1024
+            )));
+        }
         cfg.max_body_kb = n;
     }
     if let Some(a) = one(&f, "assets") {
@@ -1307,6 +1399,15 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
         .collect::<Result<_, _>>()
         .map_err(|e| (2, format!("ERROR: {e}")))?;
     let (cert, key) = (path("tls_cert"), path("tls_key"));
+    // An empty --password-file (or password_file= in --config) is a
+    // mistake, never a request for a site with no login.
+    if one(&f, "password_file").is_some_and(|v| v.trim().is_empty()) {
+        return Err(usage(
+            "argument --password-file: empty: give the file 'og live serve hash-password' \
+             wrote, or leave the flag out for a loopback site with no login"
+                .into(),
+        ));
+    }
     let hash = auth::read_password_hash(path("password_file").as_deref(), env_hash)
         .map_err(|e| (1, format!("ERROR: password hash: {e}")))?;
     let mut a = Auth::new(hash);

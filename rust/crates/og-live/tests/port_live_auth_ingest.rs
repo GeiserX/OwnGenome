@@ -770,3 +770,218 @@ fn a_tls_client_that_sends_a_byte_at_a_time_is_cut_off_after_the_handshake_limit
     let closed = closed.expect("the server still held the handshake after 16 s");
     assert!(closed < Duration::from_secs(13), "closed after {closed:?}");
 }
+
+/// When the server closed a connection that sends `head` and then one
+/// byte every 100 ms, never finishing its request and never closing its
+/// side; `None` when it still held it after 8 s.
+fn closed_after_drip(port: u16, head: &str) -> Option<Duration> {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    let began = Instant::now();
+    let _ = s.write_all(head.as_bytes());
+    while began.elapsed() < Duration::from_secs(8) {
+        let mut buf = [0u8; 512];
+        match s.read(&mut buf) {
+            Ok(0) => return Some(began.elapsed()),
+            Ok(_) => {} // the 400 that comes before the close
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
+            Err(_) => return Some(began.elapsed()),
+        }
+        if s.write_all(b"x").is_err() {
+            return Some(began.elapsed());
+        }
+    }
+    None
+}
+
+#[test]
+fn a_request_sent_a_byte_at_a_time_is_cut_off_on_both_listeners() {
+    let w = Work::new("drip");
+    make_root(&w);
+    let mut c = locked_config(&w);
+    c.request_timeout = Duration::from_secs(1);
+    let srv = start(c);
+    let (p, ip) = (srv.port(), srv.ingest_port().expect("an ingest listener"));
+    let ingest = ingest_path(&w, RUN);
+    // Each byte comes well within the timeout of one read; the request as
+    // a whole never ends. Head and body share the one deadline.
+    let cases = [
+        (
+            "site, head",
+            p,
+            format!("GET /login HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nX-Slow: "),
+        ),
+        (
+            "site, body",
+            p,
+            format!(
+                "POST /login HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nContent-Type: \
+                 application/x-www-form-urlencoded\r\nContent-Length: 900\r\n\r\npassword="
+            ),
+        ),
+        (
+            "ingest, head",
+            ip,
+            format!("POST {ingest} HTTP/1.1\r\nX-Slow: "),
+        ),
+        (
+            "ingest, body",
+            ip,
+            format!("POST {ingest} HTTP/1.1\r\nContent-Length: 900\r\n\r\n{{\"event\":\"x"),
+        ),
+    ];
+    for (what, port, head) in cases {
+        let closed = closed_after_drip(port, &head)
+            .unwrap_or_else(|| panic!("{what}: still held after 8 s"));
+        assert!(
+            closed < Duration::from_secs(4),
+            "{what}: closed after {closed:?}"
+        );
+    }
+    assert!(
+        !events_path(&w, RUN).exists(),
+        "a cut-off message was stored"
+    );
+}
+
+#[test]
+fn each_listener_serves_a_bounded_number_of_connections_at_once() {
+    let w = Work::new("conn-cap");
+    make_root(&w);
+    let mut c = locked_config(&w);
+    c.max_connections = 2;
+    c.request_timeout = Duration::from_secs(30);
+    let srv = start(c);
+    let ingest = ingest_path(&w, RUN);
+    for port in [srv.port(), srv.ingest_port().expect("an ingest listener")] {
+        let held: Vec<TcpStream> = (0..2)
+            .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
+            .collect();
+        thread::sleep(Duration::from_millis(300));
+        // A third silent client is closed at once, not served for 30 s.
+        let mut third = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        third
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let began = Instant::now();
+        let r = third.read(&mut [0u8; 16]);
+        assert!(
+            !matches!(&r, Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
+                && began.elapsed() < Duration::from_secs(3),
+            "port {port}: a connection past the cap was served: {r:?}"
+        );
+        drop(held);
+        thread::sleep(Duration::from_millis(300));
+        // The places free up as the held connections end.
+        if port == srv.port() {
+            assert_eq!(get(port, "/login").status, 200);
+        } else {
+            assert_eq!(
+                post(port, &ingest, r#"{"event":"started"}"#, &[]).status,
+                200
+            );
+        }
+    }
+}
+
+#[test]
+fn an_empty_password_file_flag_is_an_error_not_a_site_with_no_login() {
+    let w = Work::new("empty-password-flag");
+    make_root(&w);
+    let root = w.root().to_string_lossy().into_owned();
+    let conf = w.dir.join("live.conf");
+    write(&conf, &format!("root={root}\npassword-file =\n"));
+    let conf = conf.to_string_lossy().into_owned();
+    for given in [
+        vec!["--root", root.as_str(), "--password-file="],
+        vec!["--root", root.as_str(), "--password-file", ""],
+        vec!["--config", conf.as_str()],
+    ] {
+        let a: Vec<String> = given.iter().map(|x| (*x).to_owned()).collect();
+        match server::configure_with(&a, None) {
+            Err((2, m)) => assert!(m.contains("--password-file"), "{given:?}: {m}"),
+            Err((code, m)) => panic!("{given:?}: exit {code}: {m}"),
+            Ok(_) => panic!("{given:?}: started with no login"),
+        }
+    }
+}
+
+#[test]
+fn a_max_body_kb_past_what_a_content_length_can_hold_is_refused() {
+    let w = Work::new("max-body-range");
+    make_root(&w);
+    let root = w.root().to_string_lossy().into_owned();
+    let a = |kb: &str| -> Vec<String> {
+        ["--root", root.as_str(), "--max-body-kb", kb]
+            .iter()
+            .map(|x| (*x).to_owned())
+            .collect()
+    };
+    let top = (i64::MAX / 1024).to_string();
+    assert_eq!(
+        server::configure_with(&a(&top), None)
+            .unwrap()
+            .max_body_kb
+            .to_string(),
+        top
+    );
+    for kb in [
+        (i64::MAX / 1024 + 1).to_string(),
+        "9007199254740992".into(),
+        usize::MAX.to_string(),
+    ] {
+        match server::configure_with(&a(&kb), None) {
+            Err((2, m)) => assert!(m.contains("--max-body-kb"), "{kb}: {m}"),
+            other => panic!(
+                "--max-body-kb {kb} was taken: {:?}",
+                other.map(|c| c.max_body_kb)
+            ),
+        }
+    }
+}
+
+#[test]
+fn the_ingest_port_needs_a_state_folder_of_its_own_and_follows_no_symlink() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let w = Work::new("state-trust");
+    make_root(&w);
+    // A state folder another account can write to: the ingest port does
+    // not start.
+    fs::create_dir_all(w.state()).unwrap();
+    fs::set_permissions(w.state(), fs::Permissions::from_mode(0o777)).unwrap();
+    let e = Server::start(locked_config(&w))
+        .err()
+        .expect("a state folder every account can write to");
+    assert!(e.contains("chmod go-w"), "{e}");
+    assert!(!w.state().join("ingest-token").exists());
+    fs::set_permissions(w.state(), fs::Permissions::from_mode(0o755)).unwrap();
+    let srv = start(locked_config(&w));
+    let ip = srv.ingest_port().unwrap();
+    let message = r#"{"event":"started"}"#;
+    // A run folder, or an events file, that is a symlink is not followed.
+    let outside = w.dir.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::create_dir_all(w.state().join("runs")).unwrap();
+    symlink(&outside, w.state().join("runs").join(RUN)).unwrap();
+    assert_eq!(post(ip, &ingest_path(&w, RUN), message, &[]).status, 500);
+    assert!(
+        !outside.join("events.jsonl").exists(),
+        "the run folder link was followed"
+    );
+    fs::remove_file(w.state().join("runs").join(RUN)).unwrap();
+    fs::create_dir_all(w.state().join("runs").join(RUN)).unwrap();
+    let target = outside.join("other.jsonl");
+    fs::write(&target, "").unwrap();
+    symlink(&target, events_path(&w, RUN)).unwrap();
+    assert_eq!(post(ip, &ingest_path(&w, RUN), message, &[]).status, 500);
+    assert_eq!(
+        fs::read_to_string(&target).unwrap(),
+        "",
+        "the events file link was followed"
+    );
+}

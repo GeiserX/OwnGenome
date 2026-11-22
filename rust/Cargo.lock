@@ -868,6 +868,7 @@ dependencies = [
  "og-summary",
  "pycompat",
  "regex",
+ "rustix",
  "rustls",
  "sha2",
 ]
