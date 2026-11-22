@@ -627,11 +627,13 @@ fn pgx_facts(ctx: &mut Ctx<'_>, dir: &Path, summary: &Value) {
                 "medium",
                 format!("PharmCAT never read a defining position: {unread}"),
             );
-            ctx.leave_out(
-                gene,
-                &format!("{gene} at {unread}"),
-                "not read by PharmCAT, so the call may hide an allele defined there",
-            );
+            // The call stays in the file, so its coverage note names the
+            // position, not a call left out.
+            ctx.warn(format!("{gene}: PharmCAT never read {unread}"));
+            ctx.left_out.push((
+                gene.to_owned(),
+                format!("PharmCAT never read {unread}, which defines an allele of {gene}, so the call may hide that allele"),
+            ));
         }
         if let Some((_, weakest)) = low_gq.iter().find(|(g, _)| g == gene)
             && conf == "high"

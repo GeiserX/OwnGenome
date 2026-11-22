@@ -1216,6 +1216,9 @@ fn a_non_normal_pgx_call_with_unread_positions_keeps_its_phenotype_at_medium_con
     let row = coverage(&b, "NAT2")[0];
     assert_eq!(st(row, &["state"]), "partial", "{row:?}");
     assert!(st(row, &["note"]).contains("rs200893121"), "{row:?}");
+    // The call is in the file: the note names the unread position, never a
+    // call that was left out.
+    assert!(!st(row, &["note"]).contains("left out"), "{row:?}");
 }
 
 #[test]
