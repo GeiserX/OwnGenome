@@ -21,7 +21,7 @@ bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERS
 
 ## Positions PharmCAT never read
 
-For `rust/crates/og-pgx/tests/i411_pgx_incomplete.rs`. Both files are invented PharmCAT 3.4.0 reports written by hand in its layout: each gene with one diplotype and its `variants`, the positions with their GRCh38 place, rsID and the alleles PharmCAT defines there. A position PharmCAT never read has no `call`: PharmCAT leaves a null out, as in `exome-cyp2c19-unread.json`'s CYP2C19 rs4244285, or writes `null`, as in its CYP2C9 rs1057910.
+For `rust/crates/og-pgx/tests/i411_pgx_incomplete.rs`. Both files are invented PharmCAT 3.4.0 reports written by hand in its layout: each gene with one diplotype and its `variants`, the positions with their GRCh38 place, rsID and the alleles PharmCAT defines there. A position PharmCAT never read has no call: PharmCAT 3.4.0 writes `"call": null`, as at `exome-cyp2c19-unread.json`'s CYP2C19 rs4244285 and CYP2C9 rs1057910. A missing field and a blank string are read the same way.
 
 | File | What it holds |
 |---|---|

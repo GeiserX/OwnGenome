@@ -224,10 +224,10 @@ fn one_diplotype(dip: &Value) -> (String, String, bool) {
 }
 
 /// The positions of a gene object's `variants` that PharmCAT never read and
-/// that define an allele: no `call` (PharmCAT leaves a null out, so a missing
-/// field, a null and a blank string all count) and a non-empty `alleles`,
-/// the alleles PharmCAT's definitions place there. Each is named by its
-/// rsID, else `chromosome:position`, else its position, once, in the
+/// that define an allele: no `call` (PharmCAT 3.4.0 writes `"call": null`; a
+/// missing field and a blank string are read the same way) and a non-empty
+/// `alleles`, the alleles PharmCAT's definitions place there. Each is named
+/// by its rsID, else `chromosome:position`, else its position, once, in the
 /// report's order.
 pub fn unread_positions(g: &Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
