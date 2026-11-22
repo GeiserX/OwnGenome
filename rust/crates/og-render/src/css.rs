@@ -1,6 +1,7 @@
-//! The CSS of the HTML report, byte for byte what `bin/render_report.py`
+//! The CSS of the HTML report: [`CSS`] byte for byte what `bin/render_report.py`
 //! writes into the page's `<style>` element: a dark page, a light printout,
-//! and print rules that keep one section or chapter when the address names it.
+//! and print rules that keep one section or chapter when the address names it;
+//! then [`READING`], the rules for a phone and a keyboard the Python never had.
 
 /// The `<style>` body, from its leading newline to its closing brace and newline.
 pub const CSS: &str = r#"
@@ -98,4 +99,33 @@ pub const CSS: &str = r#"
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
   }
+"#;
+
+/// Rules after [`CSS`] in the same `<style>` element, for reading on a phone
+/// and from the keyboard: the skip link shows only with the focus; the
+/// research-only line under the title; sections, cards and table cells shrink
+/// to the screen and wrap long words (paths, coordinates); each table
+/// scrolls inside its region; the contents fold under 900 px and show
+/// without their summary line above it where the browser can style
+/// `::details-content` (elsewhere the summary opens them); a printout keeps
+/// whole tables and leaves out the skip link and the contents.
+pub const READING: &str = r#"  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  .sec, .card { min-width: 0; overflow-wrap: anywhere; }
+  td { overflow-wrap: anywhere; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
 "#;

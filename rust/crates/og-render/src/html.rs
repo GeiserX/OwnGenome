@@ -1,6 +1,8 @@
-//! The HTML report: one page with no script and no fetch, a table of
-//! contents with a state dot per section, the chapters, what the report
-//! leaves out, the disclaimer and the run manifest.
+//! The HTML report: one page with no script and no fetch, a link that skips
+//! to the results, a table of contents with a state dot per section (folded
+//! on a phone), the header with the research-only line under the title, the
+//! chapters, what the report leaves out, the disclaimer and the run manifest.
+//! Every table sits in its own scroll region, so the page fits a phone.
 //!
 //! Each section is a frame: an anchor, a line with the step, its state, the
 //! newest file date and "New since" under the first card title, each card's
@@ -13,7 +15,7 @@ use crate::chapters::{
     writer,
 };
 use crate::charts;
-use crate::css::CSS;
+use crate::css::{CSS, READING};
 use crate::escape::e;
 use crate::model::{
     Card, Cell, Colour, HtmlPart, Inline, Layout, Line, Malformed, Section, State, Summary, Table,
@@ -29,6 +31,15 @@ pub const CSP: &str = "default-src 'none'; img-src data:; style-src 'unsafe-inli
 /// A link that leaves this computer, marked so a reader knows before
 /// opening it.
 pub const OFFSITE: &str = "opens a website";
+
+/// The line under the report's title that says what the report is before
+/// any result: the full disclaimer stays at the end.
+pub const RESEARCH_ONLY: &str = "Research software, not a clinical report: confirm any finding in a \
+certified laboratory before acting on it.";
+
+/// The first thing a keyboard reaches: a link past the contents to the
+/// results (`<main id="main">`), visible only while it has the focus.
+pub const SKIP_LINK: &str = "<a class=\"skip\" href=\"#main\">Skip to results</a>";
 
 const PRINT_HINT: &str = "<p class=\"print-hint\">To print one section, open it from the contents (or its \
 \"link to this section\"), then print: the printout holds that section, this header, the list of what is not \
@@ -145,6 +156,30 @@ fn table(out: &mut Vec<String>, t: &Table) {
             out.push(format!("      <tr>{head}</tr>"));
             out.push(rows.collect::<Vec<_>>().join("\n"));
             out.push("    </table>".to_owned());
+        }
+    }
+}
+
+/// Puts each table of `lines` in a scroll region, so a table wider than its
+/// card scrolls inside it instead of widening the page on a phone. The
+/// region takes the focus, so a keyboard can scroll it too. It is named by
+/// the title of the card it sits in (the last card title line above it),
+/// else by `label`.
+fn scroll_tables(lines: &mut [String], label: &str) {
+    let mut name = e(label).into_owned();
+    for l in lines.iter_mut() {
+        if let Some(title) = l
+            .strip_prefix("    <h2>")
+            .and_then(|t| t.strip_suffix("</h2>"))
+        {
+            name = title.to_owned();
+        } else if l.contains("table>") {
+            let open = format!(
+                "<div class=\"tscroll\" role=\"region\" aria-label=\"{name}\" tabindex=\"0\"><table>"
+            );
+            *l = l
+                .replace("<table>", &open)
+                .replace("</table>", "</table></div>");
         }
     }
 }
@@ -518,7 +553,12 @@ pub fn report_using(
     });
     let mut shown_ids: Vec<&str> = Vec::new();
     let ns = s.new_since();
+    // The contents sit in a details element: closed under 900 px, so a phone
+    // opens on the results; above that the CSS shows them without the
+    // summary line, in a browser that can style ::details-content.
     let mut toc = vec![
+        "<details class=\"toc-fold\">".to_owned(),
+        "<summary>Contents</summary>".to_owned(),
         "<nav class=\"toc\" aria-label=\"Contents\">".to_owned(),
         "  <h2 class=\"toc-title\">Contents</h2>".to_owned(),
         "  <ol>".to_owned(),
@@ -599,6 +639,7 @@ pub fn report_using(
         "    </li>".to_owned(),
         "  </ol>".to_owned(),
         "</nav>".to_owned(),
+        "</details>".to_owned(),
     ]);
     chapter_open(&mut body, cid, title, question);
     body.extend(frame("not-run", &not_run, None, false));
@@ -609,7 +650,7 @@ pub fn report_using(
         match guarded(|| terms_appendix(index, &shown_ids)) {
             Ok(cards) => {
                 let (cid, title, question) = TERMS;
-                let at = toc.len() - 2;
+                let at = toc.len() - 3;
                 toc.insert(
                     at,
                     format!("    <li><a href=\"#ch-{cid}\">{}</a></li>", e(title)),
@@ -640,12 +681,23 @@ pub fn report_using(
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">".to_owned(),
     );
     out.push("<title>OwnGenome Report</title>".to_owned());
-    out.push(format!("<style>{CSS}</style>"));
-    out.extend(["</head>", "<body>", "<div class=\"layout\">"].map(str::to_owned));
+    out.push(format!("<style>{CSS}{READING}</style>"));
+    out.extend(["</head>", "<body>", SKIP_LINK, "<div class=\"layout\">"].map(str::to_owned));
     out.extend(toc);
-    out.push("<main>".to_owned());
-    out.extend(run::html_header(s)?);
+    out.push("<main id=\"main\" tabindex=\"-1\">".to_owned());
+    let mut header = run::html_header(s)?;
+    let at = header
+        .iter()
+        .position(|l| l.trim_start().starts_with("<h1>"))
+        .map_or(1, |i| i + 1)
+        .min(header.len());
+    header.insert(
+        at,
+        format!("  <p class=\"research-only\">{}</p>", e(RESEARCH_ONLY)),
+    );
+    out.extend(header);
     out.push(PRINT_HINT.to_owned());
+    scroll_tables(&mut body, "Table");
     out.extend(body);
     out.extend(
         [
@@ -665,7 +717,9 @@ pub fn report_using(
         offsite_link("https://github.com/GeiserX/OwnGenome", "OwnGenome", OFFSITE)
     ));
     out.push("  &mdash; 100% local analysis, no data uploaded".to_owned());
-    out.extend(run::html_manifest(s)?);
+    let mut manifest = run::html_manifest(s)?;
+    scroll_tables(&mut manifest, "Run manifest");
+    out.extend(manifest);
     out.extend(["</div>", "</main>", "</div>", "</body>", "</html>"].map(str::to_owned));
     let mut page = out.join("\n");
     page.push('\n');
