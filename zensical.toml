@@ -34,6 +34,7 @@ nav = [
       { "Vendor Compatibility Guide" = "vendor-guide.md" },
       { "Starting from a Vendor VCF" = "vcf-first.md" },
       { "Step 0: Reference Data Setup" = "00-reference-setup.md" },
+      { "Licences for downloads" = "licences.md" },
       { "Realigning After a Reference Change" = "realignment.md" },
       { "Quick Test: Verify Your Setup Before Running on Real Data" = "quick-test.md" },
       { "Nextflow Execution" = "nextflow.md" },

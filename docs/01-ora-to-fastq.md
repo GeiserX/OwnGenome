@@ -11,6 +11,9 @@ Raw sequencing data from Illumina DRAGEN comes in ORA format. All downstream too
 - Not available as Docker image — must be installed natively
 
 ## Prerequisites
+
+Illumina's DRAGEN ORA Decompression Software requires acceptance of its end-user licence. Read the [Illumina agreement](https://support.illumina.com/content/dam/illumina-support/documents/downloads/software/dragen-decompression/1000000139522_02_Ora_Decompression_SW_EULA.pdf) before downloading, installing, or using `orad`.
+
 - `orad` binary (download from Illumina). The script is checked against orad 2.7.0, from https://webdata.illumina.com/downloads/software/dragen-decompression/orad.2.7.0.linux.tar.gz
 - Sufficient disk space: ORA→FASTQ.gz expands ~5x (e.g., a 30X genome is 15-20 GB of ORA and 60-90 GB of FASTQ.gz)
 

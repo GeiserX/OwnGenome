@@ -100,10 +100,32 @@
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
   }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to results</a>
 <div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
 <nav class="toc" aria-label="Contents">
   <h2 class="toc-title">Contents</h2>
   <ol>
@@ -160,9 +182,11 @@
     <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
-<main>
+</details>
+<main id="main" tabindex="-1">
 <header class="header">
   <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
   <div class="meta">
     Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC
   </div>
@@ -214,7 +238,7 @@
   <div class="card full-width">
     <h2>ClinVar Hits (best-reviewed first, 10 of 10)</h2>
     <a id="clinvar-hits"></a>
-    <table>
+    <div class="tscroll" role="region" aria-label="ClinVar Hits (best-reviewed first, 10 of 10)" tabindex="0"><table>
       <tr><th>Chr</th><th>Position</th><th>Ref</th><th>Alt</th><th>Genotype</th><th>Gene</th><th>Significance</th><th>Review status</th><th>Stars</th><th>Combined allele</th><th>gnomAD frequency</th><th>Call quality</th><th>Viewer</th></tr>
       <tr><td>chr7</td><td>117559590</td><td>ATCT</td><td>A</td><td>het</td><td>CFTR</td><td>Pathogenic</td><td>practice guideline</td><td>4</td><td></td><td>gnomAD AF unknown</td><td>low-confidence call (GQ 15, DP 30): check the reads</td><td><a class="locus" href="http://127.0.0.1:8765/#chr7:117559590" target="_blank" rel="noopener noreferrer">chr7:117559590</a></td></tr>
       <tr><td>chr17</td><td>43057100</td><td>C</td><td>T</td><td>het</td><td>BRCA1,NBR2</td><td>Pathogenic</td><td>reviewed by expert panel</td><td>3</td><td>part of a combined allele: chr17:43057100 C&gt;T, chr17:43057102 A&gt;G; unphased, so the parts may sit on different haplotypes</td><td>gnomAD AF unknown</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chr17:43057100" target="_blank" rel="noopener noreferrer">chr17:43057100</a></td></tr>
@@ -226,7 +250,7 @@
       <tr><td>chr3</td><td>15645186</td><td>G</td><td>C</td><td>het</td><td>BTD</td><td>Pathogenic/Likely pathogenic</td><td>criteria provided, conflicting classifications</td><td>1</td><td></td><td>gnomAD AF unknown</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chr3:15645186" target="_blank" rel="noopener noreferrer">chr3:15645186</a></td></tr>
       <tr><td>chr2</td><td>100</td><td>A</td><td>G</td><td>het</td><td>.</td><td>.</td><td>.</td><td>0</td><td></td><td>gnomAD AF unknown</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chr2:100" target="_blank" rel="noopener noreferrer">chr2:100</a></td></tr>
       <tr><td>chrX</td><td>101398000</td><td>C</td><td>T</td><td>1</td><td>GLA</td><td>Pathogenic</td><td>no assertion criteria provided</td><td>0</td><td>possibly one allele with chrX:101398004 G&gt;A: check ClinVar for a combined record</td><td>gnomAD AF unknown</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chrX:101398000" target="_blank" rel="noopener noreferrer">chrX:101398000</a></td></tr>
-    </table>
+    </table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
   </div>
   </section>
@@ -326,7 +350,7 @@
     <div class="stat"><span class="label">HBA1 and HBA2 together (alpha-globin genes, from depth)</span><span class="value">not assessed: S_hba_copy_number.tsv has no status row</span></div>
     <div class="stat"><span class="label">CYP21A2 (RCCX module, from depth and six PSV sites)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cyp21a2_psv.tsv is not in this run&#x27;s output)</span></div>
     <div class="stat"><span class="label">Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cn_dosage.tsv is not in this run&#x27;s output)</span></div>
-    <table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>rhd</td><td>4 (1 region(s), quality 40 or more, filter PASS)</td><td>.</td></tr></table>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy)" tabindex="0"><table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>rhd</td><td>4 (1 region(s), quality 40 or more, filter PASS)</td><td>.</td></tr></table></div>
     <div class="stat"><span class="label">Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cn_intervals.tsv is not in this run&#x27;s output)</span></div>
   </div>
   </section>
