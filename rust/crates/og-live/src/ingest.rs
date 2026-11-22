@@ -1,10 +1,17 @@
 //! The ingest listener: the run's own processes post their progress here
-//! (`POST /ingest/<run>`): a Nextflow weblog message, or a `pgp_step` /
-//! `pgp_run_finished` message from `scripts/run-all.sh`. Each message is cut
-//! to the fields a progress view needs ([`cut`]) and appended to
-//! `STATE_DIR/runs/<run>/events.jsonl`, which the browser side reads. It
-//! serves nothing.
+//! (`POST /<token>/ingest/<run>`): a Nextflow weblog message, or a
+//! `pgp_step` / `pgp_run_finished` message from `scripts/run-all.sh`. Each
+//! message is cut to the fields a progress view needs ([`cut`]) and
+//! appended to `STATE_DIR/runs/<run>/events.jsonl`, which the browser side
+//! reads. It serves nothing.
+//!
+//! It listens on loopback only, and it takes a message only with the token
+//! the server made ([`token`], `STATE_DIR/ingest-token`, mode 600), so
+//! another account on the machine cannot post fake progress. Nextflow's
+//! weblog cannot send a header, so the token is the first part of the
+//! path: `OWNGENOME_LIVE_URL=http://127.0.0.1:8788/<token>`.
 
+use crate::auth::{new_token, same_secret};
 use crate::runs::valid_run;
 use crate::server::{REQUEST_SECONDS, read_head};
 use crate::state::{Live, dumps_compact, lock};
@@ -14,6 +21,8 @@ use pycompat::json::{self, Value};
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -196,6 +205,51 @@ pub fn parse(body: &[u8]) -> Result<Value, String> {
     cut(&v)
 }
 
+/// The file of the ingest token, in the state folder.
+pub const TOKEN_FILE: &str = "ingest-token";
+
+/// Whether `t` has the shape of a token the server makes: 43 URL-safe
+/// characters.
+fn token_shape(t: &str) -> bool {
+    t.len() == 43
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// The token the ingest port takes. The one in `STATE_DIR/ingest-token` is
+/// kept when it is a plain file only its owner can read and has the shape
+/// of a token the server makes, so a restart does not cut off a run that
+/// is posting. Anything else there (a link, a file others can read, a
+/// value someone chose) is replaced with a new random token.
+pub fn token(state_dir: &Path) -> Result<String, String> {
+    let path = state_dir.join(TOKEN_FILE);
+    if let Ok(meta) = fs::symlink_metadata(&path)
+        && meta.file_type().is_file()
+        && meta.permissions().mode() & 0o077 == 0
+        && let Ok(text) = fs::read_to_string(&path)
+        && token_shape(text.trim())
+    {
+        return Ok(text.trim().to_owned());
+    }
+    let err = |e: io::Error| format!("{}: {e}", path.display());
+    let t = new_token().map_err(err)?;
+    let tmp = state_dir.join(format!("{TOKEN_FILE}.{}", std::process::id()));
+    let _ = fs::remove_file(&tmp);
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(err)?;
+    f.write_all(format!("{t}\n").as_bytes()).map_err(err)?;
+    drop(f);
+    fs::rename(&tmp, &path).map_err(err)?;
+    Ok(t)
+}
+
+const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<run>, with the token of \
+                           STATE_DIR/ingest-token";
+
 /// One writer at a time for every events file.
 static APPEND: Mutex<()> = Mutex::new(());
 
@@ -254,15 +308,26 @@ fn answer(
         };
     }
     let path = target.split(['?', '#']).next().unwrap_or("");
-    // A OWNGENOME_LIVE_URL ending in '/' gives '//ingest/...'.
-    let path = format!("/{}", path.trim_start_matches('/'));
-    let Some(run) = path.strip_prefix("/ingest/") else {
+    // /<token>/ingest/<run>; a OWNGENOME_LIVE_URL ending in '/' gives
+    // '//' before ingest.
+    let rest = path.trim_start_matches('/');
+    let (given, after) = rest.split_once('/').unwrap_or((rest, ""));
+    let run = after.trim_start_matches('/').strip_prefix("ingest/");
+    if run.is_none() && given != "ingest" {
         return (404, "not found".into());
-    };
+    }
     if header("origin").is_some() {
         // Nextflow and curl send no Origin.
         return (403, "a browser cannot post here".into());
     }
+    let taken = live
+        .cfg
+        .ingest_token
+        .as_deref()
+        .is_some_and(|t| same_secret(t.as_bytes(), given.as_bytes()));
+    let Some(run) = run.filter(|_| taken) else {
+        return (403, NEEDS_TOKEN.into());
+    };
     let run = unquote(run);
     if !valid_run(&run) {
         return (400, "bad run name".into());

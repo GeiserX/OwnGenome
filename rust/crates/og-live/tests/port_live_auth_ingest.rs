@@ -74,9 +74,11 @@ fn with_cookie(port: u16, method: &str, path: &str, cookie: &str) -> Resp {
     request(port, method, path, &[("Cookie", c.as_str())])
 }
 
-/// The path a message of `run` is posted to.
-fn ingest_path(_w: &Work, run: &str) -> String {
-    format!("/ingest/{run}")
+/// The path a message of `run` is posted to: after the token the server
+/// made (`STATE_DIR/ingest-token`).
+fn ingest_path(w: &Work, run: &str) -> String {
+    let token = fs::read_to_string(w.state().join("ingest-token")).expect("the ingest token");
+    format!("/{}/ingest/{run}", token.trim())
 }
 
 /// Posts `body` to the ingest port at `path`.

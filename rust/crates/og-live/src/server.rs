@@ -27,6 +27,13 @@
 //! pages read. The access log (`STATE_DIR/access.log`, TSV) records who
 //! opened what, never a query string, a request body, a result or the
 //! password.
+//!
+//! Without a password hash the site serves loopback only, and it refuses
+//! what would put it in front of other people: the proxy, Host and TLS
+//! flags exit 2, and a request a proxy forwarded (`Forwarded`,
+//! `X-Forwarded-*`, `X-Real-IP`) gets 403. The ingest port listens on
+//! loopback only and takes a message only at the path that holds the
+//! token the server keeps in `STATE_DIR/ingest-token`.
 
 use crate::auth::{self, Auth, Net};
 use crate::csp::{self, CSP, DENY, RUN_HTML_CSP};
@@ -127,6 +134,9 @@ pub struct Config {
     pub ingest: Option<(String, u16)>,
     /// The largest message the ingest listener takes.
     pub max_body_kb: usize,
+    /// The token the ingest listener takes, made by [`Server::start`]
+    /// (`STATE_DIR/ingest-token`); `None`: it takes no message.
+    pub ingest_token: Option<String>,
 }
 
 /// The first ancestor of this binary that holds `rel`.
@@ -171,6 +181,7 @@ impl Config {
             cookie_secure: false,
             ingest: None,
             max_body_kb: 1024,
+            ingest_token: None,
         }
     }
 }
@@ -490,8 +501,25 @@ fn netloc(url: &str) -> &str {
     &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())]
 }
 
+/// Whether a request says it came through a proxy: a `Forwarded`,
+/// `X-Forwarded-*` or `X-Real-IP` header. Without a password the site is
+/// for this machine only, and a proxy would hand it to anyone who reaches
+/// the proxy.
+fn forwarded(req: &Req<'_>) -> bool {
+    req.headers
+        .iter()
+        .any(|(k, _)| k == "forwarded" || k == "x-real-ip" || k.starts_with("x-forwarded-"))
+}
+
 /// Answers one request.
 pub fn handle(req: &mut Req<'_>) -> io::Result<()> {
+    if req.live.cfg.auth.hash.is_none() && forwarded(req) {
+        req.log("forwarded-refused", "-", "-", 403);
+        return req.deny(
+            403,
+            Some("a request through a proxy needs a password (docs/live-site.md)"),
+        );
+    }
     if !host_ok(req) {
         req.log("host-refused", "-", "-", 403);
         return req.deny(403, None);
@@ -908,7 +936,7 @@ fn listen(bind: &str, port: u16, what: &str) -> Result<TcpListener, String> {
 impl Server {
     /// Reads steps.tsv, opens the access log, binds `cfg.bind:cfg.port` (0:
     /// any free port) and the ingest listener of `cfg.ingest`, and serves.
-    pub fn start(cfg: Config) -> Result<Server, String> {
+    pub fn start(mut cfg: Config) -> Result<Server, String> {
         let steps = og_runlog::steps::read_steps(&cfg.steps).map_err(|e| format!("steps: {e}"))?;
         fs::create_dir_all(&cfg.state_dir)
             .map_err(|e| format!("--state-dir {}: {e}", cfg.state_dir.display()))?;
@@ -924,6 +952,9 @@ impl Server {
             Some((bind, port)) => Some(listen(bind, *port, " for ingest")?),
             None => None,
         };
+        if ingest_listener.is_some() {
+            cfg.ingest_token = Some(crate::ingest::token(&cfg.state_dir)?);
+        }
         let mut live = Live::new(cfg, steps, access);
         let more: Vec<String> = live
             .cfg
@@ -1256,11 +1287,7 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
         .map(|c| Net::parse(c))
         .collect::<Result<_, _>>()
         .map_err(|e| (2, format!("ERROR: {e}")))?;
-    cfg.tls = match (path("tls_cert"), path("tls_key")) {
-        (Some(c), Some(k)) => Some((c, k)),
-        (None, None) => None,
-        _ => return Err((1, "ERROR: --tls-cert and --tls-key go together".into())),
-    };
+    let (cert, key) = (path("tls_cert"), path("tls_key"));
     let hash = auth::read_password_hash(path("password_file").as_deref(), env_hash)
         .map_err(|e| (1, format!("ERROR: password hash: {e}")))?;
     let mut a = Auth::new(hash);
@@ -1275,6 +1302,33 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
     }
     let password = a.hash.is_some();
     cfg.auth = Arc::new(a);
+    if !password && let Some(flag) = network_flag(&cfg, cert.is_some() || key.is_some()) {
+        return Err((
+            2,
+            format!(
+                "ERROR: {flag} is for a site reached through a proxy or over the network, and \
+                 no password hash is set, so anyone who reaches it would see the runs: run \
+                 'og live serve hash-password' and pass --password-file (or \
+                 OWNGENOME_LIVE_PASSWORD_HASH), or leave {flag} out"
+            ),
+        ));
+    }
+    cfg.tls = match (cert, key) {
+        (Some(c), Some(k)) => Some((c, k)),
+        (None, None) => None,
+        _ => return Err((1, "ERROR: --tls-cert and --tls-key go together".into())),
+    };
+    if let Some((bind, _)) = &cfg.ingest
+        && !is_loopback(bind)
+    {
+        return Err((
+            2,
+            format!(
+                "ERROR: --ingest-bind {bind} is not loopback: the ingest port takes the messages \
+                 of runs on this machine only (in a container, give it the host's network)"
+            ),
+        ));
+    }
     if !password && !is_loopback(&cfg.bind) {
         return Err((
             2,
@@ -1295,6 +1349,22 @@ pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config,
     Ok(cfg)
 }
 
+/// The first flag of a site reached through a proxy or over the network
+/// that `cfg` sets (`tls`: `--tls-cert` or `--tls-key` was given).
+fn network_flag(cfg: &Config, tls: bool) -> Option<&'static str> {
+    if !cfg.trust_proxy.is_empty() {
+        Some("--trust-proxy")
+    } else if !cfg.allowed_host.is_empty() {
+        Some("--allowed-host")
+    } else if tls {
+        Some("--tls-cert and --tls-key")
+    } else if cfg.cookie_secure {
+        Some("--cookie-secure")
+    } else {
+        None
+    }
+}
+
 /// [`configure_with`] the `OWNGENOME_LIVE_PASSWORD_HASH` of the process.
 pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
     let env = std::env::var("OWNGENOME_LIVE_PASSWORD_HASH").ok();
@@ -1312,12 +1382,12 @@ pub fn start_notes(cfg: &Config) -> Vec<String> {
                 .into(),
         );
     }
-    if let Some((bind, _)) = &cfg.ingest
-        && !is_loopback(bind)
-    {
+    if cfg.auth.hash.is_some() && cfg.tls.is_none() && !is_loopback(&cfg.bind) {
         out.push(format!(
-            "og live serve: WARNING: the ingest port listens on {bind}: anyone who reaches it \
-             can post fake progress (it serves nothing)"
+            "og live serve: WARNING: --bind {} is not loopback and serves plain HTTP: the \
+             password, the session cookie and every page cross the network unencrypted; add \
+             --tls-cert and --tls-key, or bind 127.0.0.1 behind a proxy that does TLS",
+            cfg.bind
         ));
     }
     out
@@ -1369,7 +1439,11 @@ pub fn serve_cli(cfg: Config, err: &mut dyn Write) -> u8 {
         srv.port()
     );
     if let (Some(p), Some((ib, _))) = (srv.ingest_port(), &srv.live().cfg.ingest) {
-        let _ = write!(err, " ; ingest http://{ib}:{p}/ingest/<run>");
+        let _ = write!(
+            err,
+            " ; ingest http://{ib}:{p}/<token>/ingest/<run> (the token is in {})",
+            srv.live().cfg.state_dir.join("ingest-token").display()
+        );
     }
     let _ = writeln!(err);
     let _ = err.flush();
@@ -1414,7 +1488,7 @@ mod tests {
         let root = dir.to_str().unwrap();
         assert_eq!(refused(&["--root", root, "--password-file", "/x"]), Some(1));
         assert_eq!(refused(&["--root", root, "--bind", "0.0.0.0"]), Some(2));
-        assert_eq!(refused(&["--root", root, "--tls-cert", "a"]), Some(1));
+        assert_eq!(refused(&["--root", root, "--tls-cert", "a"]), Some(2));
         assert_eq!(refused(&["--root", root, "--port", "x"]), Some(2));
         assert_eq!(refused(&["--root", root, "--nope"]), Some(2));
         assert_eq!(refused(&["--port", "1"]), Some(2));
