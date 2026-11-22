@@ -131,3 +131,14 @@ calls=$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")
 run_expect 1 auto_wrong_build_bam "${validate[@]}" BAM_CHR1_LENGTH=249250621 "${launcher[@]}"
 output_has auto_wrong_build_bam '\[FAIL\].*BAM genome build: GRCh37/hg19'
 [ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$calls" ] || fail "Auto started Nextflow with a wrong-build BAM"
+
+# An explicit INPUT still checks the file it reads, and only skips the others.
+calls=$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")
+run_expect 1 bam_wrong_build_bam "${validate[@]}" INPUT=bam BAM_CHR1_LENGTH=249250621 "${launcher[@]}"
+output_has bam_wrong_build_bam '\[FAIL\].*BAM genome build: GRCh37/hg19'
+run_expect 1 vcf_nochr_vcf "${validate[@]}" INPUT=vcf VCF_CHR1=1 VCF_CHR1_LENGTH=249250621 "${launcher[@]}"
+output_has vcf_nochr_vcf "chromosome names without the 'chr' prefix"
+[ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$calls" ] || fail "Nextflow ran with a wrong-build input the run reads"
+run_expect 0 vcf_wrong_build_bam "${validate[@]}" INPUT=vcf BAM_CHR1_LENGTH=249250621 "${launcher[@]}"
+output_has vcf_wrong_build_bam 'INPUT=vcf: the BAM is not read, so it is not checked'
+[ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$((calls + 1))" ] || fail "VCF run did not start Nextflow"
