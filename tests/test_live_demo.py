@@ -31,10 +31,10 @@ sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import build_live_demo  # noqa: E402
-import live_results  # noqa: E402
 import make_demo_events  # noqa: E402
 import owngenome_live  # noqa: E402
 import run_state  # noqa: E402
+from owngenome_live_results import og_results  # noqa: E402
 from test_owngenome_live import Chrome, asset_problems, find_chrome  # noqa: E402
 
 FAILS = []
@@ -3063,8 +3063,8 @@ def gate_transparency(b, base, out):
 
     def synthetic():
         no_act()
-        write(files[0], live_results.build(S, SYNTH))
-        o = live_results.overview(SYNTH)
+        write(files[0], og_results(SYNTH, "--sample", S))
+        o = og_results(SYNTH, "--overview")
         idx = json.load(open(files[2]))
         for r in idx['runs']:
             if r['name'] == S:

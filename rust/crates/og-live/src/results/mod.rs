@@ -20,7 +20,7 @@ use std::io::Write;
 
 const EMPTY_CLINVAR: &str = "No P/LP match in this ClinVar file at the call floor. ClinVar lists only part of what can cause disease, so this is information, and the caveats below still apply.";
 const TABLE_LIMIT: usize = 200;
-const USAGE: &str = "usage: og live results SUMMARY [--sample NAME] [--file PATH]... [--out PATH]\n       og live results SUMMARY --overview | --spans";
+const USAGE: &str = "usage: og live results SUMMARY [--sample NAME] [--file PATH]... [--out PATH]\n       og live results SUMMARY --overview | --spans | --tag-search";
 
 /// The result builders used by the live server.
 pub const FNS: ResultsFns = ResultsFns { build, overview };
@@ -1005,6 +1005,14 @@ pub fn overview(summary: &Value) -> Result<Value, String> {
     ))
 }
 
+/// The results a report's search index needs to tag.
+pub fn closable_of(root: &Value) -> Vec<og_render::index::Closable> {
+    parsed(root).map_or_else(
+        |_| Vec::new(),
+        |summary| veil::spans(&finding_rows(&summary)),
+    )
+}
+
 #[derive(Default)]
 struct Args {
     summary: String,
@@ -1013,6 +1021,7 @@ struct Args {
     out: Option<String>,
     overview: bool,
     spans: bool,
+    tag_search: bool,
 }
 
 fn args(argv: &[String]) -> Result<Args, String> {
@@ -1027,6 +1036,7 @@ fn args(argv: &[String]) -> Result<Args, String> {
         match arg.as_str() {
             "--overview" => args.overview = true,
             "--spans" => args.spans = true,
+            "--tag-search" => args.tag_search = true,
             "--sample" => args.sample = Some(next(&mut argv)?),
             "--file" => {
                 args.files.insert(next(&mut argv)?);
@@ -1042,8 +1052,13 @@ fn args(argv: &[String]) -> Result<Args, String> {
     if args.summary.is_empty() {
         return Err("a summary is required".into());
     }
-    if args.overview && args.spans {
-        return Err("--overview and --spans are mutually exclusive".into());
+    if [args.overview, args.spans, args.tag_search]
+        .into_iter()
+        .filter(|flag| *flag)
+        .count()
+        > 1
+    {
+        return Err("--overview, --spans and --tag-search are mutually exclusive".into());
     }
     Ok(args)
 }
@@ -1071,17 +1086,25 @@ pub fn cli(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             std::fs::read_to_string(&args.summary)
         }
         .map_err(|e| e.to_string())?;
-        let summary = parsed(&pycompat::json::loads(&text).map_err(|e| e.to_string())?)?;
-        let result = if args.spans {
-            veil::spans_json(&finding_rows(&summary))
-        } else if args.overview {
-            headlines::overview(&summary, &build_summary("", &summary, None))
+        let root = pycompat::json::loads(&text).map_err(|e| e.to_string())?;
+        let result = if args.tag_search {
+            let summary = parsed(val(&root, "summary"))?;
+            let mut terms = val(&root, "terms").clone();
+            veil::tag_search(&mut terms, &veil::spans(&finding_rows(&summary)))?;
+            terms
         } else {
-            let sample = args
-                .sample
-                .as_deref()
-                .unwrap_or_else(|| string(summary.root(), "sample"));
-            build_summary(sample, &summary, Some(&args.files))
+            let summary = parsed(&root)?;
+            if args.spans {
+                veil::spans_json(&finding_rows(&summary))
+            } else if args.overview {
+                headlines::overview(&summary, &build_summary("", &summary, None))
+            } else {
+                let sample = args
+                    .sample
+                    .as_deref()
+                    .unwrap_or_else(|| string(summary.root(), "sample"));
+                build_summary(sample, &summary, Some(&args.files))
+            }
         };
         let body = dumps(
             &result,

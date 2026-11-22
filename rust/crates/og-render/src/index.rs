@@ -40,9 +40,8 @@
 //! cannot answer: a position is a genotype question, for
 //! `scripts/owngenome-lookup.sh`.
 //!
-//! The veil needs the findings a child's page keeps closed, which the live
-//! results build. Until they are ported, the command line passes none, so
-//! `og report index build` writes no veil field; [`build`] takes them.
+//! The live results producer supplies the findings a child's page keeps
+//! closed. The `og` command passes them to [`build`] through [`cli_using`].
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write;
@@ -807,6 +806,16 @@ fn write(path: &str, body: &str) -> std::io::Result<()> {
 /// them or a command line it cannot read, 1 when a file cannot be read or
 /// written.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    cli_using(args, out, err, |_| Vec::new())
+}
+
+/// Run the index command with the live results producer's closable findings.
+pub fn cli_using(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    closable: fn(&Value) -> Vec<Closable>,
+) -> u8 {
     if args.is_empty() {
         let _ = writeln!(err, "{USAGE}\nog report index: error: give build or query");
         return 2;
@@ -844,7 +853,12 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
                 Ok(s) => s,
                 Err(why) => return fail(err, why),
             };
-            let idx = match build(&s, o.get("--sample-dir").map(String::as_str), &[], err) {
+            let idx = match build(
+                &s,
+                o.get("--sample-dir").map(String::as_str),
+                &closable(&s),
+                err,
+            ) {
                 Ok(i) => i,
                 Err(why) => return fail(err, format!("{summary}: {why}")),
             };

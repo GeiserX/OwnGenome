@@ -216,16 +216,12 @@ def build(summary, sample_dir=None, anchors=None):
                         add(n, key, sec, text, locus)
     # The veil: an item that names a result to act on (its gene, or a locus inside its position or span)
     # carries that result's id, so a child's page leaves it out of the search while the result is closed
-    # (bin/live_results.py veil_id, the rule its ClinVar rows and chart marks follow).
-    import live_results  # here, not at the top: live_results imports render_report, which imports this module
-    spans = live_results.closable_of(summary)
-    for term, items in terms.items():
+    # og live results applies the same rule to the index as to the ClinVar rows and chart marks.
+    from owngenome_live_results import og_results
+    for items in terms.values():
         for it in items:
             del it["_seen"]
-            fid = live_results.veil_id(spans, " ".join([term] + [f"{m['text']} {m['locus'] or ''}"
-                                                                 for m in it["mentions"]]))
-            if fid:
-                it["veil"] = fid
+    terms = og_results({"summary": summary, "terms": terms}, "--tag-search")
     return {"schema_version": SCHEMA_VERSION, "sample": summary.get("sample"),
             "generated_utc": summary.get("generated_utc"),
             "terms": {k: terms[k] for k in sorted(terms)}}

@@ -76,7 +76,7 @@ fn loci(text: &str) -> Vec<Locus> {
     out
 }
 
-fn spans(found: &[Finding]) -> Vec<Closable> {
+pub(crate) fn spans(found: &[Finding]) -> Vec<Closable> {
     found
         .iter()
         .filter(|f| f.level == Level::Act)
@@ -130,6 +130,36 @@ fn id(spans: &[Closable], text: &str, own: Option<Locus>) -> Option<String> {
         return veil_of(spans, &text);
     }
     veil_of(spans, text)
+}
+
+/// Tag the legacy search index without rebuilding its terms in Python.
+pub(crate) fn tag_search(terms: &mut Value, spans: &[Closable]) -> Result<(), String> {
+    let Value::Object(terms) = terms else {
+        return Err("search terms must be an object".into());
+    };
+    for (term, items) in terms {
+        let Value::Array(items) = items else {
+            return Err("search items must be an array".into());
+        };
+        for item in items {
+            let mut shown = term.clone();
+            for mention in list(val(item, "mentions")) {
+                shown.push(' ');
+                shown.push_str(string(mention, "text"));
+                shown.push(' ');
+                shown.push_str(string(mention, "locus"));
+            }
+            let Value::Object(item) = item else {
+                return Err("search item must be an object".into());
+            };
+            if let Some(id) = veil_of(spans, &shown) {
+                item.insert("veil".into(), Value::Str(id));
+            } else {
+                item.shift_remove("veil");
+            }
+        }
+    }
+    Ok(())
 }
 
 fn joined(v: &Value) -> String {

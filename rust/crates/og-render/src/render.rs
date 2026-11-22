@@ -185,6 +185,16 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     cli_using(args, out, err, writer)
 }
 
+/// Run the report command with the live results producer's closable findings.
+pub fn cli_with_spans(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    closable: fn(&Value) -> Vec<index::Closable>,
+) -> u8 {
+    render(args, out, err, writer, closable)
+}
+
 /// `og report render ARGS` with the section writers of `writers` (a test
 /// plants a fault through them).
 pub fn cli_using(
@@ -192,6 +202,16 @@ pub fn cli_using(
     out: &mut dyn Write,
     err: &mut dyn Write,
     writers: WriterFn,
+) -> u8 {
+    render(args, out, err, writers, |_| Vec::new())
+}
+
+fn render(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    writers: WriterFn,
+    closable: fn(&Value) -> Vec<index::Closable>,
 ) -> u8 {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         let _ = writeln!(out, "{USAGE}");
@@ -242,7 +262,12 @@ pub fn cli_using(
     let need_index = a.search_index.is_some() || a.out.iter().any(|o| o.ends_with(".html"));
     let idx = if need_index {
         let built = guarded(|| {
-            index::build(s.root(), a.sample_dir.as_deref(), &[], &mut &mut *err)
+            let spans = if a.search_index.is_some() {
+                closable(s.root())
+            } else {
+                Vec::new()
+            };
+            index::build(s.root(), a.sample_dir.as_deref(), &spans, &mut &mut *err)
                 .map_err(crate::model::Malformed)
         });
         match built {

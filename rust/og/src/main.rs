@@ -543,8 +543,18 @@ fn main() -> ExitCode {
             _ => usage_error("og summary takes collect"),
         },
         "report" => match rest.first().map(String::as_str) {
-            Some("render") => io(og_render::render::cli, &rest[1..]),
-            Some("index") => io(og_render::index::cli, &rest[1..]),
+            Some("render") => io(
+                |args, out, err| {
+                    og_render::render::cli_with_spans(args, out, err, og_live::results::closable_of)
+                },
+                &rest[1..],
+            ),
+            Some("index") => io(
+                |args, out, err| {
+                    og_render::index::cli_using(args, out, err, og_live::results::closable_of)
+                },
+                &rest[1..],
+            ),
             Some("charts") => io(og_render::charts::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown report tool '{other}'")),
             None => usage_error("the following arguments are required: report tool"),
