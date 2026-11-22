@@ -816,10 +816,12 @@ fn cli_configuration_serves_the_journal_and_finding_pages() {
         assets.join("steps.tsv").to_str().unwrap(),
         "--port",
         "0",
+        "--ingest-port",
+        "0",
         "--quiet",
     ]
     .map(str::to_owned);
-    let srv = start(server::configure(&args).unwrap());
+    let srv = start(server::configure_with(&args, None).unwrap());
     let port = srv.port();
     let response = get(port, &format!("/runs/{RUN}/results.json"));
     assert_eq!(response.status, 200);
