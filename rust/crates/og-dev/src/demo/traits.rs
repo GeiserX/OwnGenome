@@ -252,6 +252,9 @@ const TRAIT_ALT_COPIES: &[(&str, usize)] = &[
 /// Rows of the panel left without a genotype on purpose.
 const TRAIT_GAPS: [&str; 2] = ["rs4410790", "rs4481887"];
 
+/// One site has reads but falls below step 42's genotype-quality floor.
+const LOW_GQ_SITE: &str = "rs10427255";
+
 /// Step 42: [`TRAIT_ALT_COPIES`] at the panel's positions, read by
 /// `og traits table`. A panel row the demo gives no genotype and does not
 /// leave out on purpose stops the writer, so a new trait gets a value.
@@ -287,8 +290,13 @@ pub fn traits(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
         let gt: Vec<&str> = std::iter::repeat_n(rf, 2 - n)
             .chain(std::iter::repeat_n(alt, n))
             .collect();
+        let gq = if cell(r, "rsid") == LOW_GQ_SITE {
+            12
+        } else {
+            60
+        };
         text.push_str(&format!(
-            "{}\t{}\t{rf}\t{alt}\t{}\t60\n",
+            "{}\t{}\t{rf}\t{alt}\t{}\t{gq}\n",
             cell(r, "chrom"),
             cell(r, "pos"),
             gt.join("/")

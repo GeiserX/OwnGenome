@@ -1,5 +1,6 @@
 use super::*;
-use og_render::sections::{apoe, consumer, g2, prs, telomere};
+use og_render::sections::traits::{LOW_GQ_LABEL, LOW_GQ_READING};
+use og_render::sections::{apoe, bloodtype, consumer, g2, prs, telomere, viral};
 
 pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
     let mut out = Adapter::default();
@@ -9,10 +10,24 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
             let rows = array(d, "rows")?
                 .iter()
                 .filter(|r| {
-                    string(r, "status") == "called"
+                    matches!(string(r, "status"), "called" | "low_gq")
                         && !string(r, "gene").eq_ignore_ascii_case("APOE")
                 })
                 .map(|r| {
+                    if string(r, "status") == "low_gq" {
+                        let reason = string(r, "note");
+                        let reading = if matches!(reason.trim(), "" | ".") {
+                            LOW_GQ_READING.to_owned()
+                        } else {
+                            format!("{LOW_GQ_READING}. {reason}")
+                        };
+                        return vec![
+                            cell(val(r, "gene")),
+                            cell(val(r, "trait")),
+                            ".".to_owned(),
+                            reading,
+                        ];
+                    }
                     let genotype = text_or(val(r, "genotype"), ".");
                     let ancestry = if string(r, "ancestry") == "yes" {
                         " (ancestry)"
@@ -42,6 +57,9 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     ("No genotype at the position", "not_covered"),
                 ],
             );
+            if !matches!(val(d, "low_gq"), Value::Null) {
+                out.fact(LOW_GQ_LABEL, cell(val(d, "low_gq")));
+            }
             for r in array(d, "rules")? {
                 out.lines.push(format!(
                     "{} ({} {}): {}. {}",
@@ -113,11 +131,17 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
         "bloodtype" => {
             let d = summary.section("bloodtype").data;
             out.facts(d, &[("ABO", "abo"), ("RhD", "rhd")]);
+            let systems = array(d, "systems")?;
             out.fields_table(
                 &["System", "Predicted phenotype", "Genotype", "Confidence"],
-                array(d, "systems")?,
+                systems,
                 &["system", "phenotype", "genotype", "confidence"],
             );
+            for row in systems {
+                if let Some((system, note)) = bloodtype::system_note(row)? {
+                    out.lines.push(format!("{system}: {note}"));
+                }
+            }
         }
         "telomere" => {
             let sec = summary.section("telomere");
@@ -133,13 +157,24 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
             out.attention = truthy(val(sec.data, "low_reads"));
         }
         "viral" => {
-            let d = summary.section("viral").data;
-            out.facts(d, &[("HHV-6", "hhv6"), ("Genomes searched", "genomes")]);
+            let sec = summary.section("viral");
+            let d = sec.data;
+            let hhv6_value = val(d, "hhv6");
+            out.fact(
+                "HHV-6",
+                if matches!(hhv6_value, Value::Null) {
+                    cell(hhv6_value)
+                } else {
+                    viral::hhv6(&sec)?
+                },
+            );
+            out.fact("Genomes searched", cell(val(d, "genomes")));
             out.fields_table(
                 &["Virus", "Reads", "Breadth", "Copies per cell", "Call"],
                 array(d, "found")?,
                 &["virus", "reads", "breadth", "copies_per_cell", "call"],
             );
+            out.lines = viral::threshold_notes(&sec)?;
         }
         "consumer-export" => {
             let sec = summary.section("consumer_export");

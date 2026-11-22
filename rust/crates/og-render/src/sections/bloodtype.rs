@@ -8,7 +8,7 @@ use pycompat::json::Value;
 
 use crate::html;
 use crate::model::{
-    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table, need, py,
+    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table, get, need, py,
 };
 use crate::notes::BLOODTYPE_NOTE;
 use crate::sections::paralogs::shows_body;
@@ -24,6 +24,20 @@ fn systems(v: &Value) -> Result<&[Value], Malformed> {
             "sections.bloodtype.data.systems is not a list".into(),
         )),
     }
+}
+
+/// The call's note for a system whose limits or phase affect the prediction.
+pub fn system_note(row: &Value) -> Result<Option<(&str, &str)>, Malformed> {
+    let Value::Str(system) = need(row, "system", PATH)? else {
+        return Ok(None);
+    };
+    if !matches!(system.as_str(), "ABO" | "RhD" | "Duffy") {
+        return Ok(None);
+    }
+    Ok(match get(row, "note", PATH)? {
+        Some(Value::Str(note)) if !matches!(note.trim(), "" | ".") => Some((system, note)),
+        _ => None,
+    })
 }
 
 /// The text report's block.
@@ -48,6 +62,9 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
                 ljust(&f("genotype")?, 28),
                 f("confidence")?
             ));
+            if let Some((_, note)) = system_note(x)? {
+                w.push(format!("    {note}"));
+            }
         }
         w.push(format!("  {BLOODTYPE_NOTE}"));
         w.push(String::new());
@@ -69,12 +86,16 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         body.push(Line::Stat("RhD".to_owned(), Inline::Text(dot("rhd")?)));
         let mut rows = Vec::new();
         for x in d.get("systems")?.map_or(Ok(&[][..]), systems)? {
-            let f = |k: &str| need(x, k, PATH).and_then(py).map(Cell::Text);
+            let f = |k: &str| need(x, k, PATH).and_then(py);
+            let confidence = f("confidence")?;
             rows.push(vec![
-                f("system")?,
-                f("phenotype")?,
-                f("genotype")?,
-                f("confidence")?,
+                Cell::Text(f("system")?),
+                Cell::Text(f("phenotype")?),
+                Cell::Text(f("genotype")?),
+                match system_note(x)? {
+                    Some((_, note)) => Cell::Sub(confidence, note.to_owned()),
+                    None => Cell::Text(confidence),
+                },
             ]);
         }
         body.push(Line::Table(Table {
