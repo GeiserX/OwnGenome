@@ -167,16 +167,13 @@ NF
 }
 report_run report "${REPO}/modules/local/html_report/main"
 check_eq "HTML_REPORT with the interval table exits 0" "$NF_RC" 0
-changes=$(python3 - "${CASE_TMP}/report/${SAMPLE}/summary.json" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except (OSError, ValueError):
-    print("no summary"); sys.exit(0)
-ci = ((d["sections"].get("parascopy") or {}).get("data") or {}).get("cn_intervals") or {}
-print(",".join(c["locus"] for c in ci.get("changes", [])) + "/" + str(ci.get("rows")))
-PY
-)
+CN_SUM="${CASE_TMP}/report/${SAMPLE}/summary.json"
+if [ -r "$CN_SUM" ] && jq -e . "$CN_SUM" > /dev/null 2>&1; then
+  changes=$(jq -r '(.sections.parascopy // {} | .data // {} | .cn_intervals // {}) as $ci
+    | ([($ci.changes // [])[].locus] | join(",")) + "/" + ($ci.rows | if . == null then "None" else tostring end)' "$CN_SUM")
+else
+  changes="no summary"
+fi
 check_eq "summary.json: the interval rows with a change, and the row count" "$changes" "GJB6_D13S1830,AZFc_DAZ/6"
 report_run report-noplace "${NP}/report-noplace/main"
 check "red: the module without the place line stops (exit ${NF_RC})" test "$NF_RC" -ne 0

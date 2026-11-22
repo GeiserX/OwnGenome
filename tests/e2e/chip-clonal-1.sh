@@ -116,11 +116,11 @@ check_eq "and the germline-looking call is not counted" \
   "$(awk -F'\t' '$13 == "chip" && $3 == p' p="$R882" "${G}/${H}/chip/${H}_chip.tsv" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 # --- the reports ----------------------------------------------------------------------
-python3 "${REPO}/bin/render_report.py" --sample "$P" --sample-dir "${G}/${P}" -o "${T}/P.txt" -o "${T}/P.html" >/dev/null
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$P" --sample-dir "${G}/${P}" -o "${T}/P.txt" -o "${T}/P.html" >/dev/null
 check "the text report has the CHIP section with R882H" has 'DNMT3A R882H: VAF 0\.[0-9]+' "$(cat "${T}/P.txt" 2>/dev/null)"
 check "and the detection limit" has 'Detection limit: a clone of VAF about [0-9]+% or more' "$(cat "${T}/P.txt" 2>/dev/null)"
 check "the HTML report has the CHIP card" has 'Clonal Haematopoiesis \(CHIP\)</h2>' "$(cat "${T}/P.html" 2>/dev/null)"
-python3 "${REPO}/bin/render_report.py" --sample "$U" --sample-dir "${G}/${U}" -o "${T}/U.txt" >/dev/null
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$U" --sample-dir "${G}/${U}" -o "${T}/U.txt" >/dev/null
 check "control: the unplanted report says no CHIP call" has 'No CHIP call\.' "$(cat "${T}/U.txt" 2>/dev/null)"
 
 # --- Nextflow against the bash step ----------------------------------------------------

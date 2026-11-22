@@ -6,7 +6,7 @@
 #     fails, naming each with its reason;
 #   - scripts/42-traits.sh, on a copy of the HG002 VCF and gVCF that case 21
 #     wrote, writes one rules line per rule, the APOL1 and SERPINA1 lines among them;
-#   - bin/render_report.py on that folder puts both rules in the HTML genotype
+#   - og report render on that folder puts both rules in the HTML genotype
 #     rules table, each with its trait, gene and sites; control: the same
 #     folder with the SERPINA1 line taken out of the rules file renders a table
 #     without it, and still with APOL1.
@@ -51,7 +51,7 @@ check_eq "the rules file has the APOL1 and SERPINA1 lines" \
 awk -F'\t' '$1 == "APOL1" || $1 == "SERPINA1"' "$RT" 2>/dev/null | cut -f1-6 | sed 's/^/  /'
 
 render() {  # render OUT.html: the HTML report of the folder
-  python3 "${REPO}/bin/render_report.py" --sample "$S" --sample-dir "${G}/${S}" --json "${CASE_TMP}/summary.json" \
+  "${REPO}/bin/og" report render --sample "$S" --sample-dir "${G}/${S}" --json "${CASE_TMP}/summary.json" \
     -o "${CASE_TMP}/report.txt" -o "$1" > /dev/null 2>"${CASE_TMP}/render.err"
 }
 render "${CASE_TMP}/report.html"
