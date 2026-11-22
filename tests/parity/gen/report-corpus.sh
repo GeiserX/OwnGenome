@@ -603,9 +603,11 @@ frame_html() {
   return out s
 }
 NR == FNR {
-  if ($0 ~ /^    <h2>.*<\/h2>$/ || index($0, "<summary>Run manifest (run_manifest.tsv)</summary>")) c++
+  if ($0 ~ /^    <h2>.*<\/h2>$/ || index($0, "<summary>Run manifest (run_manifest.tsv)</summary>")) { c++; sh = "" }
+  if ($0 ~ /^    <h3>.*<\/h3>$/) sh = substr($0, 9, length($0) - 13)
   t = $0
-  tables[c] += gsub(/<table>/, "", t)
+  k = gsub(/<table>/, "", t)
+  if (k > 0) { if (sh != "") heads[c, sh]++; sh = ""; tables[c] += k }
   next
 }
 { line = $0 }
@@ -648,7 +650,7 @@ index(line, "table>") {
   while ((i = index(s, "<table>")) > 0) {
     n++
     name = label
-    if (tables[card] > 1) name = (subh != "" ? label ": " subh : label ", table " n)
+    if (tables[card] > 1) name = (subh != "" && heads[card, subh] == 1 ? label ": " subh : label ", table " n)
     subh = ""
     out = out substr(s, 1, i - 1) "<div class=\"tscroll\" role=\"region\" aria-label=\"" name "\" tabindex=\"0\"><table>"
     s = substr(s, i + 7)

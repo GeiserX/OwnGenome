@@ -9,6 +9,7 @@
 //! caveats under its title, the cards, then links to the step's own files.
 
 use pycompat::json::Value;
+use std::collections::HashMap;
 
 use crate::chapters::{
     CHAPTERS, Failed, FrameState, LIMITS, Sec, TERMS, WriterFn, guarded, section_of, step_of,
@@ -165,37 +166,53 @@ fn card_title(l: &str) -> Option<&str> {
     l.strip_prefix("    <h2>")?.strip_suffix("</h2>")
 }
 
+/// The (already escaped) text of a table subheading line, `    <h3>…</h3>`.
+fn subheading(l: &str) -> Option<&str> {
+    l.strip_prefix("    <h3>")?.strip_suffix("</h3>")
+}
+
 /// Puts each table of `lines` in a scroll region, so a table wider than its
 /// card scrolls inside it instead of widening the page on a phone. The
 /// region takes the focus, so a keyboard can scroll it too. It is named by
 /// the title of the card it sits in (the last card title line above it),
 /// else by `label`. In a card with several tables each region adds the
-/// subheading (`    <h3>…</h3>`) right above its table, else its number in
-/// the card ("Traits, table 1", "Traits: Genotype rules …"), so a screen
-/// reader's list of regions tells them apart.
+/// subheading (`    <h3>…</h3>`) right above its table, when that
+/// subheading is not empty and heads no other table of the card, else its
+/// number in the card ("Traits, table 1", "Traits: Genotype rules …"), so a
+/// screen reader's list of regions tells them apart.
 fn scroll_tables(lines: &mut [String], label: &str) {
-    // How many tables each card holds; card 0 is what comes before any title.
+    // How many tables each card holds, and how many of them each subheading
+    // heads; card 0 is what comes before any title.
     let mut counts = vec![0usize];
+    let mut heads: Vec<HashMap<String, usize>> = vec![HashMap::new()];
+    let mut sub: Option<String> = None;
     for l in lines.iter() {
         if card_title(l).is_some() {
             counts.push(0);
+            heads.push(HashMap::new());
+            sub = None;
+            continue;
         }
-        if let Some(n) = counts.last_mut() {
-            *n += l.matches("<table>").count();
+        if let Some(h) = subheading(l) {
+            sub = Some(h.to_owned());
+            continue;
+        }
+        let k = l.matches("<table>").count();
+        if k > 0 {
+            if let Some(h) = sub.take().filter(|h| !h.is_empty()) {
+                *heads.last_mut().unwrap().entry(h).or_default() += 1;
+            }
+            *counts.last_mut().unwrap() += k;
         }
     }
     let (mut card, mut n) = (0, 0);
     let mut name = e(label).into_owned();
-    let mut sub: Option<String> = None;
     for l in lines.iter_mut() {
         if let Some(title) = card_title(l) {
             (card, n, name, sub) = (card + 1, 0, title.to_owned(), None);
             continue;
         }
-        if let Some(h) = l
-            .strip_prefix("    <h3>")
-            .and_then(|t| t.strip_suffix("</h3>"))
-        {
+        if let Some(h) = subheading(l) {
             sub = Some(h.to_owned());
             continue;
         }
@@ -206,7 +223,10 @@ fn scroll_tables(lines: &mut [String], label: &str) {
         let mut rest = l.as_str();
         while let Some(i) = rest.find("<table>") {
             n += 1;
-            let region = match (counts[card] > 1, sub.take()) {
+            let unique = sub
+                .take()
+                .filter(|h| !h.is_empty() && heads[card].get(h) == Some(&1));
+            let region = match (counts[card] > 1, unique) {
                 (false, _) => name.clone(),
                 (true, Some(h)) => format!("{name}: {h}"),
                 (true, None) => format!("{name}, table {n}"),
@@ -762,4 +782,48 @@ pub fn report_using(
     let mut page = out.join("\n");
     page.push('\n');
     Ok((page, failed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scroll_tables;
+
+    fn regions(lines: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
+        scroll_tables(&mut v, "Table");
+        v.iter()
+            .flat_map(|l| l.split("aria-label=\"").skip(1))
+            .map(|r| r.split('"').next().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    /// Two tables under the same subheading in one card would share a name,
+    /// and an empty subheading names nothing: both fall back to the table's
+    /// number in the card; a unique subheading still names its table.
+    #[test]
+    fn a_repeated_or_empty_subheading_names_the_table_by_its_number() {
+        let got = regions(&[
+            "    <h2>Traits</h2>",
+            "    <h3>A &amp; B</h3>",
+            "<table></table>",
+            "    <h3>A &amp; B</h3>",
+            "<table></table>",
+            "    <h3>Other</h3>",
+            "<table></table>",
+            "    <h2>Genes</h2>",
+            "    <h3></h3>",
+            "<table></table>",
+            "<table></table>",
+        ]);
+        assert_eq!(
+            got,
+            [
+                "Traits, table 1",
+                "Traits, table 2",
+                "Traits: Other",
+                "Genes, table 1",
+                "Genes, table 2",
+            ]
+        );
+    }
 }
