@@ -5,7 +5,8 @@ use pycompat::json::Value;
 use std::fs::{self, File, FileTimes};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
 pub const VCF: &str =
@@ -39,8 +40,16 @@ pub struct Sample {
 
 impl Sample {
     pub fn new(case: &str, id: &'static str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("og-summary-port-{}-{case}", std::process::id()));
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let seq = NEXT.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "og-summary-port-{case}-{}-{now}-{seq}",
+            std::process::id()
+        ));
         fs::create_dir(&dir).expect("create the synthetic sample folder");
         Self { dir, id }
     }

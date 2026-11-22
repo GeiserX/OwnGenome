@@ -875,15 +875,23 @@ fn the_readers_agree_on_clinvar_stars() {
         statuses.map(|(_, stars)| stars),
     );
     let summary = d.collect();
-    let Value::Array(hits) = at(data(&summary, "clinvar"), "hits") else {
-        panic!("missing hits")
-    };
-    for hit in hits {
-        let Value::Int(pos) = at(hit, "pos") else {
-            panic!("non-numeric position")
-        };
-        assert_eq!(at(hit, "stars"), &Value::Int(statuses[*pos as usize - 1].1));
-    }
+    let hits = array(data(&summary, "clinvar"), "hits");
+    let mut actual: Vec<_> = hits
+        .iter()
+        .map(|hit| {
+            let (Value::Int(pos), Value::Int(stars)) = (at(hit, "pos"), at(hit, "stars")) else {
+                panic!("position and stars must be integers");
+            };
+            (*pos, *stars)
+        })
+        .collect();
+    actual.sort_unstable();
+    let expected: Vec<_> = statuses
+        .iter()
+        .enumerate()
+        .map(|(i, (_, stars))| (i as i128 + 1, *stars))
+        .collect();
+    assert_eq!(actual, expected);
 }
 
 #[test]

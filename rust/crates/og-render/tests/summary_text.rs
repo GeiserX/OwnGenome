@@ -419,7 +419,15 @@ fn both_reports_explain_construct_reads_and_always_report_calls() {
                 txt.lines()
                     .any(|line| line.contains(gene) && line.contains(call))
             );
-            has(html, &[&format!("<td>{call}</td>")]);
+            let row = format!("<td>{gene}</td>");
+            let call_cell = format!("<td>{call}</td>");
+            assert!(
+                html.split("<tr>").any(|cells| {
+                    let cells = cells.split("</tr>").next().unwrap();
+                    cells.contains(&row) && cells.contains(&call_cell)
+                }),
+                "missing {call:?} in the {gene} row"
+            );
         }
         for report in [txt, html] {
             has(
@@ -429,9 +437,6 @@ fn both_reports_explain_construct_reads_and_always_report_calls() {
                     "known lab-construct site (APP Swedish K670N/M671L): clear",
                     "0 of 12 alt reads and 0 of 10 ref reads",
                     "chr21:25880551-25891785",
-                    "ref, GQ 50 (gVCF block)",
-                    "het, GQ 40, DP 30",
-                    "no call: no record in the VCF or the gVCF covers the site",
                 ],
             );
         }
@@ -1331,8 +1336,7 @@ fn construct_hits_past_the_first_fifty_still_get_a_report_line() {
         })
         .chain([app])
         .collect();
-    let json = dumps(&summary, &Dump::default()).unwrap();
-    render_reports(&json, |txt, html| {
+    render_value(&d, &summary, |txt, html| {
         let past = "APP chr21:25897626 TC>GA het: known lab-construct site (APP Swedish K670N/M671L): clear (0 of 12 alt reads and 0 of 10 ref reads clipped at an exon edge)";
         has(
             txt,
@@ -1361,11 +1365,10 @@ fn repeat_count_with_no_confidence_interval_does_not_size_an_in_repeat_call() {
 #[test]
 fn prs_effect_is_withheld_when_a_score_does_not_apply_to_the_declared_sex() {
     use og_render::sections::prs::effect;
-    let mut score = loads(r#"{"effect":"HR 1.53 (EUR, PPM000591)","evaluated_in":["EUR"],"percentile":"","group":"EUR","sex_check":"not applicable to the declared sex"}"#).unwrap();
+    let mut score = loads(r#"{"effect":"HR 1.53 (EUR, PPM000591)","evaluated_in":["EUR"],"percentile":"81.2","group":"EUR","sex_check":"not applicable to the declared sex"}"#).unwrap();
     assert!(effect(&score).unwrap().0.is_empty());
     let fields = object(&mut score);
     fields.insert("sex_check".into(), Value::Str(String::new()));
-    fields.insert("percentile".into(), Value::Str("81.2".into()));
     assert_eq!(effect(&score).unwrap().0, PRS_EUR_EFFECT);
 }
 
@@ -1443,7 +1446,7 @@ fn construct_site_notes_show_read_counts_when_measured() {
 fn put_prs_without_evaluations(d: &Sample) {
     d.put(
         PRS,
-        format!("Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\tPercentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check\tInput\nCoronary artery disease\tPGS000018\t0.5\t1\t2\t50\t81.2\tEUR\t0\t0\tall\tapplies\tgvcf\n"),
+        "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\tPercentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check\tInput\nCoronary artery disease\tPGS000018\t0.5\t1\t2\t50\t81.2\tEUR\t0\t0\tall\tapplies\tgvcf\n",
     );
 }
 
