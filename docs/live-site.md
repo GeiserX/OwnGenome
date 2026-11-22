@@ -46,7 +46,7 @@ weblog {
 }
 ```
 
-For `og live serve`, put its token between the port and `ingest`: `url = 'http://127.0.0.1:8788/<token>/ingest/your_name'`, where `<token>` is the content of `<state dir>/ingest-token`. `og live serve` prints that address, without the token, as it starts. That config file then holds the token: make it readable by your account only (write it after `umask 077`, or run `chmod 600` on it), and leave the token out of any log or config you share.
+For `og live serve`, put its token between the port and `ingest`: `url = 'http://127.0.0.1:8788/<token>/ingest/your_name'`, where `<token>` is the content of `<state dir>/ingest-token`. `og live serve` prints that address, without the token, as it starts. That config file then holds the token: create it readable by your account only from the start (as a new file written after `umask 077`, or in a folder made with `mkdir -m 700`), and leave the token out of any log or config you share.
 
 ## What the pages show
 
