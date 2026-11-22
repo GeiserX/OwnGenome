@@ -1,19 +1,19 @@
 //! Step 26b, fine-grained ancestry (`docs/26b-ancestry-fine.md`): the
-//! commands around ADMIXTURE and RFMix, as `og ancestry-fine <verb>`.
+//! commands of the step, as `og ancestry-fine <verb>`.
 //!
 //! - [`panel`]: `panel-map` writes the panel's sample table once, at setup;
 //!   `check-map` refuses a table given with `ANCESTRY_FINE_SAMPLE_MAP` that
 //!   has a group too small to model.
-//! - [`sample_bed`]: ADMIXTURE's input for one person, and the bootstrap
-//!   script the ADMIXTURE image runs.
 //! - [`chroms`]: the chromosomes long enough for RFMix to paint.
 //! - [`report`]: the fractions table, the painting (BED and PNG) and the
 //!   plain-text summary.
 //! - [`freqs`]: each reference group's allele frequencies, counted at
 //!   install in place of a supervised ADMIXTURE run.
-//! - [`project`], [`paint`]: `og ancestry-fine project|paint`, the engines
-//!   that replace ADMIXTURE's projection and RFMix. Not ported yet: each
-//!   says so and exits 2.
+//! - [`project`]: `og ancestry-fine project`, the fractions at each level
+//!   projected on the groups' frequencies, with their block bootstrap (in
+//!   place of ADMIXTURE).
+//! - [`paint`]: `og ancestry-fine paint`, the engine that replaces RFMix.
+//!   Not ported yet: it says so and exits 2.
 //! - [`simulate`]: `og ancestry-fine simulate`, an admixed genome with known
 //!   truth that those engines test against.
 //! - [`compare`]: `og archaic compare|genomes`, Chen et al.'s Neanderthal
@@ -39,7 +39,6 @@ pub mod paint;
 pub mod panel;
 pub mod project;
 pub mod report;
-pub mod sample_bed;
 pub mod simulate;
 
 use std::fmt;
@@ -298,21 +297,6 @@ fn for_each_line(path: &Path, mut f: impl FnMut(&str) -> Result<()>) -> Result<(
     Ok(())
 }
 
-/// The raw lines of a text file with their endings (`f.readlines()`),
-/// read by `f`, one at a time.
-fn for_each_raw_line(path: &Path, mut f: impl FnMut(&str) -> Result<()>) -> Result<()> {
-    let input = og_io::open(path).map_err(|e| cannot_read(path, &e))?;
-    let mut lines = og_io::Lines::new(input, og_io::Utf8::Strict);
-    let mut line = String::new();
-    while lines
-        .read_line(&mut line)
-        .map_err(|e| cannot_read(path, &e))?
-    {
-        f(&line)?;
-    }
-    Ok(())
-}
-
 /// Python's `s.split()`: runs of whitespace separate, none at the ends.
 fn split_ws(s: &str) -> impl Iterator<Item = &str> {
     s.split(pycompat::num::py_isspace).filter(|w| !w.is_empty())
@@ -554,7 +538,7 @@ fn is_negative_number(s: &str) -> bool {
 /// A verb's body: the parsed options and stdout.
 type Run = fn(&Args, &mut dyn io::Write) -> Result<()>;
 
-const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,sample-bed,chroms,report,freqs,project,paint,simulate} ...\n";
+const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,chroms,report,freqs,project,paint,simulate} ...\n";
 
 /// `og ancestry-fine <verb> [args]`: the exit code. Output goes to `out`,
 /// messages to `err`.
@@ -579,7 +563,6 @@ pub fn cli(args: &[String], out: &mut dyn io::Write, err: &mut dyn io::Write) ->
         "panel-map" => (&panel::PANEL_MAP, panel::panel_map_main),
         "check-map" => (&panel::CHECK_MAP, panel::check_map_main),
         "freqs" => (&freqs::SPEC, freqs::main),
-        "sample-bed" => (&sample_bed::SPEC, sample_bed::main),
         "chroms" => (&chroms::SPEC, chroms::main),
         "report" => (&report::SPEC, report::main),
         "-h" | "--help" => {
@@ -759,7 +742,6 @@ mod tests {
         for verb in [
             "panel-map",
             "check-map",
-            "sample-bed",
             "chroms",
             "report",
             "freqs",

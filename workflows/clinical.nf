@@ -28,8 +28,7 @@ include { MITO_EXTRACT_CHRM  } from '../modules/local/mito_haplogroup/main'
 include { MITO_HAPLOGROUP    } from '../modules/local/mito_haplogroup/main'
 include { HAPLOCHECK         } from '../modules/local/mito_haplogroup/main'
 include { ANCESTRY_FINE_GENOTYPE  } from '../modules/local/ancestry_fine/main'
-include { ANCESTRY_FINE_PREPARE   } from '../modules/local/ancestry_fine/main'
-include { ANCESTRY_FINE_ADMIXTURE } from '../modules/local/ancestry_fine/main'
+include { ANCESTRY_FINE_FRACTIONS } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PHASE     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PAINT     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_REPORT    } from '../modules/local/ancestry_fine/main'
@@ -177,7 +176,7 @@ workflow CLINICAL {
     }
 
     //
-    // ANCESTRY_FINE — step 26b: ADMIXTURE fractions and an RFMix painting
+    // ANCESTRY_FINE — step 26b: og ancestry fractions and an RFMix painting
     // against the fine-grained panel. With a gVCF the panel's SNVs are
     // genotyped from it, as in PRS; without one the VCF must hold reference
     // calls, or ANCESTRY_FINE_GENOTYPE stops (the bash step's rule).
@@ -189,28 +188,27 @@ workflow CLINICAL {
             .filter { row -> row[1] != null }
             .map { row -> row[4] != null ? [row[1], row[4], row[5], 'gvcf'] : [row[1], row[2], row[3], 'vcf'] }
         ANCESTRY_FINE_GENOTYPE(ch_af_input, ch_ancestry_fine_panel, ch_reference, ch_reference_fai)
-        ANCESTRY_FINE_PREPARE(ANCESTRY_FINE_GENOTYPE.out.genotypes, ch_ancestry_fine_panel)
-        ANCESTRY_FINE_ADMIXTURE(ANCESTRY_FINE_PREPARE.out.admixture_input)
+        ANCESTRY_FINE_FRACTIONS(ANCESTRY_FINE_GENOTYPE.out.genotypes, ch_ancestry_fine_panel)
         ANCESTRY_FINE_PHASE(
             ANCESTRY_FINE_GENOTYPE.out.genotypes
                 .map { meta, g, gi, _counts -> [meta.id, meta, g, gi] }
-                .join(ANCESTRY_FINE_PREPARE.out.chroms.map { meta, c -> [meta.id, c] })
+                .join(ANCESTRY_FINE_FRACTIONS.out.chroms.map { meta, c -> [meta.id, c] })
                 .map { _id, meta, g, gi, c -> [meta, g, gi, c] },
             ch_ancestry_fine_panel
         )
         ANCESTRY_FINE_PAINT(ANCESTRY_FINE_PHASE.out.phased, ch_ancestry_fine_panel)
         ANCESTRY_FINE_REPORT(
-            ANCESTRY_FINE_ADMIXTURE.out.admixture
+            ANCESTRY_FINE_FRACTIONS.out.fractions
                 .map { meta, d -> [meta.id, meta, d] }
                 .join(ANCESTRY_FINE_PAINT.out.painting.map { meta, d -> [meta.id, d] })
-                .map { _id, meta, adm, paint -> [meta, adm, paint] },
+                .map { _id, meta, frc, paint -> [meta, frc, paint] },
             ch_ancestry_fine_panel,
             params.ancestry_fine_panel ? file(params.ancestry_fine_panel).name : ''
         )
         ch_ancestry_fine     = ANCESTRY_FINE_REPORT.out.fractions
         ch_ancestry_fine_png = ANCESTRY_FINE_REPORT.out.painting_png
-        ch_versions = ch_versions.mix(ANCESTRY_FINE_GENOTYPE.out.versions, ANCESTRY_FINE_PREPARE.out.versions,
-                                      ANCESTRY_FINE_ADMIXTURE.out.versions, ANCESTRY_FINE_PHASE.out.versions,
+        ch_versions = ch_versions.mix(ANCESTRY_FINE_GENOTYPE.out.versions, ANCESTRY_FINE_FRACTIONS.out.versions,
+                                      ANCESTRY_FINE_PHASE.out.versions,
                                       ANCESTRY_FINE_PAINT.out.versions, ANCESTRY_FINE_REPORT.out.versions)
     }
 

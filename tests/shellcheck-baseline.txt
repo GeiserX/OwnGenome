@@ -6,7 +6,6 @@
 # One line per finding: path, code, then the text of the line with its
 # blanks squeezed, separated by tabs. The text stands in for the line
 # number, so a line keeps matching when lines above it move.
-rust/crates/og-ancestry/src/run_admixture.sh.in	SC2170	while [ "$r" -le @B@ ]; do
 scripts/12-mito-haplogroup.sh	SC2016	'bcftools view -f PASS "$1" | bcftools norm -m-any -Oz -o "$2" && bcftools index -f -t "$2"' \
 scripts/12-mito-haplogroup.sh	SC2016	'bcftools view -r chrM "$1" -Oz -o "$2" && bcftools index -f -t "$2"' \
 scripts/12-mito-haplogroup.sh	SC2016	'{ echo ">chrM"; dd if="$1" bs=1 skip="$2" count="$3" status=none; } > "$4.ref.fa"
