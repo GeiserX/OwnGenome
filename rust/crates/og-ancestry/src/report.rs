@@ -1,5 +1,7 @@
-//! `report`: the step's outputs, from ADMIXTURE's `.Q` and bootstrap
-//! replicates of each level and RFMix's `.msp.tsv` of each chromosome.
+//! `report`: the step's outputs, from the `.Q` and the bootstrap replicates
+//! of each level (`og ancestry-fine project`, folder `--fractions`; the older
+//! name `--admixture` still works) and RFMix's `.msp.tsv` of each
+//! chromosome.
 //!
 //! - `<S>_ancestry_fine.tsv`: each group's fraction with its bootstrap
 //!   standard error and 2.5 to 97.5 percentile range, each continental
@@ -21,16 +23,17 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const SPEC: Spec = Spec {
     verb: "report",
-    usage: "usage: og ancestry-fine report --sample S --model DIR --admixture DIR [--paint DIR] [--panel NAME] --out DIR\n",
+    usage: "usage: og ancestry-fine report --sample S --model DIR --fractions DIR [--paint DIR] [--panel NAME] --out DIR\n",
     options: &[
         "--sample",
         "--model",
+        "--fractions",
         "--admixture",
         "--paint",
         "--panel",
         "--out",
     ],
-    required: &["--sample", "--model", "--admixture", "--out"],
+    required: &["--sample", "--model", "--out"],
 };
 
 /// GRCh38 lengths of chr1 to chr22, for the painting picture.
@@ -463,7 +466,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
             Level::Region => "Regional",
         };
         out.push(format!(
-            "{name} groups (ADMIXTURE projection on {} groups, {} bootstrap replicates):",
+            "{name} groups (projection on the frequencies of {} groups, {} bootstrap replicates):",
             rows.len(),
             s.n_boot.get(&level).copied().unwrap_or(0)
         ));
@@ -562,7 +565,14 @@ fn tsv_rows(path: &Path) -> Result<Vec<Vec<String>>> {
 pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
     let sample = a.req("--sample");
     let model = a.req("--model");
-    let adm = a.req("--admixture");
+    // --admixture is the name of --fractions before og projected the
+    // fractions itself; it still works.
+    let adm = a
+        .get("--fractions")
+        .or_else(|| a.get("--admixture"))
+        .ok_or_else(|| {
+            Fail("--fractions DIR is required (the folder og ancestry-fine project wrote)".into())
+        })?;
     let paint = a.get("--paint").unwrap_or("");
     let panel = a.get("--panel").unwrap_or("");
     let levels = read_levels(model)?;
@@ -754,7 +764,7 @@ mod tests {
             "S",
             "--model",
             &model,
-            "--admixture",
+            "--fractions",
             &adm,
             "--paint",
             &paint,
@@ -809,6 +819,10 @@ mod tests {
             text.contains("West Eurasia (Europe, Middle East, North Africa)     90%  (80% to 90%)")
         );
         assert!(text.contains("not a nationality") && text.contains("Greek and"));
+        assert!(
+            text.contains("Continental groups (projection on the frequencies of 3 groups, 11 bootstrap replicates):"),
+            "{text}"
+        );
         assert!(text.contains(
             "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10 unrelated"
         ));
@@ -817,6 +831,7 @@ mod tests {
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(&png[16..24], &[0, 0, 3, 232, 0, 0, 1, 168]);
         // Without a painting the text says none.
+        // (and the folder's older name, --admixture, still reads it).
         std::fs::remove_file(d.0.join("paint/failed.txt")).unwrap();
         std::fs::remove_file(d.0.join("paint/chr20.msp.tsv")).unwrap();
         let (rc, stdout, _) = run(&[
@@ -834,6 +849,18 @@ mod tests {
         ]);
         assert_eq!(rc, 0);
         assert!(stdout.contains("Chromosome painting: none. No chromosome had enough"));
+        // Neither name of the folder: a message, no output.
+        let (rc, _, err) = run(&[
+            "report",
+            "--sample",
+            "S",
+            "--model",
+            &model,
+            "--out",
+            &d.path("none"),
+        ]);
+        assert_eq!(rc, 1);
+        assert!(err.contains("--fractions DIR is required"), "{err}");
     }
 
     #[test]
