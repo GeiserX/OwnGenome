@@ -115,7 +115,7 @@ fn cyp2d6_consensus_shows_weak_pypgx_evidence_even_when_callers_agree() {
     );
     let txt = text::report(&s).expect("text report");
     let page = html::report(&s).expect("HTML report");
-    let flag = "Weak pypgx CYP2D6 evidence: Synthetic filter, low-confidence: check the reads";
+    let flag = "Weak pypgx CYP2D6 evidence: Synthetic filter; low-confidence: check the reads";
     assert!(txt.contains(flag), "{txt}");
     assert!(page.contains(flag));
 }

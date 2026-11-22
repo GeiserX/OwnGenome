@@ -539,7 +539,7 @@ pub fn cyp2d6_weak_evidence(pd: &Section<'_>) -> Result<Option<String>, Malforme
     .collect();
     Ok(
         (!reasons.is_empty())
-            .then(|| format!("Weak pypgx CYP2D6 evidence: {}", reasons.join(", "))),
+            .then(|| format!("Weak pypgx CYP2D6 evidence: {}", reasons.join("; "))),
     )
 }
 

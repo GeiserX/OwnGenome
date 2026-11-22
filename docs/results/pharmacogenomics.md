@@ -39,6 +39,6 @@ The main use is drug safety: a few HLA alleles predict severe reactions to speci
 
 The text and HTML reports and the live CPIC card count and name genes marked `incomplete`. PharmCAT did not read one or more of the positions that define an allele for those genes, so step 27 leaves their drug guidance out. The HTML report shows drug contraindication warnings even when every gene has a normal result.
 
-The CYP2D6 consensus shows weak pypgx evidence even when the callers agree. The depth-check line shows mean depths when they are in the summary and says when no mapping-quality shares were measured. The original mean depths are in `pypgx/${SAMPLE}_cyp2d6_depth_check.tsv`. The HLA section flags T1K results withheld from PharmCAT because of tied candidates or an expression suffix.
+The CYP2D6 consensus shows weak pypgx evidence even when the callers agree. The CYP2D6 depth-check line shows the mean depth over CYP2D6 and its flanks, for all reads and for MAPQ >= 1, beside the mapping-quality shares, and says once when no share was measured. The HLA section flags T1K results withheld from PharmCAT because of tied candidates or an expression suffix.
 
 CYP2D6 is the hard gene: a nearby pseudogene and frequent copy-number changes confuse short reads. The pipeline gives CYP2D6 drug guidance only when two callers agree; even then, take any result that would change a prescription to a pharmacist or a certified pharmacogenomics test first.

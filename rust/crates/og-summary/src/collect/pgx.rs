@@ -17,8 +17,12 @@ use pycompat::text::{lower, strip, upper};
 /// The label of pypgx's CYP2D6 call when it is the only usable one.
 pub const PROBABLE: &str = "probable (one caller: pypgx)";
 /// The rows of the CYP2D6 depth check the reports show.
-pub const DEPTH_CHECK_KEYS: [&str; 5] = [
+pub const DEPTH_CHECK_KEYS: [&str; 9] = [
     "status",
+    "gene_depth_all",
+    "gene_depth_mapq1",
+    "flank_depth_all",
+    "flank_depth_mapq1",
     "gene_mapq1_share",
     "gene_mapq20_share",
     "body_mapq1_share",
@@ -785,5 +789,51 @@ mod tests {
             !j.contains_key("incomplete"),
             "no incomplete gene: the summary is as it was: {j:?}"
         );
+    }
+
+    #[test]
+    fn the_depth_check_keeps_the_mean_depths_beside_the_shares() {
+        let dir = std::env::temp_dir().join(format!("og-summary-pgx-depth-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let summary = dir.join("S_pypgx_summary.tsv");
+        std::fs::write(
+            &summary,
+            "Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\n\
+             CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("S_cyp2d6_depth_check.tsv"),
+            "status\tok\n\
+             message\tsynthetic depth check\n\
+             gene_depth_all\t18.53\n\
+             gene_depth_mapq1\t16.79\n\
+             flank_depth_all\t29.68\n\
+             flank_depth_mapq1\t29.67\n\
+             gene_mapq1_share\t0.91\n\
+             body_depth_all\tnot measured\n",
+        )
+        .unwrap();
+
+        let pypgx = Pypgx::read(summary.to_str().unwrap(), "S");
+        std::fs::remove_dir_all(&dir).unwrap();
+        let depth = pypgx.unwrap().depth_check.unwrap();
+
+        for (key, value) in [
+            ("status", "ok"),
+            ("gene_depth_all", "18.53"),
+            ("gene_depth_mapq1", "16.79"),
+            ("flank_depth_all", "29.68"),
+            ("flank_depth_mapq1", "29.67"),
+            ("gene_mapq1_share", "0.91"),
+        ] {
+            assert_eq!(
+                depth.get(key).map(String::as_str),
+                Some(value),
+                "{key}: {depth:?}"
+            );
+        }
+        assert!(!depth.contains_key("message"));
+        assert!(!depth.contains_key("body_depth_all"));
     }
 }
