@@ -96,7 +96,7 @@ The binary is static and starts through `/bin/sh`. `tests/rust/og-in-images.sh` 
 - The build stamps the binary with a source hash of two git object IDs: the tree of `rust/` as it is on disk and the blob of `assets/imprinted_regions.tsv`. The table is embedded at compile time. Any edit to either input, committed or not, changes the hash. The `tree-hash` verb and stamp format retain their names.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- `bin/og` and the required Linux build must be present for `validate-setup.sh` to pass. Its check uses `--required`. When you bypass setup validation with `SKIP_VALIDATION=true`, the check in `run-all.sh` reports a missing Linux build as a note (`REQUIRED=false`). A step that needs the missing build stops when `bin/og` exits 127.
+- `bin/og` and the required Linux build must be present for `validate-setup.sh` to pass. Its check uses `--required`. With `SKIP_VALIDATION=true`, or with `nextflow run main.nf` directly, the check runs without `--required` (`REQUIRED=false`): a missing Linux build passes silently, and the first step that needs it stops when `bin/og` exits 127.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte
