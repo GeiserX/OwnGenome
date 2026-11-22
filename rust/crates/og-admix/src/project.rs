@@ -250,7 +250,8 @@ pub fn kkt(q: &[f64], ratio: &[f64]) -> (f64, f64) {
 }
 
 /// The fractions that maximise L, from equal fractions, by EM with SQUAREM;
-/// an error when the run ends before the KKT conditions hold.
+/// an error when the fit is not finite or the run ends before the KKT
+/// conditions hold.
 pub fn project(p: &Problem<'_>, opts: &Options) -> Result<Fit> {
     let k = p.k;
     let mut q = vec![1.0 / k as f64; k];
@@ -319,6 +320,18 @@ pub fn project(p: &Problem<'_>, opts: &Options) -> Result<Fit> {
         slack,
         gain,
     };
+    // A NaN passes every comparison below (and f64::max drops it), so a
+    // fit that is not finite is refused first.
+    if !(fit.q.iter().all(|x| x.is_finite())
+        && fit.loglik.is_finite()
+        && slack.is_finite()
+        && gain.is_finite())
+    {
+        return Err(Error(format!(
+            "the projection is not a finite number after {} passes (log-likelihood {}, fractions {:?}): a group frequency is too close to 0 or 1",
+            fit.iterations, fit.loglik, fit.q
+        )));
+    }
     if !converged || slack > SLACK_TOLERANCE || gain > GAIN_TOLERANCE {
         return Err(Error(format!(
             "the projection stopped after {} passes short of the maximum: the KKT conditions do not hold (largest q|r - 1| {:e}, largest r - 1 {:e}{})",
@@ -537,6 +550,16 @@ mod tests {
         assert!(Problem::new(2, &[0, 1], &[0.5; 3], None).is_err());
         assert!(Problem::new(2, &[0, 1], &[0.5; 4], Some(&[0, 0])).is_err());
         assert!(Problem::new(0, &[], &[], None).is_err());
+    }
+
+    #[test]
+    fn a_nonfinite_fit_is_refused() {
+        // A frequency of 1e-310 is strictly between 0 and 1, but 2 / 1e-310
+        // overflows: the EM step turns q into NaN, and f64::max drops the
+        // NaN, so the step size reads 0 and the run looks converged.
+        let p = Problem::new(1, &[2], &[1e-310], None).unwrap();
+        let e = project(&p, &Options::default()).unwrap_err();
+        assert!(e.0.contains("not a finite number"), "{}", e.0);
     }
 
     /// Blocks cut by SNV count, the bootstrap before this one: the red
