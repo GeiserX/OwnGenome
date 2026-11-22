@@ -326,8 +326,9 @@ const LOCK_WAIT: Duration = if cfg!(test) {
 /// through a symlink) and locked: an exclusive lock that ends with the
 /// handle. Only the server account can open the file, so no other account
 /// can take the lock and hold the server up. (A folder is never what is
-/// locked: any account can open a folder of mode 755 and lock it.) The
-/// wait for another holder ends after [`LOCK_WAIT`] with an error.
+/// locked: any account can open a folder of mode 755 and lock it.) A lock
+/// file other accounts may open is refused. The wait for another holder
+/// ends after [`LOCK_WAIT`] with an error.
 fn lock_file(dir: &File, name: &str, shown: &Path) -> io::Result<File> {
     // macOS can fail an `openat` that makes a name another thread makes at
     // the same moment with ENOENT. The folder is open, so ENOENT can only
@@ -358,8 +359,17 @@ fn lock_file(dir: &File, name: &str, shown: &Path) -> io::Result<File> {
         ));
     }
     if m.mode() & 0o077 != 0 {
-        // Only this account can make a file here; keep it to this account.
-        rustix::fs::fchmod(&f, Mode::RUSR | Mode::WUSR).map_err(|e| at(shown, e.into()))?;
+        // Another account may already hold it open, and a chmod would not
+        // take that back: refuse it.
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{}: other accounts may open this lock file (mode {:o}): stop every og live \
+                 serve on this state folder, then delete it",
+                shown.display(),
+                m.mode() & 0o777
+            ),
+        ));
     }
     let began = Instant::now();
     loop {
@@ -399,8 +409,14 @@ pub fn token(state_dir: &Path) -> Result<String, String> {
     // held to the end of this function.
     let _locked =
         lock_file(&dir, TOKEN_LOCK, &state_dir.join(TOKEN_LOCK)).map_err(|e| e.to_string())?;
-    if let Ok(mut f) = open_at(&dir, TOKEN_FILE, OFlags::RDONLY, Mode::empty())
-        && let Ok(meta) = f.metadata()
+    // Non-blocking, so a FIFO there does not hang the start: it is not a
+    // plain file, so it is replaced.
+    if let Ok(mut f) = open_at(
+        &dir,
+        TOKEN_FILE,
+        OFlags::RDONLY | OFlags::NONBLOCK,
+        Mode::empty(),
+    ) && let Ok(meta) = f.metadata()
         && meta.file_type().is_file()
         && meta.uid() == me()
         && meta.mode() & 0o077 == 0
@@ -439,8 +455,8 @@ const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<r
 /// of them nor the file is followed through a symlink. The lock is taken
 /// before the file is opened, so two writers never create it at the same
 /// moment (which macOS can fail with ENOENT). The file must be a plain file
-/// of the server account with no other name: `O_NOFOLLOW` stops a symlink,
-/// not a hard link.
+/// of the server account with no other name (`O_NOFOLLOW` stops a symlink,
+/// not a hard link) that no other account may write to.
 fn open_events(state_dir: &Path, run: &str) -> io::Result<(File, File)> {
     let dir = trusted_dir(state_dir).map_err(io::Error::other)?;
     let runs_path = state_dir.join("runs");
@@ -457,12 +473,13 @@ fn open_events(state_dir: &Path, run: &str) -> io::Result<(File, File)> {
     )
     .map_err(|e| at(&shown, e))?;
     let m = f.metadata().map_err(|e| at(&shown, e))?;
-    if !m.file_type().is_file() || m.uid() != me() || m.nlink() != 1 {
+    if !m.file_type().is_file() || m.uid() != me() || m.nlink() != 1 || m.mode() & 0o022 != 0 {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             format!(
                 "{}: refused: it must be a plain file of the account the server runs as, with \
-                 no other name (a hard link)",
+                 no other name (a hard link), that no other account may write to; check it, then \
+                 run 'chmod go-w' on it or replace it",
                 shown.display()
             ),
         ));
@@ -662,17 +679,14 @@ mod tests {
 
     #[test]
     fn a_failed_append_never_cuts_another_servers_message() {
-        let dir = std::env::temp_dir().join(format!("og-live-two-writers-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = Tmp::new("og-live-two-writers");
         let mut other = None;
         let got = append_with(&dir, "R1", &obj(r#"{"event":"a"}"#), |f, line| {
             // While this write is under way, another server on the same
             // state folder posts a message of the same run.
             let child = Command::new(std::env::current_exe().unwrap())
                 .args(["ingest::tests::other_writer", "--exact", "--ignored"])
-                .env(OTHER_WRITER, &dir)
+                .env(OTHER_WRITER, &*dir)
                 .stdout(std::process::Stdio::null())
                 .spawn()
                 .unwrap();
@@ -696,15 +710,11 @@ mod tests {
             text, "{\"event\":\"b\"}\n",
             "the cut removed the other server's message"
         );
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn messages_posted_at_once_to_a_new_run_are_all_stored() {
-        let dir = std::env::temp_dir().join(format!("og-live-first-posts-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = Tmp::new("og-live-first-posts");
         for round in 0..20 {
             let run = format!("R{round}");
             let go = Arc::new(std::sync::Barrier::new(8));
@@ -725,16 +735,13 @@ mod tests {
                 fs::read_to_string(dir.join("runs").join(&run).join("events.jsonl")).unwrap();
             assert_eq!(text.lines().count(), 8, "{run}: {text:?}");
         }
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn a_state_folder_another_account_can_write_to_is_refused() {
-        let dir = std::env::temp_dir().join(format!("og-live-open-state-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = Tmp::new("og-live-open-state");
         for mode in [0o775, 0o757] {
-            fs::set_permissions(&dir, fs::Permissions::from_mode(mode)).unwrap();
+            fs::set_permissions(&*dir, fs::Permissions::from_mode(mode)).unwrap();
             let e = token(&dir).expect_err("a state folder others can write to");
             assert!(e.contains("chmod go-w"), "{e}");
             assert!(!dir.join(TOKEN_FILE).exists());
@@ -744,21 +751,46 @@ mod tests {
                 "a message was stored in a state folder others can write to"
             );
         }
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&*dir, fs::Permissions::from_mode(0o755)).unwrap();
         assert!(token(&dir).is_ok());
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     fn obj(text: &str) -> Value {
         json::loads(text).unwrap()
     }
 
-    /// A new state folder `<name>-<pid>` with `runs/R1` in it, all mode 755.
-    fn fresh(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+    /// A test's own folder, `<name>-<pid>` in the temp folder, mode 755;
+    /// removed when dropped, also when the test fails.
+    struct Tmp(std::path::PathBuf);
+
+    impl Tmp {
+        fn new(name: &str) -> Tmp {
+            let dir = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+            Tmp(dir)
+        }
+    }
+
+    impl std::ops::Deref for Tmp {
+        type Target = std::path::PathBuf;
+        fn deref(&self) -> &std::path::PathBuf {
+            &self.0
+        }
+    }
+
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A new state folder with `runs/R1` in it, all mode 755.
+    fn fresh(name: &str) -> Tmp {
+        let dir = Tmp::new(name);
         fs::create_dir_all(dir.join("runs/R1")).unwrap();
-        for p in [dir.clone(), dir.join("runs"), dir.join("runs/R1")] {
+        for p in [dir.join("runs"), dir.join("runs/R1")] {
             fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
         }
         dir
@@ -815,14 +847,12 @@ mod tests {
             assert!(m.is_file(), "{lock}");
             assert_eq!(m.mode() & 0o777, 0o600, "{lock}");
         }
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn a_lock_held_too_long_is_an_error_not_a_hang() {
         let dir = fresh("og-live-lock-held");
-        // A stuck process of this account holds both lock files; one made
-        // with mode 644 is set back to 600.
+        // A stuck process of this account holds both lock files.
         let held: Vec<File> = ["ingest-token.lock", "runs/R1/events.jsonl.lock"]
             .iter()
             .map(|n| {
@@ -833,7 +863,7 @@ mod tests {
                     .truncate(false)
                     .open(dir.join(n))
                     .unwrap();
-                f.set_permissions(fs::Permissions::from_mode(0o644))
+                f.set_permissions(fs::Permissions::from_mode(0o600))
                     .unwrap();
                 f.lock().unwrap();
                 f
@@ -859,7 +889,6 @@ mod tests {
             let m = fs::metadata(dir.join(lock)).unwrap();
             assert_eq!(m.mode() & 0o777, 0o600, "{lock}");
         }
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -881,30 +910,90 @@ mod tests {
             fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
         }
         assert!(matches!(append_within(10, &dir), Some(Ok(()))));
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn an_events_file_with_a_second_name_is_refused() {
+    fn a_lock_file_other_accounts_may_open_is_refused() {
+        let dir = fresh("og-live-open-lock");
+        let locks = ["ingest-token.lock", "runs/R1/events.jsonl.lock"];
+        for n in locks {
+            fs::write(dir.join(n), "").unwrap();
+            fs::set_permissions(dir.join(n), fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        // Another account may hold it open already: a chmod would not take
+        // that back, so it is refused, not used.
+        let e = token(&dir).expect_err("a lock file others may open was used");
+        assert!(
+            e.contains("ingest-token.lock") && e.contains("delete it"),
+            "{e}"
+        );
+        match append_within(10, &dir) {
+            Some(Err((_, e))) => {
+                assert!(
+                    e.contains("events.jsonl.lock") && e.contains("delete it"),
+                    "{e}"
+                );
+            }
+            other => panic!("a lock file others may open was used: {other:?}"),
+        }
+        for n in locks {
+            let m = fs::metadata(dir.join(n)).unwrap();
+            assert_eq!(m.mode() & 0o777, 0o644, "{n}");
+            fs::remove_file(dir.join(n)).unwrap();
+        }
+        assert!(token(&dir).is_ok());
+        assert!(matches!(append_within(10, &dir), Some(Ok(()))));
+    }
+
+    #[test]
+    fn a_fifo_in_place_of_the_token_is_replaced_not_waited_on() {
+        let dir = fresh("og-live-token-fifo");
+        let made = Command::new("mkfifo")
+            .arg(dir.join(TOKEN_FILE))
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let d = dir.to_path_buf();
+        let t = within(10, move || token(&d))
+            .expect("the start waited on a FIFO")
+            .unwrap();
+        let m = fs::symlink_metadata(dir.join(TOKEN_FILE)).unwrap();
+        assert!(m.is_file());
+        assert_eq!(fs::read_to_string(dir.join(TOKEN_FILE)).unwrap().trim(), t);
+    }
+
+    #[test]
+    fn an_events_file_with_a_second_name_or_open_to_others_is_refused() {
         let dir = fresh("og-live-hard-link");
         // A hard link, made by an account that could write to the run's
         // folder once, to a file the server account can write.
         let precious = dir.join("precious");
         fs::write(&precious, "keep\n").unwrap();
-        fs::hard_link(&precious, dir.join("runs/R1/events.jsonl")).unwrap();
+        let events = dir.join("runs/R1/events.jsonl");
+        fs::hard_link(&precious, &events).unwrap();
         match append_within(10, &dir) {
             Some(Err((_, e))) => assert!(e.contains("hard link"), "{e}"),
             other => panic!("a hard-linked events file was written: {other:?}"),
         }
         assert_eq!(fs::read_to_string(&precious).unwrap(), "keep\n");
-        fs::remove_dir_all(&dir).unwrap();
+        // An events file another account may write to is refused too.
+        fs::remove_file(&events).unwrap();
+        fs::write(&events, "{\"event\":\"x\"}\n").unwrap();
+        for mode in [0o664, 0o646] {
+            fs::set_permissions(&events, fs::Permissions::from_mode(mode)).unwrap();
+            match append_within(10, &dir) {
+                Some(Err((_, e))) => assert!(e.contains("chmod go-w"), "{e}"),
+                other => panic!("an events file of mode {mode:o} was written: {other:?}"),
+            }
+            assert_eq!(fs::read_to_string(&events).unwrap(), "{\"event\":\"x\"}\n");
+        }
+        fs::set_permissions(&events, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(append_within(10, &dir), Some(Ok(()))));
     }
 
     #[test]
     fn servers_started_together_on_one_state_folder_get_one_token() {
-        let dir = std::env::temp_dir().join(format!("og-live-token-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = Tmp::new("og-live-token");
         let go = Arc::new(std::sync::Barrier::new(8));
         let all: Vec<String> = (0..8)
             .map(|_| {
@@ -923,7 +1012,6 @@ mod tests {
             all.iter().all(|t| *t == on_disk.trim()),
             "{all:?} {on_disk}"
         );
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

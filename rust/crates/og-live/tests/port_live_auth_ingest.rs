@@ -1046,3 +1046,39 @@ fn an_https_request_sent_a_byte_at_a_time_is_cut_off_after_the_handshake() {
     let gone = gone.expect("the server still held the HTTPS request after 10 s");
     assert!(gone < Duration::from_secs(4), "closed after {gone:?}");
 }
+
+#[test]
+fn a_wrong_password_keeps_the_page_the_login_was_for() {
+    let (_w, srv) = locked_site("login-next");
+    let p = srv.port();
+    // The form posts to /login with no query; `next` is in the body.
+    let body = "password=wrong+password&next=/runs/DEMO-001";
+    let head = format!(
+        "POST /login HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nContent-Type: \
+         application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let r = raw(p, &head, body.as_bytes());
+    assert_eq!(r.status, 401);
+    assert!(
+        r.text().contains(r#"name="next" value="/runs/DEMO-001""#),
+        "the retry would not go back to the run: {}",
+        r.text()
+    );
+    // A `next` off this site is still dropped.
+    let body = "password=wrong+password&next=//evil.example/";
+    let head = head.replace(
+        &format!(
+            "Content-Length: {}",
+            "password=wrong+password&next=/runs/DEMO-001".len()
+        ),
+        &format!("Content-Length: {}", body.len()),
+    );
+    let r = raw(p, &head, body.as_bytes());
+    assert_eq!(r.status, 401);
+    assert!(
+        r.text().contains(r#"name="next" value="/""#),
+        "{}",
+        r.text()
+    );
+}

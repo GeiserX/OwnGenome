@@ -188,14 +188,15 @@ pub fn read_password_hash(
     Ok(Some(h))
 }
 
-/// Sets the terminal's echo on or off; nothing when stdin is no terminal.
-fn echo(on: bool) {
-    let _ = Command::new("stty")
+/// Sets the terminal's echo on or off: whether that worked.
+fn echo(on: bool) -> bool {
+    Command::new("stty")
         .arg(if on { "echo" } else { "-echo" })
         .stdin(Stdio::inherit())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status();
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// One line of `input` without its line break.
@@ -213,6 +214,20 @@ pub fn hash_password_cli(
     tty: bool,
     out: &mut dyn Write,
     err: &mut dyn Write,
+) -> u8 {
+    hash_password_with(args, input, tty, out, err, echo)
+}
+
+/// [`hash_password_cli`], with `echo` turning the terminal's echo on or
+/// off. When echo cannot be turned off, no password is read: it would
+/// show on the screen.
+fn hash_password_with(
+    args: &[String],
+    input: &mut dyn BufRead,
+    tty: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    echo: fn(bool) -> bool,
 ) -> u8 {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         let _ = writeln!(
@@ -232,14 +247,26 @@ pub fn hash_password_cli(
         let ask = |err: &mut dyn Write, input: &mut dyn BufRead, prompt: &str| {
             let _ = write!(err, "{prompt}");
             let _ = err.flush();
-            echo(false);
+            if !echo(false) {
+                let _ = writeln!(
+                    err,
+                    "\nERROR: cannot turn off the terminal's echo, so the password would show: \
+                     pipe it in instead, as one line on stdin"
+                );
+                return None;
+            }
             let line = read_line(input);
             echo(true);
             let _ = writeln!(err);
-            line
+            Some(line)
         };
-        let first = ask(err, input, "Password: ");
-        if first != ask(err, input, "Again: ") {
+        let Some(first) = ask(err, input, "Password: ") else {
+            return 1;
+        };
+        let Some(again) = ask(err, input, "Again: ") else {
+            return 1;
+        };
+        if first != again {
             let _ = writeln!(err, "ERROR: the two passwords differ");
             return 2;
         }
@@ -252,10 +279,13 @@ pub fn hash_password_cli(
         return 2;
     }
     match hash_password(&pw, ITERATIONS) {
-        Ok(h) => {
-            let _ = writeln!(out, "{h}");
-            0
-        }
+        Ok(h) => match writeln!(out, "{h}").and_then(|()| out.flush()) {
+            Ok(()) => 0,
+            Err(e) => {
+                let _ = writeln!(err, "ERROR: cannot write the hash: {e}");
+                1
+            }
+        },
         Err(e) => {
             let _ = writeln!(err, "ERROR: no random salt: {e}");
             1
@@ -504,7 +534,18 @@ fn login_page(
     extra: &[(&str, String)],
 ) -> io::Result<()> {
     let next = sf::query_value(&req.query, "next").unwrap_or_else(|| "/".into());
-    match sf::login_page(&req.live.cfg.assets, message, &next) {
+    login_page_to(req, code, message, &next, extra)
+}
+
+/// [`login_page`], with the form leading to `next`.
+fn login_page_to(
+    req: &mut Req<'_>,
+    code: u16,
+    message: &str,
+    next: &str,
+    extra: &[(&str, String)],
+) -> io::Result<()> {
+    match sf::login_page(&req.live.cfg.assets, message, next) {
         Ok(page) => req.send(
             code,
             "text/html; charset=utf-8",
@@ -559,7 +600,9 @@ pub fn login(req: &mut Req<'_>) -> io::Result<()> {
         .unwrap_or_else(|| "/".into());
     if !verify_password(&pw, &hash) {
         req.log("login-fail", "-", "-", 401);
-        return login_page(req, 401, "Wrong password.", &[]);
+        // The form posts to /login with no query: the next try keeps the
+        // page the form was for.
+        return login_page_to(req, 401, "Wrong password.", &next, &[]);
     }
     auth.clear_failures(&client);
     let token = auth.new_session()?;
@@ -679,6 +722,45 @@ pub fn accept_tls(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn no_password_is_read_while_the_terminal_still_echoes() {
+        let typed = b"synthetic secret 1\nsynthetic secret 2\n".to_vec();
+        let mut input = Cursor::new(typed.clone());
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = hash_password_with(&[], &mut input, true, &mut out, &mut err, |_| false);
+        assert_eq!(code, 1);
+        assert!(out.is_empty());
+        assert_eq!(input.position(), 0, "a password was read with echo on");
+        assert!(String::from_utf8_lossy(&err).contains("echo"));
+        // The control: with echo off, both lines are read (and differ).
+        let mut input = Cursor::new(typed);
+        let code = hash_password_with(&[], &mut input, true, &mut out, &mut err, |_| true);
+        assert_eq!(code, 2);
+        assert!(input.position() > 0);
+    }
+
+    /// Output that is full: every write fails.
+    struct Full;
+
+    impl Write for Full {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("no space left"))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_hash_that_cannot_be_written_is_an_error() {
+        let mut input = Cursor::new(b"synthetic secret 1\n".to_vec());
+        let mut err = Vec::new();
+        let code = hash_password_cli(&[], &mut input, false, &mut Full, &mut err);
+        assert_eq!(code, 1, "{}", String::from_utf8_lossy(&err));
+        assert!(String::from_utf8_lossy(&err).contains("cannot write the hash"));
+    }
 
     #[test]
     fn pbkdf2_matches_the_rfc_7914_vector() {
