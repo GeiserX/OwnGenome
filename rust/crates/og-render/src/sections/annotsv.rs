@@ -17,11 +17,21 @@ use crate::{html, text};
 
 const TITLE: &str = "Structural Variants, Class 4 and 5 (AnnotSV)";
 
-/// How many callers saw the SV.
-pub fn support_text(x: &D<'_>) -> Result<String, Malformed> {
+/// Why an SV's caller support is not known: step 22's consensus ran
+/// (`consensus`, the section's flag) and cannot tell, or it did not run.
+pub fn unknown_reason(consensus: bool) -> &'static str {
+    if consensus {
+        "step 22's consensus cannot tell"
+    } else {
+        "no step 22 consensus"
+    }
+}
+
+/// How many callers saw the SV; `consensus` is the section's flag.
+pub fn support_text(x: &D<'_>, consensus: bool) -> Result<String, Malformed> {
     let s = x.at("support")?;
     if s.is_none() {
-        return Ok("not known (no step 22 consensus)".to_owned());
+        return Ok(format!("not known ({})", unknown_reason(consensus)));
     }
     if s.is_num(1) {
         return Ok(format!("single caller ({})", x.s("caller")?));
@@ -115,7 +125,23 @@ pub fn lines(d: &D<'_>) -> Result<Vec<String>, Malformed> {
     if count.truthy() {
         let consensus = d.at("consensus")?.truthy();
         let single = if consensus {
-            d.s("single_caller")?
+            // The consensus ran, but a row it cannot tell has no support:
+            // count those apart, so "single caller: 0" never reads as
+            // "every SV had two callers". A row without the key counts too.
+            let mut unknown = 0;
+            if let Some(rows) = d.opt("rows")? {
+                for x in rows.items()? {
+                    if x.get("support")?.is_none_or(|v| v.is_none()) {
+                        unknown += 1;
+                    }
+                }
+            }
+            let single = d.s("single_caller")?;
+            if unknown > 0 {
+                format!("{single}, not known: {unknown}")
+            } else {
+                single
+            }
         } else {
             "not known".to_owned()
         };
@@ -158,6 +184,7 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
     }
     let d = D::of(&s.section("annotsv"));
     w.extend(lines(&d)?.iter().map(|l| format!("  {l}")));
+    let consensus = d.at("consensus")?.truthy();
     for x in d.at("rows")?.items()? {
         w.push(format!(
             "    {} {}  class {}  {}  support: {}",
@@ -165,7 +192,7 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
             x.s("sv")?,
             x.s("acmg_class")?,
             genes_text(&x)?,
-            support_text(&x)?
+            support_text(&x, consensus)?
         ));
         for f in flags(&x)? {
             w.push(format!("         {f}"));
@@ -215,6 +242,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     }
     let rows = d.opt("rows")?;
     if let Some(rows) = &rows {
+        let consensus = d.at("consensus")?.truthy();
         let mut cells = Vec::new();
         for x in rows.items()? {
             let checks = flags(&x)?.join("; ");
@@ -222,7 +250,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 Cell::Text(sv_cell(&x)?),
                 Cell::Text(x.s("acmg_class")?),
                 Cell::Text(genes_text(&x)?),
-                Cell::Text(support_text(&x)?),
+                Cell::Text(support_text(&x, consensus)?),
                 Cell::Text(if checks.is_empty() {
                     "none".to_owned()
                 } else {
@@ -338,7 +366,7 @@ mod tests {
              <tr><td>DEL chr1:1000-5000</td><td>5</td><td>A&lt;B, C&amp;D, G1 and 1 more</td>\
              <td>2 callers (manta, delly)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD); \
              rule R1: loss &lt;of&gt; function &amp; more</td>{}</tr>\
-             <tr><td>INS chr3:7</td><td>4</td><td>no gene</td><td>not known (no step 22 consensus)</td>\
+             <tr><td>INS chr3:7</td><td>4</td><td>no gene</td><td>not known (step 22&#x27;s consensus cannot tell)</td>\
              <td>none</td>{}</tr></table>",
             viewer("chr1:1000-5000"),
             viewer("chr3:7")

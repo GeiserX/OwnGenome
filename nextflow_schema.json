@@ -447,6 +447,12 @@
                     "description": "chip: a Mutect2 panel of normals (somatic/1000g_pon.hg38.vcf.gz, .tbi beside it; optional).",
                     "fa_icon": "fas fa-file"
                 },
+                "chip_common_sites": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "chip: common biallelic sites for the contamination estimate, step 29's somatic/small_exac_common_3.hg38.vcf.gz (.tbi beside it; optional). GetPileupSummaries and CalculateContamination estimate how much of the sample is another person's DNA, and FilterMutectCalls reads that estimate. Without it a contaminant's alleles can pass as a small clone.",
+                    "fa_icon": "fas fa-file"
+                },
                 "parascopy_population": {
                     "type": "string",
                     "default": "EUR",

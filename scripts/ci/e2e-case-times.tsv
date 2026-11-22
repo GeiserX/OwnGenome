@@ -18,8 +18,9 @@
 # times again and prints a new file in its summary; its traced needs are an
 # upper bound to check by hand (docs/testing.md).
 # prs-3-panel-measure takes 0 s except on a run dispatched on a branch other
-# than main, where it measures the 1000 Genomes panel for about 2900 s; there
-# .github/workflows/e2e.yml gives it that time through E2E_SECONDS.
+# than main and not traced, where it measures the 1000 Genomes panel for about
+# 2900 s; there .github/workflows/e2e.yml gives it that time through
+# E2E_SECONDS.
 01-fixture	base	17	-
 10-validate-setup	base	7	-
 20-align-02	base	116	-
@@ -109,6 +110,7 @@ hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
 hla-second-caller-2-nextflow	shard	188	hla-second-caller-1-bash
 i411-callability-overlap-1-mates	shard	40	-
+i411-nf-vcfanno-ops-1-score-tiers	shard	37	-
 ibd-segments-1	shard	239	-
 live-server-1-weblog	shard	18	-
 lpa-1	shard	42	-

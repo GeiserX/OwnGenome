@@ -111,6 +111,7 @@ Paths to clinical and population genetics reference data.
 | `--chip_gff` | none | Ensembl's GRCh38 gene annotation, which `scripts/setup.sh --chip-data` installs as reference/ensembl/Homo_sapiens.GRCh38.&lt;release&gt;.chr.gff3.gz: chip takes each CHIP gene's MANE Select transcript from it. Required with chip. |
 | `--chip_germline_resource` | none | chip: gnomAD's AF-only germline resource for Mutect2 (somatic/af-only-gnomad.hg38.vcf.gz, .tbi beside it; optional). Without it inherited variants are left out by their VAF only. |
 | `--chip_pon` | none | chip: a Mutect2 panel of normals (somatic/1000g_pon.hg38.vcf.gz, .tbi beside it; optional). |
+| `--chip_common_sites` | none | chip: common biallelic sites for the contamination estimate, step 29's somatic/small_exac_common_3.hg38.vcf.gz (.tbi beside it; optional). GetPileupSummaries and CalculateContamination estimate how much of the sample is another person's DNA, and FilterMutectCalls reads that estimate. Without it a contaminant's alleles can pass as a small clone. |
 | `--parascopy_population` | `EUR` | parascopy: the 1000 Genomes population whose model parameters are used. One of: `AFR`, `AMR`, `EAS`, `EUR`, `SAS`. |
 | `--parascopy_depth_bed` | none | parascopy: background windows (BED, all of one size) for a BAM that covers only part of the genome; default Parascopy's own GRCh38 windows. |
 | `--paraphase_regions` | none | paraphase: the Paraphase regions to run, comma separated (for example smn1,hba,rccx,GBA,pms2,strc,ncf1,OTOA); empty runs all of its GRCh38 regions. |

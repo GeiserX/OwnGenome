@@ -77,6 +77,9 @@ pub enum Verdict {
     Biallelic,
     /// Phase unknown, or the calls disagree: possibly both copies.
     PossiblyBiallelic,
+    /// A pair that would count, but the small variant's call is below
+    /// step 06's call floor: confirm the call first.
+    LowConfidence,
     /// Both on the same copy: no second hit.
     Cis,
 }
@@ -86,6 +89,7 @@ impl Verdict {
         match self {
             Verdict::Biallelic => "biallelic",
             Verdict::PossiblyBiallelic => "possibly biallelic",
+            Verdict::LowConfidence => "possibly biallelic (low-confidence call)",
             Verdict::Cis => "cis",
         }
     }
@@ -230,18 +234,36 @@ pub struct TwoHits {
 
 /// The genes hit twice.
 pub fn two_hits(variants: &[Variant], dels: &HashMap<String, Vec<Deletion>>) -> TwoHits {
+    two_hits_with(variants, dels, |_| false)
+}
+
+/// [`two_hits`], where a pair built on a variant `low` calls low
+/// confidence (below step 06's call floor) is never more than
+/// [`Verdict::LowConfidence`].
+pub fn two_hits_with(
+    variants: &[Variant],
+    dels: &HashMap<String, Vec<Deletion>>,
+    low: impl Fn(&Variant) -> bool,
+) -> TwoHits {
     let mut out = TwoHits::default();
     let mut best: HashMap<(String, VKey), Verdict> = HashMap::new();
     for v in variants {
         let k = (v.gene.clone(), v.key.clone());
         for dl in dels.get(&v.gene).map_or(&[][..], Vec::as_slice) {
-            let (verdict, why) = pair_phase(dl, v);
+            let (mut verdict, mut why) = pair_phase(dl, v);
             if verdict == Verdict::Biallelic && why.starts_with("the variant is called homozygous")
             {
                 out.hemi.insert(k.clone(), dl.text.clone());
             }
             if verdict == Verdict::Cis {
                 continue;
+            }
+            if low(v) {
+                verdict = Verdict::LowConfidence;
+                why = format!(
+                    "the variant's call is below the call floor (low confidence), so confirm it \
+                     first; {why}"
+                );
             }
             let e = Entry {
                 gene: v.gene.clone(),

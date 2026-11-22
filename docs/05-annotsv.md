@@ -135,7 +135,7 @@ The reports (`og summary collect`) read each SV's support from step 22's consens
 - its ID is a member of two events;
 - or the consensus holds a vote of its caller without a readable ID. This covers the CNVpytor calls when step 22 made CNVpytor's VCF from its table, which writes no record IDs. It also covers a consensus without `FORMAT/ID`; SURVIVOR 1.0.7 always writes it, so only a file made another way lacks it.
 
-Without the consensus file the support is "not known" too. `og sv postfilter --consensus` adds the same `Support` and `Support_callers` columns to the table, both empty when the support is not known.
+Without the consensus file the support is "not known" too. `og sv postfilter --consensus` adds the same `Support` and `Support_callers` columns to the table, both empty when the support is not known. The reports give the reason: "not known (step 22's consensus cannot tell)" when the consensus ran, "not known (no step 22 consensus)" when it did not. When the consensus ran, the section's count line adds how many SVs it could not tell, as in `single caller: 2, not known: 3`.
 
 Both reports list every class 4 and 5 SV in a section of their own, with its support, the exon-edge flag and the frequency. The bash report (`scripts/24-html-report.sh`, which `run-all.sh` runs) reads the table from the sample folder. The Nextflow `HTML_REPORT` gets the table from `ANNOTSV` and, with `survivor_merge` in `--tools`, the consensus, so a report written by `nextflow run` alone has the same section. A report of a run without AnnotSV lists it under the steps not run.
 

@@ -1,5 +1,6 @@
 //! The sample's own carrier list (no partner): the ClinVar P/LP hits in
-//! the genes of `assets/carrier_genes.tsv`, the hypomorph and
+//! the genes of `assets/carrier_genes.tsv`, the rows with no unchanged copy
+//! (`hom_or_hemizygous`, never counted as carriers), the hypomorph and
 //! pseudodeficiency alleles set aside, and the two-hit genes
 //! ([`super::two_hits`]).
 
@@ -27,12 +28,21 @@ pub fn lines(c: &D<'_>) -> Result<Vec<String>, Malformed> {
         )]);
     }
     let carriers = c.at("carriers")?.items()?;
+    // Homozygous or hemizygous: no unchanged copy, so listed apart and never
+    // counted as a carrier. A summary written before the list has none.
+    let both = match c.opt("hom_or_hemizygous")? {
+        Some(b) => b.items()?,
+        None => Vec::new(),
+    };
     let set_aside = c.at("set_aside")?;
     let mut head = format!(
         "Carrier list ({} genes): {} finding(s)",
         c.s("genes_on_list")?,
         carriers.len()
     );
+    if !both.is_empty() {
+        head += &format!(", {} with no unchanged copy", both.len());
+    }
     if set_aside.truthy() {
         head += &format!(", {} set aside", set_aside.len()?);
     }
@@ -40,6 +50,23 @@ pub fn lines(c: &D<'_>) -> Result<Vec<String>, Malformed> {
     for x in &carriers {
         out.push(format!(
             "{} ({}; {}): {} {}{}, ClinVar {}",
+            x.s("gene")?,
+            x.s("condition")?,
+            x.s("inheritance")?,
+            x.s("variant")?,
+            x.s("genotype")?,
+            hemi(x)?,
+            x.s("significance")?
+        ));
+    }
+    for x in &both {
+        let copies = if x.at("genotype")?.is("hom") {
+            "two changed copies"
+        } else {
+            "the only copy changed"
+        };
+        out.push(format!(
+            "{} ({}; {}): {} {}{}, ClinVar {}: {copies}, not the pattern of a carrier",
             x.s("gene")?,
             x.s("condition")?,
             x.s("inheritance")?,

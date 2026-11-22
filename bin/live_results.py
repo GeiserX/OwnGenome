@@ -202,7 +202,7 @@ def a_clinical_filter(S, s):
     if sf.get("unavailable"):
         # Not assessed is never zero findings: the report's sentence instead of the counts.
         return {"facts": facts, "lines": rr.sf_apart_lines(sf), "attention": True}
-    rows = [[r[0], r[1], r[2], r[3]] for r in rr.sf_rows(sf)] if sf else []
+    rows = [[r[0], r[1], r[2], r[3]] for r in rr.sf_rows(sf, _data(S, "annotsv").get("consensus"))] if sf else []
     high = f"{rr.high_rare(sf)}{rr.high_apart(sf)}" if sf.get("high_impact_checked") else "not checked"
     facts += [[f"{sf.get('version') or 'ACMG SF'}: ClinVar P/LP in its genes", len(sf.get("clinvar_hits") or [])],
               ["High-impact rare variants in its genes", high]]
@@ -250,7 +250,7 @@ def a_structural(S, s):
              ["Consensus SVs (2+ callers)", sv.get("consensus", ".")],
              ["AnnotSV class 4 and 5", av.get("count", ".")]]
     rows = [[x.get("type"), x.get("sv"), x.get("gt"), x.get("length"), x.get("acmg_class"),
-             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x),
+             rr.annotsv_genes_text(x) if x.get("genes") is not None else ".", rr.annotsv_support_text(x, av.get("consensus")),
              "; ".join(rr.annotsv_flags(x)) if "exon_edge" in x else "."]
             for x in av.get("rows") or []]
     return {"facts": facts, "table": table(["Type", "Where", "Genotype", "Length", "Class", "Genes", "Support",
@@ -374,7 +374,7 @@ def a_carrier(S, s):
     if d.get("unavailable"):
         return {"lines": rr.carrier_lines(d), "attention": True}
     rows = [[c.get("gene"), c.get("variant"), c.get("genotype"), c.get("significance"), c.get("stars"),
-             c.get("inheritance"), c.get("condition")] for c in d.get("carriers") or []]
+             c.get("inheritance"), c.get("condition")] for c in (d.get("carriers") or []) + (d.get("hom_or_hemizygous") or [])]
     two = (d.get("two_hits") or {}).get("genes") or []
     return {"facts": [["Genes on the carrier list", d.get("genes_on_list")], ["Carrier findings", len(rows)],
                       ["Genes with two hits", ", ".join(g if isinstance(g, str) else g.get("gene", ".") for g in two)
@@ -833,14 +833,14 @@ def finding_rows(summary):
         return g if isinstance(g, str) else None
     sf_genes = {gene(x) for x in _items(sf.get("clinvar_hits")) if isinstance(x, dict)}
     car = _data(S, "carrier")
-    carrier_genes = {gene(c) for c in _items(car.get("carriers")) if isinstance(c, dict)}
+    carrier_genes = {gene(c) for c in _items(car.get("carriers")) + _items(car.get("hom_or_hemizygous")) if isinstance(c, dict)}
     th = car.get("two_hits") if isinstance(car.get("two_hits"), dict) else {}
     two_hit = {gene(g) for g in _items(th.get("genes"))} - {None}
     # 1. ACMG secondary findings: the gene's own reporting rule already said "report". The report's own
     # rows (rr.sf_rows): one it cannot read costs this rule, never the rest.
     sf_list = []
     with _Row(out, "clinical-filter", "act"):
-        sf_list = rr.sf_rows(sf) if sf and not sf.get("unavailable") else []
+        sf_list = rr.sf_rows(sf, _data(S, "annotsv").get("consensus")) if sf and not sf.get("unavailable") else []
     for r in sf_list:
         with _Row(out, "clinical-filter", "act"):
             out.append(_f("act", "clinical-filter", ("sf", r[0], r[1]), f"Secondary finding in {r[0]}",
@@ -889,7 +889,7 @@ def finding_rows(summary):
                           f"A {x.get('type') or 'structural change'} of {abs(int(num(x.get('length')) or 0)):,} bases that "
                           f"AnnotSV ranks class {x.get('acmg_class')}. Short reads can misplace large changes: confirm it.",
                           gene=(x.get("genes") or [None])[0], detail=x.get("sv"),
-                          evidence=[["Class", x.get("acmg_class")], ["Callers", rr.annotsv_support_text(x)],
+                          evidence=[["Class", x.get("acmg_class")], ["Callers", rr.annotsv_support_text(x, _data(S, "annotsv").get("consensus"))],
                                     ["Genotype", x.get("gt")]], viewer=str(x.get("sv") or "").replace(" ", "") or None))
     # 6. Repeat expansions outside Stranger's "normal", or in an intermediate zone.
     for l in _items(_data(S, "expansions").get("loci")):
@@ -943,7 +943,8 @@ def finding_rows(summary):
                           "A ranking to bring to a clinical geneticist, not a diagnosis.", gene=x.get("gene"),
                           evidence=[["Score", x.get("exomiser_score")], ["Inheritance", x.get("moi")]]))
     # 7. Carriers: one changed copy in a gene of the carrier list, and the couple screen.
-    for c in _items(car.get("carriers")):
+    # A row with no unchanged copy (hom_or_hemizygous) takes the branch below that says it is not a carrier.
+    for c in _items(car.get("carriers")) + _items(car.get("hom_or_hemizygous")):
         with _Row(out, "carrier-list", "act"):
             if c.get("gene") in two_hit:
                 continue

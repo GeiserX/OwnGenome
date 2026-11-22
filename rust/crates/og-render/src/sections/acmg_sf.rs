@@ -9,6 +9,7 @@ use pycompat::fmt::ljust;
 
 use crate::model::{Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table};
 use crate::notes::ACMG_NOTE;
+use crate::sections::annotsv::unknown_reason;
 use crate::sections::clinvar::{D, viewer_of};
 use crate::{html, text};
 
@@ -73,9 +74,21 @@ fn extra(x: &D<'_>) -> Result<String, Malformed> {
     Ok(out)
 }
 
+/// Whether step 22's consensus ran, as the AnnotSV section says: then an
+/// SV whose support is not known is one the consensus cannot tell.
+pub fn consensus_ran(s: &Summary) -> Result<bool, Malformed> {
+    let sec = s.section("annotsv");
+    let d = D::of(&sec);
+    if d.is_none() {
+        return Ok(false);
+    }
+    d.flag("consensus")
+}
+
 /// The secondary findings as rows, the same in both reports: ClinVar hits,
-/// rare HIGH-impact records, then class 4 and 5 SVs.
-pub fn rows(sf: &D<'_>) -> Result<Vec<Row>, Malformed> {
+/// rare HIGH-impact records, then class 4 and 5 SVs. `consensus` is
+/// [`consensus_ran`].
+pub fn rows(sf: &D<'_>, consensus: bool) -> Result<Vec<Row>, Malformed> {
     let mut out = Vec::new();
     for x in sf.at("clinvar_hits")?.items()? {
         let low = if x.flag("low_confidence")? {
@@ -111,7 +124,7 @@ pub fn rows(sf: &D<'_>) -> Result<Vec<Row>, Malformed> {
         for x in sv.items()? {
             let support = x.at("support")?;
             let support = if support.is_none() {
-                "caller support not known (no step 22 consensus)".to_owned()
+                format!("caller support not known ({})", unknown_reason(consensus))
             } else if support.is_num(1) {
                 format!("single caller ({})", x.s("caller")?)
             } else {
@@ -223,7 +236,7 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
                 line += &format!(", {} not reported by the gene's rule", nr.len()?);
             }
             w.push(line);
-            for (g, v, z, ev) in rows(&sf)? {
+            for (g, v, z, ev) in rows(&sf, consensus_ran(s)?)? {
                 w.push(format!("    {} {v}  {z}  {ev}", ljust(&g, 8)));
             }
             for line in apart_lines(&sf)? {
@@ -270,7 +283,7 @@ fn counts_card(d: &D<'_>) -> Result<Card, Malformed> {
 }
 
 /// The SF card, when the tier lists anything or says why it could not.
-fn sf_card(sf: &D<'_>) -> Result<Option<Card>, Malformed> {
+fn sf_card(sf: &D<'_>, consensus: bool) -> Result<Option<Card>, Malformed> {
     let shown = sf.at("clinvar_hits")?.truthy()
         || sf.at("high_impact")?.truthy()
         || sf.flag("structural")?
@@ -280,7 +293,7 @@ fn sf_card(sf: &D<'_>) -> Result<Option<Card>, Malformed> {
         return Ok(None);
     }
     let mut cells = Vec::new();
-    for (g, v, z, ev) in rows(sf)? {
+    for (g, v, z, ev) in rows(sf, consensus)? {
         let at = viewer_of(&v)?;
         cells.push(vec![
             Cell::Text(g),
@@ -318,7 +331,7 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let d = D::of(&sec);
     let mut cards = vec![html::card(&sec, counts_card(&d)?)?];
     if let Some(sf) = d.opt("acmg_sf")?
-        && let Some(card) = sf_card(&sf)?
+        && let Some(card) = sf_card(&sf, consensus_ran(s)?)?
     {
         cards.push(html::card(&sec, card)?);
     }
