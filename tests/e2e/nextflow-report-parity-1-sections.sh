@@ -11,7 +11,7 @@
 #      command lines.
 #   2. Sample NFPAR: step 20 on the fixture BAM with ClinVar and the pinned
 #      gnomAD chrM file, then step 9b on made-up reads at RFC1 (the reads of
-#      tests/test_rfc1_motif.py, which Stranger flags), plus the tables of
+#      og dev fixture rfc1 pathogenic, which Stranger flags), plus the tables of
 #      earlier cases (cDNA check, depth check, pairs) and a class 4-5 table.
 #      STRANGER_RFC1 and MITO_VARIANTS_ANNOTATE, run for real, must write
 #      the tables steps 9b and 20 wrote, byte for byte.
@@ -81,31 +81,19 @@ echo "species homo_sapiens" > "${GD}/vep_cache/homo_sapiens/${VEP_CACHE_RELEASE}
 for x in "" .fai; do ln -f "${REF}${x}" "${GD}/reference/ref.fa${x}" 2>/dev/null || cp "${REF}${x}" "${GD}/reference/ref.fa${x}"; done
 # The planted record: a 1/2 SNV at the first free chr20 position from 10,250,001,
 # with the reference's own base as REF (read through the .fai offsets).
-gzip -dc "$HG_VCF" | python3 -c '
-import sys
-ref, fai = sys.argv[1], sys.argv[1] + ".fai"
-off = {l.split("\t")[0]: [int(x) for x in l.split("\t")[1:5]] for l in open(fai)}
-ln, start, bases, width = off["chr20"]
-lines = sys.stdin.read().splitlines(True)
-taken = {int(l.split("\t")[1]) for l in lines if l.startswith("chr20\t")}
-pos = 10250001
-while pos in taken:
-    pos += 1
-with open(ref, "rb") as f:
-    f.seek(start + (pos - 1) // bases * width + (pos - 1) % bases)
-    b = f.read(1).decode().upper()
-alts = [a for a in "ACGT" if a != b][:2]
-rec = f"chr20\t{pos}\t.\t{b}\t{alts[0]},{alts[1]}\t50\tPASS\t.\tGT:AD\t1/2:0,15,13\n"
-out, done = [], False
-for l in lines:
-    c = l.split("\t", 2)
-    if not done and not l.startswith("#") and (c[0] == "chr20" and int(c[1]) > pos or c[0] in ("chr22", "chrX", "chrY", "chrM")):
-        out.append(rec)
-        done = True
-    out.append(l)
-sys.stdout.write("".join(out if done else out + [rec]))
-print(f"planted chr20:{pos} {b}>{alts[0]},{alts[1]}", file=sys.stderr)
-' "$REF" > "${GD}/${S}/vcf/${S}.vcf" 2> "${CASE_TMP}/planted.txt"
+POS=$(gzip -dc "$HG_VCF" | awk -F'\t' '$1 == "chr20" {t[$2 + 0] = 1} END {p = 10250001; while (p in t) p++; print p}')
+OFF=$(awk -F'\t' -v p="$POS" '$1 == "chr20" {printf "%.0f\n", $3 + int((p - 1) / $4) * $5 + (p - 1) % $4}' "${REF}.fai")
+B=$(dd if="$REF" bs=1 skip="$OFF" count=1 2>/dev/null | tr '[:lower:]' '[:upper:]')
+ALTS=$(printf '%s\n' A C G T | grep -vxF "$B" | head -n 2 | paste -sd, -)
+# The record goes before the first later chr20 record, or before chr22, chrX,
+# chrY or chrM, or at the end.
+gzip -dc "$HG_VCF" | awk -F'\t' -v pos="$POS" -v rec="chr20\t${POS}\t.\t${B}\t${ALTS}\t50\tPASS\t.\tGT:AD\t1/2:0,15,13" '
+  !done && !/^#/ && (($1 == "chr20" && $2 + 0 > pos + 0) || $1 == "chr22" || $1 == "chrX" || $1 == "chrY" || $1 == "chrM") {
+    print rec; done = 1
+  }
+  { print }
+  END { if (!done) print rec }' > "${GD}/${S}/vcf/${S}.vcf"
+echo "planted chr20:${POS} ${B}>${ALTS}" > "${CASE_TMP}/planted.txt"
 cat "${CASE_TMP}/planted.txt"
 docker run --rm --user "$(id -u):$(id -g)" -v "${GD}:/genome" -w /genome "$BCFTOOLS_IMAGE" \
   sh -c "bcftools view -Oz -o ${S}/vcf/${S}.vcf.gz ${S}/vcf/${S}.vcf && bcftools index -t ${S}/vcf/${S}.vcf.gz"
@@ -203,31 +191,19 @@ check "step 20's table names the gnomAD file" has $'^# gnomad\tgnomad' "$(head -
 
 # Step 9b on made-up reads at RFC1 that Stranger flags (the BAM step 20 read is not needed any more)
 rm -f "${SD}/aligned/${S}_sorted.bam" "${SD}/aligned/${S}_sorted.bam.bai"
-python3 - "$REPO" "${SD}/expansion_hunter/${S}_eh.vcf" "${SD}/aligned/reads.sam" <<'PY'
-import os, sys
-repo, vcf, sam = sys.argv[1:4]
-sys.path.insert(0, os.path.join(repo, "tests"))
-import test_rfc1_motif as t
-head = [l for l in open(os.path.join(repo, "tests", "smoke", "stranger_input.vcf.in")) if l.startswith("#")]
-head[-1:-1] = [f'##ALT=<ID=STR{a},Description="Allele comprised of {a} repeat units">\n' for a in (100, 150)]
-with open(vcf, "w") as fh:
-    fh.writelines(head)
-    fh.write(f"{t.CHROM}\t{t.START + 1}\tRFC1\tA\t<STR100>,<STR150>\t.\tPASS\tSVTYPE=STR;END={t.END};REF=11;RL=55;"
-             "RU=AARRG;VARID=RFC1;REPID=RFC1\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t"
-             "1/2:INREPEAT/INREPEAT:100/150:80-120/130-170:0/0:2/2:20/20:30.0\n")
-at, elsewhere = t.case("pathogenic")
-with open(sam, "w") as fh:
-    fh.write("@HD\tVN:1.6\tSO:unsorted\n")
-    fh.write(f"@SQ\tSN:{t.CHROM}\tLN:190214555\n@SQ\tSN:{t.OTHER}\tLN:248956422\n")
-    for r in at + list(elsewhere.values()):
-        flag = (1 | (64 if r.is_read1 else 128) | (4 if r.is_unmapped else 0) | (16 if r.is_reverse else 0)
-                | (256 if r.is_secondary else 0) | (512 if r.is_qcfail else 0) | (1024 if r.is_duplicate else 0))
-        mate = "=" if r.mate_contig == r.contig else r.mate_contig
-        fh.write("\t".join(map(str, [r.query_name, flag, r.contig, r.reference_start + 1,
-                                     0 if r.is_unmapped else 60, r.cigar_text or "*", mate,
-                                     r.next_reference_start + 1, 0, r.query_sequence,
-                                     "I" * len(r.query_sequence)])) + "\n")
-PY
+# The header of the smoke VCF with an ALT line per allele size, one RFC1
+# record, and the pathogenic read set of og dev fixture rfc1.
+{
+  grep '^#' "${REPO}/tests/smoke/stranger_input.vcf.in" | sed '$d'
+  for a in 100 150; do printf '##ALT=<ID=STR%s,Description="Allele comprised of %s repeat units">\n' "$a" "$a"; done
+  grep '^#' "${REPO}/tests/smoke/stranger_input.vcf.in" | tail -n 1
+  printf 'chr4\t39348425\tRFC1\tA\t<STR100>,<STR150>\t.\tPASS\tSVTYPE=STR;END=39348479;REF=11;RL=55;RU=AARRG;VARID=RFC1;REPID=RFC1'
+  printf '\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC'
+  # The sample's values on their own line: a fraction beside the REPCN key
+  # reads as a repeat genotype to scripts/ci/check-personal-data.sh.
+  printf '\t%s\n' "1/2:INREPEAT/INREPEAT:100/150:80-120/130-170:0/0:2/2:20/20:30.0"
+} > "${SD}/expansion_hunter/${S}_eh.vcf"
+"${REPO}/bin/og" dev fixture rfc1 pathogenic "${SD}/aligned/reads.sam"
 docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w "/genome/${S}/aligned" "$SAMTOOLS_IMAGE" \
   sh -c "samtools sort -o ${S}_sorted.bam reads.sam && samtools index ${S}_sorted.bam"
 rm -f "${SD}/aligned/reads.sam"
@@ -295,19 +271,14 @@ check "HTML_REPORT wrote the report" test -s "${CASE_TMP}/report/results/${S}/${
 # same_sections BASH NF [CHANGE]: the six sections of the two summaries, equal but
 # for the file times; CHANGE=1 adds a key to the NF expansions data first (the control)
 same_sections() {
-  python3 - "$1" "$2" "${3:-0}" <<'PY'
-import json, sys
-b, n = (json.load(open(p))["sections"] for p in sys.argv[1:3])
-if sys.argv[3] == "1":
-    n["expansions"]["data"]["control"] = 1
-bad = 0
-for k in ("clinvar", "pypgx", "annotsv", "expansions", "mito", "slivar"):
-    x, y = ({i: v for i, v in s[k].items() if i != "file_date"} for s in (b, n))
-    ok = x == y and x["state"] == "ok"
-    print(f"  {k}: bash {x['state']}, nextflow {y['state']}{'' if ok else ', differ'}")
-    bad += not ok
-sys.exit(bad)
-PY
+  jq -rn --slurpfile b "$1" --slurpfile n "$2" --arg change "${3:-0}" '
+    $b[0].sections as $bs
+    | ($n[0].sections | if $change == "1" then .expansions.data.control = 1 else . end) as $ns
+    | [ "clinvar", "pypgx", "annotsv", "expansions", "mito", "slivar"
+        | ($bs[.] | del(.file_date)) as $x | ($ns[.] | del(.file_date)) as $y
+        | ($x == $y and $x.state == "ok") as $ok
+        | {ok: $ok, line: "  \(.): bash \($x.state), nextflow \($y.state)\(if $ok then "" else ", differ" end)"} ]
+    | (.[].line), (if all(.[]; .ok) then empty else "" | halt_error(1) end)'
 }
 check "the six sections of the Nextflow summary equal the bash ones" same_sections "${SD}/summary.json" "$NF_SUM"
 same_sections "${SD}/summary.json" "$NF_SUM" 1 > /dev/null

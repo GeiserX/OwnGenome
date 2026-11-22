@@ -125,11 +125,9 @@ tests/e2e/haplogroup-explore-1-files.sh	SC2016	check "control: the reference chr
 tests/e2e/haplogroup-explore-1-files.sh	SC2016	check "control: the reference chrM does not" eval '! alt_at "${CASE_TMP}/ref_chrM.fa"'
 tests/e2e/haplogroup-explore-1-files.sh	SC2329	alt_at() { # alt_at FASTA [SNVS]: OK when every listed SNV's ALT is the base at its position
 tests/e2e/hla-second-caller-1-bash.sh	SC2329	held_back() {
-tests/e2e/hla-second-caller-1-bash.sh	SC2329	html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
 tests/e2e/hla-second-caller-1-bash.sh	SC2329	not_held_back() { ! held_back "$@"; }
 tests/e2e/hla-second-caller-1-bash.sh	SC2329	not_report_has() { ! report_has "$@"; }
 tests/e2e/hla-second-caller-1-bash.sh	SC2329	report_has() {
-tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
 tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	nf_report_has() {
 tests/e2e/hla-second-caller-2-nextflow.sh	SC2329	not_nf_report_has() { ! nf_report_has "$@"; }
 tests/e2e/ibd-segments-1.sh	SC2016	check "segments rows add up to each pair's count, total and longest" awk -F'\t' '

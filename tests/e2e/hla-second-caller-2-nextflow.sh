@@ -64,7 +64,7 @@ for g in HLA-A HLA-B; do
     grep -Eq "^${g}"$'\t[^\t]+\tyes\tT1K and OptiType \\(step 08\\), which agree at two fields\t' "$CONS"
 done
 source_of() {
-  python3 -c 'import json, sys; g = json.load(open(sys.argv[1]))["genes"][sys.argv[2]]; print(g.get("callSource", ""))' "$1" "$2" 2>/dev/null
+  jq -r --arg g "$2" '.genes[$g] | .callSource // ""' "$1" 2>/dev/null
 }
 for g in HLA-A HLA-B; do
   check_eq "PHARMCAT reports ${g} as an outside call" "$(source_of "${R}/pharmcat/${SAMPLE}.report.json" "$g")" OUTSIDE
@@ -76,14 +76,15 @@ KG="${R}/kir/${SAMPLE}_kir_genotype.tsv"
 check "HTML_REPORT wrote the report" test -s "$HTML"
 check "KIR_TYPING published the KIR genotype file" test -s "$KG"
 hla_of() {
-  python3 -c 'import json, sys; d = json.load(open(sys.argv[1]))["sections"]["hla"]["data"]; print(json.dumps(d.get(sys.argv[2]), sort_keys=True))' "$1" "$2" 2>/dev/null
+  jq -S --arg k "$2" '.sections.hla.data[$k]' "$1" 2>/dev/null
 }
 check "the Nextflow summary has the OptiType rows" has '"agree": "yes"' "$(hla_of "${R}/summary.json" optitype)"
 check_eq "and they are the bash report's (case hla-second-caller-1)" "$(hla_of "${R}/summary.json" optitype)" \
   "$(hla_of "${E2E_WORK}/hla-qc-bash-summary.json" optitype)"
 # nf_report_has HTML: every concordance row and the KIR result are in the report. Each
 # gene's value is matched with its own label, so swapped rows fail.
-html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
+# shellcheck disable=SC2329  # called through check
+html_esc() { printf '%s\n' "$1" | sed -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g' -e "s/'/\&#x27;/g"; }
 nf_report_has() {
   local g t o a w n=0 ok=0
   while IFS=$'\t' read -r g t o a _; do
@@ -106,13 +107,11 @@ nf_report_has() {
 not_nf_report_has() { ! nf_report_has "$@"; }
 grep -A 3 'KIR genes\|OptiType check\|T1K vs OptiType' "$HTML" | head -n 30
 check "the Nextflow report prints each gene's agreement, both calls, and the KIR result" nf_report_has "$HTML"
-# Red control: the same summary through a report without the OptiType and KIR blocks.
-BR="${CASE_TMP}/bin_no_blocks"
-rm -rf "$BR"
-cp -R "${REPO}/bin" "$BR"
-sed -i 's/if hla.get("optitype") is not None:/if False:/; s/if hla.get("kir") is not None:/if False:/' "${BR}/render_report.py"
-check "the control's mutations applied" test "$(grep -c '^    if False:$' "${BR}/render_report.py")" -eq 2
-python3 -I "${BR}/render_report.py" --summary "${R}/summary.json" -o "${CASE_TMP}/ctl.html" >/dev/null
+# Red control: the report of the same summary without its OptiType and KIR blocks.
+jq 'del(.sections.hla.data.optitype, .sections.hla.data.kir)' "${R}/summary.json" > "${CASE_TMP}/ctl.summary.json"
+check "the control summary has no OptiType or KIR block" \
+  jq -e '.sections.hla.data | type == "object" and (has("optitype") or has("kir") | not)' "${CASE_TMP}/ctl.summary.json"
+"${REPO}/bin/og" report render --summary "${CASE_TMP}/ctl.summary.json" -o "${CASE_TMP}/ctl.html" >/dev/null
 check "control: the check above rejects that report" not_nf_report_has "${CASE_TMP}/ctl.html"
 rm -rf "${NF_OUT:?}" "${WORK:?}"
 

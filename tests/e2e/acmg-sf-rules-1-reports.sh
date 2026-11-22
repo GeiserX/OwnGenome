@@ -6,9 +6,9 @@
 #   1. Bash: the text report and summary.json that generate-report.sh left
 #      (case 51, after step 24) and the HTML of step 24 (case 50) have the
 #      SF line with the 84 genes and the carrier list, and no "not assessed"
-#      or "not made" line. Control: the same render without the assets
-#      mount (what generate-report.sh did before it mounted assets/) fails
-#      the same checks.
+#      or "not made" line. Control: og report render on the same sample with
+#      an empty assets folder (what generate-report.sh did before it mounted
+#      assets/) fails the same checks.
 #   1b. No step 23 (a run without the VEP cache): og summary collect on the
 #       sample's step 06, 05 and 35 outputs with no clinical/ folder still
 #       writes the ACMG card (sections.acmg_sf) with the 84 rules, says the
@@ -43,21 +43,14 @@ report_ok() {
 # summary_ok FILE: the clinical section's SF tier has the 84 rules, and the
 # carrier section is ok with its gene list; neither is "unavailable".
 summary_ok() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    s = json.load(open(sys.argv[1]))["sections"]
-    sf = s["clinical"]["data"]["acmg_sf"]
-    c = s["carrier"]
-except (OSError, ValueError, KeyError, TypeError) as e:
-    sys.exit(f"  unreadable: {e!r}")
-print(f"  acmg_sf: genes_on_list {sf.get('genes_on_list')}, unavailable {sf.get('unavailable')!r}")
-print(f"  carrier: state {c['state']}, genes_on_list {c['data'].get('genes_on_list')}, "
-      f"unavailable {c['data'].get('unavailable')!r}")
-ok = (sf.get("genes_on_list") == 84 and "unavailable" not in sf and c["state"] == "ok"
-      and (c["data"].get("genes_on_list") or 0) > 0 and "unavailable" not in c["data"])
-sys.exit(0 if ok else 1)
-PY
+  jq -r '.sections | .clinical.data.acmg_sf as $sf | .carrier as $c
+    | "  acmg_sf: genes_on_list \($sf.genes_on_list), unavailable \($sf.unavailable)",
+      "  carrier: state \($c.state), genes_on_list \($c.data.genes_on_list), unavailable \($c.data.unavailable)"' \
+    "$1" 2>&1 || return 1
+  jq -e '.sections | .clinical.data.acmg_sf as $sf | .carrier as $c
+    | $sf.genes_on_list == 84 and ($sf | has("unavailable") | not) and $c.state == "ok"
+      and ($c.data.genes_on_list // 0 | type == "number" and . > 0) and ($c.data | has("unavailable") | not)' \
+    "$1" > /dev/null 2>&1
 }
 
 # --- 1. bash ----------------------------------------------------------------------
@@ -71,10 +64,9 @@ check "step 24's HTML has no 'not assessed' or 'not made' line" \
 CTL="${CASE_TMP}/control"
 rm -rf "$CTL"
 mkdir -p "$CTL"
-docker run --rm --network none --user "$(id -u):$(id -g)" \
-  -v "${REPO}/bin:/pgp-bin:ro" -v "${GENOME_DIR}:/genome:ro" -v "${CTL}:/out" "$PYTHON_IMAGE" \
-  python3 /pgp-bin/render_report.py --sample "$SAMPLE" --sample-dir "/genome/${SAMPLE}" \
-    --json /out/summary.json -o /out/report.txt > "${CTL}/render.log" 2>&1
+mkdir -p "${CTL}/no-assets"
+"${REPO}/bin/og" report render --sample "$SAMPLE" --sample-dir "${SD}" --assets "${CTL}/no-assets" \
+  --json "${CTL}/summary.json" -o "${CTL}/report.txt" > "${CTL}/render.log" 2>&1
 check_eq "control: the render without assets/ exits 0" "$?" 0
 check "control: its text report is written" test -s "${CTL}/report.txt"
 if [ -s "${CTL}/report.txt" ] && ! report_ok "${CTL}/report.txt"; then CT=red; else CT=green; fi
@@ -161,15 +153,10 @@ NF
 nf_report report 1
 NF_SUM="${CASE_TMP}/report/results/${SAMPLE}/summary.json"
 check "HTML_REPORT with the assets applies the 84 SF rules and makes the carrier list" summary_ok "$NF_SUM"
-check "HTML_REPORT's carrier list equals the bash one" python3 - "$SUM" "$NF_SUM" <<'PY'
-import json, sys
-try:
-    b, n = (json.load(open(p))["sections"]["carrier"]["data"] for p in sys.argv[1:3])
-except (OSError, ValueError, KeyError) as e:
-    sys.exit(f"  unreadable: {e!r}")
-print(f"  bash {len(b.get('carriers', []))} carrier(s), nextflow {len(n.get('carriers', []))}")
-sys.exit(0 if b == n else 1)
-PY
+echo "  bash $(jq '.sections.carrier.data.carriers // [] | length' "$SUM" 2>/dev/null) carrier(s), nextflow $(jq '.sections.carrier.data.carriers // [] | length' "$NF_SUM" 2>/dev/null)"
+# shellcheck disable=SC2016  # a jq program: $b and $n are jq variables
+check "HTML_REPORT's carrier list equals the bash one" \
+  jq -en --slurpfile b "$SUM" --slurpfile n "$NF_SUM" '$b[0].sections.carrier.data as $x | $x != null and $x == $n[0].sections.carrier.data'
 NH=$(cat "${CASE_TMP}/report/results/${SAMPLE}/${SAMPLE}_report.html" 2>/dev/null)
 check "the Nextflow HTML has the carrier list card" has 'Carrier List \(this sample\)' "$NH"
 
@@ -195,18 +182,12 @@ check_eq "nextflow run main.nf (clinvar,html_report) exits 0" "$MRC" 0
 [ "$MRC" = 0 ] || grep -E 'ERROR|Error executing process|Command error' -A 8 "${MN}/nextflow.log" | head -40
 # No clinical VCF in this run, so no clinical section: the carrier list
 # shows the staging (main.nf passes both assets in one list).
+MN_SUM="${MN}/results/${SAMPLE}/summary.json"
+jq -r '.sections.carrier | "  carrier: state \(.state), genes_on_list \(.data.genes_on_list), unavailable \(.data.unavailable)"' \
+  "$MN_SUM" 2>&1
 check "main.nf's report made the carrier list (main.nf stages the assets)" \
-  python3 - "${MN}/results/${SAMPLE}/summary.json" <<'PY2'
-import json, sys
-try:
-    c = json.load(open(sys.argv[1]))["sections"]["carrier"]
-except (OSError, ValueError, KeyError) as e:
-    sys.exit(f"  unreadable: {e!r}")
-print(f"  carrier: state {c['state']}, genes_on_list {c['data'].get('genes_on_list')}, "
-      f"unavailable {c['data'].get('unavailable')!r}")
-sys.exit(0 if c["state"] == "ok" and (c["data"].get("genes_on_list") or 0) > 0
-         and "unavailable" not in c["data"] else 1)
-PY2
+  jq -e '.sections.carrier | .state == "ok" and (.data.genes_on_list // 0 | type == "number" and . > 0)
+    and (.data | has("unavailable") | not)' "$MN_SUM"
 
 nf_report no-assets 0
 NA_SUM="${CASE_TMP}/no-assets/results/${SAMPLE}/summary.json"

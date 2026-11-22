@@ -188,7 +188,7 @@ step "$F"
 check "a table left from an earlier run is removed when the step skips" test ! -e "${G}/${F}/y_str/${F}_y_str.tsv"
 
 # --- both reports -------------------------------------------------------------------------
-python3 "${REPO}/bin/render_report.py" --sample "$H" --sample-dir "${G}/${H}" --json "${T}/summary.json" \
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$H" --sample-dir "${G}/${H}" --json "${T}/summary.json" \
   -o "${T}/report.txt" -o "${T}/report.html" > /dev/null
 TXT=$(cat "${T}/report.txt" 2>/dev/null) HTML=$(cat "${T}/report.html" 2>/dev/null)
 check "text report: the Y-STR section" has '^## Y-STR Markers \(HipSTR\)$' "$TXT"

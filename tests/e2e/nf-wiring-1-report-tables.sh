@@ -127,30 +127,7 @@ cp "${GENOME_DIR}/${SAMPLE}/clinical/${SAMPLE}_clinical.vcf.gz" "${SD}/clinical/
 cp "${GENOME_DIR}/${SAMPLE}/slivar/${SAMPLE}_slivar_summary.tsv" "${SD}/slivar/${S}_slivar_summary.tsv"
 cp "${GENOME_DIR}/${SAMPLE}/slivar/${SAMPLE}_prioritized.vcf.gz" "${SD}/slivar/${S}_prioritized.vcf.gz"
 # A VEP file with one record per hit: a gnomAD AF on each, 3% on the planted one.
-python3 - "$HITS_TSV" "${SD}/vep/plain.vcf" "$CHR" "$POS" <<'PY'
-import sys
-hits, out, pchrom, ppos = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
-rows = [l.rstrip("\n").split("\t") for l in open(hits)][1:]
-recs = {}
-for i, r in enumerate(rows):
-    chrom, pos, ref, alt = r[0], int(r[1]), r[2], r[3]
-    af = 0.03 if (chrom, pos) == (pchrom, ppos) else round(0.0001 * (i + 1), 6)
-    snv = len(ref) == 1 and len(alt) == 1
-    allele = alt if snv or alt[:1] != ref[:1] else (alt[1:] or "-")
-    recs[(chrom, pos, ref, alt)] = f"{chrom}\t{pos}\trs{1000 + i}\t{ref}\t{alt}\t50\tPASS\tCSQ={allele}|x|LOW|G|{af}|{af / 2}|rs{1000 + i}\tGT\t0/1"
-order = {c: i for i, c in enumerate(sorted({k[0] for k in recs}, key=lambda c: (len(c), c)))}
-with open(out, "w") as f:
-    f.write("##fileformat=VCFv4.2\n")
-    for c in order:
-        f.write(f"##contig=<ID={c}>\n")
-    f.write('##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. '
-            'Format: Allele|Consequence|IMPACT|SYMBOL|gnomADe_AF|gnomADg_AF|Existing_variation">\n')
-    f.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
-    f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
-    for k in sorted(recs, key=lambda k: (order[k[0]], k[1])):
-        f.write(recs[k] + "\n")
-print(f"{len(recs)} VEP records")
-PY
+"${REPO}/bin/og" dev fixture vep-af "$HITS_TSV" "${SD}/vep/plain.vcf" "$CHR" "$POS" --rsids
 in_user() { docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w /genome "$BCFTOOLS_IMAGE" "$@"; }
 in_user bcftools view --no-version -Oz -o "${S}/vep/${S}_vep.vcf.gz" "${S}/vep/plain.vcf"
 in_user bcftools index -t "${S}/vep/${S}_vep.vcf.gz"
@@ -186,22 +163,14 @@ NF_SUM="${CASE_TMP}/report/results/${S}/summary.json"
 check "HTML_REPORT wrote the report" test -s "${CASE_TMP}/report/results/${S}/${S}_report.html"
 # same_sections BASH NF: the five sections of the two summaries, equal but for the file times
 same_sections() {
-  python3 - "$1" "$2" <<'PY'
-import json, sys
-b, n = (json.load(open(p))["sections"] for p in sys.argv[1:3])
-bad = 0
-for k in ("read_count", "clinvar", "cpsr", "clinical", "slivar"):
-    x, y = ({i: v for i, v in s.get(k, {"state": "absent"}).items() if i != "file_date"} for s in (b, n))
-    ok = x == y and x["state"] == "ok"
-    print(f"  {k}: bash {x['state']}, nextflow {y['state']}{'' if ok else ', differ'}")
-    if not ok:
-        for i in sorted(set(x) | set(y)):
-            if x.get(i) != y.get(i):
-                print(f"    {i}: bash {json.dumps(x.get(i))[:400]}")
-                print(f"    {i}: nextflow {json.dumps(y.get(i))[:400]}")
-    bad += not ok
-sys.exit(bad)
-PY
+  jq -rn --slurpfile b "$1" --slurpfile n "$2" '
+    [ "read_count", "clinvar", "cpsr", "clinical", "slivar" | . as $k
+      | [$b[0], $n[0] | .sections[$k] // {state: "absent"} | del(.file_date)] as [$x, $y]
+      | ($x == $y and $x.state == "ok") as $ok
+      | {ok: $ok, lines: (["  \($k): bash \($x.state), nextflow \($y.state)\(if $ok then "" else ", differ" end)"]
+          + if $ok then [] else [($x + $y | keys[]) as $i | select($x[$i] != $y[$i])
+              | "    \($i): bash \($x[$i] | tojson | .[:400])", "    \($i): nextflow \($y[$i] | tojson | .[:400])"] end)} ]
+    | (.[].lines[]), (if all(.[]; .ok) then empty else "" | halt_error(1) end)'
 }
 check "the five sections of the Nextflow summary equal the bash ones" same_sections "${SD}/summary.json" "$NF_SUM"
 # The ACMG card (step 06's section) reads the same hits, clinical VCF and deletions in both.
@@ -209,22 +178,33 @@ check "the five sections of the Nextflow summary equal the bash ones" same_secti
 check "the ACMG card of the Nextflow summary equals the bash one" \
   jq -en --slurpfile b "${SD}/summary.json" --slurpfile n "$NF_SUM" \
   '($b[0].sections.acmg_sf | del(.file_date)) as $x | $x.state == "ok" and $x == ($n[0].sections.acmg_sf | del(.file_date))'
-nf_py() { python3 -c "import json, sys; d = json.load(open(sys.argv[1]))['sections']; print($1)" "$NF_SUM" 2>/dev/null; }
+# nf_jq PROGRAM: a jq program over the sections of the Nextflow summary, its
+# result printed as Python prints a value (a string bare, True, None, a dict as
+# {'k': 1}); a missing key prints nothing.
+# shellcheck disable=SC2016  # jq programs: $k is a jq variable
+NF_JQ_DEFS='def at(p): reduce p[] as $k (.; if type == "object" and has($k) then .[$k] else error("no \($k)") end);
+def py: if type == "object" then "{" + (to_entries | map("\(.key | py): \(.value | py)") | join(", ")) + "}"
+  elif type == "array" then "[" + (map(py) | join(", ")) + "]"
+  elif type == "string" then "\u0027" + . + "\u0027" elif . == null then "None" elif . == true then "True"
+  elif . == false then "False" else tostring end;
+def truthy: . != null and . != false and . != 0 and . != "" and . != [] and . != {};'
+nf_jq() { jq -r "${NF_JQ_DEFS} at([\"sections\"]) | $1 | if type == \"string\" then . else py end" "$NF_SUM" 2>/dev/null; }
 check_eq "the ClinVar hits' frequencies come from the VEP file" \
-  "$(nf_py "d['clinvar']['data']['frequency']['source']")" "vep/${S}_vep.vcf.gz"
+  "$(nf_jq 'at(["clinvar", "data", "frequency", "source"])')" "vep/${S}_vep.vcf.gz"
 check_eq "the planted hit has its 3% AF and is marked common" \
-  "$(nf_py "[(h['af'], h['common']) for h in d['clinvar']['data']['hits'] if h['chrom'] == '${CHR}' and h['pos'] == ${POS}]")" \
+  "$(nf_jq "\"[\" + ([at([\"clinvar\", \"data\", \"hits\"])[] | select(.chrom == \"${CHR}\" and .pos == ${POS})
+    | \"(\\(.af | py), \\(.common | py))\"] | join(\", \")) + \"]\"")" \
   "[(0.03, True)]"
 check_eq "the hits carry VEP's rsIDs" \
-  "$(nf_py "sum(1 for h in d['clinvar']['data']['hits'] if h['rsids'])")" "$(awk 'NR > 1' "$HITS_TSV" | wc -l | tr -d ' ')"
-check_eq "the CPSR card counts the classes" "$(nf_py "d['cpsr']['data']['classification']")" "{'Pathogenic': 1, 'Benign': 1}"
-check_eq "and flags the P/LP row the read check flagged" "$(nf_py "d['cpsr']['data']['cdna_flagged']")" 1
-check_eq "the read count section is there" "$(nf_py "d['read_count']['data']['read_count_check']")" \
+  "$(nf_jq '[at(["clinvar", "data", "hits"])[] | select(.rsids | truthy)] | length')" "$(awk 'NR > 1' "$HITS_TSV" | wc -l | tr -d ' ')"
+check_eq "the CPSR card counts the classes" "$(nf_jq 'at(["cpsr", "data", "classification"])')" "{'Pathogenic': 1, 'Benign': 1}"
+check_eq "and flags the P/LP row the read check flagged" "$(nf_jq 'at(["cpsr", "data", "cdna_flagged"])')" 1
+check_eq "the read count section is there" "$(nf_jq 'at(["read_count", "data", "read_count_check"])')" \
   "$(awk -F'\t' '$1 == "read_count_check" {print $2}' "${SD}/qc/${S}_read_count.tsv")"
-check_eq "the clinical card counts the summary table's rows" "$(nf_py "d['clinical']['data']['variants']")" \
+check_eq "the clinical card counts the summary table's rows" "$(nf_jq 'at(["clinical", "data", "variants"])')" \
   "$(awk 'NR > 1' "${SD}/clinical/${S}_clinical_summary.tsv" | wc -l | tr -d ' ')"
-check "and has its impact breakdown" test -n "$(nf_py "d['clinical']['data']['by_impact']")"
-check_eq "the slivar card counts the summary table's rows" "$(nf_py "d['slivar']['data']['prioritized']")" \
+check "and has its impact breakdown" test -n "$(nf_jq 'at(["clinical", "data", "by_impact"])')"
+check_eq "the slivar card counts the summary table's rows" "$(nf_jq 'at(["slivar", "data", "prioritized"])')" \
   "$(awk 'NR > 1' "${SD}/slivar/${S}_slivar_summary.tsv" | wc -l | tr -d ' ')"
 # Control: the module as it was, without a place for the new tables.
 OLD="${CASE_TMP}/old-module/main.nf"

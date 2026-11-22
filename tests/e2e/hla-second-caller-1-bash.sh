@@ -15,10 +15,10 @@
 #     HLA-B in the outside-call file, and the check above rejects it;
 #   - HLA_QC=true at step 36 with no OptiType result holds both genes back;
 #   - step 08 again without HLA_QC removes the old OptiType result.
-#   - step 24 and the text report (render_report.py on the same summary)
+#   - step 24 and the text report (og report render on the same summary)
 #     print one line per gene of the concordance table, both calls named;
-#     red control: a copy of bin/render_report.py with the OptiType block
-#     disabled prints none, and the check rejects it.
+#     red control: the same summary without its OptiType block prints none,
+#     and the check rejects it.
 # HG002sp, the positive control: HG002's reads over HLA-B replaced by reads
 # simulated from two known alleles, B*57:01 and B*07:02 (genomic sequences of
 # the pinned hla.dat), aligned with minimap2 as step 02 aligns. Both callers
@@ -89,12 +89,13 @@ run_step 24-html-report.sh "$S"
 check_step_exit 24-html-report.sh
 HTML="${G}/${S}/${S}_report.html"
 TXT="${CASE_TMP}/${S}_report.txt"
-python3 -I "${REPO}/bin/render_report.py" --summary "${G}/${S}/summary.json" -o "$TXT" >/dev/null
+"${REPO}/bin/og" report render --summary "${G}/${S}/summary.json" -o "$TXT" >/dev/null
 cp "${G}/${S}/summary.json" "${E2E_WORK}/hla-qc-bash-summary.json" 2>/dev/null   # case hla-second-caller-2 compares the Nextflow one
 sed -n '/OptiType check/,/^$/p' "$TXT"
 # report_has TXT HTML: every row of the concordance table is a line of both reports. Each HTML
 # value is matched with its own gene's label, so swapped rows fail.
-html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
+# shellcheck disable=SC2329  # called through check
+html_esc() { printf '%s\n' "$1" | sed -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g' -e "s/'/\&#x27;/g"; }
 report_has() {
   local g t o a note w x n=0 ok=0
   while IFS=$'\t' read -r g t o a note; do
@@ -111,13 +112,11 @@ report_has() {
 not_report_has() { ! report_has "$@"; }
 check "the text report heads the OptiType check" grep -qF 'OptiType check (HLA_QC=true, two fields):' "$TXT"
 check "both reports print each gene's agreement and both calls, as the table says" report_has "$TXT" "$HTML"
-# Red control: the report without its OptiType block.
-BR="${CASE_TMP}/bin_no_optitype"
-rm -rf "$BR"
-cp -R "${REPO}/bin" "$BR"
-sed -i 's/ot = S\["hla"\]\["data"\].get("optitype")/ot = None/; s/if hla.get("optitype") is not None:/if False:/' "${BR}/render_report.py"
-check "the control's mutations applied" test "$(grep -c '^        ot = None$\|^    if False:$' "${BR}/render_report.py")" -eq 2
-python3 -I "${BR}/render_report.py" --summary "${G}/${S}/summary.json" -o "${CASE_TMP}/ctl.txt" -o "${CASE_TMP}/ctl.html" >/dev/null
+# Red control: the reports of the same summary without its OptiType block.
+jq 'del(.sections.hla.data.optitype)' "${G}/${S}/summary.json" > "${CASE_TMP}/ctl.summary.json"
+check "the control summary has no OptiType block" \
+  jq -e '.sections.hla.data | type == "object" and (has("optitype") | not)' "${CASE_TMP}/ctl.summary.json"
+"${REPO}/bin/og" report render --summary "${CASE_TMP}/ctl.summary.json" -o "${CASE_TMP}/ctl.txt" -o "${CASE_TMP}/ctl.html" >/dev/null
 check "control: without the OptiType block the check above rejects both reports" \
   not_report_has "${CASE_TMP}/ctl.txt" "${CASE_TMP}/ctl.html"
 
@@ -174,47 +173,10 @@ S=${SRC}sp
 SP="${G}/${S}/spike"
 rm -rf "${G:?}/${S}"
 mkdir -p "$SP"
-cat > "${CASE_TMP}/spike.py" <<'PY'
-"""spike.py HLA_DAT OUTDIR ALLELE...: read pairs (150 bp, 350 bp fragments,
-one every 5 bp, the strands alternating: about 50x) from the longest genomic
-sequence in hla.dat of each allele named."""
-import sys
-dat, out, wanted = sys.argv[1], sys.argv[2], sys.argv[3:]
-best, name, seq, in_sq = {}, None, [], False
-with open(dat) as f:
-    for line in f:
-        if line.startswith("DE   "):
-            name = line[5:].split(",")[0].strip()
-        elif line.startswith("SQ   "):
-            in_sq, seq = True, []
-        elif line.startswith("//"):
-            s = "".join(seq).upper()
-            for w in wanted:
-                if name and (name == w or name.startswith(w + ":")) and len(s) > len(best.get(w, ("", ""))[1]):
-                    best[w] = (name, s)
-            in_sq, name = False, None
-        elif in_sq:
-            seq.append("".join(ch for ch in line if ch.isalpha()))
-comp = str.maketrans("ACGTN", "TGCAN")
-rc = lambda s: s.translate(comp)[::-1]
-n = 0
-with open(f"{out}/R1.fq", "w") as r1, open(f"{out}/R2.fq", "w") as r2:
-    for w in wanted:
-        if w not in best or len(best[w][1]) < 2500:
-            sys.exit(f"no genomic sequence of {w} in {dat}")
-        nm, s = best[w]
-        print(f"{w}: {nm}, {len(s)} bp")
-        for start in range(0, len(s) - 350 + 1, 5):
-            frag = s[start:start + 350]
-            a, b = frag[:150], rc(frag[-150:])
-            if (start // 5) % 2:
-                a, b = b, a
-            n += 1
-            r1.write(f"@spike{n}/1\n{a}\n+\n{'I' * 150}\n")
-            r2.write(f"@spike{n}/2\n{b}\n+\n{'I' * 150}\n")
-print(f"read pairs: {n}")
-PY
-python3 -I "${CASE_TMP}/spike.py" "$HLA_DAT" "$SP" 'HLA-B*57:01:01' 'HLA-B*07:02:01' | tee "${CASE_TMP}/spike.log"
+# Read pairs (150 bp ends of 350 bp fragments, one every 5 bp, the strands
+# alternating: about 50x) from the longest genomic sequence in hla.dat of
+# each allele named.
+"${REPO}/bin/og" dev fixture hla-spike "$HLA_DAT" "$SP" 'HLA-B*57:01:01' 'HLA-B*07:02:01' | tee "${CASE_TMP}/spike.log"
 check_ge "simulated read pairs" "$(sed -n 's/^read pairs: //p' "${CASE_TMP}/spike.log")" 500
 MMI="${G}/reference/GRCh38_no_alt_analysis_set.sr.mmi"
 [ -s "$MMI" ] || docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome" -w /genome "$MINIMAP2_IMAGE" \

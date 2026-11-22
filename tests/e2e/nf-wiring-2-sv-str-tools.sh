@@ -28,24 +28,16 @@ done
 CAT="${CASE_TMP}/eh_catalog.json"
 docker run --rm "$EXPANSIONHUNTER_IMAGE" cat /usr/local/share/ExpansionHunter/variant_catalog/grch38/variant_catalog.json \
   > "${CASE_TMP}/catalog_full.json"
-python3 - "${CASE_TMP}/catalog_full.json" "${REF}.fai" "$CAT" <<'PY'
-import json, sys
-loci = json.load(open(sys.argv[1]))
-contigs = {line.split("\t")[0] for line in open(sys.argv[2])}
-def regions(locus):
-    out = []
-    for key in ("ReferenceRegion", "OfftargetRegions"):
-        r = locus.get(key, [])
-        out += r if isinstance(r, list) else [r]
-    return out
-def known(c):
-    return c in contigs or "chr" + c in contigs
-kept = [l for l in loci if all(known(r.split(":")[0]) for r in regions(l))]
-print(f"catalog loci: {len(loci)}, on the fixture's contigs: {len(kept)}")
-json.dump(kept, open(sys.argv[3], "w"), indent=1)
-PY
+# A locus is kept when the contig of each of its regions (ReferenceRegion and
+# OfftargetRegions, one or a list) is in the .fai, with or without "chr".
+# shellcheck disable=SC2016  # a jq program: $fai and $c are jq variables
+jq --indent 1 --rawfile fai "${REF}.fai" '
+  ($fai | split("\n") | map(select(. != "") | {key: split("\t")[0], value: true}) | from_entries) as $c
+  | map(select([(.ReferenceRegion // [], .OfftargetRegions // []) | if type == "array" then .[] else . end
+      | split(":")[0] | $c[.] or $c["chr" + .]] | all))' "${CASE_TMP}/catalog_full.json" > "$CAT"
+echo "catalog loci: $(jq length "${CASE_TMP}/catalog_full.json"), on the fixture's contigs: $(jq length "$CAT")"
 check_ge "catalog loci on the fixture's contigs" \
-  "$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))))' "$CAT" 2>/dev/null || echo 0)" 5
+  "$(jq length "$CAT" 2>/dev/null || echo 0)" 5
 
 # CNVpytor's pinned resources (docs/00-reference-setup.md): hg38's GC and mask
 # files are read; the others only have to exist.
