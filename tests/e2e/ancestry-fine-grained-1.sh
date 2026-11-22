@@ -138,6 +138,7 @@ check "HG002T: and the table has its left_out rows" \
 # og ancestry-fine project wrote each level's fit, after a bootstrap that drew
 # the reference people again.
 for l in continent region; do
+  # shellcheck disable=SC2016 # $1 and $2 are awk's fields
   check "HG002T: the ${l} fit drew 100 replicates with the reference people drawn again" \
     awk -F'\t' '$1 == "replicates" {r = $2} $1 == "reference_resampling" {s = $2} END {exit !(r == 100 && s == "yes")}' \
     "${G}/HG002T/ancestry_fine/work/fractions/HG002T_${l}.fit.tsv"
