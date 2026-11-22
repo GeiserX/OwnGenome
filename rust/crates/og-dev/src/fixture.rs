@@ -32,14 +32,20 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
         let _ = writeln!(
             err,
-            "{USAGE}{}{}og dev fixture: error: {msg}",
+            "{USAGE}{}{}{}og dev fixture: error: {msg}",
             e2e::USAGE,
-            lineage::usage()
+            lineage::usage(),
+            clinical::usage()
         );
         2
     };
     if let Some(kind) = args.first()
         && let Some(code) = lineage::cli(kind, &args[1..], out, err)
+    {
+        return code;
+    }
+    if let Some(kind) = args.first()
+        && let Some(code) = clinical::cli(kind, &args[1..], out, err)
     {
         return code;
     }
@@ -75,6 +81,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             let _ = out.write_all(USAGE.as_bytes());
             let _ = out.write_all(e2e::USAGE.as_bytes());
             let _ = out.write_all(lineage::usage().as_bytes());
+            let _ = out.write_all(clinical::usage().as_bytes());
             return 0;
         }
         Some(other) => {
@@ -636,6 +643,9 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
 // The kinds of the ancestry, family, QC, PRS, Y, CHIP, MoChA, viral and
 // live e2e cases (`og dev fixture <kind> --help`).
 pub mod lineage;
+
+// The kinds of the clinical, consumer-export and HLA e2e cases.
+pub mod clinical;
 
 #[cfg(test)]
 mod tests {
