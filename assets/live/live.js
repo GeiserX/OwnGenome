@@ -119,8 +119,8 @@
         g.appendChild(svg('rect', { 'class': 'bar', x: LABEL_W + 8, y: y + 5, width: 0, height: 0 }));
       }
       g.appendChild(svg('title', {}));
-      g.addEventListener('click', function () { pick(st.step); });
-      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { pick(st.step); } });
+      g.addEventListener('click', function () { pick(st.step, true); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(st.step, false); } });
       s.appendChild(g);
       boxes[st.step] = g;
     });
@@ -157,12 +157,14 @@
     });
   }
 
-  // A step the reader chose: its detail, brought into view (on a phone it sits below the whole timeline).
-  function pick(step) {
+  // A step the reader chose: its detail, and after a tap or click the detail brought into view (on a phone it
+  // sits below the whole timeline). From the keyboard the focused step stays where it is; #detail is a live
+  // region, so a screen reader reads the detail out.
+  function pick(step, reveal) {
     selected = step;
     detail();
     var box = document.getElementById('detail');
-    if (box && box.scrollIntoView) { box.scrollIntoView({ block: 'nearest' }); }
+    if (reveal && box && box.scrollIntoView) { box.scrollIntoView({ block: 'nearest' }); }
   }
 
   function detail() {
@@ -221,9 +223,8 @@
     var li = el('li', { 'class': 'tone-' + ev.tone, 'data-section': ev.key || '', tabindex: '0', role: 'button', title: ev.full });
     li.appendChild(el('span', { 'class': 'step' }, ev.t ? clock(ev.t) : ev.step));
     li.appendChild(document.createTextNode(' ' + ev.text));
-    function open() { pick(ev.step); }
-    li.addEventListener('click', open);
-    li.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    li.addEventListener('click', function () { pick(ev.step, true); });
+    li.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(ev.step, false); } });
     return li;
   }
   function found(state) {
