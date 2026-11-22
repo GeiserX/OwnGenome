@@ -70,7 +70,14 @@ pub struct GeneCall {
     /// PharmCAT's `activityScore` of each possible diplotype, when it is a
     /// finite number.
     pub scores: Vec<Option<f64>>,
+    /// The positions of a called gene that PharmCAT never read and that
+    /// define an allele (see [`unread_positions`]). An allele defined there
+    /// could not be called, so the call may hide it.
+    pub unread: Vec<String>,
 }
+
+/// How many unread positions the phenotype's mark names before `and N more`.
+const UNREAD_SHOWN: usize = 3;
 
 impl GeneCall {
     /// A call with one possible diplotype.
@@ -85,15 +92,27 @@ impl GeneCall {
             called,
             note: None,
             scores: Vec::new(),
+            unread: Vec::new(),
         }
     }
 
-    /// The phenotype as the table and the text show it, with its note.
+    /// The phenotype as the table and the text show it, with its note, and
+    /// `[incomplete: positions not read: ...]` when it is [`incomplete`].
+    ///
+    /// [`incomplete`]: GeneCall::incomplete
     pub fn shown(&self) -> String {
-        match self.note {
+        let mut s = match self.note {
             Some(note) => format!("{} [{note}]", self.phenotype),
             None => self.phenotype.clone(),
+        };
+        if self.incomplete() {
+            let mut names = self.unread[..self.unread.len().min(UNREAD_SHOWN)].join(", ");
+            if self.unread.len() > UNREAD_SHOWN {
+                names.push_str(&format!(" and {} more", self.unread.len() - UNREAD_SHOWN));
+            }
+            s.push_str(&format!(" [incomplete: positions not read: {names}]"));
         }
+        s
     }
 
     /// Called, with possible diplotypes of different phenotypes.
@@ -101,11 +120,20 @@ impl GeneCall {
         self.called && self.phenotypes.len() > 1
     }
 
+    /// Called with one result that rests on positions PharmCAT never read.
+    /// It is [`Status::Incomplete`] unless its phenotype names a changed
+    /// function, which stays non-normal with its drug list.
+    pub fn incomplete(&self) -> bool {
+        self.called && !self.ambiguous() && !self.unread.is_empty()
+    }
+
     pub fn status(&self) -> Status {
         if !self.called {
             Status::NotCalled
         } else if self.ambiguous() {
             Status::Ambiguous
+        } else if self.incomplete() && !is_non_normal(&self.phenotype) {
+            Status::Incomplete
         } else if is_normal(&self.phenotype) {
             Status::Normal
         } else if is_non_normal(&self.phenotype) {
@@ -195,6 +223,41 @@ fn one_diplotype(dip: &Value) -> (String, String, bool) {
     (label, phenotype, called)
 }
 
+/// The positions of a gene object's `variants` that PharmCAT never read and
+/// that define an allele: no `call` (PharmCAT leaves a null out, so a missing
+/// field, a null and a blank string all count) and a non-empty `alleles`,
+/// the alleles PharmCAT's definitions place there. Each is named by its
+/// rsID, else `chromosome:position`, else its position, once, in the
+/// report's order.
+pub fn unread_positions(g: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for v in list(g, "variants") {
+        if !matches!(v, Value::Object(_)) {
+            continue;
+        }
+        let call = truthy_field(v, "call").map(text).unwrap_or_default();
+        let defines = list(v, "alleles").iter().any(truthy);
+        if !strip(&call, None).is_empty() || !defines {
+            continue;
+        }
+        let pos = truthy_field(v, "position").map(text);
+        let name = match (
+            truthy_field(v, "dbSnpId"),
+            truthy_field(v, "chromosome"),
+            pos,
+        ) {
+            (Some(id), _, _) => text(id),
+            (None, Some(chr), Some(pos)) => format!("{}:{pos}", text(chr)),
+            (None, _, Some(pos)) => pos,
+            (None, _, None) => "a position with no name".to_owned(),
+        };
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
 /// The call of a gene object with a diplotype array, else `None`.
 fn diplotype_call(name: String, g: &Value) -> Option<GeneCall> {
     if !matches!(g, Value::Object(_)) {
@@ -226,9 +289,18 @@ fn diplotype_call(name: String, g: &Value) -> Option<GeneCall> {
             );
         }
     }
+    let outside = matches!(field(g, "callSource"), Some(Value::Str(s)) if s == "OUTSIDE");
+    // An outside call reads no position; PharmCAT marks none of its
+    // positions missing either.
+    let unread = if called && !outside {
+        unread_positions(g)
+    } else {
+        Vec::new()
+    };
     Some(GeneCall {
         gene: name,
-        outside: matches!(field(g, "callSource"), Some(Value::Str(s)) if s == "OUTSIDE"),
+        outside,
+        unread,
         diplotype: label,
         phenotype,
         called,

@@ -4,13 +4,16 @@ use pycompat::text::{lower, split, strip};
 use std::fmt;
 
 /// What a gene's call means for the report, checked in this order: not
-/// called, ambiguous, normal, non-normal (listed with its drugs), and
-/// unclassified (called, with no phenotype that says normal or changed
-/// function: not counted, no drug guidance).
+/// called, ambiguous, incomplete (a call that rests on positions PharmCAT
+/// never read and whose phenotype names no changed function: no drug
+/// guidance), normal, non-normal (listed with its drugs), and unclassified
+/// (called, with no phenotype that says normal or changed function: not
+/// counted, no drug guidance).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     NotCalled,
     Ambiguous,
+    Incomplete,
     Normal,
     NonNormal,
     Unclassified,
@@ -22,6 +25,7 @@ impl Status {
         match self {
             Status::NotCalled => "not called",
             Status::Ambiguous => "ambiguous",
+            Status::Incomplete => "incomplete",
             Status::Normal => "normal",
             Status::NonNormal => "non-normal",
             Status::Unclassified => "unclassified",

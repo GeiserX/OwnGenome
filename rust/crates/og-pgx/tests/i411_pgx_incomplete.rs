@@ -86,13 +86,20 @@ fn row<'a>(table: &'a str, gene: &str) -> Vec<&'a str> {
         .unwrap_or_else(|| panic!("no {gene} row in {table}"))
 }
 
-/// The text of one section of the recommendations, up to the next blank line
-/// after its body.
-fn section<'a>(text: &'a str, head: &str) -> Option<&'a str> {
-    let start = text.find(head)?;
-    let body = &text[start..];
-    let end = body.find("\n\n").map_or(body.len(), |i| i);
-    Some(&body[..end])
+/// One section of the recommendations: its head line and every line up to
+/// the next head (a line that is not blank, not indented and not a rule).
+fn section(text: &str, head: &str) -> Option<String> {
+    let mut lines = text.lines().skip_while(|l| *l != head);
+    let first = lines.next()?;
+    let body = lines.take_while(|l| {
+        l.is_empty() || l.starts_with(' ') || l.starts_with('-') || l.starts_with('=')
+    });
+    Some(
+        std::iter::once(first)
+            .chain(body)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 const UNREAD: &str = "Genes Called With Positions Not Read:";
@@ -193,7 +200,10 @@ fn a_whole_genome_with_every_position_read_is_unchanged() {
         row(&table, "CYP2C9"),
         ["CYP2C9", "*1/*2", "Intermediate Metabolizer", "non-normal"]
     );
-    assert!(!text.contains("incomplete") && !text.contains(UNREAD), "{text}");
+    assert!(
+        !text.contains("incomplete") && !text.contains(UNREAD),
+        "{text}"
+    );
     let (_, text0, table0) = run("wgs-control", &stripped);
     assert_eq!(
         (text, table),
@@ -279,10 +289,7 @@ fn only_an_unread_position_that_defines_an_allele_counts() {
 fn not_called_ambiguous_and_outside_genes_are_left_as_they_were() {
     let unread = r#"{"position": 94781859, "dbSnpId": "rs4244285", "alleles": ["*2"]}"#;
     assert_eq!(
-        status(
-            &one_gene("OUTSIDE", &[NM], &[unread]),
-            "outside"
-        ),
+        status(&one_gene("OUTSIDE", &[NM], &[unread]), "outside"),
         ("Normal Metabolizer".to_owned(), "normal".to_owned()),
         "an outside call reads no position (PharmCAT marks none missing)"
     );
