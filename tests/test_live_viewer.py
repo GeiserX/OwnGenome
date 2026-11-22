@@ -54,10 +54,11 @@ import urllib.parse
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
+sys.path.insert(0, os.path.join(REPO, "tests", "browser"))
 import owngenome_live  # noqa: E402
 import render_report  # noqa: E402
 import test_viewer as tv  # noqa: E402
-import test_owngenome_live as tl  # noqa: E402
+import cdp as tl  # noqa: E402
 
 PASSWORD = "viewer test password"
 FAILED = []

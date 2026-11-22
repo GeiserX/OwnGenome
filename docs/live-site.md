@@ -30,7 +30,7 @@ OWNGENOME_LIVE_URL=http://127.0.0.1:8788 ./scripts/run-all.sh your_name male   #
 
 The site runs in the foreground of its terminal. Press Ctrl+C there to stop it. A run that posts to it goes on without it. Under the systemd unit of [Deploy it on a server](#deploy-it-on-a-server), `systemctl stop owngenome-live` stops it.
 
-`bin/og live serve --root "$GENOME_DIR"` serves the same pages from `og`, OwnGenome's one binary, on 127.0.0.1:8787. It is the Rust port of the site, and it has no login yet. It takes no password, so it refuses a `--bind` that is not loopback. It also refuses the options of a site with a password, TLS or a proxy (`--password-file`, `--allowed-host`, `--trust-proxy`, `--tls-cert`, `--tls-key`, `--cookie-secure`, a set `OWNGENOME_LIVE_PASSWORD_HASH`). Each refusal exits 2. `--plugin-dir` is refused too: the plugins are compiled into `og`. It starts no ingest listener. It reads the messages that the Python server stores in `GENOME_DIR/.owngenome-live/runs/<run>/events.jsonl`, so both can share one state folder. It does not serve the results yet: `results.json` holds only a note that says so, a finding page is 404 and the map answers 503. `scripts/owngenome-live.sh` still starts the Python server.
+`bin/og live serve --root "$GENOME_DIR"` serves the same pages from `og`, OwnGenome's one binary, on 127.0.0.1:8787. It is the Rust port of the site. It takes the login, the limits and the flags of [The password and the limits](#the-password-and-the-limits), and the same password hash: `bin/og live serve hash-password` writes one, and a hash the Python server wrote still logs in. `--plugin-dir` is refused: the plugins are compiled into `og`. Its ingest port takes a message only at a path that holds the server's own token (see [The password and the limits](#the-password-and-the-limits)). So `run-all.sh`, which posts to `OWNGENOME_LIVE_URL/ingest/<sample>`, cannot post to it yet; a bare Nextflow run can. It stores and reads the messages in the same `GENOME_DIR/.owngenome-live/runs/<run>/events.jsonl` as the Python server, so both can share one state folder. It does not serve the results yet: `results.json` holds only a note that says so, a finding page is 404 and the map answers 503. `scripts/owngenome-live.sh` still starts the Python server.
 
 With `OWNGENOME_LIVE_URL` set, `run-all.sh` writes `<sample>/nextflow/live.config` and passes it to Nextflow with `-c`. That config loads the nf-weblog plugin (pinned as `NF_WEBLOG_PLUGIN` in `versions.env`; Nextflow downloads it on the first live run) and points it at `OWNGENOME_LIVE_URL/ingest/<sample>`, so every task's progress is posted. The numbered script steps that run after the pipeline (GRIDSS, imputation prep, the somatic caller, the extra callers) post when they start and how they end (the benchmark, `benchmark-variants.sh`, has no step number and posts nothing), and `run-all.sh` posts once more as it ends, with its exit code. A site that is down or slow costs one warning; the run never waits for it and never fails for it. `OWNGENOME_LIVE_URL` must be a plain `http://host:port` URL. Set `OWNGENOME_LIVE_PAGE_URL` to the address you open the site at (`http://127.0.0.1:8787`, or the name behind your proxy) and `run-all.sh` also prints the run's page, `OWNGENOME_LIVE_PAGE_URL/runs/<sample>/`, as it starts; it prints it only together with `OWNGENOME_LIVE_URL`.
 
@@ -45,6 +45,8 @@ weblog {
     url     = 'http://127.0.0.1:8788/ingest/your_name'
 }
 ```
+
+For `og live serve`, put its token between the port and `ingest`: `url = 'http://127.0.0.1:8788/<token>/ingest/your_name'`, where `<token>` is the content of `<state dir>/ingest-token`. `og live serve` prints that address, without the token, as it starts.
 
 ## What the pages show
 
@@ -134,7 +136,7 @@ The person page reads `/runs/<run>/results.json` from `bin/owngenome_live_result
 |---|---|---|
 | `--password-file FILE` | `OWNGENOME_LIVE_PASSWORD_HASH` | The hash to check logins against. Without one, the site listens on loopback only and asks for nothing; any other `--bind` exits 2 |
 | `--bind`, `--port` | `127.0.0.1`, `8787` | The browser's address |
-| `--ingest-bind`, `--ingest-port` | `127.0.0.1`, `8788` | Where Nextflow and `run-all.sh` post |
+| `--ingest-bind`, `--ingest-port` | `127.0.0.1`, `8788` | Where Nextflow and `run-all.sh` post; `og live serve` takes loopback only |
 | `--session-hours` | 12 | A login lasts at most this long |
 | `--session-idle-minutes` | 120 | A login unused this long ends; an open page counts as use only when it reads the state after a message, and its stream closes when the login ends |
 | `--login-max-failures` | 5 | Failed logins per client in 15 minutes; then 429 until the window passes |
@@ -149,7 +151,9 @@ The person page reads `/runs/<run>/results.json` from `bin/owngenome_live_result
 
 The session cookie is random (32 bytes), `HttpOnly` and `SameSite=Strict`. A POST from another site is refused.
 
-The ingest port has no password: it takes messages from the processes of the run's own machine. That is why it listens on loopback by default: a local user can post fake progress there, but the port serves nothing, so nobody can read a run through it. A browser's post to it (one with an `Origin` header) is refused.
+Every account on the machine can reach 127.0.0.1, and so can anyone a reverse proxy lets through to it. So without a password `og live serve` refuses whatever would put the site in front of other people: `--trust-proxy`, `--allowed-host`, `--tls-cert` with `--tls-key` and `--cookie-secure` each exit 2, and a request with a `Forwarded`, `X-Forwarded-*` or `X-Real-IP` header gets 403 (`forwarded-refused` in the access log). An ssh port forward sends no such header, so it still works. With a password, a `--bind` that is not loopback and no `--tls-cert`, it starts and prints a `WARNING` line: the password, the cookie and every page cross the network in clear. The Python server does none of this yet.
+
+The ingest port has no password: it takes messages from the processes of the run's own machine. That is why it listens on loopback by default: a local user can post fake progress there, but the port serves nothing, so nobody can read a run through it. A browser's post to it (one with an `Origin` header) is refused. `og live serve` also shuts that port to the machine's other accounts. It takes a message only at `/<token>/ingest/<run>`, where the token is 43 random characters it keeps in `<state dir>/ingest-token`, mode 600. It keeps that file across restarts only when it is a regular file that no other account can read and that holds a token of that shape; any other file is replaced with a new token. A post with no token or another token gets 403. It refuses an `--ingest-bind` that is not loopback with exit 2.
 
 ## Deploy it on a server
 
@@ -181,6 +185,8 @@ docker run --rm --user "$(id -u):$(id -g)" \
 ```
 
 Inside the container both listeners bind every address, and `-p 127.0.0.1:...` keeps them on the host's loopback. Write the hash first: `mkdir -p -m 700 ~/.owngenome-live`, then `(umask 077; python3 bin/owngenome_live.py hash-password > ~/.owngenome-live/password)`, so the file is mode 600 from the moment it exists.
+
+`og live serve` refuses `--ingest-bind 0.0.0.0`: in a container, give it the host's network (`--network host`) and keep both listeners on 127.0.0.1.
 
 **Behind a reverse proxy.** Give the site a host name of its own, such as `live.example.org`, and serve it at the root of that name. A path prefix such as `example.org/genome/` does not work: the pages ask for their files and data at root paths (`/login`, `/runs.json`, `/assets/live.css`), and the server has no flag for a prefix. Point the proxy at `127.0.0.1:8787`, pass the Host header, and turn off response buffering for `/runs/<run>/events` (the server sends `X-Accel-Buffering: no`, which nginx honours). Then:
 
@@ -216,4 +222,4 @@ The core files (`bin/owngenome_live.py`, `assets/live/index.html`, `home.html`, 
 
 The page has a replay mode for a demo with no server: `<html data-mode="replay">` reads `frames.json` (`{"interval_ms": 1000, "frames": [{"t": ..., "state": <state.json>}]}`) and plays it with a play button and a slider, through the same drawing code. A replay whose last frame is a finished run opens at that frame, on the finished report, until you press Play, which starts again from the first frame; with `"autoplay": true` it plays from the start at once. The bar shows each frame's moment as day, month and time in UTC ("2 Jan 10:05"), the full time on hover.
 
-`tests/test_owngenome_live.py` checks the Python server's password, login, Host check, stored messages and plugin interface, and its login form in a headless Chrome; `cargo test -p og-live` (`tests/port_live_server*.rs`) checks `og live serve`: `state.json` and its headlines, the event stream, the policy on every answer, the run files, the family folder, the map, the re-check plugin and the run page in a headless Chrome; `tests/test_live_results.py` checks `results.json` (every card's caveat word for word, no wording that reads as an all-clear, `results.json` behind the login); `tests/test_live_journal.py` checks the levels, the lead paragraph and the finding page's route; `tests/test_live_demo.py` builds the demo and checks every page, phone width included; `tests/test_live_post.sh` and `tests/fake-docker/run-all-live.sh` check what `run-all.sh` posts.
+`cargo test -p og-live` checks `og live serve`: `tests/port_live_server*.rs` checks `state.json` and its headlines, the event stream, the policy on every answer, the run files, the family folder, the map, the re-check plugin and the run page in a headless Chrome, and `tests/port_live_auth_ingest*.rs` checks the password hash, the login, sessions and their limits, the Host check, TLS, the ingest port and its token, the refusals without a password, and the login form in a headless Chrome; `tests/test_live_results.py` checks `results.json` (every card's caveat word for word, no wording that reads as an all-clear, `results.json` behind the login); `tests/test_live_journal.py` checks the levels, the lead paragraph and the finding page's route; `tests/test_live_demo.py` builds the demo and checks every page, phone width included; `tests/test_live_post.sh` and `tests/fake-docker/run-all-live.sh` check what `run-all.sh` posts.
