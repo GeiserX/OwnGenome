@@ -697,6 +697,35 @@ mod tests {
         assert_eq!(gt_alleles("1"), None);
     }
 
+    #[test]
+    fn the_last_called_record_decides_a_snv() {
+        // Two records at one position are normal input (a split
+        // multiallelic site, a gVCF block next to a variant). The last
+        // record with a called GT decides; a no-call after it changes
+        // nothing, and a record whose alleles do not match the SNV's
+        // makes it unknown.
+        let d = Dir::new("proj-last");
+        d.put(
+            "ref.bim",
+            "22\t22:100\t0\t100\tG\tA\n22\t22:200\t0\t200\tG\tA\n",
+        );
+        d.put(
+            "g.vcf",
+            "##fileformat=VCFv4.2\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
+             chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t0/0\n\
+             chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t1/1\n\
+             chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t./.\n\
+             chr22\t200\t.\tA\tG\t.\t.\t.\tGT\t0/1\n\
+             chr22\t200\t.\tA\tT\t.\t.\t.\tGT\t0/1\n",
+        );
+        let bim = read_bim(&d.0.join("ref.bim")).unwrap();
+        assert_eq!(
+            genotypes_at(&bim, &d.0.join("g.vcf")).unwrap(),
+            vec![Some(0), None]
+        );
+    }
+
     /// A model of `snvs` SNVs on chr21 and chr22 (1 cM per Mb), K groups of
     /// `per` people each with frequencies 0.1 apart, and a person with
     /// fractions `q`.
