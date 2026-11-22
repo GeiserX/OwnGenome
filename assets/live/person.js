@@ -479,7 +479,7 @@
     return dl;
   }
   // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys). title: the finding's
-  // title, so each More is named for its own finding.
+  // title, so each More is named for its own finding; with its detail line when another finding has the same title.
   function caveatNote(list, key, title) {
     if (!list || !list.length) { return null; }
     var box = el('div', {});
@@ -549,7 +549,9 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    add(side, caveatNote(f.caveat, f.id, f.title));
+    // Two hits in one gene share a title ("Pathogenic change in <gene>"): the detail line tells their Mores apart.
+    var same = findingsNow().filter(function (g) { return g.title === f.title; }).length > 1;
+    add(side, caveatNote(f.caveat, f.id, same && f.detail ? f.title + ' (' + f.detail + ')' : f.title));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r; });
     if (rel.length) {
       var box = el('div', {});

@@ -4,14 +4,20 @@
 //!
 //! 1. On the home, person, finding and family pages the first Tab focuses
 //!    the skip link, which then shows and points at the page's main; Enter
-//!    moves the focus into main.
+//!    moves the focus into main, and main's top is not under the masthead.
 //! 2. On DEMO-001 at 320x800 and at 390x844, every caveat's More
-//!    (`summary.toggle`) has a min-height of at least 44 px and is that
-//!    tall, and so are the replay's slider and its Play button. Each More
-//!    is named for its own finding, so no two share a name.
+//!    (`summary.toggle`) has a min-height of at least 44 px, is that tall
+//!    and takes a tap over 44 px of its height; so does every card's
+//!    caveat summary (`.caveat-full > summary`) once its card is open. The
+//!    replay's slider and its Play button are 44 px tall. Each More is
+//!    named for its own finding, so no two share a name.
 //! 3. At 390x844, a tap on the Cyrius row of the step timeline brings the
 //!    step's detail into view, clear of the masthead and the tab bar, and
 //!    the timeline's box does not scroll inside the page.
+//! 4. Two findings with one title (two hits in one gene) get two different
+//!    More names: the test adds a second finding with the title of one of
+//!    DEMO-002's to the copy of the demo it serves, since the demo has no
+//!    such pair.
 //!
 //! Each check was red on main before this change (the PR says where).
 //! Without Chrome, python3 or a built og the test says SKIP, and fails in CI.
@@ -139,7 +145,10 @@ fn visit(b: &mut Browser, url: &str) {
 
 /// The first Tab stop of the page and where Enter on it moves the focus:
 /// [the focused element's tag, its class, its href, whether it shows on
-/// screen, main's id, whether the focus is inside main after Enter].
+/// screen] [main's id, whether the focus is inside main after Enter with
+/// main's top at or below the masthead's bottom]. When that never holds,
+/// the second part is [main's id, focus inside main, main's top, the
+/// masthead's bottom].
 fn skip_link(b: &mut Browser) -> String {
     press(b, "Tab", 9, "");
     let first = text(
@@ -151,24 +160,159 @@ fn skip_link(b: &mut Browser) -> String {
         .ok(),
     );
     press(b, "Enter", 13, "\r");
-    let after = text(b.wait(
-        "(function () { var m = document.querySelector('main'); var a = document.activeElement; \
-         return m && m.contains(a) && JSON.stringify([m.id, true]); }())",
+    let after = match b.wait(
+        "(function () { var m = document.querySelector('main'), h = document.querySelector('header.mast'); \
+         var a = document.activeElement; \
+         return m && h && m.contains(a) && m.getBoundingClientRect().top >= h.getBoundingClientRect().bottom \
+           && JSON.stringify([m.id, true]); }())",
         Duration::from_secs(3),
-    ));
+    ) {
+        Some(v) => text(Some(v)),
+        None => text(
+            b.eval(
+                "(function () { var m = document.querySelector('main'), h = document.querySelector('header.mast'); \
+                 return JSON.stringify([m ? m.id : '', !!m && m.contains(document.activeElement), \
+                   m ? m.getBoundingClientRect().top : null, h ? h.getBoundingClientRect().bottom : null]); }())",
+            )
+            .ok(),
+        ),
+    };
     format!("{first} {after}")
 }
 
+/// A page function `hit(s)`: how many CSS px of `s`'s height take a tap.
+/// It brings `s` to the middle of the screen, then asks elementFromPoint at
+/// each pixel row of its box, 5 px in from its left edge, whether the tap
+/// lands inside `s`.
+macro_rules! hit {
+    () => {
+        "var hit = function (s) { s.scrollIntoView({ block: 'center' }); var r = s.getBoundingClientRect(), n = 0; \
+         for (var y = r.top + 0.5; y < r.bottom; y += 1) { var e = document.elementFromPoint(r.left + 5, y); \
+           if (e && s.contains(e)) { n += 1; } } return n; }; "
+    };
+}
+
 /// The sizes a finger meets on the person page: every `summary.toggle`
-/// [its height, its min-height, its name, its finding's title], the
-/// slider and the Play button.
-const SIZES: &str = "(function () { \
-     var t = Array.prototype.map.call(document.querySelectorAll('summary.toggle'), function (s) { \
+/// [its height, its min-height, its name, its finding's title, the px of
+/// it that take a tap], the slider and the Play button.
+const SIZES: &str = concat!(
+    "(function () { ",
+    hit!(),
+    "var t = Array.prototype.map.call(document.querySelectorAll('summary.toggle'), function (s) { \
        var row = s.closest('.row'), h = row && row.querySelector('h3'); \
        return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, \
-         s.getAttribute('aria-label') || s.textContent, h ? h.textContent : '']; }); \
+         s.getAttribute('aria-label') || s.textContent, h ? h.textContent : '', hit(s)]; }); \
      return JSON.stringify([t, document.getElementById('replay-slider').getBoundingClientRect().height, \
-       document.getElementById('replay-play').getBoundingClientRect().height]); }())";
+       document.getElementById('replay-play').getBoundingClientRect().height]); }())"
+);
+
+/// Open the folds around the first card caveat, then every card caveat
+/// summary that shows: [its height, its min-height, the px of it that take
+/// a tap].
+const CAVEATS: &str = concat!(
+    "(function () { ",
+    hit!(),
+    "var c = document.querySelector('.caveat-full'); if (!c) { return '[]'; } \
+     for (var d = c.parentElement; d; d = d.parentElement) { if (d.tagName === 'DETAILS') { d.open = true; } } \
+     var s = Array.prototype.filter.call(document.querySelectorAll('.caveat-full > summary'), function (s) { \
+       return s.checkVisibility(); }); \
+     return JSON.stringify(s.map(function (s) { \
+       return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, hit(s)]; })); }())"
+);
+
+/// The More names of a finding and of its twin (the finding the test adds
+/// with the same title): [the finding's, the twin's]; '' when one is not
+/// on the page.
+fn twin_names(id: &str, twin: &str) -> String {
+    format!(
+        "(function () {{ var name = function (id) {{ var f = document.getElementById('f-' + id); \
+           var s = f && f.closest('.row') && f.closest('.row').querySelector('summary.toggle'); \
+           return s ? s.getAttribute('aria-label') || '' : ''; }}; \
+         return JSON.stringify([name({}), name({})]); }}())",
+        js_str(id),
+        js_str(twin)
+    )
+}
+
+/// Give DEMO-002's results.json, in the served copy, a second finding with
+/// the title of one of its findings, as two hits in one gene would: the
+/// first finding with a caveat and a detail line in a section the page
+/// draws as full articles (section 1, or one of sections 2 to 5 with at
+/// most two findings, so at most three with the twin). The twin gets its
+/// own id and detail line and sits next to it in that section. Returns the
+/// finding's [id, title, detail] and the twin's [id, detail].
+fn add_twin(results: &Path) -> Option<([String; 3], [String; 2])> {
+    let raw = std::fs::read_to_string(results).ok()?;
+    let mut v = json::loads(&raw).ok()?;
+    let Value::Object(top) = &mut v else {
+        return None;
+    };
+    let field = |f: &Value, k: &str| match f {
+        Value::Object(m) => match m.get(k) {
+            Some(Value::Str(s)) => s.clone(),
+            _ => String::new(),
+        },
+        _ => String::new(),
+    };
+    let ids = |s: &Value| match s {
+        Value::Object(m) => match m.get("findings") {
+            Some(Value::Array(a)) => a.iter().map(|i| text(Some(i.clone()))).collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::<String>::new(),
+    };
+    let n = |s: &Value| match s {
+        Value::Object(m) => m.get("n").map(num).unwrap_or(f64::NAN),
+        _ => f64::NAN,
+    };
+    let Some(Value::Array(fs)) = top.get("findings") else {
+        return None;
+    };
+    let usable = |id: &String| {
+        fs.iter().find(|f| field(f, "id") == *id).filter(|f| {
+            matches!(f, Value::Object(m) if matches!(m.get("caveat"), Some(Value::Array(c)) if !c.is_empty()))
+                && !field(f, "title").is_empty()
+                && !field(f, "detail").is_empty()
+        })
+    };
+    let Some(Value::Array(journal)) = top.get("journal") else {
+        return None;
+    };
+    let (sec, first) = journal.iter().enumerate().find_map(|(i, s)| {
+        let (k, list) = (n(s), ids(s));
+        let drawn = k == 1.0 || ((2.0..=5.0).contains(&k) && list.len() <= 2);
+        drawn
+            .then(|| list.iter().find_map(|id| usable(id).cloned()))
+            .flatten()
+            .map(|f| (i, f))
+    })?;
+    let (id, title, detail) = (
+        field(&first, "id"),
+        field(&first, "title"),
+        field(&first, "detail"),
+    );
+    let (twin_id, twin_detail) = (format!("{id}-twin"), format!("{detail}, second hit"));
+    let mut twin = first;
+    if let Value::Object(m) = &mut twin {
+        m.insert("id".into(), Value::Str(twin_id.clone()));
+        m.insert("detail".into(), Value::Str(twin_detail.clone()));
+    }
+    if let Some(Value::Array(fs)) = top.get_mut("findings") {
+        fs.push(twin);
+    }
+    if let Some(Value::Array(journal)) = top.get_mut("journal")
+        && let Some(Value::Object(s)) = journal.get_mut(sec)
+        && let Some(Value::Array(list)) = s.get_mut("findings")
+    {
+        let at = list
+            .iter()
+            .position(|i| *i == Value::Str(id.clone()))
+            .map_or(list.len(), |p| p + 1);
+        list.insert(at, Value::Str(twin_id.clone()));
+    }
+    std::fs::write(results, json::dumps(&v, &json::Dump::default()).ok()?).ok()?;
+    Some(([id, title, detail], [twin_id, twin_detail]))
+}
 
 /// Bring the Cyrius row to the middle of the screen (the page's scroll,
 /// then the timeline box's own when it has one) and give its place.
@@ -221,6 +365,8 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         String::from_utf8_lossy(&built.stderr)
     );
 
+    let twin = add_twin(&site.join("demo/runs/DEMO-002/results.json"));
+
     let srv = StaticServer::start(&site, &[]).unwrap();
     let mut b = Browser::launch(&chrome, &work.join("chrome")).unwrap();
     b.call(
@@ -258,7 +404,7 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         let want = format!("[\"A\",\"skip\",\"#{main}\",true] [\"{main}\",true]");
         check(
             &format!(
-                "{page}: the first Tab focuses the skip link to #{main}, on screen, and Enter moves the focus into main"
+                "{page}: the first Tab focuses the skip link to #{main}, on screen, and Enter moves the focus into main, below the masthead"
             ),
             got == want,
             got,
@@ -269,6 +415,11 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
     for (w, h) in [(320, 800), (390, 844)] {
         viewport(&mut b, w, h, true);
         visit(&mut b, &srv.url(&format!("{run}?{w}")));
+        // 'ready' holds once the run is drawn, before results.json is: wait for the findings.
+        b.wait(
+            "document.querySelectorAll('summary.toggle').length >= 2",
+            Duration::from_secs(20),
+        );
         let sizes = text(b.eval(SIZES).ok());
         let Ok(Value::Array(a)) = json::loads(&sizes) else {
             check(&format!("{w}x{h}: the sizes can be read"), false, sizes);
@@ -277,16 +428,17 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         let Value::Array(toggles) = &a[0] else {
             panic!("{sizes}")
         };
-        let rows: Vec<(f64, f64, String, String)> = toggles
+        let rows: Vec<(f64, f64, String, String, f64)> = toggles
             .iter()
             .map(|t| match t {
-                Value::Array(t) => (
+                Value::Array(t) if t.len() == 5 => (
                     num(&t[0]),
                     num(&t[1]),
                     text(Some(t[2].clone())),
                     text(Some(t[3].clone())),
+                    num(&t[4]),
                 ),
-                _ => (0.0, 0.0, String::new(), String::new()),
+                _ => (0.0, 0.0, String::new(), String::new(), 0.0),
             })
             .collect();
         check(
@@ -296,12 +448,18 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             rows.len() >= 2 && rows.iter().all(|r| r.0 >= TAP && r.1 >= TAP),
             sizes.clone(),
         );
+        check(
+            &format!("{w}x{h}: a tap lands on each More over at least 44 px of its height"),
+            rows.len() >= 2 && rows.iter().all(|r| r.4 >= TAP),
+            format!("{:?}", rows.iter().map(|r| r.4).collect::<Vec<_>>()),
+        );
         let mut names: Vec<&String> = rows.iter().map(|r| &r.2).collect();
         names.sort();
         names.dedup();
         check(
             &format!("{w}x{h}: each More is named for its own finding, no two alike"),
-            names.len() == rows.len()
+            rows.len() >= 2
+                && names.len() == rows.len()
                 && rows
                     .iter()
                     .all(|r| !r.3.is_empty() && r.2 == format!("More of the caveat: {}", r.3)),
@@ -311,6 +469,25 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             &format!("{w}x{h}: the replay's slider and Play button are at least 44 px tall"),
             num(&a[1]) >= TAP && num(&a[2]) >= TAP,
             format!("slider {} play {}", num(&a[1]), num(&a[2])),
+        );
+        let caveats = text(b.eval(CAVEATS).ok());
+        let cav: Vec<(f64, f64, f64)> = match json::loads(&caveats) {
+            Ok(Value::Array(v)) => v
+                .iter()
+                .map(|c| match c {
+                    Value::Array(c) if c.len() == 3 => (num(&c[0]), num(&c[1]), num(&c[2])),
+                    _ => (0.0, 0.0, 0.0),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        check(
+            &format!(
+                "{w}x{h}: with a card open, every caveat summary (.caveat-full > summary) has min-height 44 px, \
+                 is 44 px tall and takes a tap over 44 px"
+            ),
+            !cav.is_empty() && cav.iter().all(|c| c.0 >= TAP && c.1 >= TAP && c.2 >= TAP),
+            caveats,
         );
     }
 
@@ -352,6 +529,36 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             );
         }
         _ => check("390x844: the Cyrius row is on the timeline", false, row),
+    }
+
+    // 4. Two findings with one title: each More names its own detail line.
+    match &twin {
+        Some(([id, title, detail], [twin_id, twin_detail])) => {
+            visit(&mut b, &srv.url("/demo/runs/DEMO-002/?twin"));
+            b.wait(
+                &format!(
+                    "!!document.getElementById({})",
+                    js_str(&format!("f-{twin_id}"))
+                ),
+                Duration::from_secs(20),
+            );
+            let got = text(b.eval(&twin_names(id, twin_id)).ok());
+            let want = format!(
+                "[{},{}]",
+                js_str(&format!("More of the caveat: {title} ({detail})")),
+                js_str(&format!("More of the caveat: {title} ({twin_detail})"))
+            );
+            check(
+                "two findings with one title: each More is named with its own detail line",
+                json::loads(&got).ok() == json::loads(&want).ok(),
+                format!("{got}, want {want}"),
+            );
+        }
+        None => check(
+            "DEMO-002 has a finding with a caveat and a detail line to give a twin",
+            false,
+            String::new(),
+        ),
     }
 
     let errors = b.page_errors();
