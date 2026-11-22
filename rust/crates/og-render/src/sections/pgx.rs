@@ -183,8 +183,10 @@ pub fn pharmcat_html(s: &Summary) -> Result<HtmlPart, Malformed> {
 
 // --- CPIC --------------------------------------------------------------------------
 
-/// The genes CPIC lists as non-normal or with more than one possible
-/// result: (gene, diplotype, phenotype).
+pub const CPIC_INCOMPLETE_LABEL: &str =
+    "Genes called with positions PharmCAT never read (no drug guidance)";
+
+/// Non-normal, ambiguous and incomplete calls: (gene, diplotype, phenotype).
 fn unusual<'a>(sec: &Section<'a>) -> Result<Vec<[&'a Value; 3]>, Malformed> {
     let mut out = Vec::new();
     for (i, g) in items(Some(sec.need("genes")?), "sections.cpic.data.genes")?
@@ -193,7 +195,9 @@ fn unusual<'a>(sec: &Section<'a>) -> Result<Vec<[&'a Value; 3]>, Malformed> {
     {
         let p = format!("sections.cpic.data.genes[{i}]");
         let st = need(g, "status", &p)?;
-        if is_str(Some(st), "non-normal") || is_str(Some(st), "ambiguous") {
+        if matches!(st, Value::Str(status)
+            if matches!(status.as_str(), "non-normal" | "ambiguous" | "incomplete"))
+        {
             out.push([
                 need(g, "gene", &p)?,
                 need(g, "diplotype", &p)?,
@@ -224,6 +228,12 @@ pub fn cpic_text(s: &Summary) -> Result<Vec<String>, Malformed> {
             py(sec.need("not_called")?)?,
             or0("unclassified")?
         ));
+        if let Some(incomplete) = sec
+            .get("incomplete")?
+            .filter(|v| matches!(v, Value::Int(n) if *n > 0))
+        {
+            w.push(format!("  {CPIC_INCOMPLETE_LABEL}: {}", py(incomplete)?));
+        }
         for [g, d, p] in unusual(&sec)? {
             w.push(format!(
                 "    {} {} {}",
@@ -248,6 +258,9 @@ pub fn cpic_text(s: &Summary) -> Result<Vec<String>, Malformed> {
 pub fn cpic_html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let sec = s.section("cpic");
     let smp = sample(s)?;
+    let incomplete = sec
+        .get("incomplete")?
+        .filter(|v| matches!(v, Value::Int(n) if *n > 0));
     let mut body = vec![stat(
         "Status",
         if sec.state == State::Stale {
@@ -256,7 +269,8 @@ pub fn cpic_html(s: &Summary) -> Result<HtmlPart, Malformed> {
             Inline::Badge("Complete".into(), Colour::Green)
         },
     )];
-    if sec.get("parse_failed")?.is_some_and(truthy) {
+    let parse_failed = sec.get("parse_failed")?.is_some_and(truthy);
+    if parse_failed {
         body.push(stat(
             "PharmCAT report",
             Inline::Badge("could not be parsed".into(), Colour::Red),
@@ -274,6 +288,9 @@ pub fn cpic_html(s: &Summary) -> Result<HtmlPart, Malformed> {
             let v = sec.get(k)?.map_or(Ok("0".into()), py)?;
             body.push(stat(label, Inline::Text(v)));
         }
+        if let Some(incomplete) = incomplete {
+            body.push(stat(CPIC_INCOMPLETE_LABEL, Inline::Text(py(incomplete)?)));
+        }
     }
     body.push(stat(
         "Tip",
@@ -290,41 +307,53 @@ pub fn cpic_html(s: &Summary) -> Result<HtmlPart, Malformed> {
             ..Card::default()
         },
     )?];
-    if sec.state.ran()
-        && (truthy(sec.need("non_normal")?) || sec.get("ambiguous")?.is_some_and(truthy))
-    {
-        let mut rows = Vec::new();
-        for [g, d, p] in unusual(&sec)? {
-            rows.push(vec![
-                Cell::Text(text_of(g, "a CPIC gene")?),
-                Cell::Text(text_of(d, "a CPIC diplotype")?),
-                Cell::Text(text_of(p, "a CPIC phenotype")?),
-            ]);
-        }
-        let mut body = vec![Line::Table(Table {
-            head: vec!["Gene".into(), "Diplotype".into(), "Phenotype".into()],
-            rows,
-            viewer: false,
-            layout: Layout::RowLines,
-        })];
-        for x in items(Some(sec.need("warnings")?), "sections.cpic.data.warnings")? {
-            body.push(Line::Warn(format!(
-                "WARNING: {}",
-                text_of(x, "a CPIC warning")?
+    if sec.state.ran() {
+        let has_gene_details = truthy(sec.need("non_normal")?)
+            || sec.get("ambiguous")?.is_some_and(truthy)
+            || incomplete.is_some();
+        let warnings = items(sec.get("warnings")?, "sections.cpic.data.warnings")?;
+        if has_gene_details || (!parse_failed && !warnings.is_empty()) {
+            let mut body = Vec::new();
+            if has_gene_details {
+                let mut rows = Vec::new();
+                for [g, d, p] in unusual(&sec)? {
+                    rows.push(vec![
+                        Cell::Text(text_of(g, "a CPIC gene")?),
+                        Cell::Text(text_of(d, "a CPIC diplotype")?),
+                        Cell::Text(text_of(p, "a CPIC phenotype")?),
+                    ]);
+                }
+                body.push(Line::Table(Table {
+                    head: vec!["Gene".into(), "Diplotype".into(), "Phenotype".into()],
+                    rows,
+                    viewer: false,
+                    layout: Layout::RowLines,
+                }));
+            }
+            for warning in warnings {
+                body.push(Line::Warn(format!(
+                    "WARNING: {}",
+                    text_of(warning, "a CPIC warning")?
+                )));
+            }
+            body.push(Line::Para(format!(
+                "Drugs for each gene: cpic/{smp}_cpic_recommendations.txt"
             )));
+            let title = if has_gene_details {
+                "Genes With a Non-Normal or Unresolved Phenotype (CPIC)"
+            } else {
+                "Drug Warnings (CPIC)"
+            };
+            cards.push(html::card(
+                &sec,
+                Card {
+                    title: title.into(),
+                    full: true,
+                    body,
+                    ..Card::default()
+                },
+            )?);
         }
-        body.push(Line::Para(format!(
-            "Drugs for each gene: cpic/{smp}_cpic_recommendations.txt"
-        )));
-        cards.push(html::card(
-            &sec,
-            Card {
-                title: "Genes With a Non-Normal or Unresolved Phenotype (CPIC)".into(),
-                full: true,
-                body,
-                ..Card::default()
-            },
-        )?);
     }
     let mut files = Vec::new();
     if ran_with_source(&sec) {
@@ -373,21 +402,57 @@ pub fn pypgx_lines(d: &Section<'_>) -> Result<Vec<String>, Malformed> {
         ));
     }
     if let Some(dc) = d.get("depth_check")?.filter(|v| truthy(v)) {
-        let p = "sections.pypgx.data.depth_check";
-        let share = |k: &str| -> Result<String, Malformed> {
-            get(dc, k, p)?.map_or(Ok("not measured".into()), py)
-        };
-        lines.push(format!(
-            "CYP2D6 depth check: {}; share of the depth at MAPQ >= 1 / >= 20: Cyrius's region with REP6 {} / {}, \
-             gene body without REP6 {} / {}",
-            or_text(get(dc, "status", p)?, "unreadable")?,
-            share("gene_mapq1_share")?,
-            share("gene_mapq20_share")?,
-            share("body_mapq1_share")?,
-            share("body_mapq20_share")?
-        ));
+        lines.push(cyp2d6_depth_line(dc)?);
     }
     Ok(lines)
+}
+
+fn cyp2d6_depth_line(dc: &Value) -> Result<String, Malformed> {
+    let p = "sections.pypgx.data.depth_check";
+    let number = |key| -> Result<Option<String>, Malformed> {
+        get(dc, key, p)?
+            .filter(|v| {
+                !matches!(v, Value::Null)
+                    && !is_str(Some(v), "")
+                    && !is_str(Some(v), "not measured")
+            })
+            .map(py)
+            .transpose()
+    };
+    let status = or_text(get(dc, "status", p)?, "unreadable")?;
+    let mut line = format!("CYP2D6 depth check: {status}");
+    for (label, gene, flank) in [
+        ("mean depth, all reads", "gene_depth_all", "flank_depth_all"),
+        ("MAPQ >= 1", "gene_depth_mapq1", "flank_depth_mapq1"),
+    ] {
+        let (gene, flank) = (number(gene)?, number(flank)?);
+        if gene.is_some() || flank.is_some() {
+            line += &format!(
+                "; {label}: CYP2D6 {}, flanks {}",
+                gene.as_deref().unwrap_or("unknown"),
+                flank.as_deref().unwrap_or("unknown"),
+            );
+        }
+    }
+    let share = |key| get(dc, key, p)?.map_or(Ok("not measured".into()), py);
+    let [gene1, gene20, body1, body20] = [
+        share("gene_mapq1_share")?,
+        share("gene_mapq20_share")?,
+        share("body_mapq1_share")?,
+        share("body_mapq20_share")?,
+    ];
+    if [&gene1, &gene20, &body1, &body20]
+        .iter()
+        .all(|s| matches!(s.as_str(), "" | "None" | "not measured"))
+    {
+        line += "; MAPQ shares: not measured in this run";
+    } else {
+        line += &format!(
+            "; share of the depth at MAPQ >= 1 / >= 20: Cyrius's region with REP6 {gene1} / {gene20}, \
+             gene body without REP6 {body1} / {body20}"
+        );
+    }
+    Ok(line)
 }
 
 /// (gene, copy number) rows, the same in both reports: pypgx's call from
@@ -452,6 +517,30 @@ pub fn cyp2d6_verdict(c: &Value) -> Result<String, Malformed> {
         or_text(get(v, "result", p)?, "?")?,
         or_text(get(v, "reason", p)?, "no reason given")?
     ))
+}
+
+/// The pypgx quality fields used by step 36 to flag weak evidence.
+pub fn cyp2d6_weak_evidence(pd: &Section<'_>) -> Result<Option<String>, Malformed> {
+    if pd.state != State::Ok {
+        return Ok(None);
+    }
+    let Some(evidence) = pd.get("cyp2d6_evidence")?.filter(|v| truthy(v)) else {
+        return Ok(None);
+    };
+    let path = "sections.pypgx.data.cyp2d6_evidence";
+    let filter = or_text(get(evidence, "defining_filter", path)?, "")?;
+    let quality = or_text(get(evidence, "quality", path)?, "")?;
+    let reasons: Vec<&str> = [
+        (filter.as_str(), &["", "PASS", "none", "N/A"][..]),
+        (quality.as_str(), &["", "ok", "N/A"][..]),
+    ]
+    .into_iter()
+    .filter_map(|(value, accepted)| (!accepted.contains(&value)).then_some(value))
+    .collect();
+    Ok(
+        (!reasons.is_empty())
+            .then(|| format!("Weak pypgx CYP2D6 evidence: {}", reasons.join(", "))),
+    )
 }
 
 /// The probable CYP2D6 call as one line.
@@ -554,6 +643,9 @@ pub fn cyp2d6_text(s: &Summary) -> Result<Vec<String>, Malformed> {
         if !verdict.is_empty() {
             w.push(format!("  Step 36: {verdict}"));
         }
+        if let Some(warning) = cyp2d6_weak_evidence(&s.section("pypgx"))? {
+            w.push(format!("  {warning}"));
+        }
         if let Some((label, line)) = probable(c)? {
             w.push(format!("  {label}: {line}"));
         }
@@ -652,6 +744,9 @@ pub fn cyp2d6_html(s: &Summary) -> Result<HtmlPart, Malformed> {
             },
             or_text(get(cons, "reason", p)?, "no reason given")?
         )));
+    }
+    if let Some(warning) = cyp2d6_weak_evidence(&pd)? {
+        body.push(Line::Warn(warning));
     }
     if let Some((label, line)) = probable(c)? {
         body.push(stat(&label, Inline::Text(line)));

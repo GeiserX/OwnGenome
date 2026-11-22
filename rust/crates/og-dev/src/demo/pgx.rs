@@ -51,6 +51,20 @@ fn image_tag(ctx: &Ctx, var: &str) -> Result<String, String> {
     Ok(name.rsplit(':').next().unwrap_or("").to_owned())
 }
 
+// Invented means and shares in the format of og pgx cyp2d6-check.
+const DEPTH_CHECK: &str = "metric\tvalue\n\
+    status\tok\n\
+    message\tCYP2D6 depth is fit for a copy-number call\n\
+    gene_depth_all\t32.00\n\
+    gene_depth_mapq1\t30.08\n\
+    flank_depth_all\t35.00\n\
+    flank_depth_mapq1\t34.30\n\
+    gene_mapq1_share\t0.94\n\
+    gene_mapq20_share\t0.88\n\
+    body_depth_all\t31.00\n\
+    body_mapq1_share\t0.97\n\
+    body_mapq20_share\t0.93\n";
+
 /// T1K, pypgx, Cyrius and the depth check, then the PharmCAT report that
 /// step 07 would write once step 36 passed their consensus on, then step
 /// 27's tables from it with `og pgx cpic-report`.
@@ -59,8 +73,7 @@ fn image_tag(ctx: &Ctx, var: &str) -> Result<String, String> {
 /// (`tests/fixtures/pharmcat/pharmcat-docs-example.json`, PharmCAT's
 /// invented example sample); HLA-A, HLA-B and CYP2D6 become the outside
 /// calls step 36 passes on, worked out by `og pgx outside-calls` itself.
-/// T1K's table and the depth check are the invented fixtures of
-/// `tests/fixtures/pgx`.
+/// T1K's table is the invented fixture in `tests/fixtures/pgx`.
 pub fn pgx(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
     let sample = ctx.sample.as_str();
     let example_path = ctx.asset("tests/fixtures/pharmcat/pharmcat-docs-example.json");
@@ -94,11 +107,11 @@ pub fn pgx(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
         Ok((label, phen))
     };
 
-    // T1K (step 08) and the CYP2D6 depth check: the invented fixtures.
+    // T1K (step 08) and the measured CYP2D6 depth check.
     let t1k = ctx.path(&format!("hla_t1k/{sample}_hla_genotype.tsv"));
     copy(&ctx.asset("tests/fixtures/pgx/t1k_genotype.tsv"), &t1k)?;
     let depth = ctx.path(&format!("pypgx/{sample}_cyp2d6_depth_check.tsv"));
-    copy(&ctx.asset("tests/fixtures/pgx/depth_check_ok.tsv"), &depth)?;
+    put(&depth, DEPTH_CHECK)?;
     // The HLA database release the manifest prints: one header line of
     // hla.dat, naming the release setup.sh installs.
     put(
