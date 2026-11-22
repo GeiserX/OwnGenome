@@ -63,7 +63,7 @@ mkdir -p "$GENOME_DIR"
 # The two images the steps run, pulled first: a registry error is reported as
 # one, not as a mount problem below. Up to four tries, 30, 60 then 90 seconds
 # apart: a shared runner address can hit Docker Hub's anonymous pull limit.
-for img in "$PYTHON_IMAGE" "$MULTIQC_IMAGE"; do
+for img in "$OG_IMAGE" "$MULTIQC_IMAGE"; do
   "$ENGINE" image inspect "$img" >/dev/null 2>&1 && continue
   for try in 1 2 3 4; do
     "$ENGINE" pull -q "$img" && break
@@ -76,7 +76,7 @@ for img in "$PYTHON_IMAGE" "$MULTIQC_IMAGE"; do
 done
 
 echo "=== Docker sees ${GENOME_DIR} and ${REPO}/bin?"
-if ! "$ENGINE" run --rm --network none -v "${GENOME_DIR}:/probe:ro" -v "${REPO}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+if ! "$ENGINE" run --rm --network none -v "${GENOME_DIR}:/probe:ro" -v "${REPO}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     test -f /probe/.demo-genome -a -f /pgp-bin/og; then
   echo "ERROR: inside a container ${GENOME_DIR} or ${REPO}/bin is empty: Docker does not mount that folder." >&2
   echo "  Put the checkout and <work_dir> under a folder it mounts (Colima: the home folder or /private/tmp)." >&2
