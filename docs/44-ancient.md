@@ -18,7 +18,7 @@ Most people who look at their ancestry want to know where they fall among ancien
 
 ## Docker Image
 
-- `EIGENSOFT_IMAGE`, with `BCFTOOLS_IMAGE` and `PYTHON_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tags.
+- `EIGENSOFT_IMAGE`, with `BCFTOOLS_IMAGE` and `OG_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tags.
 
 ## Input
 

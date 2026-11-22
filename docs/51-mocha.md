@@ -18,7 +18,7 @@ mCAs in blood become more common with age. [Loh et al. 2018](https://pubmed.ncbi
 
 ## Docker Image
 
-- `MOCHA_IMAGE` (bcftools 1.22 with the MoChA plugins, the authors' image, pinned by digest), `BEAGLE_IMAGE` and `PYTHON_IMAGE`
+- `MOCHA_IMAGE` (bcftools 1.22 with the MoChA plugins, the authors' image, pinned by digest), `BEAGLE_IMAGE` and `OG_IMAGE`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. MoChA has no tagged release, so `MOCHA_COMMIT` and `MOCHA_VERSION` move with the image, by hand. The e2e case checks that the image prints `MOCHA_VERSION` and that `mocha.c` at `MOCHA_COMMIT` defines it.
 

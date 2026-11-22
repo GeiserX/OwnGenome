@@ -82,7 +82,7 @@ else
   from=(--assets /pgp-assets --json "/genome/${SAMPLE}/summary.json")
 fi
 # og is the static binary, so the python image runs it.
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${OG_IMAGE}" \
   /pgp-bin/og report render \
     "${from[@]}" \
     --sample "$SAMPLE" \
@@ -104,7 +104,7 @@ HISTORY="${SAMPLE_DIR}/history"
 # follows too. A newer folder without one, from a copy that stopped half
 # way, is passed over. og is the static binary, so the python image runs it.
 echo ""
-if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
   /pgp-bin/og run delta \
     --sample "$SAMPLE" \
     --summary "/genome/${SAMPLE}/summary.json" \

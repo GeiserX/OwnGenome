@@ -133,14 +133,15 @@ process ANCESTRY_FINE_PREPARE {
     # The chromosomes to phase and paint, as the bash step picks them.
     og ancestry-fine chroms --counts ${counts} --maps ${panel}/maps > ${meta.id}_chroms.txt
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     mkdir -p admixture
     touch ${meta.id}_chroms.txt
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -303,12 +304,13 @@ process ANCESTRY_FINE_REPORT {
     og ancestry-fine report --sample ${meta.id} --model ${panel}/model \\
         --admixture adm/admixture --paint pnt/paint --panel ${panel_name} --out .
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch ${meta.id}_ancestry_fine.tsv ${meta.id}_painting.bed ${meta.id}_painting.png ${meta.id}_ancestry_fine.txt
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

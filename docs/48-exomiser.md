@@ -21,7 +21,7 @@ The genome preset of Exomiser also scores non-coding variants, but it needs the 
 
 ## Docker Image
 
-- `EXOMISER_IMAGE` (the `-bash` build of Exomiser 15.1.0), plus `PYTHON_IMAGE` for the terms and the report
+- `EXOMISER_IMAGE` (the `-bash` build of Exomiser 15.1.0), plus `OG_IMAGE` for the terms and the report
 
 The `-bash` build is used because the plain `15.1.0` tag is distroless: it has no shell, and Nextflow needs one in the task container. Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. The image is optional: `setup.sh --exomiser-data` pulls it.
 

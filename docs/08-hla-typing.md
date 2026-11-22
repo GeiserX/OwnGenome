@@ -10,9 +10,10 @@ HLA alleles determine transplant compatibility, predisposition to autoimmune dis
 - **T1K** v1.0.10 — efficient HLA genotyping from sequencing reads
 
 ## Docker Image
-- `T1K_IMAGE`
+- `T1K_IMAGE` runs T1K.
+- The Bash step runs `og pgx hla-concordance` in `OG_IMAGE` (stock Ubuntu).
 
-Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
+Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 ## Prerequisites
 - Aligned BAM from step 2 (or set `ALIGN_DIR`, for example `ALIGN_DIR=aligned_bwamem2`)

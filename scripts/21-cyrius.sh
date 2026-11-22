@@ -73,22 +73,21 @@ echo "============================================"
 echo ""
 
 # [1/3] Depth over CYP2D6 and its flanks, all reads and MAPQ >= 1. The regions
-# come from og pgx cyp2d6-bed, and og pgx cyp2d6-check judges them. og runs
-# from OUTDIR with relative paths, so bin/og's shadow mode (OG_SHADOW, set
-# only in CI: tests/parity/README.md) can run the Python it replaced beside it.
+# come from og pgx cyp2d6-bed, and og pgx cyp2d6-check judges them.
+# Both use relative paths from OUTDIR inside OG_IMAGE.
 echo "[1/3] CYP2D6 depth check..."
 DEPTH_DIR="${OUTDIR}/cyp2d6_depth"
 CHECK="${OUTDIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
 mkdir -p "$DEPTH_DIR"
 rm -f "$CHECK"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTDIR")" "${OG_IMAGE}" \
   /pgp-bin/og pgx cyp2d6-bed > "${DEPTH_DIR}/regions.bed"
 for Q in 0 1; do
   run_in --cpus 2 --memory 2g "${MOSDEPTH_IMAGE}" \
     mosdepth -n -c chr22 -t 2 -Q "$Q" -b "$(cpath "${DEPTH_DIR}/regions.bed")" \
       "$(cpath "${DEPTH_DIR}/q${Q}")" "$(cpath "$BAM")"
 done
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTDIR")" "${OG_IMAGE}" \
   /pgp-bin/og pgx cyp2d6-check \
     --all cyp2d6_depth/q0.regions.bed.gz \
     --mapq1 cyp2d6_depth/q1.regions.bed.gz \

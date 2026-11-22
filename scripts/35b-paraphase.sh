@@ -56,7 +56,7 @@ echo "Regions: ${REGIONS:-all GRCh38 regions of Paraphase}"
 
 # [1/3] PacBio reads only: the header's read groups must all say PL:PACBIO
 echo "[1/3] Checking the read groups..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
   /pgp-bin/og paraphase check-bam "$(cpath "$BAM")"
 
 # [2/3] Paraphase, into a temporary folder renamed when it finishes
@@ -76,7 +76,7 @@ run_in --cpus "${THREADS}" --memory 8g "${PARAPHASE_IMAGE}" \
 echo "[3/3] Writing the tables..."
 CN="${OUTDIR}/${SAMPLE}_paraphase_copy_number.tsv"
 VARS="${OUTDIR}/${SAMPLE}_paraphase_variants.tsv"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${OG_IMAGE}" \
   /pgp-bin/og paraphase table --sample "$SAMPLE" --genes /pgp-assets/paraphase_genes.tsv \
     --json "$(cpath "${WORK}/${SAMPLE}.paraphase.json")" \
     --vcf-dir "$(cpath "${WORK}/${SAMPLE}_paraphase_vcfs")" \

@@ -34,7 +34,7 @@ THREADS=${THREADS:-4}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image BCFTOOLS_IMAGE PYTHON_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE
+require_image BCFTOOLS_IMAGE OG_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE
 
 PANEL=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
 S="${GENOME_DIR}/${SAMPLE}"
@@ -126,7 +126,7 @@ run_in --cpus 1 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
   'bcftools view -Oz -o "$1.gz" "$1" && bcftools index -t "$1.gz" && rm -f "$1"' _ "${W}/genotypes.vcf"
 # The chromosomes to phase and paint: 100 genotyped SNVs or more spanning
 # 5 cM or more (og ancestry-fine chroms, rust/crates/og-ancestry, says why).
-CHROMS=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+CHROMS=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og ancestry-fine chroms --counts "${W}/counts.tsv" --maps "${P}/maps")
 
 # --- 2. ADMIXTURE: projection on the groups' frequencies ----------------------------
@@ -136,7 +136,7 @@ CHROMS=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_I
 echo "[2/5] ADMIXTURE projection, ${BOOT} bootstrap replicates..."
 LEVELS=()
 while IFS=$'\t' read -r level k _; do LEVELS+=("--level" "${level}:${k}:${P}/model/${level}.P"); done < "${PANEL}/model/levels.tsv"
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og ancestry-fine sample-bed --bim "${P}/model/ref.bim" --vcf "${W}/genotypes.vcf.gz" \
     --sample "$SAMPLE" "${LEVELS[@]}" --bootstrap "$BOOT" --out-dir "${W}/admixture"
 # shellcheck disable=SC2016  # $1 and $2 belong to the inner sh
@@ -179,7 +179,7 @@ fi
 # --- 5. The report ---------------------------------------------------------------------
 echo "[5/5] Writing the fractions, the painting and the summary..."
 echo ""
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og ancestry-fine report --sample "$SAMPLE" --model "${P}/model" \
     --admixture "${W}/admixture" --paint "${W}/paint" --panel "$ANCESTRY_FINE_PANEL" --out "$(cpath "$OUT")"
 for f in "${OUT}/${SAMPLE}_ancestry_fine.tsv" "${OUT}/${SAMPLE}_painting.png"; do

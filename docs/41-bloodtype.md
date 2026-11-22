@@ -24,11 +24,11 @@ The null alleles (an allele that makes no antigen) are the single-variant null a
 
 The neutrophil antigens are not in RBCeq2. Their variants are those of the ISBT HNA allele table (Flesch et al. 2016, Transfusion 56:1477, https://doi.org/10.1111/trf.13575). Each was mapped to GRCh38 with Ensembl VEP on the gene's transcript, which also checks the REF base (2026-10-25). dbSNP places some FCGR3B variant ids on FCGR3A, its near copy (rs447536, for one, maps to FCGR3A on GRCh38), so the FCGR3B positions in the table are FCGR3B's own, in exon 3.
 
-Why not run RBCeq2 or bloodTyper itself: RBCeq2 is on PyPI only, with no Bioconda package and no container image, and its README says it does not type RH from ordinary short-read calls (it needs long reads or a caller that writes copy numbers). bloodTyper is on neither PyPI nor Bioconda; the one Docker Hub image is a personal upload. A small table applied in the pinned Python image needs no new image and reads RhD from depth.
+Why not run RBCeq2 or bloodTyper itself: RBCeq2 is on PyPI only, with no Bioconda package and no container image, and its README says it does not type RH from ordinary short-read calls (it needs long reads or a caller that writes copy numbers). bloodTyper is on neither PyPI nor Bioconda; the one Docker Hub image is a personal upload. The Bash step applies the rules with `og` in `OG_IMAGE` (stock Ubuntu) and reads RhD from depth.
 
 ## Docker Image
 
-- `PYTHON_IMAGE` for the rules, `SAMTOOLS_IMAGE` for the depth, `BCFTOOLS_IMAGE` for the left-alignment. In the Nextflow pipeline the `BLOODTYPE` process runs both the left-alignment and the rules in `BCFTOOLS_IMAGE` (`og` is a static binary)
+- `OG_IMAGE` for the rules, `SAMTOOLS_IMAGE` for the depth, `BCFTOOLS_IMAGE` for the left-alignment. In the Nextflow pipeline the `BLOODTYPE` process runs both the left-alignment and the rules in `BCFTOOLS_IMAGE` (`og` is a static binary)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 

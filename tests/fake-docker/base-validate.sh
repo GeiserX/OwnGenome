@@ -15,6 +15,21 @@ output_has validate 'Docker images are pulled'
 output_has validate 'Whole pipeline:  \./scripts/run-all\.sh sample1 <male\|female>'
 output_has validate 'or step by step, starting with:  \./scripts/06-clinvar-screen\.sh sample1'
 
+# The optional Python image matters only after Cyrius is installed.
+# shellcheck source=../../versions.env
+. "${REPO_ROOT}/versions.env"
+FAKE_DOCKER_MISSING_IMAGES='^python:' run_expect 0 cyrius-not-installed "${SCRIPTS}/validate-setup.sh"
+output_lacks cyrius-not-installed 'Opt-in step 21:'
+stamp="${GENOME_DIR}/tools/cyrius-${CYRIUS_VERSION}/INSTALLED"
+mkdir -p "$(dirname "$stamp")"
+printf 'installed\n' > "$stamp"
+FAKE_DOCKER_MISSING_IMAGES='^python:' run_expect 0 cyrius-image-missing "${SCRIPTS}/validate-setup.sh"
+output_has cyrius-image-missing '\[WARN\].*Opt-in step 21: its data is installed but its image is not pulled'
+output_has cyrius-image-missing 'setup\.sh --cyrius '
+run_expect 0 cyrius-image-present "${SCRIPTS}/validate-setup.sh"
+output_has cyrius-image-present '\[OK\].*Opt-in step 21: its data and image '
+rm -f "$stamp"
+
 # --- free disk space, through a df in front of the fake one --------------------------
 mkdir -p "${CASE_WORK}/df-bin"
 cat > "${CASE_WORK}/df-bin/df" <<'SHIM'

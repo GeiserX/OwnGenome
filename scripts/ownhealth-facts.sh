@@ -22,7 +22,7 @@ validate_sample "$SAMPLE"
 # run's file is removed first, so a failed run leaves no file to import.
 rm -f "${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json"
 echo "[ownhealth-facts] writing ${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json from ${GENOME_DIR}/${SAMPLE}/summary.json and ${REF_FASTA}"
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${OG_IMAGE}" \
   /pgp-bin/og facts \
     --sample "$SAMPLE" \
     --sample-dir "/genome/${SAMPLE}" \

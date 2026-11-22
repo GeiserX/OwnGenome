@@ -62,7 +62,7 @@ case "$KEEP_AMBIGUOUS" in
   true|false) ;;
   *) echo "ERROR: PRS_KEEP_AMBIGUOUS must be 'true' or 'false', got '${KEEP_AMBIGUOUS}'" >&2; exit 1 ;;
 esac
-require_image PYTHON_IMAGE BCFTOOLS_IMAGE PLINK2_IMAGE PGSC_UTILS_IMAGE PGSC_FRAPOSA_IMAGE \
+require_image OG_IMAGE BCFTOOLS_IMAGE PLINK2_IMAGE PGSC_UTILS_IMAGE PGSC_FRAPOSA_IMAGE \
   PGSC_PYYAML_IMAGE PGSC_ZSTD_IMAGE PGSC_REPORT_IMAGE
 
 VCF="${GENOME_DIR}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz"
@@ -193,7 +193,7 @@ KEEP_X=()
 if [ -n "$SEX" ]; then KEEP_X=(--keep-x); fi
 KEEP_AMB=()
 if $KEEP_AMBIGUOUS; then KEEP_AMB=(--keep-ambiguous --reference "$REF_FASTA_C"); fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SCORE_LIST}:/pgs_scores.tsv:ro" "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SCORE_LIST}:/pgs_scores.tsv:ro" "$OG_IMAGE" \
   /pgp-bin/og prs format \
     --scores "$(cpath "$SCORING_DIR")" --ids "$IDS" --labels /pgs_scores.tsv \
     --out "$(cpath "${WORK}/scores")" --alleles "$(cpath "${WORK}/score_alleles.tsv")" \
@@ -391,7 +391,7 @@ if $USE_PANEL; then
   rm -f "$ANCESTRY_FILE"
   ANC_ARGS=(--panel "$(basename "${PANEL%.tar.zst}")" --ancestry-out "$(cpath "$ANCESTRY_FILE")")
 fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og prs table \
     --sample "$SAMPLE" --results "$(cpath "${WORK}/results")" --sampleset "$SAMPLESET" \
     --scores "$(cpath "${WORK}/scores")" --input-kind "$INPUT_KIND" --sex "$SEX" \

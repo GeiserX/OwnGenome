@@ -38,9 +38,11 @@ process BLOODTYPE_REGIONS {
     """
     og cn bed --locus RHD > rhd_regions.bed
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -50,7 +52,8 @@ process BLOODTYPE_REGIONS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

@@ -19,7 +19,7 @@ Most questions about a genome are about one variant or one gene, often one a doc
 
 ## Docker Image
 
-- `PYTHON_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tag. `og` is a static binary, so it needs no tool from the image; it needs `./scripts/setup.sh --og` once ([The Rust core](rust.md)). The command adds no image.
+- `OG_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tag. `og` is a static binary, so it needs no tool from the image; it needs `./scripts/setup.sh --og` once ([The Rust core](rust.md)). The command adds no image.
 
 ## Input
 

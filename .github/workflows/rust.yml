@@ -8,9 +8,9 @@ name: Rust
 #   images   on a pull request that touches the Rust code, the shim or the
 #            images: builds og with scripts/setup.sh --og, cold and then
 #            cached (both times go to the summary), and runs it by bare name
-#            in PYTHON_IMAGE, BCFTOOLS_IMAGE, MANTA_IMAGE and PARASCOPY_IMAGE
-#            on every platform each one publishes (arm64 under QEMU), then
-#            once more with a wrong-arch binary planted, which must fail. The
+#            in OG_IMAGE, PYTHON_IMAGE, BCFTOOLS_IMAGE, MANTA_IMAGE and
+#            PARASCOPY_IMAGE on every platform each one publishes (arm64 under
+#            QEMU). A second run with a planted wrong-arch binary must fail. The
 #            two binaries are kept as the artifact og-binaries. Both also
 #            run og-bam's fetch smoke against pysam on the fixture slice.
 #   streams  nightly: 10^7 cases per pycompat operation against CPython in

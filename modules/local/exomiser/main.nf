@@ -53,9 +53,11 @@ process EXOMISER_PREPARE {
         --assembly ${params.exomiser_assembly} --out-dir results --analysis ${meta.id}_analysis.yml \\
         --terms ${meta.id}_exomiser_terms.tsv
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -66,7 +68,8 @@ process EXOMISER_PREPARE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }
@@ -165,9 +168,11 @@ process EXOMISER_REPORT {
     og exomiser report --sample ${meta.id} --variants ${variants} --terms ${terms} \\
         --out ${meta.id}_exomiser_top.tsv --text ${meta.id}_exomiser.txt
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -179,7 +184,8 @@ process EXOMISER_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

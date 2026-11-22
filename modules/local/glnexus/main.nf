@@ -54,7 +54,8 @@ process FAMILY_PREPARE {
     og family prepare --pedigree families.tsv ${fam} ${args} ${cv} --ibd-panel ${ibd} \\
         --pedigree-out pedigree.tsv --out-dir .
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -63,7 +64,7 @@ process FAMILY_PREPARE {
     printf 'sample\\tsex\\tfather\\tmother\\tpartner\\n' > pedigree.tsv
     printf 'family\\tanalysis\\tmembers\\tdecision\\treason\\n' > family_plan.tsv
     touch family.ped trios.ped
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 

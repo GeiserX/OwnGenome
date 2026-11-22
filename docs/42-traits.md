@@ -16,7 +16,7 @@ These are the results most people find easiest to read, and the pipeline had no 
 
 ## Docker Image
 
-- `BCFTOOLS_IMAGE`, `PYTHON_IMAGE` and `WHATSHAP_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tags.
+- `BCFTOOLS_IMAGE`, `OG_IMAGE` and `WHATSHAP_IMAGE`, pinned in `versions.env`; [Image versions](versions.md) lists the tags.
 
 ## Input
 

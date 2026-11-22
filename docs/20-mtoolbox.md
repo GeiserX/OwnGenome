@@ -18,7 +18,7 @@ The main VCF (step 03) calls chrM as if it were a diploid nuclear contig. This s
 ## Docker Image
 - `GATK_IMAGE`
 - `EKLIPSE_IMAGE`: the BioContainers build of Bioconda's `eklipse` 1.8, pinned by digest. eKLIPse has no GitHub release and is no longer maintained; the Bioconda recipe builds upstream commit `3606cb2edac983d2623ddc667b49206c3d01373c` (2022-02-03) with three patches that port it to Python 3. The e2e case `tests/e2e/mito-extended-1-deletions.sh` reads the recipe inside the pinned build and checks that commit.
-- `SAMTOOLS_IMAGE` and `PYTHON_IMAGE` for the copy number and the tables
+- `SAMTOOLS_IMAGE` for depth. `og` runs in `OG_IMAGE` (stock Ubuntu) for the copy number and the tables.
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -56,7 +56,7 @@ The script runs these steps: `./scripts/20-mtoolbox.sh your_sample`. Then it ann
 
 ### ClinVar and gnomAD beside each call
 
-The last stage (`og mito annotate`, in `PYTHON_IMAGE`) writes `${SAMPLE}_chrM_annotated.tsv`: one row per allele of the filtered VCF, with
+The last stage (`og mito annotate`, in `OG_IMAGE`) writes `${SAMPLE}_chrM_annotated.tsv`: one row per allele of the filtered VCF, with
 
 - ClinVar's record of the same allele from `clinvar/clinvar_chr.vcf.gz`, the ClinVar file `setup.sh` installs: `clinvar_id`, `clinvar_significance` (CLNSIG), `clinvar_review` (CLNREVSTAT) and `clinvar_condition` (CLNDN);
 - gnomAD v3.1's chrM sites of the same allele (`gnomad_mito/`, pinned in `versions.env`): `gnomad_af_hom` (the share of gnomAD's samples with the allele at 95% or more), `gnomad_af_het` (at 10% to 95%) and `gnomad_max_hl` (the highest level gnomAD saw).

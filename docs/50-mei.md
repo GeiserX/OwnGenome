@@ -28,7 +28,7 @@ Manta, Delly and the other SV callers see an insertion as a break in the alignme
 ## Docker Image
 
 - `MEGANE_IMAGE`: MEGAnE's only image (amd64 only, about 6.4 GB to download, 19.5 GB unpacked), its last release, pinned to its digest. It carries its own GRCh38 RepeatMasker annotation and BLAST database.
-- `SAMTOOLS_IMAGE` and `PYTHON_IMAGE`
+- `SAMTOOLS_IMAGE` and `OG_IMAGE`
 - `ANNOTSV_IMAGE`, the image of [step 05](05-annotsv.md): the step runs AnnotSV in it when AnnotSV's data is there, and the Nextflow `MEI_REPORT` process runs in it (it has Python too)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. `MEGANE_IMAGE` is an `# optional` line: `setup.sh --megane-kmers` pulls it.

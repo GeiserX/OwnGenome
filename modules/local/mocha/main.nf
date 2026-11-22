@@ -201,9 +201,11 @@ process MOCHA_REPORT {
     og mocha report --sample ${meta.id} --calls ${calls} --stats ${stats} --sites ${sites} --phasing beagle \\
         --out-calls ${meta.id}_mocha.tsv --out-summary ${meta.id}_mocha_summary.tsv
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -214,7 +216,8 @@ process MOCHA_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }
