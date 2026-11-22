@@ -656,8 +656,10 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
   .tabbar .lv { font-size: 0; gap: 0; }
   .tabbar .ti { font: italic 15px var(--serif); color: var(--brass); }
   section.sec { padding-top: 26px !important; margin-top: 26px !important; }
-  /* Big enough for a finger: every fold's summary (a caveat's More too) and the replay's slider and button. */
-  .toggle, details > summary { min-height: 44px; align-content: center; }
+  /* Big enough for a finger, with the page no taller: each caveat's More is 44 px tall and its margins give back
+     what it grew; the replay's slider and Play button are 44 px tall and the bar's padding gives it back. */
+  .toggle { min-height: 44px; margin: -14px 0; align-content: center; }
+  .replay { padding-top: 4px; padding-bottom: 5px; }
   .replay input[type=range], .replay button { min-height: 44px; }
   /* The step timeline grows with its steps instead of scrolling inside the page, and a tapped step's detail
      (live.js) comes into view clear of the masthead and the tab bar. */

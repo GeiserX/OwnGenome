@@ -7,9 +7,8 @@
 //!    moves the focus into main.
 //! 2. On DEMO-001 at 320x800 and at 390x844, every caveat's More
 //!    (`summary.toggle`) has a min-height of at least 44 px and is that
-//!    tall, every other fold's summary on screen is that tall, and so are
-//!    the replay's slider and its Play button. Each More is named for its
-//!    own finding, so no two share a name.
+//!    tall, and so are the replay's slider and its Play button. Each More
+//!    is named for its own finding, so no two share a name.
 //! 3. At 390x844, a tap on the Cyrius row of the step timeline brings the
 //!    step's detail into view, clear of the masthead and the tab bar, and
 //!    the timeline's box does not scroll inside the page.
@@ -162,17 +161,13 @@ fn skip_link(b: &mut Browser) -> String {
 
 /// The sizes a finger meets on the person page: every `summary.toggle`
 /// [its height, its min-height, its name, its finding's title], the
-/// smallest fold summary on screen, the slider and the Play button.
+/// slider and the Play button.
 const SIZES: &str = "(function () { \
      var t = Array.prototype.map.call(document.querySelectorAll('summary.toggle'), function (s) { \
        var row = s.closest('.row'), h = row && row.querySelector('h3'); \
        return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, \
          s.getAttribute('aria-label') || s.textContent, h ? h.textContent : '']; }); \
-     var shown = Array.prototype.filter.call(document.querySelectorAll('details > summary'), function (s) { \
-       return s.getClientRects().length > 0; }); \
-     var small = shown.map(function (s) { return [s.getBoundingClientRect().height, s.textContent.trim().slice(0, 40)]; }) \
-       .sort(function (a, b) { return a[0] - b[0]; })[0] || [0, 'none']; \
-     return JSON.stringify([t, small, shown.length, document.getElementById('replay-slider').getBoundingClientRect().height, \
+     return JSON.stringify([t, document.getElementById('replay-slider').getBoundingClientRect().height, \
        document.getElementById('replay-play').getBoundingClientRect().height]); }())";
 
 /// Bring the Cyrius row to the middle of the screen (the page's scroll,
@@ -312,19 +307,10 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
                     .all(|r| !r.3.is_empty() && r.2 == format!("More of the caveat: {}", r.3)),
             sizes.clone(),
         );
-        let small = match &a[1] {
-            Value::Array(s) => (num(&s[0]), text(Some(s[1].clone()))),
-            _ => (0.0, String::new()),
-        };
-        check(
-            &format!("{w}x{h}: every fold's summary on screen is at least 44 px tall"),
-            small.0 >= TAP && num(&a[2]) >= 3.0,
-            format!("smallest {small:?} of {}", num(&a[2])),
-        );
         check(
             &format!("{w}x{h}: the replay's slider and Play button are at least 44 px tall"),
-            num(&a[3]) >= TAP && num(&a[4]) >= TAP,
-            format!("slider {} play {}", num(&a[3]), num(&a[4])),
+            num(&a[1]) >= TAP && num(&a[2]) >= TAP,
+            format!("slider {} play {}", num(&a[1]), num(&a[2])),
         );
     }
 
