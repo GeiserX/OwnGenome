@@ -723,4 +723,53 @@ mod tests {
         );
         assert!(probable("None", ev("PASS", "ok").as_ref(), None, None).is_none());
     }
+
+    /// Step 27's phenotypes table with these rows, read as the summary reads
+    /// it.
+    fn cpic(rows: &str) -> Value {
+        let dir = std::env::temp_dir().join(format!(
+            "og-summary-pgx-incomplete-{}-{}",
+            std::process::id(),
+            rows.len()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tsv = dir.join("S_phenotypes.tsv");
+        std::fs::write(&tsv, format!("Gene\tDiplotype\tPhenotype\tStatus\n{rows}")).unwrap();
+        let c = Cpic::read(&tsv.to_string_lossy(), "S").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        c.to_json()
+    }
+
+    /// Issue #411, plat-49: a gene step 27 marks `incomplete` (its call rests
+    /// on positions PharmCAT never read) is counted apart, never as normal or
+    /// unclassified; a table with none writes no count, as before.
+    #[test]
+    fn a_gene_whose_call_rests_on_unread_positions_is_counted_as_incomplete() {
+        let Value::Object(j) = cpic(
+            "CYP2C19\t*1/*1\tNormal Metabolizer [incomplete: positions not read: rs4244285]\tincomplete\n\
+             CYP2C9\t*1/*2\tIntermediate Metabolizer\tnon-normal\n\
+             CYP3A5\t*1/*1\tNormal Metabolizer\tnormal\n",
+        ) else {
+            panic!("not an object")
+        };
+        assert_eq!(j.get("incomplete"), Some(&Value::Int(1)), "{j:?}");
+        assert_eq!(j.get("non_normal"), Some(&Value::Int(1)));
+        assert_eq!(j.get("unclassified"), Some(&Value::Int(0)));
+        let Some(Value::Array(genes)) = j.get("genes") else {
+            panic!("no genes")
+        };
+        assert!(
+            matches!(&genes[0], Value::Object(g)
+                if g.get("status") == Some(&Value::Str("incomplete".into()))),
+            "{genes:?}"
+        );
+        let Value::Object(j) = cpic("CYP3A5\t*1/*1\tNormal Metabolizer\tnormal\n") else {
+            panic!("not an object")
+        };
+        assert!(
+            !j.contains_key("incomplete"),
+            "no incomplete gene: the summary is as it was: {j:?}"
+        );
+    }
 }
