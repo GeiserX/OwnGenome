@@ -974,10 +974,10 @@ else
   fi
 
   # An opt-in step's image (`# optional` in versions.env) matters once its
-  # data is installed: setup.sh --parascopy-data, --yleaf-data and
-  # --ancestry-fine-panel pull it.
+  # data or the tool is installed. The corresponding setup.sh flag pulls it.
   if [ -n "${GENOME_DIR:-}" ]; then
-    for opt in "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
+    for opt in "PYTHON_IMAGE|21|tools/cyrius-${CYRIUS_VERSION}/INSTALLED|cyrius" \
+               "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
                "YLEAF_IMAGE|37|reference/yleaf-${YLEAF_DATA_VERSION}/data/hg38/new_positions.txt|yleaf-data" \
                "ADMIXTURE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
                "BEAGLE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \

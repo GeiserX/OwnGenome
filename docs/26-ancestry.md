@@ -24,7 +24,7 @@ A principal component analysis of one genome alone cannot work, since the axes c
 
 ## Docker Images
 
-The images of step 25, all pinned in `versions.env`: `PGSC_UTILS_IMAGE`, `PLINK2_IMAGE`, `PGSC_FRAPOSA_IMAGE`, `PGSC_ZSTD_IMAGE`, `PGSC_PYYAML_IMAGE`, `PGSC_REPORT_IMAGE`, with `PYTHON_IMAGE` and `BCFTOOLS_IMAGE`. [Image versions](versions.md) lists the tags.
+The images of step 25, all pinned in `versions.env`: `PGSC_UTILS_IMAGE`, `PLINK2_IMAGE`, `PGSC_FRAPOSA_IMAGE`, `PGSC_ZSTD_IMAGE`, `PGSC_PYYAML_IMAGE`, `PGSC_REPORT_IMAGE`, with `OG_IMAGE` and `BCFTOOLS_IMAGE`. [Image versions](versions.md) lists the tags.
 
 ## Input
 

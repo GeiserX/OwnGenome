@@ -87,7 +87,7 @@ The image's Rust release (1.93.0) and `rust/rust-toolchain.toml` must agree, or 
 
 A Nextflow task has `bin/` on its PATH, so a module calls `og <tool>` by its bare name. A bash step calls `/pgp-bin/og <tool>` inside the image it already uses. Either way it starts `bin/og`, a `#!/bin/sh` shim that runs `bin/.og/og-linux-$(uname -m)`, or exits 127 with `ERROR: og is not built for <arch>; run scripts/setup.sh --og`. On macOS the same shim runs `bin/.og/og-darwin-$(uname -m)` (`ERROR: og is not built for macOS <arch>` when it is missing); any other system gets exit 127.
 
-The binary is static, so it runs in any image that has `/bin/sh`: the Python image, the bcftools image, the Manta and Parascopy images. `tests/rust/og-in-images.sh` checks those four on every platform each one publishes.
+The binary is static and starts through `/bin/sh`. `tests/rust/og-in-images.sh` checks it in `OG_IMAGE` (stock Ubuntu), Cyrius's `PYTHON_IMAGE`, `BCFTOOLS_IMAGE`, `MANTA_IMAGE`, and `PARASCOPY_IMAGE` on every platform each image publishes.
 
 ## The stale-binary check
 
@@ -96,7 +96,7 @@ The binary is static, so it runs in any image that has `/bin/sh`: the Python ima
 - The build stamps the binary with a source hash of two git object IDs: the tree of `rust/` as it is on disk and the blob of `assets/imprinted_regions.tsv`. The table is embedded at compile time. Any edit to either input, committed or not, changes the hash. The `tree-hash` verb and stamp format retain their names.
 - `rust/og.sh check` reads the stamp from each binary with `grep`, without running it, and compares it with the checkout's. The macOS pair is optional, because no pipeline step runs it, but a stale one is refused like a Linux one.
 - `run-all.sh` (even with `SKIP_VALIDATION=true`), `main.nf` and `validate-setup.sh` run that check. A binary built from another `rust/` stops them with `run scripts/setup.sh --og`.
-- A missing binary is still a note, which names steps 04, 05, 07, 09b, 21, 25, 32 and 33. Those steps, step 06 with `CLINVAR_SCREEN` and `CLINVAR_CDNA_CHECK`, step 17, and steps 23 and 31 with their modules, stop without it: `bin/og` says `ERROR: og is not built for <arch>; run scripts/setup.sh --og` (exit 127). Step 32 does not read that as an unmeasured share: it stops. `REQUIRED` in `rust/og.sh` stays `false` until the fake-docker and Nextflow stub tests, which start runs without `og`, build it first; then a missing binary stops a run before any step.
+- `bin/og` and the required Linux build must be present for `validate-setup.sh` to pass. Its check uses `--required`. When you bypass setup validation with `SKIP_VALIDATION=true`, the check in `run-all.sh` reports a missing Linux build as a note (`REQUIRED=false`). A step that needs the missing build stops when `bin/og` exits 127.
 - `run_manifest.tsv` gets a row `run og_tree_hash`, so a result names the Rust code that made it (`not built` before the first build).
 
 ## Matching Python byte for byte
@@ -121,7 +121,7 @@ Known limits, each an error in Rust where Python would go on: ints beyond 128 bi
 
 ### The differential test
 
-`tests/rust/pycompat-diff.sh <og binary> [N] [SEED]` checks every `pycompat` operation against CPython. `tests/rust/pycompat_oracle.py` runs with `python3 -I` in `PYTHON_IMAGE`, draws N random cases per operation and writes its result for each. `og pycompat-probe` reads the same cases and must write the same lines, byte for byte. The values include the ones that catch a formatting bug: binary ties (0.125, 2.675, 0.35), 1e-05 and 1e16 where `repr` switches layout, -0.0, NaN, subnormals, random bit patterns, numbers exactly halfway between two shortest `repr` candidates, astral characters, CRLF and lone CR (both as lines without their endings and as `readline()` results with them), and broken JSON. A failure prints the first cases that differ and the seed, so `pycompat-diff.sh <og> <N> <seed>` replays it. `PYTHON=python3` runs the oracle on the host for a quick loop.
+`tests/rust/pycompat-diff.sh <og binary> [N] [SEED]` checks every `pycompat` operation against CPython. `tests/rust/pycompat_oracle.py` runs with `python3 -I` in the pinned CPython container, draws N random cases per operation and writes its result for each. `og pycompat-probe` reads the same cases and must write the same lines, byte for byte. The values include the ones that catch a formatting bug: binary ties (0.125, 2.675, 0.35), 1e-05 and 1e16 where `repr` switches layout, -0.0, NaN, subnormals, random bit patterns, numbers exactly halfway between two shortest `repr` candidates, astral characters, CRLF and lone CR (both as lines without their endings and as `readline()` results with them), and broken JSON. A failure prints the first cases that differ and the seed, so `pycompat-diff.sh <og> <N> <seed>` replays it. `PYTHON=python3` runs the oracle on the host for a quick loop.
 
 To add a primitive: write it in `pycompat` with unit tests, add an operation to `og/src/probe.rs` and the same operation to the oracle, then run the differential test.
 

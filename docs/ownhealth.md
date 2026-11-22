@@ -65,7 +65,7 @@ rm -f "${GENOME_DIR}/${SAMPLE}/facts/${SAMPLE}_genome_facts.json"
 ./scripts/24-html-report.sh "${SAMPLE}" && ./scripts/ownhealth-facts.sh "${SAMPLE}"
 ```
 
-It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./scripts/setup.sh --og` builds it, see [The Rust core](rust.md)) and the GRCh38 reference FASTA the run used, with its `.fai`. The script runs `og` in Docker, in the image `PYTHON_IMAGE` of `versions.env`. It takes a few seconds for a whole genome: it reads `summary.json`, the PharmCAT report and the ClinVar hits, a few reference bases per variant, and hashes the VCF and gVCF.
+It needs `summary.json` (step 24 or `generate-report.sh` writes it), `og` (`./scripts/setup.sh --og` builds it, see [The Rust core](rust.md)) and the GRCh38 reference FASTA the run used, with its `.fai`. The script runs `og` in Docker, in the image `OG_IMAGE` of `versions.env`. It takes a few seconds for a whole genome: it reads `summary.json`, the PharmCAT report and the ClinVar hits, a few reference bases per variant, and hashes the VCF and gVCF.
 
 The variant identifiers in the file are [GA4GH VRS](https://vrs.ga4gh.org/) 2.0 identifiers worked out on that reference. `og facts` refuses a reference that names none of GRCh38's chromosomes (`chr1` to `chrM`) or has one of a length other than GRCh38's. It cannot check every base, so give it the reference the run used.
 

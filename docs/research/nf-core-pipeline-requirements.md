@@ -9,7 +9,7 @@ The report below is a research snapshot. This table says which of its requiremen
 | Requirement | Status | Evidence or reason |
 |---|---|---|
 | Nextflow DSL2 | met | `main.nf`, `workflows/`, `modules/local/` |
-| Versioned containers, no `latest` | met | every image pinned by tag or digest in `versions.env` (`PYTHON_IMAGE` by its patch tag and digest); Cyrius is installed once by `setup.sh --cyrius` from `scripts/cyrius-constraints.txt`, every wheel pinned by sha256 |
+| Versioned containers, no `latest` | met | every image pinned by tag or digest in `versions.env` (`OG_IMAGE` by the Ubuntu release tag and digest). Cyrius is installed once by `setup.sh --cyrius` from `scripts/cyrius-constraints.txt`, every wheel pinned by sha256 |
 | Docker and Singularity profiles | met | `profiles` in `nextflow.config` |
 | CI tests on GitHub Actions | met | stub run in `nextflow.yml`, real-tool run in `e2e.yml` |
 | Semantic version tags | met | v0.2.0 to v0.8.2 |

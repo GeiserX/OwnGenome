@@ -19,7 +19,7 @@ A single depth-based CYP2D6 call can be wrong in ways that change a prescription
 
 ## Docker Image
 
-- `PYTHON_IMAGE`
+- `OG_IMAGE`
 
 ## Input
 

@@ -15,7 +15,7 @@ Most common diseases (heart disease, diabetes, cancer) are not caused by a singl
 
 ## Docker Image
 
-pgsc_calc runs its steps in these images, all pinned in `versions.env`: `PGSC_UTILS_IMAGE` (matching and ancestry adjustment), `PLINK2_IMAGE` (scoring), `PGSC_FRAPOSA_IMAGE` (projection onto the panel), `PGSC_ZSTD_IMAGE`, `PGSC_PYYAML_IMAGE` and `PGSC_REPORT_IMAGE` (its HTML report). Step 25 also uses `PYTHON_IMAGE` and `BCFTOOLS_IMAGE`. [Image versions](versions.md) lists the tags.
+pgsc_calc runs its steps in these images, all pinned in `versions.env`: `PGSC_UTILS_IMAGE` (matching and ancestry adjustment), `PLINK2_IMAGE` (scoring), `PGSC_FRAPOSA_IMAGE` (projection onto the panel), `PGSC_ZSTD_IMAGE`, `PGSC_PYYAML_IMAGE` and `PGSC_REPORT_IMAGE` (its HTML report). Step 25 also uses `OG_IMAGE` and `BCFTOOLS_IMAGE`. [Image versions](versions.md) lists the tags.
 
 ## Input
 

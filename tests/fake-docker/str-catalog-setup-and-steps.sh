@@ -14,8 +14,7 @@
 #      never runs the converter (the control that the sha256 check fails).
 #   2. The real files: setup.sh --strchive-data writes catalog.json with 82
 #      loci through og str catalog in OG_IMAGE, run from the catalog's
-#      folder with relative paths (so OG_SHADOW can check it), and a second run
-#      downloads nothing and converts nothing.
+#      folder with relative paths. A second run downloads and converts nothing.
 #   2b. A catalog whose stamp no longer matches, with a refetch that fails
 #      its sha256 check: setup.sh exits 1 and removes the old catalog.json
 #      and str_ranges.tsv, so step 09 does not run on a catalog setup.sh
