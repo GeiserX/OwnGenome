@@ -1,6 +1,6 @@
 //! Step 42's traits table and genotype rules, from `og traits table` through
 //! og summary collect to both reports. These are the checks of
-//! `tests/test_collect_summary.py` (section 18 and the rules part of section
+//! the retired `tests/test_collect_summary.py` (section 18 and the rules part of section
 //! 26) and `tests/test_render_report.py` (section 11) that ran the traits
 //! table through the helper of the old `tests/test_traits_report.py`; they
 //! moved here with it, and now check the Rust reports.

@@ -27,6 +27,9 @@ pub const QC: &str = "qc/S_sample_qc.tsv";
 pub const STR: &str = "expansion_hunter/S_eh.vcf";
 pub const STRANGER: &str = "expansion_hunter/S_eh_stranger.vcf";
 pub const STR_CATALOG: &str = "expansion_hunter/S_eh_catalog.json";
+pub const EH_LOCI: [&str; 5] = ["HTT", "FMR1", "C9ORF72", "ATXN1", "DMPK"];
+pub const RFC1: &str = "expansion_hunter/S_rfc1_motif.tsv";
+pub const TRAITS: &str = "traits/S_traits.tsv";
 pub const STARTED: u64 = 1_700_000_000;
 
 pub struct Sample {
@@ -59,19 +62,25 @@ impl Sample {
     }
 
     pub fn old(&self, name: &str) {
+        self.date(name, STARTED - 60);
+    }
+
+    pub fn date(&self, name: &str, epoch: u64) {
         File::open(self.path(name))
             .unwrap()
-            .set_times(
-                FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(STARTED - 60)),
-            )
+            .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(epoch)))
             .unwrap();
     }
 
     pub fn collect(&self) -> Value {
+        self.collect_with_sex(None)
+    }
+
+    pub fn collect_with_sex(&self, sex: Option<&str>) -> Value {
         post::collect(&Input {
             sample: self.id.into(),
             sample_dir: self.dir.display().to_string(),
-            declared_sex: None,
+            declared_sex: sex.map(str::to_owned),
             assets: Path::new(REPO).join("assets").display().to_string(),
             group: Group::All,
             tables: Path::new(REPO).join("bin").display().to_string(),
@@ -181,7 +190,8 @@ pub fn put_couple(d: &Sample) {
     d.put(COUPLE, format!(
         "{COUPLE_HEADER}NAGA\tAR\tACMG\tNAGA disease\tshared\t1 in 4 per pregnancy\tA\ta-snv\tB\tb-snv\tx\n\
          FMR1\tXL\tACMG\tFMR1 disease\tx_linked\tA: sons 1 in 2\tA\ta-repeat\tB\t.\tx\n\
-         UGT1A1\tAR\tACMG\tUGT1A1 disease\tone_partner\tnone shared\tA\t.\tB\tb-only\tx\n"
+         UGT1A1\tAR\tACMG\tUGT1A1 disease\tone_partner\tnone shared\tA\t.\tB\tb-only\tx\n\
+         GJB2\tAR\tACMG\tGJB2 disease\tone_partner\tnone shared\tA\ta-only\tB\t.\tx\n"
     ));
 }
 
@@ -210,8 +220,16 @@ pub fn put_cyp_unusable(d: &Sample) {
     d.put(CONSENSUS, "Gene\tResult\tOutside_call\tReason\tEvidence\nHLA-A\tnot typed\tno\tHLA typing (step 08) did not run\t-\nCYP2D6\tindeterminate\tno\tthe CYP2D6 depth check failed\tpypgx: no call (Indeterminate)\n");
 }
 
+const PRS_COLUMNS: &str = "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\tPercentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check";
+const PRS_ROW: &str = "Coronary artery disease\tPGS000018\t0.5\t1\t2\t50\t81.2";
+pub const PRS_EUR_EFFECT: &str = "HR 1.53 (EUR, PPM000591)";
+
 pub fn put_prs_evaluation(d: &Sample, group: &str, effect: &str) {
-    d.put(PRS, format!("Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tMatched_Pct\tPercentile\tAncestry_Group\tChrX\tAmbiguous\tApplies_To\tSex_Check\tEvaluated_In\tEffect\tInput\nTest condition\tPGS000018\t0.12\t100\t200\t50\t71\t{group}\t0\t0\tall\tapplies\tEUR\t{effect}\tgenotypes\n"));
+    d.put(PRS, format!("{PRS_COLUMNS}\tEvaluated_In\tEffect\tInput\n{PRS_ROW}\t{group}\t0\t0\tall\tapplies\tEUR;AFR;AMR\t{effect}\tgvcf\n"));
+    d.put(
+        "ancestry/S_ancestry.tsv",
+        format!("key\tvalue\nsample\tS\nreference_panel\tpgsc_1000G_v1\npopulation\t{group}\n"),
+    );
 }
 
 pub fn put_lineage(d: &Sample) {
@@ -275,7 +293,10 @@ pub fn put_cpsr(d: &Sample) {
          3_100_A_G\t3:g.100A>G\tMLH1\tVUS\tVUS\tPM2\tCPSR\tVUS\t30\n",
     );
     d.put("cpsr/S.cpsr.grch38.html", "<html></html>\n");
-    d.put(CLINVAR, format!("{VCF}##PGP_CALL_FLOOR=GQ=30,DP=10\n"));
+    d.put(
+        CLINVAR,
+        VCF.replacen("#CHROM", "##PGP_CALL_FLOOR=GQ=30,DP=10\n#CHROM", 1),
+    );
     d.put("cpsr/S_cpsr_cdna_check.tsv", "chrom\tpos\tref\talt\talt_reads\talt_clipped\tref_reads\tref_clipped\tcdna_check\tcdna_note\n13\t32340300\tG\tA\t12\t0\t10\t0\tclear\t\n2\t47800000\tA\tG\t9\t8\t11\t0\tflagged\tpossible cDNA/transgene contamination: check the reads\n");
     d.put(
         "run_manifest.tsv",
@@ -302,9 +323,9 @@ pub const MARKER: &str = "paralogs/S_smn1_marker.tsv";
 pub const SMN_HEADER: &str = "chrom\tstart\tend\tlocus\tagCN_filter\tagCN\tagCN_qual\tpsCN_filter\tpsCN\tpsCN_qual\thomologous_regions\n";
 
 pub fn put_parascopy(d: &Sample) {
-    d.put(SMN, format!("{SMN_HEADER}chr5\t70925378\t70934928\tSMN1\tPASS\t4\t80\tPASS\t2,2\t40,40\tchr5:70049961-70059504:+\nchr5\t70950920\t70953320\tSMN1\tPASS\t4\t60\tPASS\t2,2\t33,30\tchr5:70075496-70077900:+\n"));
+    d.put(SMN, format!("{SMN_HEADER}{SMN_ELSEWHERE}{SMN_EXON_7}"));
     d.put(HBA, "metric\tvalue\nstatus\tcalled\nalpha_globin_genes\t4\nestimate\t4.02\nhba2_depth\t30.1\nhba1_depth\t30.2\nflank_left_depth\t30.0\nflank_right_depth\t30.0\nmessage\tfour alpha-globin genes (aa/aa): no deletion seen\n");
-    d.put(MARKER, "metric\tvalue\nmarker\tSMN1 g.27134T>G\nrsid\trs143838139\nstatus\tpresent\nalt_reads\t5\ndepth\t40\nfraction\t0.1250\ncopies\t0.5\nsmn1_pscn\t2 (quality 33, filter PASS)\nagcn\t4\nmessage\tThis marker does not prove 2+0, and its absence does not rule 2+0 out.\n");
+    d.put(MARKER, "metric\tvalue\nmarker\tSMN1 g.27134T>G\nrsid\trs143838139\nstatus\tpresent\nalt_reads\t5\ndepth\t40\nfraction\t0.1250\ncopies\t0.5\nsmn1_pscn\t2 (quality 33, filter PASS)\nagcn\t4\nmessage\tSMN1 g.27134T>G (rs143838139): present, 5 of 40 reads carry G at the SMN1 and SMN2 copies of the site together (about 0.5 of the 4 SMN1 and SMN2 copies). The reads cannot tell whether a G sits on SMN1 or SMN2. With two SMN1 copies, this marker goes with a higher chance that both sit on one chromosome (2+0, a silent carrier): in Luo 2014 it raised the residual carrier risk of a two-copy result (in African Americans from about 1 in 121 to 1 in 34); the figures depend on ancestry. This marker does not prove 2+0, and its absence does not rule 2+0 out.\n");
 }
 
 pub const CLINICAL_VCF: &str = "clinical/S_clinical.vcf.gz";
@@ -335,6 +356,9 @@ pub fn put_clinical_mane(d: &Sample, zero_floor: bool) {
         chr13\t200\tA\tAT\tHIGH\tBRCA2\tframeshift_variant\t.\t0/1\t0.0001\t0.0001\t.\trare\tMANE\tframeshift_variant\n");
 }
 
+pub const OPTITYPE: &str = "hla_optitype/S_optitype_result.tsv";
+pub const HLA_CONCORDANCE: &str = "hla_optitype/S_hla_concordance.tsv";
+
 pub fn put_hla_qc(d: &Sample, nextflow: bool) {
     let dir = if nextflow { "hla" } else { "hla_t1k" };
     d.put(
@@ -353,9 +377,10 @@ pub fn put_hla_qc(d: &Sample, nextflow: bool) {
             "# KIR not typed: T1K found too few reads at the KIR genes in this BAM\n",
         );
     } else {
-        d.put("hla_optitype/S_hla_concordance.tsv", "Gene\tT1K\tOptiType\tAgree\tNote\n\
-            HLA-A\t*01:01/*26:01\t*26:01/*01:01\tyes\t\n\
-            HLA-B\t*57:01/*08:01\t*58:01/*08:01\tno\tthe callers disagree at two fields\n\
+        d.put(OPTITYPE, "\tA1\tA2\tB1\tB2\tC1\tC2\tReads\tObjective\n0\tA*26:01\tA*01:01\tB*58:01\tB*08:01\tC*07:01\tC*07:02\t900\t880.1\n");
+        d.put(HLA_CONCORDANCE, "Gene\tT1K\tOptiType\tAgree\tNote\n\
+            HLA-A\t*01:01/*26:01\t*26:01/*01:01\tyes\t-\n\
+            HLA-B\t*57:01/*08:01\t*58:01/*08:01\tno\tthe callers disagree at two fields; step 36 does not pass it to PharmCAT\n\
             HLA-C\t*07:01/*07:02\t*07:01/*07:02\tnot compared\tT1K gives an allele quality 0 or below\n");
         d.put(
             "kir_t1k/S_kir_genotype.tsv",
@@ -374,6 +399,11 @@ pub fn put_pgx_evidence(d: &Sample, depth: &str) {
         GSTM1\t*0/*0\tno pypgx phenotype rule\tWholeDel2\tBAM\tcalled\tnone\tN/A\tN/A\tnone\tN/A\n\
         GSTT1\tN/A\tN/A\tN/A\tBAM\tnot callable on this reference\tN/A\tN/A\tN/A\tN/A\tN/A\n\
         CYP2C19\t*1/*2\tIntermediate Metabolizer\tN/A\tVCF\tcalled\t2/2 in the VCF\t12\tchr10:94781859 G>A GQ 12 AD 26,3\tPASS\tlow-confidence: check the reads\n");
+    d.put(
+        "cnvpytor/S_cnvs.txt",
+        "deletion\tchr4:68500001-68650000\t150000\t0.0300\t1.2e-30\t1e-20\t1\t1\t0.01\t0\t9\n\
+        deletion\tchr4:68660001-68700000\t40000\t0.5\t1e-5\t1\t1\t1\t0\t0\t9\n",
+    );
     d.put(DEPTH_CHECK, format!("metric\tvalue\nstatus\t{depth}\nmessage\tCYP2D6 depth check\ngene_depth_all\t18.53\ngene_mapq1_share\t0.91\ngene_mapq20_share\t0.84\nbody_depth_all\t30.10\nbody_mapq1_share\t0.99\nbody_mapq20_share\t0.97\n"));
 }
 
@@ -396,12 +426,13 @@ pub fn put_repeat_sizing(d: &Sample) {
     use std::fmt::Write;
 
     let spanning = "SPANNING/SPANNING";
+    let (c9_counts, c9_limits, c9_reads) = ("2/8", "2-2/8-8", "10/11");
     let genotype = "1/2";
     let mut rows = VCF.to_owned();
     for (locus, counts, source, limits, reads, status, normal, pathogenic) in [
         (
             "HTT",
-            (17, 30),
+            "17/30",
             spanning,
             "17-17/30-30",
             "12/9",
@@ -409,19 +440,13 @@ pub fn put_repeat_sizing(d: &Sample) {
             26,
             40,
         ),
+        ("FMR1", "30", "SPANNING", "30-30", "14", "normal", 44, 201),
         (
-            "C9ORF72",
-            (2, 8),
-            spanning,
-            "2-2/8-8",
-            "10/11",
-            "normal",
-            24,
-            30,
+            "C9ORF72", c9_counts, spanning, c9_limits, c9_reads, "normal", 24, 30,
         ),
         (
             "ATXN1",
-            (29, 31),
+            "29/31",
             spanning,
             "29-29/31-31",
             "8/7",
@@ -431,7 +456,7 @@ pub fn put_repeat_sizing(d: &Sample) {
         ),
         (
             "DMPK",
-            (5, 40),
+            "5/40",
             spanning,
             "5-5/40-40",
             "15/6",
@@ -441,7 +466,7 @@ pub fn put_repeat_sizing(d: &Sample) {
         ),
         (
             "LOCUS_FL",
-            (15, 60),
+            "15/60",
             "FLANKING/FLANKING",
             "0-119/4-507",
             "0/0",
@@ -451,7 +476,7 @@ pub fn put_repeat_sizing(d: &Sample) {
         ),
         (
             "LOCUS_SP",
-            (15, 60),
+            "15/60",
             spanning,
             "15-15/60-60",
             "5/5",
@@ -461,7 +486,7 @@ pub fn put_repeat_sizing(d: &Sample) {
         ),
         (
             "LOCUS_LOW",
-            (12, 18),
+            "12/18",
             spanning,
             "12-12/16-45",
             "6/1",
@@ -469,9 +494,10 @@ pub fn put_repeat_sizing(d: &Sample) {
             20,
             40,
         ),
+        ("LOCUS_NC", ".", ".", ".", ".", "normal", 20, 40),
         (
             "RFC1",
-            (100, 150),
+            "100/150",
             "INREPEAT/INREPEAT",
             "80-120/130-170",
             "0/0",
@@ -480,41 +506,418 @@ pub fn put_repeat_sizing(d: &Sample) {
             12,
         ),
     ] {
-        let (a, b) = counts;
         let no_reads = "0/0";
-        writeln!(rows, "chr1\t{}\t.\tC\t<STR50>\t.\tPASS\tEND=200;REPID={locus};VARID={locus};STR_STATUS={status};STR_NORMAL_MAX={normal};STR_PATHOLOGIC_MIN={pathogenic}\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t{genotype}:{source}:{a}/{b}:{limits}:{reads}:{no_reads}:{no_reads}:30.0", 100 + locus.len()).unwrap();
+        writeln!(rows, "chr1\t{}\t.\tC\t<STR50>\t.\tPASS\tEND=200;REPID={locus};VARID={locus};STR_STATUS={status};STR_NORMAL_MAX={normal};STR_PATHOLOGIC_MIN={pathogenic}\tGT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC\t{genotype}:{source}:{counts}:{limits}:{reads}:{no_reads}:{no_reads}:30.0", 100 + locus.len()).unwrap();
     }
     d.put(STR, &rows);
     d.old(STR);
     d.put(STRANGER, rows);
-    d.put("expansion_hunter/S_rfc1_motif.tsv", "locus\tchrom\tstart\tend\trepeat_reads\tdominant_motif\tdominant_class\tdominant_share\tmotif_shares\tverdict\tnote\nRFC1\tchr4\t39348425\t39348479\t24\tAAAAG\tbenign\t0.92\tAAAAG=0.92,AAAGG=0.08\tbenign_motif\tmotif AAAAG (benign) in 22 of 24 repeat reads (92%): the flag is not supported\n");
+    d.put(RFC1, "locus\tchrom\tstart\tend\trepeat_reads\tdominant_motif\tdominant_class\tdominant_share\tmotif_shares\tverdict\tnote\nRFC1\tchr4\t39348425\t39348479\t24\tAAAAG\tbenign\t0.92\tAAAAG=0.92,AAAGG=0.08\tbenign_motif\tmotif AAAAG (benign) in 22 of 24 repeat reads (92%): the flag is not supported\n");
 }
 
-pub fn put_extra_repeats(d: &Sample, five_t: bool) {
+pub fn put_stranger(d: &Sample) {
+    let format = "GT:REPCN";
+    let genotype = "0/1";
+    for (path, a, b) in [
+        (STR, "", ""),
+        (STRANGER, ";STR_STATUS=normal", ";STR_STATUS=full_mutation"),
+    ] {
+        d.put(path, format!("{VCF}chr4\t1000\t.\tC\t<STR20>\t.\tPASS\tEND=1;REPID=LOCUS_A;VARID=LOCUS_A{a}\t{format}\t{genotype}:7/20\n\
+            chr14\t2000\t.\tG\t<STR75>\t.\tPASS\tEND=1;REPID=LOCUS_B;VARID=LOCUS_B{b}\t{format}\t{genotype}:20/75\n\
+            chr9\t100\t.\tA\t<STR9>\t.\tPASS\tEND=1;REPID=NOTINCAT;VARID=NOTINCAT\t{format}\t{genotype}:5/9\n"));
+    }
+    d.old(STR);
+}
+
+#[derive(Default)]
+pub struct ExtraRepeats<'a> {
+    pub tg: &'a str,
+    pub t: &'a str,
+    pub ugt: &'a str,
+    pub r117h: Option<&'a str>,
+    pub pharmcat: Option<&'a str>,
+    pub run_status: Option<&'a str>,
+    pub side_epoch: Option<u64>,
+    pub stranger: bool,
+}
+
+pub fn put_extra_repeats(d: &Sample, input: ExtraRepeats<'_>) {
     use std::fmt::Write;
 
+    let format = "GT:REPCN";
     let genotype = "0/1";
     let mut rows = VCF.to_owned();
-    let (tg, t, ta) = if five_t {
-        ((11, 12), (7, 5), (7, 8))
-    } else {
-        ((11, 11), (7, 7), (7, 7))
-    };
-    for (chrom, pos, reference, end, locus, id, (a, b)) in [
-        ("chr7", 117548606, 'T', 117548628, "CFTR", "CFTR_TG", tg),
-        ("chr7", 117548628, 'T', 117548635, "CFTR", "CFTR_T", t),
-        ("chr2", 233760234, 'A', 233760248, "UGT1A1", "UGT1A1", ta),
+    for (chrom, pos, reference, end, locus, id, counts) in [
+        (
+            "chr7", 117548606, 'T', 117548628, "CFTR", "CFTR_TG", input.tg,
+        ),
+        ("chr7", 117548628, 'T', 117548635, "CFTR", "CFTR_T", input.t),
+        (
+            "chr2", 233760234, 'A', 233760248, "UGT1A1", "UGT1A1", input.ugt,
+        ),
     ] {
-        writeln!(rows, "{chrom}\t{pos}\t.\t{reference}\t<STR>\t.\tPASS\tEND={end};REPID={locus};VARID={id}\tGT:REPCN\t{genotype}:{a}/{b}").unwrap();
+        if !counts.is_empty() {
+            writeln!(rows, "{chrom}\t{pos}\t.\t{reference}\t<STR>\t.\tPASS\tEND={end};REPID={locus};VARID={id}\t{format}\t{genotype}:{counts}").unwrap();
+        }
     }
     d.put(STR, &rows);
-    d.old(STR);
-    d.put(STRANGER, rows);
-    d.put(STR_CATALOG, r#"[{"LocusId":"CFTR","NoThresholds":"the CFTR tract"},{"LocusId":"UGT1A1","NoThresholds":"the UGT1A1 repeat"}]"#);
-    d.put(
-        CPIC,
-        "Gene\tDiplotype\tPhenotype\tStatus\nUGT1A1\t*1/*28\tsome function\tnon-normal\n",
+    if input.stranger {
+        d.old(STR);
+        d.put(STRANGER, rows);
+        d.put(STR_CATALOG, r#"[{"LocusId":"CFTR","NoThresholds":"the CFTR tract"},{"LocusId":"UGT1A1","NoThresholds":"the UGT1A1 repeat"}]"#);
+    }
+    if let Some(call) = input.pharmcat {
+        d.put(
+            CPIC,
+            format!(
+                "Gene\tDiplotype\tPhenotype\tStatus\nUGT1A1\t{call}\tsome function\tnon-normal\n"
+            ),
+        );
+        if let Some(epoch) = input.side_epoch {
+            d.date(CPIC, epoch);
+        }
+    }
+    if let Some(call) = input.r117h {
+        d.put(TRAITS, format!("rsid\tgene\tchrom\tpos\ttrait\tgenotype\tstatus\treading\tancestry\tnote\tpmids\nrs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{call}\tcalled\tr\tno\tn\t32404922\n"));
+        if let Some(epoch) = input.side_epoch {
+            d.date(TRAITS, epoch);
+        }
+    }
+    if let Some(status) = input.run_status {
+        d.put(RUN, status);
+    }
+}
+
+pub fn extra_repeats_exa() -> ExtraRepeats<'static> {
+    ExtraRepeats {
+        tg: "11/12",
+        t: "7/5",
+        ugt: "7/8",
+        r117h: Some("G/G"),
+        pharmcat: Some("*1/*28"),
+        stranger: true,
+        ..ExtraRepeats::default()
+    }
+}
+
+pub fn extra_repeats_exb() -> ExtraRepeats<'static> {
+    ExtraRepeats {
+        tg: "11/11",
+        t: "7/7",
+        ugt: "7/7",
+        ..ExtraRepeats::default()
+    }
+}
+
+pub const VEP: &str = "vep/S_vep.vcf.gz";
+
+pub fn put_clinvar_quality(d: &Sample) -> String {
+    let vcf = VCF.replacen("#CHROM", "##PGP_CALL_FLOOR=GQ=30,DP=10\n#CHROM", 1);
+    let hits = format!(
+        "{vcf}chr1\t100\t.\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:12:6\n\
+        chr1\t40000\t.\tG\tA\t50\tPASS\tGENEINFO=GENEB:22;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\tGT:GQ:DP\t0/1:50:40\n\
+        chr2\t20000\t.\tCA\tC\t50\tPASS\tGENEINFO=GENEC:33;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:45:35\n\
+        chr2\t40000\t.\tA\tT\t50\tPASS\tGENEINFO=GENED:44;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t0/1\n"
     );
-    let reference_call = "G/G";
-    d.put("traits/S_traits.tsv", format!("rsid\tgene\tchrom\tpos\ttrait\tgenotype\tstatus\treading\tancestry\tnote\tpmids\nrs78655421\tCFTR\tchr7\t117530975\tCFTR R117H\t{reference_call}\tcalled\tr\tno\tn\t32404922\n"));
+    d.put(CLINVAR, &hits);
+    let path = VEP;
+
+    let info = "##INFO=<ID=CSQ,Number=.,Type=String,Description=\"Consequence annotations. Format: Allele|Consequence|IMPACT|SYMBOL|Existing_variation|gnomADe_AF|gnomADg_AF\">";
+    let chr1 = format!(
+        "{}{info}\n#CHROM{}",
+        VCF.split_once("#CHROM").unwrap().0,
+        VCF.split_once("#CHROM").unwrap().1
+    );
+    put_tabixed(
+        d,
+        path,
+        &[
+            &format!(
+                "{chr1}chr1\t100\t.\tC\tT\t50\tPASS\tCSQ=T|missense_variant|MODERATE|GENEA|rs123&COSV1|0.03|0.02,T|intron_variant|MODIFIER|GENEZ|rs123|.|.\tGT\t0/1\n\
+            chr1\t40000\t.\tG\tA,C\t50\tPASS\tCSQ=A|stop_gained|HIGH|GENEB|rs77&rs9|0.0002|,C|missense_variant|MODERATE|GENEB|rs555|0.9|\tGT\t0/1\n"
+            ),
+            "chr2\t50\t.\tT\tG\t50\tPASS\tCSQ=G|intron_variant|MODIFIER|GENEC||0.5|0.5\tGT\t0/1\n\
+            chr2\t20000\t.\tCA\tC\t50\tPASS\tCSQ=-|frameshift_variant|HIGH|GENEC|COSV9|0.0001|0.00005\tGT\t0/1\n",
+        ],
+    );
+    hits
+}
+
+fn put_tabixed(d: &Sample, path: &str, blocks: &[&str]) {
+    let mut bgzf = og_io::bgzf::Writer::new(Vec::new(), std::num::NonZeroUsize::MIN).unwrap();
+    for block in blocks {
+        bgzf.write_all(block.as_bytes()).unwrap();
+        bgzf.flush().unwrap();
+    }
+    let bytes = bgzf.finish().unwrap();
+    let index = og_io::tabix_write::build(bytes.as_slice()).unwrap();
+    d.put(path, bytes);
+    index
+        .write_tbi(&d.path(&format!("{path}.tbi")), false)
+        .unwrap();
+}
+
+pub const MITO_CALLS: &str = "mito/S_chrM_filtered.vcf.gz";
+pub const MITO_ANNOTATION: &str = "mito/S_chrM_annotated.tsv";
+const MITO_CLINVAR: &str = "clinvar/clinvar_chr.vcf.gz";
+const MITO_GNOMAD: &str = "gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz";
+
+pub fn put_mito_calls(d: &Sample) {
+    d.gzip(
+        MITO_CALLS,
+        &format!(
+            "{VCF}chrM\t73\t.\tA\tG\t.\tPASS\t.\tGT:AF\t1:0.99\n\
+        chrM\t302\t.\tAC\tACC,A\t.\tPASS\t.\tGT:AF\t0/1/2:0.4,0.1\n\
+        chrM\t3243\t.\tA\tG\t.\tPASS\t.\tGT:AF\t0/1:0.3\n\
+        chrM\t16189\t.\tT\tC\t.\tPASS\t.\tGT:AF\t0/1:0.3\n\
+        chrM\t9000\t.\tC\tT\t.\tpossible_numt\t.\tGT:AF\t0/1:0.2\n"
+        ),
+    );
+    d.old(MITO_CALLS);
+}
+
+pub fn put_mito_databases(d: &Sample) {
+    put_tabixed(
+        d,
+        MITO_CLINVAR,
+        &[
+            "##fileformat=VCFv4.1\n##fileDate=2026-10-05\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+        chr1\t100\t1\tC\tT\t.\t.\tCLNSIG=Benign\n",
+            "chrM\t73\t9\tA\tG\t.\t.\tCLNSIG=not_provided;CLNREVSTAT=no_classification_provided;CLNDN=not_provided\n\
+        chrM\t302\t8\tA\tAC\t.\t.\tCLNSIG=Benign;CLNREVSTAT=criteria_provided,_single_submitter;CLNDN=not_provided\n\
+        chrM\t3243\t7\tA\tG\t.\t.\tCLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel;CLNDN=MELAS\n\
+        chrM\t16189\t6\tT\tA\t.\t.\tCLNSIG=Uncertain_significance;CLNREVSTAT=criteria_provided,_single_submitter;CLNDN=not_provided\n",
+        ],
+    );
+    d.gzip(
+        MITO_GNOMAD,
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+        chrM\t302\t.\tA\tAC\t.\tPASS\tAN=56434;AF_hom=0.01;AF_het=0.2;max_hl=0.99\n\
+        chrM\t3243\t.\tA\tG\t.\tPASS\tAN=56434;AF_hom=0.00002;AF_het=0.0003;max_hl=0.9\n",
+    );
+}
+
+pub fn annotate_mito(d: &Sample, databases_present: bool) {
+    let (clinvar, gnomad) = if databases_present {
+        (MITO_CLINVAR, MITO_GNOMAD)
+    } else {
+        ("none.vcf.gz", "none.bgz")
+    };
+    let mut args = Vec::new();
+    for (flag, path) in [
+        ("--vcf", MITO_CALLS),
+        ("--clinvar", clinvar),
+        ("--gnomad", gnomad),
+        ("--out", MITO_ANNOTATION),
+    ] {
+        args.extend([flag.to_owned(), d.path(path).display().to_string()]);
+    }
+    let mut err = Vec::new();
+    assert_eq!(
+        og_summary::mito::cli(Some("annotate"), &args, &mut Vec::new(), &mut err),
+        0,
+        "{}",
+        String::from_utf8_lossy(&err)
+    );
+}
+
+pub const DOSAGE: &str = "paralogs/S_cn_dosage.tsv";
+pub const DOSAGE_HEADER: &str = "locus\tstatus\tcopies\testimate\treason\treading\n";
+pub const INTERVALS: &str = "paralogs/S_cn_intervals.tsv";
+pub const IV_COLS: &str =
+    "locus\tname\tchrom\tstart\tend\tstatus\tcopies\texpected\tchange\testimate\treason\n";
+pub const CYP21A2: &str = "paralogs/S_cyp21a2_psv.tsv";
+pub const GBA: &str = "paralogs/S_gba1_copy_number.tsv";
+pub const C4: &str = "paralogs/S_c4_copy_number.tsv";
+pub const PARAPHASE_CN: &str = "paralogs/S_paraphase_copy_number.tsv";
+pub const PARAPHASE_HEADER: &str =
+    "region\tgene\tcopy_number\tstatus\tdetail\ttotal_cn\tregion_depth\tgenome_depth\n";
+pub const HBA1: &str = "hba\tHBA1\t2\tcalled\t.\t4\t90\t31\n";
+pub const HBA2: &str = "hba\tHBA2\t2\tcalled\t.\t4\t90\t31\n";
+pub const HBA_DEPTH_3: &str = "metric\tvalue\nstatus\tcalled\nalpha_globin_genes\t3\nestimate\t3.01\nhba2_depth\t15.0\nhba1_depth\t30.1\nflank_left_depth\t30.0\nflank_right_depth\t30.0\nmessage\tthree alpha-globin genes: one gene lost on one chromosome (-a/aa, as -a3.7 or -a4.2), a silent carrier\n";
+pub const HBA_LOW: &str = "metric\tvalue\nstatus\tnot assessed\nalpha_globin_genes\t.\nmessage\tnot assessed: flank depth under 8x (2.0x and 2.1x), too low to compare\n";
+pub const SMN_ELSEWHERE: &str =
+    "chr5\t70925378\t70934928\tSMN1\tPASS\t4\t80\tPASS\t2,2\t40,40\tchr5:70049961-70059504:+\n";
+pub const SMN_EXON_7: &str =
+    "chr5\t70950920\t70953320\tSMN1\tPASS\t4\t60\tPASS\t2,2\t33,30\tchr5:70075496-70077900:+\n";
+pub const SMN_CARRIER: &str =
+    "chr5\t70075495\t70077900\tSMN1\tPASS\t3\t50\tPASS\t2,1\t25,28\tchr5:70950921-70953320:+\n";
+pub const CYP_DELETION: &str = "metric\tvalue\nstatus\tcalled\ncyp21a2_copies\t1\nmodule_total\t3\nexpected_total\t4\nestimate\t3.02\nfinding\tdeletion\nconversion_sites\t.\ntarget_depth\t45.30\ncontrol_depth\t30.10\nreason\t.\nreading\tone RCCX module fewer and one CYP21A2 copy fewer at the differing sites: the pattern of the 30 kb CYP21A1P/CYP21A2 chimeric deletion\n";
+pub const INTERVAL_UNCHANGED: &str =
+    "CFTR_dele2_3\tCFTRdele2,3\tchr7\t117479000\t117481000\tcalled\t2\t2\tno change\t1.97\t.\n";
+
+pub fn put_parascopy_catalog(d: &Sample) {
+    d.put(GBA, format!("{SMN_HEADER}chr1\t155231478\t155238000\tGBA\tPASS\t4\t45\tPASS\t2,2\t30,30\tchr1:155210851-155215050:-\n\
+        chr1\t155238000\t155244699\tGBA\tPASS\t4\t38\tLowQual\t?,?\t5,5\t*\n"));
+    d.put(
+        C4,
+        format!(
+            "{SMN_HEADER}chr6\t31980531\t31990000\tC4A\tPASS\t5\t40\t.\t.\t.\t*\n\
+        chr6\t31990000\t32006219\tC4A\tLowQual\t4\t12\t.\t.\t.\t*\n"
+        ),
+    );
+    d.put("paralogs/S_amy1_copy_number.tsv", format!("{SMN_HEADER}chr1\t103745406\t103761087\tAMY1C\tnot assessed: no read over chr1:103745407-103761087\t.\t.\tnot assessed: no read over chr1:103745407-103761087\t.\t.\t.\n"));
+    d.put(
+        "paralogs/S_mine_copy_number.tsv",
+        format!("{SMN_HEADER}chr2\t10\t20\tX\tPASS\t2\t50\t.\t.\t.\t*\n"),
+    );
+    d.put(HBA, "metric\tvalue\nstatus\tcalled\nalpha_globin_genes\t4\nestimate\t4.02\nmessage\tfour alpha-globin genes (aa/aa): no deletion seen\n");
+}
+
+pub fn put_cn_tables(d: &Sample) {
+    d.put(CYP21A2, CYP_DELETION);
+    d.put(DOSAGE, format!("{DOSAGE_HEADER}HP\tcalled\t3\t3.04\t.\tthree copies of the duplicated HP exons: Hp2-1\n\
+        LCE3BC\tcalled\t1\t0.98\t.\tLCE3B and LCE3C deleted on one chromosome (LCE3C_LCE3B-del on one)\n\
+        CCL3L1\tnot assessed\t.\t.\tcheck_failed\tthe depth check failed; see the log of step 35\n"));
+    d.put(INTERVALS, format!("{IV_COLS}22q11.2_LCR_A-LCR_D\t22q11.2 recurrent (DGS/VCFS) region (proximal, A-D) (includes TBX1)\tchr22\t18924717\t21111383\tcalled\t1\t2\tdeletion\t1.02\t.\n\
+        {INTERVAL_UNCHANGED}AZFa\tAZFa\tchrY\t12904108\t13696000\tnot assessed\t.\t.\t.\t.\tno_y\n"));
+}
+
+pub fn put_dosage_only(d: &Sample) {
+    d.put(
+        DOSAGE,
+        format!("{DOSAGE_HEADER}HP\tcalled\t3\t3.04\t.\tthree copies\n"),
+    );
+}
+
+pub const COMBINED_UNPHASED: &str = "; unphased, so the parts may sit on different haplotypes";
+
+pub fn combined_hits(genotype: &str) -> String {
+    let base =
+        "GENEINFO=SYNTH1:1;CLNSIG=Likely_pathogenic;CLNREVSTAT=criteria_provided,_single_submitter";
+    let nearby = base.replace("SYNTH1", "SYNTH3");
+    let part = "PGP_PART_OF=chr22:30000038:GCCAT:CATGGG";
+    format!(
+        "{VCF}chr22\t30000037\t1\tAGC\tA\t50\tPASS\t{base};{part}\tGT\t{genotype}\n\
+        chr22\t30000038\t3\tGCCAT\tCATGGG\t.\tPASS\tPGP_JOINED_FROM=chr22:30000037:AGC:A|chr22:30000042:T:TGGG;GENEINFO=SYNTH1:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT\t{genotype}\n\
+        chr22\t30000042\t2\tT\tTGGG\t50\tPASS\t{base};{part}\tGT\t{genotype}\n\
+        chr22\t30000210\t4\tC\tT\t50\tPASS\tGENEINFO=SYNTH2:2;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t{genotype}\n\
+        chr22\t30000300\t5\tA\tG\t50\tPASS\t{nearby};PGP_ONE_ALLELE=chr22:30000305:C:T\tGT\t{genotype}\n\
+        chr22\t30000305\t6\tC\tT\t50\tPASS\t{nearby};PGP_ONE_ALLELE=chr22:30000300:A:G\tGT\t{genotype}\n"
+    )
+}
+
+pub const HLA_GENOTYPES: &str = "hla_t1k/S_hla_genotype.tsv";
+pub fn put_hla_allele_quality(d: &Sample) {
+    d.put(
+        HLA_GENOTYPES,
+        "HLA-A\t1\tA*01:01:01\t30\t60\t.\t0\t-1\n\
+        HLA-B\t2\tB*57:01:01\t10\t0\tB*08:01:01\t20\t40\n\
+        HLA-C\t2\tC*07:01:01\t5\t-1\tC*07:02:01\t5\t30\n",
+    );
+}
+
+pub fn put_unplaced_y(d: &Sample) {
+    d.put("y_haplogroup/S_y_haplogroup.txt", "Sample_name\tHg\tHg_marker\tTotal_reads\tValid_markers\tQC-score\tQC-1\tQC-2\tQC-3\nS_sorted\tNA\t\t100\t3\t0\t0\t0\t0\n");
+    d.put("y_haplogroup/S_y_tree.txt", "Sample_name\tHg\tLevel\tPath_derived\tPath_ancestral\tPath_no_call\tAncestral_in_terminal\tSNPs_called\tMin_depth\tTree\tPositions\tOutvoted_ancestral\nS\tNA\t0\t0\t0\t0\t.\t12\t10\tYFull YTree 14.06.0\tYleaf 4.1.6 tables\t.\n");
+    d.put(
+        "y_haplogroup/S_y_tree_path.tsv",
+        "Level\tBranch\tSNPs\tOn_tables\tDerived\tAncestral\tNo_call\tAncestral_SNPs\n",
+    );
+}
+
+pub fn put_masked_roh(d: &Sample) {
+    d.put(
+        ROH,
+        "RG\tS\tchrY\t2781480\t47781479\t45000000\t900\t50\n\
+         RG\tS\tchrEBV\t1\t6000000\t6000000\t90\t50\n\
+         RG\tS\tchr1\t125200001\t143200000\t18000000\t300\t50\n\
+         RG\tS\tchr9\t42300001\t49300000\t7000000\t200\t50\n\
+         RG\tS\tchr1\t120000001\t145000000\t25000000\t500\t50\n\
+         RG\tS\tchr2\t10000001\t17000000\t7000000\t900\t50\n",
+    );
+}
+
+pub const TELOMERE: &str = "telomere/S/S/S_summary.tsv";
+
+pub fn put_telomere(d: &Sample, count: u32) {
+    d.put(TELOMERE, format!("PID\tsample\ttotal_reads\tread_lengths\trepeat_threshold_set\trepeat_threshold_used\tintratel_reads\tgc_bins_for_correction\ttotal_reads_with_tel_gc\ttel_content\nS\ttumor\t620000000\t150\tn=7\t10\t{count}\t48-52\t150000000\t1.5\n"));
+}
+
+pub const ROH_DENOM: f64 = (2_875_001_522_u64 - 217_000_000) as f64;
+pub const ROH_UPD_LONG_BP: u64 = 101_991_189 - 20_500_000 + 8_000_000;
+pub const UPD_RUNS: &str = "RG\tS\tchr15\t1\t101991189\t101991189\t9000\t50\nRG\tS\tchr2\t10000001\t18000000\t8000000\t900\t50\n";
+pub const UPD_DISTAL: &str = "RG\tS\tchr15\t40000001\t101991189\t61991189\t9000\t50\nRG\tS\tchr2\t10000001\t18000000\t8000000\t900\t50\n";
+pub const UPD_OVER_HALF: &str = "RG\tS\tchr2\t10000001\t35100000\t25100000\t900\t50\nRG\tS\tchr3\t10000001\t34900000\t24900000\t900\t50\n";
+pub const SPREAD_LENGTH: u64 = ROH_UPD_LONG_BP / 12;
+
+pub fn put_roh_with_sites(d: &Sample, runs: &str) {
+    use std::fmt::Write;
+    let mut rows = String::new();
+    for chr in 1..=22 {
+        writeln!(rows, "ST\tS\tchr{chr}\t40000000\t0\t60").unwrap();
+    }
+    rows.push_str(runs);
+    d.put(ROH, rows);
+}
+
+pub fn put_roh_spread(d: &Sample) {
+    use std::fmt::Write;
+    let mut runs = String::new();
+    for chr in 1..=12 {
+        writeln!(
+            runs,
+            "RG\tS\tchr{chr}\t10000001\t{}\t{SPREAD_LENGTH}\t900\t50",
+            10_000_000 + SPREAD_LENGTH
+        )
+        .unwrap();
+    }
+    put_roh_with_sites(d, &runs);
+}
+
+pub fn put_cnv_calls(d: &Sample) {
+    d.put(
+        "cnvpytor/S_cnvs.txt",
+        "deletion\tchr2:10000001-10100000\t100000\t0.4\t1e-9\t1\t1\t1\t0.01\t0\t9\n\
+        deletion\tchr1:122000001-123000000\t1000000\t0.1\t1e-12\t1\t1\t1\t0.2\t0\t9\n\
+        duplication\tchr3:1000001-1200000\t200000\t1.8\t1e-6\t1\t1\t1\t0.8\t0\t9\n\
+        deletion\tchr5:1-100000\t100000\t0.0\t1e-20\t1\t1\t1\t0\t0.9\t0\n\
+        deletion\tchrY:2800001-2900000\t100000\t0.0\t1e-15\t1\t1\t1\t0.05\t0\t9\n\
+        deletion\tchr4:1000001-1050000\t50000\t0.6\t0.2\t1\t1\t1\t0\t0\t9\n",
+    );
+}
+
+pub const KARYOTYPES: [(f64, f64, Option<&str>); 12] = [
+    (2.04, 0.97, Some("47,XXY")),
+    (0.98, 1.95, Some("47,XYY")),
+    (2.9, 0.02, Some("47,XXX")),
+    (1.03, 0.05, Some("45,X")),
+    (2.02, 1.97, Some("48,XXYY")),
+    (1.98, 0.03, None),
+    (1.01, 0.99, None),
+    (1.5, 0.0, None),
+    (1.98, 3.91, None),
+    (1.95, 100000.0, None),
+    (6.0, 0.0, None),
+    (1.0, 3.0, None),
+];
+
+pub fn put_karyotype(d: &Sample, x: f64, y: f64) {
+    let sex = if y > 0.5 { 1 } else { 2 };
+    d.put("indexcov/indexcov-indexcov.ped", format!("#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\tCNchrX\tCNchrY\nS\tS\t-9\t-9\t{sex}\t-9\t{x}\t{y}\n"));
+    put_somalier_ratios(d, "400", x / 2.0, y / 2.0);
+}
+
+pub fn put_somalier_ratios(d: &Sample, sites: &str, x: f64, y: f64) {
+    d.put(QC, format!("key\tvalue\nsample\tS\ninferred_sex\tunknown\nx_sites\t{sites}\nx_depth_ratio\t{x:.2}\ny_depth_ratio\t{y:.2}\n"));
+}
+
+pub fn put_acmg_secondary_findings(d: &Sample) {
+    d.put(CLINVAR, format!("{VCF}chr13\t32340300\t1\tG\tA\t50\tPASS\tGENEINFO=BRCA2:675;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\tGT\t0/1\n\
+        chr1\t10\t2\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t0/1\n"));
+    let header = VCF.replacen("#CHROM", "##INFO=<ID=CSQ,Number=.,Type=String,Description=\"Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL\">\n#CHROM", 1);
+    d.gzip(CLINICAL_VCF, &format!("{header}chr2\t178500000\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|TTN,T|intron_variant|MODIFIER|TTN-AS1\tGT\t0/1\n\
+        chr3\t100\t.\tA\tG\t50\tPASS\tCSQ=G|frameshift_variant|HIGH|GENEX\tGT\t1/1\n\
+        chr14\t23400000\t.\tG\tA\t50\tPASS\tCSQ=A|missense_variant|MODERATE|MYH7\tGT\t0/1\n"));
+}
+
+pub const BLOODTYPE: &str = "bloodtype/S_bloodtype.tsv";
+pub fn put_blood_groups(d: &Sample) {
+    d.put(
+        BLOODTYPE,
+        "system\tphenotype\tgenotype\tconfidence\tnote\n\
+        ABO\tA1\tA1/O.01\thigh\t\n\
+        RhD\tD-\tRHD deleted/RHD deleted (RHD copies by read depth 0.02)\thigh\t\n\
+        Kell\tK-k+ Kp(a-b+) Js(a-b+)\tk/k Kpb/Kpb Jsb/Jsb\tmedium\tx\n",
+    );
 }
