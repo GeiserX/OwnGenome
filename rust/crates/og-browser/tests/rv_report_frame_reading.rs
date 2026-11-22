@@ -1,14 +1,20 @@
 //! The HTML report of the demo people DEMO-001, DEMO-002 and DEMO-003 in a
 //! headless Chrome, dark colour scheme, as a reader on a phone or a keyboard
 //! meets it. The reports are written by og itself: `og dev demo-sample`, then
-//! `og report render` on the sample folder, as step 24 runs it.
+//! `og report render` on the sample folder, as step 24 runs it. Each sample
+//! folder gets a `run_manifest.tsv` with a 40-character pipeline commit, as
+//! a real run writes one, so the header shows the commit.
 //!
 //! - At 320, 390 and 720 px wide the page is no wider than the screen
 //!   (`document.scrollingElement.scrollWidth`), and no card is wider than the
 //!   screen; the CPIC (#cpic) and raw-data export (#consumer-export) cards
 //!   are there. On main the page was 1195 px at 320 and 390 px, 1171 px at
 //!   720 px (1197 and 1173 px on DEMO-003): unbroken paths and wide tables.
-//! - Every table sits in its own scroll region (`.tscroll`).
+//!   The same holds at 320 px for DEMO-001's folder rendered under a sample
+//!   name of 57 characters with no place to break: the header, outside every
+//!   card, held the commit and the name at their full width.
+//! - Every table sits in its own scroll region (`.tscroll`), and no two
+//!   regions share a name (a card with several tables names each one).
 //! - On a phone the contents are folded: the page opens on the results. At
 //!   1440 px they show beside the results, with no summary line to open.
 //! - The first Tab reaches "Skip to results"; Enter on it moves the focus to
@@ -33,6 +39,11 @@ const PEOPLE: [(&str, &[&str]); 3] = [
     ("DEMO-002", &["--sex", "female", "--seed", "2"]),
     ("DEMO-003", &["--seed", "3"]),
 ];
+/// A sample name with no place for a line to break, for DEMO-001's folder.
+const LONG_SAMPLE: &str = "DEMO_0001_A_SAMPLE_NAME_WITH_NO_PLACE_TO_BREAK_0123456789";
+/// `run_manifest.tsv` rows with a full 40-character pipeline commit.
+const MANIFEST: &str =
+    "run\twritten_by\trun-all.sh\nrun\tgit_commit\t0123456789abcdef0123456789abcdef01234567\n";
 const WIDTHS: [u32; 3] = [320, 390, 720];
 const HEIGHT: u32 = 844;
 const DESKTOP: u32 = 1440;
@@ -69,7 +80,27 @@ fn og(bin: &Path, args: &[&str]) {
     );
 }
 
-/// Writes each demo person into `root` and renders `root/<sample>/report.html`.
+fn render(bin: &Path, sample: &str, dir: &Path, out: &Path, assets: &Path) {
+    og(
+        bin,
+        &[
+            "report",
+            "render",
+            "--sample",
+            sample,
+            "--sample-dir",
+            dir.to_str().unwrap(),
+            "--assets",
+            assets.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+        ],
+    );
+}
+
+/// Writes each demo person into `root` with a run manifest and renders
+/// `root/<sample>/report.html`; then DEMO-001's folder under [`LONG_SAMPLE`]
+/// into `root/long/report.html`.
 fn demo_reports(bin: &Path, root: &Path) {
     let repo = repo_root();
     let (r, repo, assets) = (
@@ -93,20 +124,29 @@ fn demo_reports(bin: &Path, root: &Path) {
         args.extend(extra);
         og(bin, &args);
         let d = root.join(sample);
-        og(
-            bin,
-            &[
-                "report",
-                "render",
-                "--sample",
-                sample,
-                "--sample-dir",
-                d.to_str().unwrap(),
-                "--assets",
-                assets.to_str().unwrap(),
-                "-o",
-                d.join("report.html").to_str().unwrap(),
-            ],
+        fs::write(d.join("run_manifest.tsv"), MANIFEST).unwrap();
+        render(bin, sample, &d, &d.join("report.html"), &assets);
+    }
+    let long = root.join("long");
+    fs::create_dir_all(&long).unwrap();
+    render(
+        bin,
+        LONG_SAMPLE,
+        &root.join(PEOPLE[0].0),
+        &long.join("report.html"),
+        &assets,
+    );
+    for page in PEOPLE
+        .iter()
+        .map(|(s, _)| root.join(s))
+        .chain([long])
+        .map(|d| d.join("report.html"))
+    {
+        let html = fs::read_to_string(&page).unwrap();
+        assert!(
+            html.contains("Pipeline commit: 0123456789abcdef0123456789abcdef01234567"),
+            "{}: the header has no 40-character commit",
+            page.display()
         );
     }
 }
@@ -167,8 +207,11 @@ fn num(v: &Value) -> f64 {
 
 /// What the page measures: its scroll width, the cards wider than the
 /// screen, whether #cpic and #consumer-export are there, the tables outside
-/// a scroll region, whether the contents are open and shown.
+/// a scroll region, the region names given to more than one region, whether
+/// the contents are open and shown.
 const MEASURE: &str = "(function(){var vw=document.documentElement.clientWidth;\
+     var seen={},dups=[];[].slice.call(document.querySelectorAll('[role=region]')).forEach(function(r){\
+       var n=r.getAttribute('aria-label');if(seen[n]&&dups.indexOf(n)<0)dups.push(n);seen[n]=1;});\
      var wide=[].slice.call(document.querySelectorAll('.card')).filter(function(c){\
        var r=c.getBoundingClientRect();return r.width>vw+0.5||r.right>vw+0.5;})\
        .map(function(c){var s=c.closest('section');return (s&&s.id||'?')+':'+Math.round(c.getBoundingClientRect().width);});\
@@ -179,7 +222,7 @@ const MEASURE: &str = "(function(){var vw=document.documentElement.clientWidth;\
      var sum=fold&&fold.querySelector('summary');\
      return JSON.stringify({scroll:document.scrollingElement.scrollWidth,vw:vw,wide:wide,\
        cpic:!!document.getElementById('cpic'),consumer:!!document.getElementById('consumer-export'),\
-       tables:document.querySelectorAll('table').length,bare:bare,fold:!!fold,open:!!(fold&&fold.open),\
+       tables:document.querySelectorAll('table').length,bare:bare,dups:dups,fold:!!fold,open:!!(fold&&fold.open),\
        contents:!!(link&&link.checkVisibility()),summary:!!(sum&&sum.checkVisibility())});})()";
 
 /// Presses one key in the page.
@@ -283,6 +326,12 @@ fn the_demo_reports_fit_a_phone_and_skip_to_the_results() {
                     num(get(&m, "bare"))
                 ));
             }
+            if !matches!(get(&m, "dups"), Value::Array(a) if a.is_empty()) {
+                problems.push(format!(
+                    "{at}: scroll regions that share a name: {:?}",
+                    get(&m, "dups")
+                ));
+            }
             if !matches!(
                 (
                     get(&m, "fold"),
@@ -361,6 +410,19 @@ fn the_demo_reports_fit_a_phone_and_skip_to_the_results() {
         if !errors.is_empty() {
             problems.push(format!("{sample}: page errors: {errors:?}"));
         }
+    }
+    // The header sits outside every card: a long sample name and the
+    // 40-character commit must wrap there too.
+    let width = WIDTHS[0];
+    view(&mut b, width, HEIGHT);
+    open(&mut b, &srv.url(&format!("/long/report.html?w={width}")));
+    let m = probe(&mut b, MEASURE);
+    if num(get(&m, "scroll")) > f64::from(width)
+        || !matches!(get(&m, "wide"), Value::Array(a) if a.is_empty())
+    {
+        problems.push(format!(
+            "{LONG_SAMPLE} at {width} px: the page is wider than the screen: {m:?}"
+        ));
     }
     drop(b);
     drop(srv);

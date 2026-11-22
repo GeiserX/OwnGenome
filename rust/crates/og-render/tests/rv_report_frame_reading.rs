@@ -7,8 +7,8 @@
 //! - the first element of the HTML report a keyboard reaches is the link
 //!   "Skip to results" to `<main id="main" tabindex="-1">`, before the contents;
 //! - the contents sit in a closed details element, and every table sits in a
-//!   labelled scroll region (`.tscroll`), with the CSS that keeps a card and
-//!   its table cells inside a phone's width.
+//!   labelled scroll region (`.tscroll`), no two named alike, with the CSS
+//!   that wraps long words in `main` and keeps a card inside a phone's width.
 //!
 //! The demo summaries are written by `og dev demo-sample` and `og summary
 //! collect`, then rendered here by this crate. That needs the og binary: the
@@ -192,12 +192,21 @@ fn html_problems(page: &str, what: &str) -> Vec<String> {
     }
 
     let tables = page.matches("<table").count();
+    let mut names: Vec<&str> = Vec::new();
     for (i, _) in page.match_indices("<table") {
         let before = &page[..i];
         let label = before
             .rfind(REGION)
             .map(|r| &before[r + REGION.len()..])
             .and_then(|l| l.strip_suffix("\" tabindex=\"0\">"));
+        if let Some(l) = label {
+            // A screen reader lists the regions by name: two alike are one
+            // to a listener (a card with several tables names each).
+            if names.contains(&l) {
+                out.push(format!("{what}: two scroll regions are named {l:?}"));
+            }
+            names.push(l);
+        }
         if !label.is_some_and(|l| !l.is_empty() && !l.contains('"')) {
             let from = before.len().saturating_sub(120);
             out.push(format!(
@@ -213,8 +222,8 @@ fn html_problems(page: &str, what: &str) -> Vec<String> {
     }
     for rule in [
         ".tscroll { overflow-x: auto; max-width: 100%; }",
-        "td { overflow-wrap: anywhere; }",
-        ".sec, .card { min-width: 0; overflow-wrap: anywhere; }",
+        "main { overflow-wrap: anywhere; }",
+        ".sec, .card { min-width: 0; }",
         ".skip:focus { top: 8px; }",
         "@media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }",
     ] {
@@ -265,7 +274,12 @@ fn the_detectors_fail_on_the_old_frame() {
         ),
         mangle(REGION, "<div class=\"x\" aria-label=\""),
         mangle("</table></div>", "</table>"),
-        mangle("td { overflow-wrap: anywhere; }", ""),
+        mangle("main { overflow-wrap: anywhere; }", ""),
+        // A second region named like the first.
+        mangle(
+            "</table></div>",
+            "</table></div>\n<div class=\"tscroll\" role=\"region\" aria-label=\"Run manifest\" tabindex=\"0\"><table></table></div>",
+        ),
         // A link before the skip link is reached first.
         mangle("<body>\n", "<body>\n<a href=\"#x\">x</a>\n"),
     ];
