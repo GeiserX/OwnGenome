@@ -133,10 +133,12 @@ One exception, once: Nextflow 26.04 hashes a map input by its keys and values wh
 | `bam`, `bam_index` | One of three* | Aligned BAM and its index (`.bam.bai`): called when the row has no VCF |
 | `cram`, `crai` | Instead of a BAM | Aligned CRAM and its index, read with `--reference` (the FASTA it was written with). `CRAM_TO_BAM` writes it out as a BAM in the work directory, checked against it, and the row goes on as a BAM row |
 | `vcf`, `vcf_index` | One of three* | Bgzipped VCF (`.vcf.gz`) and its tabix index from any caller; a BAM on the same row is optional |
-| `gvcf`, `gvcf_index` | No | The gVCF of the row's VCF (step 03 writes one) and its index. PharmCAT and PRS read it as they read the gVCF DEEPVARIANT writes; the row is not called again. Needs `vcf` on the row; `run-all.sh` fills it from `vcf/<sample>.g.vcf.gz` |
+| `gvcf`, `gvcf_index` | No | The gVCF of the row's VCF (step 03 writes one) and its index. PharmCAT and PRS read it as they read the gVCF DEEPVARIANT writes; the row is not called again. Requires `vcf` on the row. The launcher adds these columns only for a BAM+VCF row when `vcf/<sample>.g.vcf.gz` and its `.tbi` exist. |
 | `sex` | On called rows** | `male` or `female` |
 
 \* A row starts from FASTQ, or from a BAM or CRAM, or from a VCF (with or without a BAM or CRAM); a row with FASTQ and a BAM, CRAM or VCF stops the run. A VCF-only row is valid for annotation and PGx, but most default tools (mosdepth, telomere_hunter, mito_variants) and opt-in tools (expansion_hunter, hla_typing, pypgx, cyrius, parascopy) need a BAM. **Provide reads or a BAM for full analysis.** A row the pipeline calls gets a VCF and a gVCF, and a VCF row can give its gVCF in the `gvcf` column; PharmCAT and PRS then read the sites where the sample matches the reference from the gVCF.
+
+With `INPUT=vcf`, `run-all.sh` writes a VCF-only row and leaves both gVCF columns out. With `INPUT=bam`, it writes a BAM-only row, so DeepVariant produces the VCF and gVCF. When you write your own samplesheet, a VCF row can include its indexed gVCF even when the row has no BAM.
 
 The VCF must name its contigs the GRCh38 way with chr (`chr1` to `chr22`, `chrX`, `chrY`, `chrM`); a VCF named `1`, `MT` stops the run with the rename command. A gVCF given in the `vcf` column stops the run with `pharmcat` selected: the pipeline expands the reference blocks of the gVCF DeepVariant writes for a called row, or of the one in the `gvcf` column, not of a gVCF given as the VCF, and a variants-only VCF leaves about half of PharmCAT's genes Unknown. [Starting from a Vendor VCF](vcf-first.md) has the commands for both.
 

@@ -404,6 +404,7 @@ tool	chip	49	-	-	-	experimental	-	-
 tool	mei	50	-	-	-	experimental	-	-
 tool	mocha	51	-	-	-	experimental	-	-
 switch	GENOME_DIR	-	-	-	-	stable	-	-
+switch	INPUT	-	-	-	-	stable	-	-
 switch	SKIP_VALIDATION	-	-	-	-	stable	-	-
 switch	THREADS	-	-	-	-	stable	-	-
 switch	SKIP_TRIM	-	-	-	-	stable	-	-

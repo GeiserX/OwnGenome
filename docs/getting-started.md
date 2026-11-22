@@ -277,20 +277,24 @@ Do not pass `-bg` to `run-all.sh`: Nextflow would return at once and `run-all.sh
 
 Without Java or Nextflow, `run-all.sh` stops with exit 2 and prints the install line; the [paths below](#path-a-i-have-fastq-files-raw-reads) run the steps one by one instead. `./scripts/run-all.sh --help` prints the switches.
 
-**Input.** `run-all.sh` uses the first of these that exists under `${GENOME_DIR}/<sample>/`, with its index:
+**Input.** By default (`INPUT=auto`), `run-all.sh` uses the first available input under `${GENOME_DIR}/<sample>/`:
 
-1. `aligned/<sample>_sorted.bam`, with `vcf/<sample>.vcf.gz` when there is one (that VCF is then not called again);
-2. `fastq/<sample>_R1.fastq.gz` and `_R2.fastq.gz`;
-3. `vcf/<sample>.vcf.gz` alone.
+1. `aligned/<sample>_sorted.bam` with its `.bai` and `vcf/<sample>.vcf.gz` with its `.tbi`.
+2. The indexed BAM alone.
+3. `fastq/<sample>_R1.fastq.gz` and `fastq/<sample>_R2.fastq.gz`.
+4. The indexed VCF alone.
 
-It writes the choice to `<sample>/nextflow/samplesheet.csv` and uses that file again on the next run while every file it names exists, its BAM is the one this call names (`ALIGN_DIR` below), and either no input higher in the list above has appeared or the run that wrote it did not end. So a rerun from the same input, or of a run that stopped or failed, finds its tasks in the cache. A run ended when `process_status.tsv` beside the samplesheet shows no failed, ignored or unfinished task. A run from FASTQ that ended has published `aligned/<sample>_sorted.bam` and `vcf/<sample>.vcf.gz`, so the run after it starts from those (with the gVCF beside the VCF) and neither aligns nor calls again, even when the cache no longer holds those tasks. Its steps after the calling run once more, because to Nextflow the published BAM and VCF are new inputs; the run after that finds them in the cache. Delete the samplesheet to choose again.
+In auto mode, `run-all.sh` reuses `<sample>/nextflow/samplesheet.csv` while its inputs still exist, its BAM matches `ALIGN_DIR`, and either no higher-ranked input is available or the previous run is incomplete. A run is complete when `process_status.tsv` beside the samplesheet shows no failed, ignored, or unfinished tasks. After a completed FASTQ run, auto mode uses the BAM and VCF it published. Downstream tasks run once with the published files as inputs, and later runs can reuse those tasks from the cache.
 
-When the run starts from an existing VCF, the pipeline does not read a gVCF beside it: `vcf/<sample>.g.vcf.gz` from an earlier `03-deepvariant.sh` run stays on disk but unused, so PharmCAT and PRS read only the VCF's variant sites. Run `./scripts/07-pharmacogenomics.sh <sample>` and `./scripts/25-prs.sh <sample> <male|female>` by hand to get the calls that read the gVCF. Give `25-prs.sh` the sex: without it, a score's chrX rows are left out and its sum covers the autosomes only ([chrX and the sex](25-prs.md#chrx-and-the-sex)). When the sample also has its indexed BAM, deleting the VCF and its index is the other way: the BAM is called again, with a gVCF the pipeline reads. With the VCF alone (no BAM, no FASTQ) that would leave no input; such a run lists the steps that read a BAM as `skipped (no BAM)`.
+To align new reads when there is already a BAM, set `INPUT=fastq`. To call again from the indexed BAM when there is already a VCF, set `INPUT=bam`. To use the indexed VCF alone, set `INPUT=vcf`. An explicit input skips the previous samplesheet and exits with status 2 if a required file is missing. Nextflow still uses `-resume` to reuse tasks with the same inputs. Both `INPUT=bam` and `INPUT=fastq` overwrite `vcf/<sample>.vcf.gz` and `vcf/<sample>.g.vcf.gz`. `INPUT=fastq` also overwrites `aligned/<sample>_sorted.bam`. Move any file you want to keep before you start.
+
+The launcher adds `vcf/<sample>.g.vcf.gz` to the samplesheet only when the row contains both the BAM and VCF and the gVCF has its `.tbi`. That indexed gVCF gives PharmCAT and PRS the reference sites. A VCF-only row, including `INPUT=vcf`, gives these tools the VCF's variant sites and skips steps that require a BAM. With `INPUT=bam`, DeepVariant calls the BAM and supplies a new VCF and gVCF to the pipeline.
 
 **Switches.** Environment variables, set before the command:
 
 | Switch | What it does | Nextflow parameter |
 |---|---|---|
+| `INPUT=auto`, `fastq`, `bam`, or `vcf` | auto picks the input. Use fastq to align and call, bam to call from the indexed BAM, or vcf to use the indexed VCF alone. | the samplesheet |
 | `SKIP_VALIDATION=true` | does not run `validate-setup.sh` first | |
 | `THREADS=N` | at most N CPUs per task (default: the machine's CPU count) | `--max_cpus N` |
 | `SKIP_TRIM=true` | aligns the raw reads, without fastp | `--skip_trim true` |

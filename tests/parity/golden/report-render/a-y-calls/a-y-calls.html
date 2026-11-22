@@ -100,10 +100,32 @@
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
   }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to results</a>
 <div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
 <nav class="toc" aria-label="Contents">
   <h2 class="toc-title">Contents</h2>
   <ol>
@@ -179,9 +201,11 @@
     <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
-<main>
+</details>
+<main id="main" tabindex="-1">
 <header class="header">
   <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
   <div class="meta">
     Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC
   </div>
@@ -256,12 +280,12 @@
     <p class="sec-meta">Step 48 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#exomiser">link to this section</a></p>
     <p class="caveat">A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md).</p>
     <div class="stat"><span class="label">Symptoms searched</span><span class="value">Seizure (HP:0001250), HP:0000001</span></div>
-    <table>
+    <div class="tscroll" role="region" aria-label="Symptom-Driven Ranking (Exomiser)" tabindex="0"><table>
       <tr><th>Rank</th><th>Gene</th><th>Inheritance</th><th>Score</th><th>Symptom match</th><th>Variant</th><th>ACMG (Exomiser)</th><th>Linked disease</th><th>Viewer</th></tr>
       <tr><td>1</td><td>GENE1</td><td>AD</td><td>0.9</td><td>0.8</td><td>chr1-1-A-G 0/1<br><span style="font-size:12px;color:#666">missense p.X</span></td><td>LP</td><td>D1</td><td></td></tr>
       <tr><td></td><td></td><td></td><td></td><td></td><td>chr1-2-A-G 0/1<br><span style="font-size:12px;color:#666">stop p.Y</span></td><td>P</td><td>D1</td><td></td></tr>
       <tr><td>2</td><td>GENE2</td><td>AR</td><td>0.5</td><td>0.4</td><td>chr2-1-A-G 1/1<br><span style="font-size:12px;color:#666">splice c.1</span></td><td>VUS</td><td>D2</td><td></td></tr>
-    </table>
+    </table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
     <p class="note">Exomiser&#x27;s own report: exomiser/S_exomiser.html</p>
   </div>
@@ -286,9 +310,9 @@
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
     <p class="note">Class 4-5 SVs: 3 (single caller: 0, not known: 3; deletions on exon edges: 1; common: 1)</p>
     <p class="note">Moved to class 3 by step 05&#x27;s rules, not counted above: 1</p>
-    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:1100-5100</td><td>5</td><td>GENE1, GENE2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#1:1100-5100" target="_blank" rel="noopener noreferrer">1:1100-5100</a></td></tr><tr><td>DUP 2:150-880</td><td>4</td><td>GENE3</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#2:150-880" target="_blank" rel="noopener noreferrer">2:150-880</a></td></tr><tr><td>DEL 9:1-100</td><td>4</td><td>G9</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#9:1-100" target="_blank" rel="noopener noreferrer">9:1-100</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV), table 1" tabindex="0"><table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:1100-5100</td><td>5</td><td>GENE1, GENE2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#1:1100-5100" target="_blank" rel="noopener noreferrer">1:1100-5100</a></td></tr><tr><td>DUP 2:150-880</td><td>4</td><td>GENE3</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#2:150-880" target="_blank" rel="noopener noreferrer">2:150-880</a></td></tr><tr><td>DEL 9:1-100</td><td>4</td><td>G9</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#9:1-100" target="_blank" rel="noopener noreferrer">9:1-100</a></td></tr></table></div>
     <h3>Moved to class 3 by step 05's rules</h3>
-    <table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>INV 7:1-100</td><td>4</td><td>3</td><td>no gene</td><td>mhc</td><td>the MHC</td><td><a class="locus" href="http://127.0.0.1:8765/#7:1-100" target="_blank" rel="noopener noreferrer">7:1-100</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV): Moved to class 3 by step 05's rules" tabindex="0"><table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>INV 7:1-100</td><td>4</td><td>3</td><td>no gene</td><td>mhc</td><td>the MHC</td><td><a class="locus" href="http://127.0.0.1:8765/#7:1-100" target="_blank" rel="noopener noreferrer">7:1-100</a></td></tr></table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
   </div>
   </section>
@@ -298,7 +322,7 @@
     <p class="sec-meta">Step 50 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#mei">link to this section</a></p>
     <p class="caveat">Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is not proof of absence: short reads find an SVA&#x27;s edges, not its body. Call filtered out: MEGAnE called an insertion there but flagged it (LC is low confidence), so it is not a finding, and not proof of absence either. Every call: mei/&lt;sample&gt;_mei.tsv.</p>
     <div class="stat"><span class="label">Insertions called</span><span class="value">3 (ALU 2, L1 1)</span></div>
-    <table><tr><th>Gene</th><th>Element</th><th>Condition</th><th>Inheritance</th><th>Status</th><th>Depth</th><th>Call</th></tr><tr><td>FKTN</td><td>SVA</td><td>Fukuyama</td><td>AR</td><td>callable</td><td>30</td><td>not seen</td></tr><tr><td>TAF1</td><td>SVA</td><td>XDP</td><td>XL</td><td>not callable</td><td>2</td><td>.</td></tr></table>
+    <div class="tscroll" role="region" aria-label="Mobile Element Insertions" tabindex="0"><table><tr><th>Gene</th><th>Element</th><th>Condition</th><th>Inheritance</th><th>Status</th><th>Depth</th><th>Call</th></tr><tr><td>FKTN</td><td>SVA</td><td>Fukuyama</td><td>AR</td><td>callable</td><td>30</td><td>not seen</td></tr><tr><td>TAF1</td><td>SVA</td><td>XDP</td><td>XL</td><td>not callable</td><td>2</td><td>.</td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="expansions">
@@ -320,7 +344,7 @@
     <p class="note">not tested by any step. CPIC&#x27;s 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)</p>
     <p class="note">FMR1 motif count: interrupted: AGG</p>
     <p class="note">RFC1 motif count: pathogenic: AAGGG dominant</p>
-    <table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>HTT</td><td>17/20</td><td>normal,normal</td><td>normal max 26</td></tr><tr><td>FMR1</td><td>58</td><td>premutation</td><td>low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 55-60; normal max 44; FMR1 motif count: interrupted: AGG</td></tr><tr><td>C9ORF72</td><td>.</td><td></td><td>no call</td></tr><tr><td>ATXN1</td><td>30/37</td><td>not sized</td><td>size not determined (flanking reads only), interval 30-30/35-40; normal max 35</td></tr><tr><td>CFTR_T</td><td>5/7</td><td></td><td></td></tr><tr><td>CFTR_TG</td><td>11/12</td><td></td><td></td></tr><tr><td>EXTRA1</td><td>8/9</td><td>not graded</td><td>low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 8-8/9-9; no thresholds in the catalog (no published range)</td></tr><tr><td>RFC1</td><td>&gt;=400/&gt;=500</td><td>full_mutation</td><td>longer than a read (in-repeat reads only): shown as at least the interval&#x27;s lower end, interval 400-700/500-800</td></tr><tr><td>UGT1A1</td><td>7/8</td><td>normal</td><td></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Repeat Expansions" tabindex="0"><table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>HTT</td><td>17/20</td><td>normal,normal</td><td>normal max 26</td></tr><tr><td>FMR1</td><td>58</td><td>premutation</td><td>low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 55-60; normal max 44; FMR1 motif count: interrupted: AGG</td></tr><tr><td>C9ORF72</td><td>.</td><td></td><td>no call</td></tr><tr><td>ATXN1</td><td>30/37</td><td>not sized</td><td>size not determined (flanking reads only), interval 30-30/35-40; normal max 35</td></tr><tr><td>CFTR_T</td><td>5/7</td><td></td><td></td></tr><tr><td>CFTR_TG</td><td>11/12</td><td></td><td></td></tr><tr><td>EXTRA1</td><td>8/9</td><td>not graded</td><td>low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 8-8/9-9; no thresholds in the catalog (no published range)</td></tr><tr><td>RFC1</td><td>&gt;=400/&gt;=500</td><td>full_mutation</td><td>longer than a read (in-repeat reads only): shown as at least the interval&#x27;s lower end, interval 400-700/500-800</td></tr><tr><td>UGT1A1</td><td>7/8</td><td>normal</td><td></td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="vntyper">
@@ -350,7 +374,7 @@
     <p class="note">chrM:302 A&gt;AC,ACC  AF 0.3</p>
     <p class="note">chrM:16189 T&gt;C  AF 0.5</p>
     <div class="stat"><span class="label">ClinVar pathogenic or likely pathogenic</span><span class="value"><span class="badge badge-yellow">1</span></span></div>
-    <table><tr><th>Variant</th><th>AF</th><th>ClinVar</th><th>Review</th><th>Condition</th><th>gnomAD AF hom</th><th>gnomAD AF het</th><th>Poly-C tract</th><th>Viewer</th></tr><tr><td>chrM:3243 A&gt;G</td><td>0.40</td><td>Pathogenic</td><td>criteria</td><td>MELAS</td><td>0</td><td>0</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:3243" target="_blank" rel="noopener noreferrer">chrM:3243</a></td></tr><tr><td>chrM:302 A&gt;AC</td><td>0.3</td><td>.</td><td>.</td><td>.</td><td>.</td><td>.</td><td>yes</td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:302" target="_blank" rel="noopener noreferrer">chrM:302</a></td></tr><tr><td>chrM:500 C&gt;T</td><td>0.99</td><td>Uncertain_significance</td><td>.</td><td>.</td><td>.</td><td>.</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:500" target="_blank" rel="noopener noreferrer">chrM:500</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Mitochondrial Analysis" tabindex="0"><table><tr><th>Variant</th><th>AF</th><th>ClinVar</th><th>Review</th><th>Condition</th><th>gnomAD AF hom</th><th>gnomAD AF het</th><th>Poly-C tract</th><th>Viewer</th></tr><tr><td>chrM:3243 A&gt;G</td><td>0.40</td><td>Pathogenic</td><td>criteria</td><td>MELAS</td><td>0</td><td>0</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:3243" target="_blank" rel="noopener noreferrer">chrM:3243</a></td></tr><tr><td>chrM:302 A&gt;AC</td><td>0.3</td><td>.</td><td>.</td><td>.</td><td>.</td><td>.</td><td>yes</td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:302" target="_blank" rel="noopener noreferrer">chrM:302</a></td></tr><tr><td>chrM:500 C&gt;T</td><td>0.99</td><td>Uncertain_significance</td><td>.</td><td>.</td><td>.</td><td>.</td><td></td><td><a class="locus" href="http://127.0.0.1:8765/#chrM:500" target="_blank" rel="noopener noreferrer">chrM:500</a></td></tr></table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
     <p class="note">ClinVar 2026-10-01; gnomAD not annotated: no file</p>
     <div class="stat"><span class="label">Confirmed disease variants</span><span class="value"><span class="badge badge-yellow">3</span></span></div>
@@ -408,7 +432,7 @@
     <p class="caveat">Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/&lt;sample&gt;_mocha.tsv.</p>
     <div class="stat"><span class="label">Calls reported</span><span class="value">1</span></div>
     <div class="stat"><span class="label">Cell-fraction floor</span><span class="value">0.05</span></div>
-    <table><tr><th>Type</th><th>Arm</th><th>Region</th><th>Mb</th><th>Cell fraction</th><th>Viewer</th></tr><tr><td>Loss</td><td>q</td><td>chr20:1-2</td><td>10</td><td>0.1</td><td><a class="locus" href="http://127.0.0.1:8765/#chr20:1-2" target="_blank" rel="noopener noreferrer">chr20:1-2</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Mosaic Chromosomal Alterations (MoChA)" tabindex="0"><table><tr><th>Type</th><th>Arm</th><th>Region</th><th>Mb</th><th>Cell fraction</th><th>Viewer</th></tr><tr><td>Loss</td><td>q</td><td>chr20:1-2</td><td>10</td><td>0.1</td><td><a class="locus" href="http://127.0.0.1:8765/#chr20:1-2" target="_blank" rel="noopener noreferrer">chr20:1-2</a></td></tr></table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
     <p class="note">Reported at a cell fraction of 0.05 or more at 30x (read-sampling floor ., minimum .; . heterozygous sites on .)</p>
   </div>
@@ -435,7 +459,7 @@
     <p class="sec-meta">Steps 35b, 35 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#paralogs">link to this section</a></p>
     <p class="caveat">Paraphase reads PacBio HiFi reads only. A &#x27;no call&#x27; means it saw one haplotype and the depth did not settle one copy or two. A research estimate, not a diagnostic test: confirm a result (for example an HBA deletion or one SMN1 copy) with a clinical laboratory.</p>
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
-    <table><tr><th>Gene</th><th>Copy number</th><th>Call</th><th>Detail</th></tr><tr><td>SMN1</td><td>2</td><td>called</td><td>ok</td></tr><tr><td>SMN2</td><td>2</td><td>called</td><td>.</td></tr><tr><td>HBA1</td><td>1</td><td>called</td><td>.</td></tr><tr><td>HBA2</td><td>2</td><td>called</td><td>.</td></tr><tr><td>PMS2</td><td>2</td><td>called</td><td>.</td></tr></table>
+    <div class="tscroll" role="region" aria-label="Paralog Genes (Paraphase)" tabindex="0"><table><tr><th>Gene</th><th>Copy number</th><th>Call</th><th>Detail</th></tr><tr><td>SMN1</td><td>2</td><td>called</td><td>ok</td></tr><tr><td>SMN2</td><td>2</td><td>called</td><td>.</td></tr><tr><td>HBA1</td><td>1</td><td>called</td><td>.</td></tr><tr><td>HBA2</td><td>2</td><td>called</td><td>.</td></tr><tr><td>PMS2</td><td>2</td><td>called</td><td>.</td></tr></table></div>
     <div class="stat"><span class="label">SMN1 by both tools</span><span class="value">Paraphase 2, Parascopy 1 (quality 31, filter PASS): they DISAGREE: check both before using either</span></div>
     <div class="stat"><span class="label">Other Paraphase regions</span><span class="value">2 (1 with a call)</span></div>
     <div class="stat"><span class="label">Variants on phased haplotypes</span><span class="value">3</span></div>
@@ -457,9 +481,9 @@
     <div class="stat"><span class="label">HP (haptoglobin) copies (from depth)</span><span class="value">2 (estimate 2.1). Reading: usual</span></div>
     <div class="stat"><span class="label">LCE3B/LCE3C copies (from depth)</span><span class="value">1 (estimate 1.0). Reading: one deleted</span></div>
     <div class="stat"><span class="label">CCL3L1/CCL3L3 copies (from depth)</span><span class="value">not assessed (low depth)</span></div>
-    <table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>GBA1, GBAP1</td><td>4 (2 region(s), quality 35.25 or more, filter PASS)</td><td>agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy</td></tr><tr><td>STRC, STRCP1</td><td>unreadable: S_strc_copy_number.tsv lacks the copy-number columns</td><td>.</td></tr><tr><td>mytable</td><td>not assessed: no read over the locus</td><td>.</td></tr><tr><td>pms2</td><td>chr7:5970001-5980000 4 (quality 50, filter PASS); chr7:5980001-5990000 3 (quality 12, filter LowQual)</td><td>.</td></tr></table>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy), table 1" tabindex="0"><table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>GBA1, GBAP1</td><td>4 (2 region(s), quality 35.25 or more, filter PASS)</td><td>agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy</td></tr><tr><td>STRC, STRCP1</td><td>unreadable: S_strc_copy_number.tsv lacks the copy-number columns</td><td>.</td></tr><tr><td>mytable</td><td>not assessed: no read over the locus</td><td>.</td></tr><tr><td>pms2</td><td>chr7:5970001-5980000 4 (quality 50, filter PASS); chr7:5980001-5990000 3 (quality 12, filter LowQual)</td><td>.</td></tr></table></div>
     <div class="stat"><span class="label">Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)</span><span class="value">4 rows (3 called, 1 not assessed); 2 with a deletion or a duplication</span></div>
-    <table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>AZFc</td><td>AZFc</td><td>chrY:23000001-26000000</td><td>0 of 1</td><td>deletion</td></tr><tr><td>dup</td><td>X1</td><td>chr1:2-2</td><td>3 of 2</td><td>duplication</td></tr></table>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy), table 2" tabindex="0"><table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>AZFc</td><td>AZFc</td><td>chrY:23000001-26000000</td><td>0 of 1</td><td>deletion</td></tr><tr><td>dup</td><td>X1</td><td>chr1:2-2</td><td>3 of 2</td><td>duplication</td></tr></table></div>
   </div>
   </section>
   </div>
@@ -489,10 +513,10 @@
   </div>
   <div class="card full-width">
     <h2>Genes With a Non-Normal or Unresolved Phenotype (CPIC)</h2>
-    <table>
+    <div class="tscroll" role="region" aria-label="Genes With a Non-Normal or Unresolved Phenotype (CPIC)" tabindex="0"><table>
       <tr><th>Gene</th><th>Diplotype</th><th>Phenotype</th></tr>
 <tr><td>UGT1A1</td><td>*1/*28</td><td>Intermediate</td></tr>
-    </table>
+    </table></div>
     <p>Drugs for each gene: cpic/S_cpic_recommendations.txt</p>
   </div>
     <p class="files">Files of this step, beside this report: <a href="cpic/S_cpic_recommendations.txt">CPIC recommendations per gene (text)</a></p>
@@ -551,7 +575,7 @@
     <p class="sec-meta">Step 53 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#locityper">link to this section</a></p>
     <p class="caveat">A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (&lt;sample&gt;.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors&#x27; HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/&lt;sample&gt;_locityper.tsv.</p>
     <div class="stat"><span class="label">Loci called</span><span class="value">4 of 5 (3 pass the filter)</span></div>
-    <table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DRB1</td><td>h1 + h2 (quality 30, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DRB1*03:01:01/DRB1*07:01:01</td></tr><tr><td>KIR</td><td>k1 + k2 (quality 20, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K KIR pass (step 08): 1 genes typed</td></tr><tr><td>CYP2D6</td><td>not called: low depth</td><td><span class="badge badge-yellow">fail</span></td><td>pypgx (step 32) and Cyrius (step 21) did not run</td></tr><tr><td>FCGR</td><td>f + f (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter fail: q)</td><td><span class="badge badge-yellow">fail</span></td><td>no other step calls FCGR</td></tr><tr><td>ZZZ</td><td>z + z (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>no other step calls this locus</td></tr></table>
+    <div class="tscroll" role="region" aria-label="Locityper Second Opinion at Hard Loci" tabindex="0"><table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DRB1</td><td>h1 + h2 (quality 30, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DRB1*03:01:01/DRB1*07:01:01</td></tr><tr><td>KIR</td><td>k1 + k2 (quality 20, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K KIR pass (step 08): 1 genes typed</td></tr><tr><td>CYP2D6</td><td>not called: low depth</td><td><span class="badge badge-yellow">fail</span></td><td>pypgx (step 32) and Cyrius (step 21) did not run</td></tr><tr><td>FCGR</td><td>f + f (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter fail: q)</td><td><span class="badge badge-yellow">fail</span></td><td>no other step calls FCGR</td></tr><tr><td>ZZZ</td><td>z + z (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>no other step calls this locus</td></tr></table></div>
   </div>
   </section>
   </div>
@@ -566,16 +590,16 @@
     <p class="sec-meta">Step 26b &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#ancestry-fine">link to this section</a></p>
     <p class="caveat">Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.</p>
     <h3>Continental groups</h3>
-    <table>
+    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry: Continental groups" tabindex="0"><table>
       <tr><th>Group</th><th>Fraction</th><th>Bootstrap range</th></tr>
 <tr><td>West Eurasia</td><td>95%</td><td>93% to 97%</td></tr>
 <tr><td>Africa</td><td>5%</td><td>.</td></tr>
-    </table>
+    </table></div>
     <h3>Regional groups</h3>
-    <table>
+    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry: Regional groups" tabindex="0"><table>
       <tr><th>Group</th><th>Fraction</th><th>Bootstrap range</th></tr>
 <tr><td>Iberia</td><td>60%</td><td>50% to 70%</td></tr>
-    </table>
+    </table></div>
     <p>Left out of the model: Oceania. The panel has fewer than 10 unrelated reference people for it, so its ancestry is spread over the groups shown.</p>
     <div class="stat"><span class="label">Painted genome</span><span class="value">none; not painted: RFMix failed on chr21</span></div>
     <img alt="Chromosome painting: chromosomes 1 to 22, two haplotypes each, coloured by continental group" style="max-width:100%" src="data:image/png;base64,iVBORw0KGgpub3QgYSByZWFsIHBpY3R1cmUA/w==">
@@ -618,7 +642,7 @@
     <h2>Y-STR Markers (HipSTR)</h2>
     <p class="caveat">Repeat counts read from the genome with HipSTR, in FamilyTreeDNA&#x27;s Y-111 order. A count can differ from FamilyTreeDNA&#x27;s by a fixed number of repeats at some markers, as labs count some repeat blocks differently: compare with a known result before trusting a difference. Multi-copy markers and repeats longer than the reads are not called. Every marker, with its reads and notes, is in y_str/&lt;sample&gt;_y_str.tsv; y_str/&lt;sample&gt;_y_str.csv is the same list for a spreadsheet.</p>
     <p>Markers called: 1 high and 1 low confidence of 4; 1 no call, 1 not callable from short reads</p>
-    <table><tr><th>Panel</th><th>Marker</th><th>Repeats</th><th>Confidence</th></tr></table>
+    <div class="tscroll" role="region" aria-label="Y-STR Markers (HipSTR)" tabindex="0"><table><tr><th>Panel</th><th>Marker</th><th>Repeats</th><th>Confidence</th></tr></table></div>
   </div>
   </section>
   <section class="sec" id="archaic">
@@ -639,10 +663,10 @@
     <p class="sec-meta">Step 44 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#ancient">link to this section</a></p>
     <p class="caveat">Closeness on this PCA is genetic similarity, not descent: a genome near an ancient group shares ancestry with it and does not descend from those people. qpAdm models are not part of step 44; docs/44-ancient.md says how to read the plot.</p>
     <p>AADR v62: 500000 of . sites used; axes from . present-day West Eurasians, . ancient people in . groups projected.</p>
-    <table>
+    <div class="tscroll" role="region" aria-label="Ancient Populations" tabindex="0"><table>
       <tr><th>#</th><th>Ancient group</th><th>Dates</th><th>Country</th><th>Place</th><th>People</th></tr>
 
-    </table>
+    </table></div>
   </div>
   </section>
   <section class="sec" id="roh">
@@ -679,7 +703,7 @@
     <p class="sec-meta">Step 42 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
     <p class="caveat">Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how.</p>
     <div class="stat"><span class="label">Read / no genotype / other allele</span><span class="value">3 / 1 / 1</span></div>
-    <table>
+    <div class="tscroll" role="region" aria-label="Traits, table 1" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
       <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs10455872</span></td><td>A/G</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs3798220</span></td><td>T|C</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
@@ -687,19 +711,19 @@
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs1</span></td><td>.</td><td>no reads<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs2</span></td><td>C/C</td><td>other<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>C/T</td><td>A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
-    </table>
+    </table></div>
     <h3>Genotype rules (several sites read together)</h3>
-    <table>
+    <div class="tscroll" role="region" aria-label="Traits: Genotype rules (several sites read together)" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene and sites</th><th>Genotypes</th><th>Result</th><th>Reading</th><th>Source</th></tr>
       <tr><td>bitter</td><td>TAS2R38<br><span style="font-size:12px;color:#666">rs1</span></td><td>C/G</td><td>PAV/AVI (not phased)</td><td>taster<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>kidney</td><td>APOL1<br><span style="font-size:12px;color:#666">rs73885319, rs60910145</span></td><td>A/G, T/T</td><td>G0/G1<br>With G2: G1/G2</td><td>one G1<br>With G2: Two APOL1 risk copies (G1/G2): the high-risk genotype of Genovese 2010, which went with focal segmental glomerulosclerosis and hypertension-attributed kidney failure in African Americans. A risk factor, not a diagnosis.<br><span style="font-size:12px;color:#666">G2 (rs71785313): 1 copy of the deletion called.</span><br><span style="font-size:12px;color:#666">.</span></td><td>PMID 20647424</td></tr>
-    </table>
+    </table></div>
     <p class="note">Every rule line: traits/S_genotype_rules.tsv</p>
     <details><summary>APOE and Alzheimer&#x27;s disease: a risk factor, not a diagnosis. Many people choose not to learn their APOE result; docs/42-traits.md explains it. Open to show it.</summary>
-    <table>
+    <div class="tscroll" role="region" aria-label="Traits, table 3" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
       <tr><td>APOE</td><td>APOE<br><span style="font-size:12px;color:#666">rs429358</span></td><td>T/C</td><td>e3/e4<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
-    </table></details>
+    </table></div></details>
     <p class="note">Every row with its note: traits/S_traits.tsv</p>
   </div>
   </section>
@@ -707,11 +731,11 @@
   <div class="card full-width">
     <h2>Polygenic Risk Scores</h2>
     <p class="sec-meta">Step 25 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#prs">link to this section</a></p>
-    <table>
+    <div class="tscroll" role="region" aria-label="Polygenic Risk Scores" tabindex="0"><table>
       <tr><th>Condition</th><th>PGS</th><th>Score</th><th>Variants matched</th><th>Percentile</th><th>Effect in your group</th></tr>
 <tr><td>CAD</td><td>PGS000018</td><td>0.5</td><td>100/120</td><td>75 (EUR)</td><td>HR 1.5 (EUR)</td></tr>
 <tr><td>T2D</td><td>PGS000014</td><td>0.1</td><td>10/20</td><td>raw score only</td><td></td></tr>
-    </table>
+    </table></div>
     <p>Percentile: where the score falls among the EUR samples of the HGDP+1kGP reference panel, the group whose genetic ancestry is most similar to this sample&#x27;s (pgsc_calc). The ancestry match is low-confidence: read the percentile with care. A percentile is not a risk. Effect: the odds ratio (OR) or hazard ratio (HR) a published evaluation of the score measured in people of the same reference group, in that evaluation&#x27;s unit (its PGS Catalog PPM page says which). It describes the score in that group, not your own risk, and is shown only for a group the score was evaluated in. Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.</p>
     <figure class="chart"><svg xmlns="http://www.w3.org/2000/svg" class="chart" data-chart="prs" viewBox="0 0 640 82" width="100%" role="img" aria-label="Polygenic risk score percentiles"><title>Polygenic risk score percentiles</title><line x1="260" y1="14" x2="520" y2="14" stroke="#4a505b"/><text x="260" y="10" font-size="10" text-anchor="middle" fill="currentColor">0</text><text x="325" y="10" font-size="10" text-anchor="middle" fill="currentColor">25</text><text x="390" y="10" font-size="10" text-anchor="middle" fill="currentColor">50</text><text x="455" y="10" font-size="10" text-anchor="middle" fill="currentColor">75</text><text x="520" y="10" font-size="10" text-anchor="middle" fill="currentColor">100</text><a href="#prs" data-mark="pgs-PGS000018"><title>CAD (PGS000018): 75 (EUR)</title><text x="252" y="36" font-size="12" text-anchor="end" fill="currentColor">CAD (PGS000018)</text><line x1="260" y1="32" x2="520" y2="32" stroke="#4a505b"/><circle cx="455" cy="32" r="5" fill="#5b9ee6"/><text x="528" y="36" font-size="11" text-anchor="start" fill="currentColor">75</text></a><a href="#prs" data-mark="pgs-PGS000014"><title>T2D (PGS000014): no percentile</title><text x="252" y="60" font-size="12" text-anchor="end" fill="currentColor">T2D (PGS000014)</text><line x1="260" y1="56" x2="520" y2="56" stroke="#4a505b"/><text x="264" y="60" font-size="11" text-anchor="start" fill="currentColor" opacity="0.8">no percentile</text></a></svg></figure>
   </div>
@@ -723,7 +747,7 @@
     <p class="caveat">Predicted from the DNA at the variants that define each antigen, not typed from blood. RhD comes from the read depth over RHD; weak and partial D are not assessed. The evidence for each site is in bloodtype/&lt;sample&gt;_bloodtype_evidence.tsv.</p>
     <div class="stat"><span class="label">ABO</span><span class="value">A</span></div>
     <div class="stat"><span class="label">RhD</span><span class="value">RhD positive</span></div>
-    <table><tr><th>System</th><th>Predicted phenotype</th><th>Genotype</th><th>Confidence</th></tr><tr><td>ABO</td><td>A</td><td>A1/O1</td><td>high</td></tr><tr><td>RhD</td><td>RhD positive</td><td>.</td><td>medium</td></tr><tr><td>Kell</td><td>.</td><td>K-/k+</td><td>.</td></tr></table>
+    <div class="tscroll" role="region" aria-label="Blood Groups (predicted)" tabindex="0"><table><tr><th>System</th><th>Predicted phenotype</th><th>Genotype</th><th>Confidence</th></tr><tr><td>ABO</td><td>A</td><td>A1/O1</td><td>high</td></tr><tr><td>RhD</td><td>RhD positive</td><td>.</td><td>medium</td></tr><tr><td>Kell</td><td>.</td><td>K-/k+</td><td>.</td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="telomere">
@@ -748,7 +772,7 @@
     <p class="sec-meta">Step 47 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#viral">link to this section</a></p>
     <p class="caveat">From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/&lt;sample&gt;_viral.tsv.</p>
     <div class="stat"><span class="label">HHV-6</span><span class="value">inherited integrated HHV-6B likely</span></div>
-    <table><tr><th>Virus</th><th>Call</th><th>Reads</th><th>Breadth</th><th>Depth / human</th><th>Copies per cell</th></tr><tr><td>phiX</td><td>spike-in</td><td>500</td><td>1.0</td><td>.</td><td>.</td></tr><tr><td>HHV-6B</td><td>inherited integrated HHV-6 likely</td><td>2000</td><td>0.99</td><td>1.0</td><td>1.0</td></tr></table>
+    <div class="tscroll" role="region" aria-label="Viral DNA in the Unmapped Reads" tabindex="0"><table><tr><th>Virus</th><th>Call</th><th>Reads</th><th>Breadth</th><th>Depth / human</th><th>Copies per cell</th></tr><tr><td>phiX</td><td>spike-in</td><td>500</td><td>1.0</td><td>.</td><td>.</td></tr><tr><td>HHV-6B</td><td>inherited integrated HHV-6 likely</td><td>2000</td><td>0.99</td><td>1.0</td><td>1.0</td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="consumer-export">

@@ -16,6 +16,7 @@ ORAD=${ORAD:-/opt/orad/bin/orad}
 OUTPUT_DIR="${GENOME_DIR}/${SAMPLE}/fastq"
 
 echo "=== ORA to FASTQ: ${SAMPLE} ==="
+echo "Illumina's DRAGEN ORA Decompression Software requires acceptance of its end-user licence. See docs/01-ora-to-fastq.md."
 echo "ORA file: ${ORA_FILE}"
 echo "ORA reference: ${ORA_REF}"
 echo "Output: ${OUTPUT_DIR}/"

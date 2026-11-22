@@ -80,10 +80,12 @@ These databases enable deeper pathogenicity scoring via vcfanno (step 30) and va
 | CADD v1.7 gnomAD indels | ~1.2 GB | Non-commercial |
 | SpliceAI masked SNV scores | ~27 GB | Academic and not-for-profit only |
 | SpliceAI masked indel scores | ~64 GB | Academic and not-for-profit only |
-| REVEL v1.3 | ~0.6 GB | Free for research |
+| REVEL v1.3 | ~0.6 GB | [REVEL terms](00-reference-setup.md#revel-v13-06-gb) |
 | AlphaMissense | ~0.6 GB | CC BY-NC-SA 4.0 |
 | gnomAD v4.1 gene constraint | ~0.09 GB | ODC-ODbL |
 | **Total, annotation databases** | **~175 GB** | |
+
+The REVEL authors make the scores freely available for non-commercial use. The [Zenodo record](https://doi.org/10.5281/zenodo.7072866) lists ODbL 1.0. The authors give a contact for other uses on the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads).
 
 ### Total Shared Data
 
