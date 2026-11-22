@@ -996,12 +996,12 @@ fi
 
 # --- OwnGenome's og binary (bin/.og, scripts/setup.sh --og) ---
 header "OwnGenome binary"
-# x86_64 hosts run the x86_64 build. Arm hosts also run tools in amd64
-# images under emulation and need both builds unless OG_ARCHES is set.
-case "$(uname -m)" in
-  x86_64) og_arches="${OG_ARCHES:-x86_64}" ;;
-  *) og_arches="${OG_ARCHES:-x86_64 aarch64}" ;;
-esac
+# A single build is enough on x86_64. Check both when both were installed,
+# or on Arm where tools may run in amd64 images under emulation.
+og_arches="${OG_ARCHES:-x86_64 aarch64}"
+if [ -z "${OG_ARCHES:-}" ] && [ "$(uname -m)" = x86_64 ] && [ ! -e "${PGP_ROOT}/bin/.og/og-linux-aarch64" ]; then
+  og_arches=x86_64
+fi
 if [ ! -x "${PGP_ROOT}/bin/og" ]; then
   fail "bin/og is missing or not executable. Restore it from the checkout and run scripts/setup.sh --og."
 elif OG_MSG=$(OG_ARCHES="$og_arches" bash "${PGP_ROOT}/rust/og.sh" check --required 2>&1); then
