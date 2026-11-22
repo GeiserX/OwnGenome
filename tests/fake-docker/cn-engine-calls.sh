@@ -104,7 +104,7 @@ S="${GENOME_DIR}/sample1"
 calls() { awk -v p="$1" '{gsub(/\\/, "")} index($0, p) {n++} END {print n + 0}' "$FAKE_DOCKER_LOG"; }
 # pycalls: docker calls that run a .py file, matched as a whole word: a temp folder
 # from mktemp (fake-docker.<case>.XXXXXX) can hold ".py" in its random part
-pycalls() { awk '{gsub(/\\/, "")} /\.py( |$)/ {n++} END {print n + 0}' "$FAKE_DOCKER_LOG"; }
+pycalls() { awk '{gsub(/\\/, "")} /\.py([^[:alnum:]_]|$)/ {n++} END {print n + 0}' "$FAKE_DOCKER_LOG"; }
 val() { awk -F'\t' -v k="$2" '$1 == k {print $2; exit}' "$1"; }
 
 # --- step 35 ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ val() { awk -F'\t' -v k="$2" '$1 == k {print $2; exit}' "$1"; }
 run_expect 0 paralogs "${SCRIPTS}/35-paralogs.sh" sample1
 [ "$(calls 'og cn bed --locus HBA')" = 1 ] || fail "step 35: og cn bed --locus HBA was not called once"
 [ "$(calls 'og cn call --locus HBA')" = 1 ] || fail "step 35: og cn call --locus HBA was not called once"
-[ "$(pycalls)" = 0 ] || fail "step 35 still calls Python: $(grep -E '\.py( |$)' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 35 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 H="${S}/paralogs/sample1_hba_copy_number.tsv"
 [ "$(val "$H" alpha_globin_genes)" = 4 ] || fail "step 35: four alpha-globin genes expected: $(cat "$H")"
 [ "$(val "$H" status)" = called ] || fail "step 35: HBA not called: $(cat "$H")"
@@ -122,7 +122,7 @@ H="${S}/paralogs/sample1_hba_copy_number.tsv"
 run_expect 0 bloodtype "${SCRIPTS}/41-bloodtype.sh" sample1
 [ "$(calls 'og cn bed --locus RHD')" = 1 ] || fail "step 41: og cn bed --locus RHD was not called once"
 [ "$(calls 'og bloodtype report')" = 1 ] || fail "step 41: og bloodtype report was not called once"
-[ "$(pycalls)" = 0 ] || fail "step 41 still calls Python: $(grep -E '\.py( |$)' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 41 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 [ "$(awk -F'\t' '$4 == "RHD_GENE" {n++} END {print n + 0}' "${S}/bloodtype/sample1_bloodtype_depth.tsv")" = 1 ] \
   || fail "step 41: the depth table has no RHD_GENE row"
 R=$(awk -F'\t' '$1 == "RhD"' "${S}/bloodtype/sample1_bloodtype.tsv")
@@ -134,7 +134,7 @@ run_expect 0 lpa "${SCRIPTS}/46-lpa.sh" sample1
 [ "$(calls 'og cn bed --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn bed --locus LPA_KIV2 was not called once"
 [ "$(calls 'og cn call --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn call --locus LPA_KIV2 was not called once"
 [ "$(calls '--marker LPA_KIV2_4925')" = 1 ] || fail "step 46: the 4925G>A marker was not read in the count's call"
-[ "$(pycalls)" = 0 ] || fail "step 46 still calls Python: $(grep -E '\.py( |$)' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 46 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 L="${S}/lpa/sample1_lpa_kiv2.tsv"
 [ "$(val "$L" kiv2_copies)" = 20.0 ] || fail "step 46: 20.0 KIV-2 repeats expected: $(cat "$L")"
 N="${S}/lpa/sample1_lpa_kiv2_4925.tsv"
