@@ -91,7 +91,7 @@ check_eq "three ancient groups ranked" "$(awk 'NR > 1' "$TSV" 2>/dev/null | wc -
 SVG="${OUT}/${SAMPLE}_ancient_pca.svg"
 check "the plot is an SVG with the sample's label" has "^<svg .*>${SAMPLE}</text>" "$(tr -d '\n' < "$SVG" 2>/dev/null)"
 check "the text carries the caveat" has 'not descent' "$(cat "${OUT}/${SAMPLE}_ancient.txt" 2>/dev/null)"
-python3 "${REPO}/bin/render_report.py" --sample "$SAMPLE" --sample-dir "${G}/${SAMPLE}" --json "${CASE_TMP}/summary.json" \
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$SAMPLE" --sample-dir "${G}/${SAMPLE}" --json "${CASE_TMP}/summary.json" \
   -o "${CASE_TMP}/report.txt" -o "${CASE_TMP}/report.html" > /dev/null
 check "text report: the section with Planted_HG002 first" has '^ +1\. Planted_HG002 \(3050 BCE, Testland; 6 people\)' "$(cat "${CASE_TMP}/report.txt")"
 check "HTML report: the card and the plot" has '<h2>Ancient Populations</h2>.*data:image/svg\+xml;base64,' "$(tr -d '\n' < "${CASE_TMP}/report.html")"

@@ -15,7 +15,7 @@
 #     homozygous gives that row the table's hom_alt reading, not HG002's;
 #   - the call floor: the same planted call at GQ 5, and at GQ 40 with FILTER
 #     LowQual, reads low_gq ("not read"), and every other row is as in HG002;
-#   - both reports (bin/render_report.py on the sample folder) carry the
+#   - both reports (og report render on the sample folder) carry the
 #     section, the HTML one with the APOE lines folded away;
 #   - nextflow run main.nf --tools traits,html_report on the same VCF and
 #     gVCF publishes the same two files as the bash step, byte for byte, and
@@ -171,7 +171,7 @@ done
 in_genome "$BCFTOOLS_IMAGE" rm -rf "$P2"
 
 # --- both reports ---------------------------------------------------------------------
-python3 "${REPO}/bin/render_report.py" --sample "$SAMPLE" --sample-dir "${G}/${SAMPLE}" --json "${CASE_TMP}/summary.json" \
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$SAMPLE" --sample-dir "${G}/${SAMPLE}" --json "${CASE_TMP}/summary.json" \
   -o "${CASE_TMP}/report.txt" -o "${CASE_TMP}/report.html" > /dev/null
 TXT=$(cat "${CASE_TMP}/report.txt" 2>/dev/null) HTML=$(cat "${CASE_TMP}/report.html" 2>/dev/null)
 ONE=$(awk -F'\t' '$7 == "called" { print $1; exit }' "$OUT")
