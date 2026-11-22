@@ -119,14 +119,14 @@ fn malformed_gzip_is_unreadable_and_plain_text_with_a_gz_suffix_is_readable() {
     let d = Sample::new("gzip", "S");
     put_bash(&d);
     let name = "vcf/S.vcf.gz";
-    let good = fs::read(d.path(name)).unwrap();
-    let mut corrupt = good.clone();
-    let crc = corrupt.len() - 8;
-    corrupt[crc] ^= 1;
-    for bytes in [b"\x1f\x8b\x08\x00not gzip\n".as_slice(), &corrupt] {
+    for (case, bytes) in damaged_vcfs(&d, name) {
         d.put(name, bytes);
         let summary = d.collect();
-        expect(section(&summary, "variants"), "state", r#""unreadable""#);
+        assert_eq!(
+            string(section(&summary, "variants"), "state"),
+            "unreadable",
+            "{case}",
+        );
         expect(data(&summary, "clinvar"), "count", "3");
     }
     d.put(
@@ -272,6 +272,27 @@ fn indexed_vep_maps_frequencies_and_rsids_to_the_hit_allele() {
 }
 
 #[test]
+fn either_clinvar_call_floor_marks_a_hit_as_low_confidence() {
+    let d = Sample::new("clinvar-one-floor", "S");
+    let vcf = VCF.replacen("#CHROM", "##PGP_CALL_FLOOR=GQ=30,DP=10\n#CHROM", 1);
+    d.put(
+        CLINVAR,
+        format!(
+            "{vcf}chr1\t100\t.\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:20:40\n\
+             chr1\t200\t.\tG\tA\t50\tPASS\tGENEINFO=GENEB:22;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:50:8\n"
+        ),
+    );
+    let summary = d.collect();
+    let cv = data(&summary, "clinvar");
+    for (gene, gq, dp) in [("GENEA", "20", "40"), ("GENEB", "50", "8")] {
+        let hit = row(cv, "hits", "gene", gene);
+        expect(hit, "gq", gq);
+        expect(hit, "dp", dp);
+        assert_eq!(at(hit, "low_confidence"), &Value::Bool(true), "{gene}");
+    }
+}
+
+#[test]
 fn cpsr_compares_both_class_columns_and_joins_its_read_checks() {
     let d = Sample::new("cpsr", "S");
     put_cpsr(&d);
@@ -335,14 +356,25 @@ fn cpsr_compares_both_class_columns_and_joins_its_read_checks() {
 
 #[test]
 fn read_backed_phase_is_kept_in_both_folder_layouts() {
-    for (name, nextflow, counts) in [
-        ("pairs-bash", false, r#"{"trans":1,"cis":1,"unknown":1}"#),
-        ("pairs-nextflow", true, r#"{"trans":1,"cis":0,"unknown":0}"#),
+    for (name, nextflow, total, counts) in [
+        (
+            "pairs-bash",
+            false,
+            "3",
+            r#"{"trans":1,"cis":1,"unknown":1}"#,
+        ),
+        (
+            "pairs-nextflow",
+            true,
+            "1",
+            r#"{"trans":1,"cis":0,"unknown":0}"#,
+        ),
     ] {
         let d = Sample::new(name, "S");
         put_comphet(&d, nextflow);
         let summary = d.collect();
         let slivar = data(&summary, "slivar");
+        expect(slivar, "compound_het_pairs", total);
         expect(slivar, "compound_het_phase", counts);
         expect(
             slivar,
@@ -401,17 +433,20 @@ fn export_counts_are_required_and_join_the_run_status() {
     expect(export, "sites", "10");
     expect(export, "called", "7");
     expect(export, "no_call_reasons", r#"{"no-call in the gVCF":3}"#);
-    for invalid in [
-        "key\tvalue\nsites\t10\ncalled\t\nno_call\t3\n",
+    d.put(EXPORT, "key\tvalue\nsites\t10\ncalled\t\nno_call\t3\n");
+    expect(
+        section(&d.collect(), "consumer_export"),
+        "state",
+        r#""unreadable""#,
+    );
+    d.put(
+        EXPORT,
         "key\tvalue\nsites\t10\ncalled\t7\nno_call\t3\nno_call: filtered call\tthree\n",
-    ] {
-        d.put(EXPORT, invalid);
-        expect(
-            section(&d.collect(), "consumer_export"),
-            "state",
-            r#""unreadable""#,
-        );
-    }
+    );
+    let summary = d.collect();
+    let malformed = section(&summary, "consumer_export");
+    expect(malformed, "state", r#""unreadable""#);
+    assert!(string(malformed, "note").contains("no_call: filtered call"));
     put_export(&d);
     d.old(EXPORT);
     d.put(
@@ -451,6 +486,11 @@ fn mosaic_estimates_share_the_qc_table_and_refuse_an_unknown_call() {
     let rows = fs::read_to_string(d.path(QC)).unwrap();
     d.put(QC, rows.replace("0.298", "inf").replace("0.303", "-inf"));
     let nonfinite = d.collect();
+    assert!(
+        !dumps(&nonfinite, &Dump::default())
+            .unwrap()
+            .contains("Infinity")
+    );
     expect(data(&nonfinite, "mosaic_sex_loss"), "loss_depth", "null");
     expect(
         data(&nonfinite, "mosaic_sex_loss"),
@@ -461,11 +501,10 @@ fn mosaic_estimates_share_the_qc_table_and_refuse_an_unknown_call() {
         QC,
         rows.replace("mosaic_call\tdetected", "mosaic_call\tmaybe"),
     );
-    expect(
-        section(&d.collect(), "mosaic_sex_loss"),
-        "state",
-        r#""unreadable""#,
-    );
+    let summary = d.collect();
+    let malformed = section(&summary, "mosaic_sex_loss");
+    expect(malformed, "state", r#""unreadable""#);
+    assert!(string(malformed, "note").contains("mosaic_call"));
 }
 
 #[test]
@@ -712,10 +751,10 @@ fn annotsv_postfilter_preserves_the_phase_used_by_two_hits() {
     const OUTPUT: &str = "annotsv/S_sv_class4_5_checked.tsv";
     let d = Sample::new("annotsv-phase", "S");
     d.put(CLINVAR, format!("{VCF}chr1\t45332000\t.\tC\tT\t50\tPASS\tGENEINFO=MUTYH:4595;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts\tGT:GQ:DP:PS\t1|0:50:30:45330000\n"));
-    for (gt, verdict, reason) in [
-        ("0|1", "biallelic", "in trans"),
-        ("0/0", "", ""),
-        (".|1", "possibly biallelic", "phase unknown"),
+    for (gt, verdict) in [
+        ("0|1", "biallelic"),
+        ("0/0", ""),
+        (".|1", "possibly biallelic"),
     ] {
         d.put(INPUT, format!(
             "AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tINFO\tFORMAT\tS\tAnnotation_mode\tGene_name\tB_loss_AFmax\tACMG_class\tAnnotSV_ranking_score\n\
@@ -745,7 +784,14 @@ fn annotsv_postfilter_preserves_the_phase_used_by_two_hits() {
         } else {
             let pair = pair.expect("the MUTYH deletion and ClinVar hit should pair");
             assert_eq!(at(pair, "verdict"), &Value::Str(verdict.into()));
-            assert!(matches!(at(pair, "why"), Value::Str(why) if why.contains(reason)));
+            let why = string(pair, "why");
+            if gt == "0|1" {
+                assert!(why.contains("in trans"), "{why}");
+                assert!(why.contains("phase set 45330000"), "{why}");
+            } else {
+                assert!(why.starts_with("phase unknown"), "{why}");
+                assert!(!why.contains("in cis"), "{why}");
+            }
         }
     }
 }
@@ -1923,7 +1969,7 @@ fn roh_upd_and_relationship_depend_on_the_distribution_of_long_runs() {
     put_roh_with_sites(&d, "RG\tS\tchr2\t10000001\t13000000\t3000000\t900\t50\n");
     let summary = d.collect();
     let roh = data(&summary, "roh");
-    check_f_roh(roh, 0);
+    expect(roh, "f_roh", "0.0");
     expect(roh, "relationship", r#""no sign of related parents""#);
 
     put_roh_with_sites(&d, "RG\tS\tchr2\t10000001\t15000000\t5000000\t900\t50\n");

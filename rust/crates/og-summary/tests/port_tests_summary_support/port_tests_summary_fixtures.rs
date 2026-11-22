@@ -104,6 +104,21 @@ impl Drop for Sample {
     }
 }
 
+pub fn damaged_vcfs(d: &Sample, name: &str) -> [(&'static str, Vec<u8>); 3] {
+    let mut crc = fs::read(d.path(name)).unwrap();
+    let trailer = crc.len() - 8;
+    crc[trailer] ^= 1;
+    let rows = "chr1\t1\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n".repeat(2000);
+    d.gzip(name, &format!("{VCF}{rows}"));
+    let mut deflate = fs::read(d.path(name)).unwrap();
+    deflate[20..40].fill(0xff);
+    [
+        ("damaged deflate", deflate),
+        ("bad header", b"\x1f\x8b\x08\x00not gzip\n".to_vec()),
+        ("bad CRC", crc),
+    ]
+}
+
 pub fn put_bash(d: &Sample) {
     d.gzip(
         "vcf/S.vcf.gz",
@@ -306,7 +321,14 @@ pub fn put_cpsr(d: &Sample) {
         CLINVAR,
         VCF.replacen("#CHROM", "##PGP_CALL_FLOOR=GQ=30,DP=10\n#CHROM", 1),
     );
-    d.put("cpsr/S_cpsr_cdna_check.tsv", "chrom\tpos\tref\talt\talt_reads\talt_clipped\tref_reads\tref_clipped\tcdna_check\tcdna_note\n13\t32340300\tG\tA\t12\t0\t10\t0\tclear\t\n2\t47800000\tA\tG\t9\t8\t11\t0\tflagged\tpossible cDNA/transgene contamination: check the reads\n");
+    let golden = include_str!("../../../og-bam/tests/data/reads/want/check-spliced/files/out.tsv");
+    let header = golden.lines().next().unwrap();
+    d.put(
+        "cpsr/S_cpsr_cdna_check.tsv",
+        format!("{header}\n\
+                 13\t32340300\tG\tA\t12\t0\t10\t0\tclear\t\t\n\
+                 2\t47800000\tA\tG\t9\t8\t11\t0\tflagged\tpossible cDNA/transgene contamination: check the reads\t\n"),
+    );
     d.put(
         "run_manifest.tsv",
         "data\tclinvar_file_date\t20261001\ndata\tcpsr_clinvar_release\t20250309\n",
@@ -422,8 +444,8 @@ pub fn put_paraphase(d: &Sample, smn1: u8) {
         "region\tgene\tcopy_number\tstatus\tdetail\ttotal_cn\tregion_depth\tgenome_depth\n\
         smn1\tSMN1\t2\tcalled\t.\t4\t120\t31\n\
         smn1\tSMN2\t.\tno call\tone haplotype seen\t4\t120\t31\n\
-        hba\tHBA1\t2\tcalled\tgenotype -a/aa (3 alpha-globin genes)\t3\t90\t31\n\
-        hba\tHBA2\t1\tcalled\t4.2 kb deletion (-a4.2): HBA2 lost\t3\t90\t31\n\
+        hba\tHBA1\t2\tcalled\tgenotype -a/aa (3 alpha-globin genes); 4.2 kb deletion (-a4.2): HBA2 lost\t3\t90\t31\n\
+        hba\tHBA2\t1\tcalled\tgenotype -a/aa (3 alpha-globin genes); 4.2 kb deletion (-a4.2): HBA2 lost\t3\t90\t31\n\
         TNXB\tTNXB\t4\tcalled\tcopies of the whole gene family\t4\t60\t31\n\
         SSX2\tSSX2,SSX2B\t.\tno call\t.\t.\t0\t31\n",
     );
@@ -625,8 +647,8 @@ pub fn put_clinvar_quality(d: &Sample) -> String {
     let hits = format!(
         "{vcf}chr1\t100\t.\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:12:6\n\
         chr1\t40000\t.\tG\tA\t50\tPASS\tGENEINFO=GENEB:22;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\tGT:GQ:DP\t0/1:50:40\n\
-        chr2\t20000\t.\tCA\tC\t50\tPASS\tGENEINFO=GENEC:33;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:GQ:DP\t0/1:45:35\n\
-        chr2\t40000\t.\tA\tT\t50\tPASS\tGENEINFO=GENED:44;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t0/1\n"
+        chr2\t20000\t.\tCA\tC\t50\tPASS\tGENEINFO=GENEC:33;CLNSIG=Likely_pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT:DP:GQ\t0/1:35:45\n\
+        chr3\t10\t.\tA\tG\t50\tPASS\tGENEINFO=GENED:44;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t1/1\n"
     );
     d.put(CLINVAR, &hits);
     let path = VEP;

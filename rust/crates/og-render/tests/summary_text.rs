@@ -116,14 +116,15 @@ fn stale_and_failed_inputs_are_visible_in_both_reports() {
                 "failed (step 32)",
             ],
         );
+        let telomere = card(html, "Telomere content (relative)");
+        has(telomere, &["badge-red\">Failed<", "step 10 failed"]);
+        assert!(!telomere.contains("Not run"));
+        let callers = card(html, "CYP2D6 Across Callers");
+        has(callers, &["failed (step 32)", "FAILED: step 32 failed"]);
+        // The CYP2D6 section places its status badge on its first card.
         has(
-            html,
-            &[
-                "badge-red\">Failed<",
-                "step 10 failed",
-                "failed (step 32)",
-                "CYP2D6 Across Callers",
-            ],
+            card(html, "pypgx Pharmacogenomics"),
+            &["badge-red\">Failed<"],
         );
     });
 }
@@ -169,7 +170,14 @@ fn both_reports_show_the_read_backed_compound_het_phase() {
         let sample = Sample::new(name, "S");
         put_comphet(&sample, nextflow);
         with_reports(&sample, |txt, html| {
-            has(txt, &[counts, "G2", "19 of 20"]);
+            has(
+                txt,
+                &[
+                    &format!("  Phase from the reads: {counts}\n"),
+                    "G2",
+                    "19 of 20",
+                ],
+            );
             has(
                 html,
                 &["<td>G2</td><td>chr1:50 A&gt;G + chr1:90 C&gt;T</td><td>19 of 20</td>"],
@@ -281,11 +289,14 @@ fn the_second_y_placement_and_haplocheck_have_their_own_lines() {
             html,
             &[
                 "YES, two mtDNA haplogroups",
-                "Y-Chromosome Haplogroup",
                 "Y Placement on the Current Public Tree",
                 "<td>R-FT12345</td>",
                 "<td>A0-T</td>",
             ],
+        );
+        has(
+            card(html, "Y-Chromosome Haplogroup"),
+            &["<span class=\"label\">Haplogroup</span><span class=\"value\">R-M269</span>"],
         );
     });
     put_unplaced_y(&d);
@@ -522,22 +533,6 @@ fn the_hla_reports_distinguish_disagreement_from_no_comparison() {
     let bash = Sample::new("report-hla-qc", "S");
     put_hla_qc(&bash, false);
     with_reports(&bash, |txt, html| {
-        for report in [txt, html] {
-            has(
-                report,
-                &[
-                    "agree: T1K *01:01/*26:01",
-                    "disagree: T1K *57:01/*08:01",
-                    "not compared: T1K *07:01/*07:02",
-                    "T1K gives an allele quality 0 or below",
-                    "KIR2DL1*00302 (quality 60)",
-                    "No allele called (absent, or too few reads): KIR2DS1",
-                    og_render::notes::KIR_NOTE,
-                ],
-            );
-        }
-    });
-    with_reports(&bash, |txt, html| {
         has(
             txt,
             &[
@@ -548,6 +543,7 @@ fn the_hla_reports_distinguish_disagreement_from_no_comparison() {
                 "KIR genes (T1K, KIR=true):",
                 "KIR2DL1  KIR2DL1*00302 (quality 60) / KIR2DL1*0010101 (quality 35)",
                 "KIR3DL1  KIR3DL1*0150201 (quality 50)",
+                "No allele called (absent, or too few reads): KIR2DS1",
                 og_render::notes::KIR_NOTE,
             ],
         );
@@ -558,7 +554,11 @@ fn the_hla_reports_distinguish_disagreement_from_no_comparison() {
                 "agree: T1K *01:01/*26:01, OptiType *26:01/*01:01",
                 "HLA-B: T1K vs OptiType",
                 "disagree: T1K *57:01/*08:01, OptiType *58:01/*08:01",
+                "not compared: T1K *07:01/*07:02",
+                "T1K gives an allele quality 0 or below",
                 "KIR2DL1*00302 (quality 60) / KIR2DL1*0010101 (quality 35)",
+                "No allele called (absent, or too few reads): KIR2DS1",
+                og_render::notes::KIR_NOTE,
             ],
         );
     });
@@ -639,23 +639,33 @@ fn the_paraphase_report_distinguishes_disagreement_agreement_and_one_caller() {
     let d = Sample::new("report-paraphase", "S");
     put_paraphase(&d, 1);
     with_reports(&d, |txt, html| {
-        for report in [txt, html] {
-            has(
-                report,
-                &[
-                    "SMN1 by both tools",
-                    "they DISAGREE",
-                    "HBA2 lost",
-                    "Variants on phased haplotypes",
-                ],
-            );
-        }
+        has(
+            txt,
+            &[
+                "\n  HBA2: 1 (called); genotype -a/aa (3 alpha-globin genes); 4.2 kb deletion (-a4.2): HBA2 lost\n",
+                "\n  SMN1 by both tools: Paraphase 2, Parascopy 1 (quality 33, filter PASS): they DISAGREE: check both before using either\n",
+                "\n  Variants on phased haplotypes: 1\n",
+            ],
+        );
+        has(
+            card(html, "Paralog Genes (Paraphase)"),
+            &[
+                "<td>HBA2</td><td>1</td>",
+                "they DISAGREE",
+                "PacBio HiFi reads only",
+                "HBA2 lost",
+                "Variants on phased haplotypes",
+            ],
+        );
     });
     put_paraphase(&d, 2);
     with_reports(&d, |txt, html| {
-        for report in [txt, html] {
-            has(report, &["the two agree"]);
-        }
+        let reading = "Parascopy 2 (quality 33, filter PASS): the two agree";
+        has(
+            txt,
+            &[&format!("\n  SMN1 by both tools: Paraphase 2, {reading}\n")],
+        );
+        has(card(html, "Paralog Genes (Paraphase)"), &[reading]);
     });
     fs::remove_file(d.path(SMN)).unwrap();
     with_reports(&d, |txt, html| {
@@ -663,15 +673,19 @@ fn the_paraphase_report_distinguishes_disagreement_agreement_and_one_caller() {
             assert!(!report.contains("SMN1 by both tools"));
         }
     });
+    let missing = Sample::new("report-paraphase-missing", "S");
+    with_reports(&missing, |txt, _| {
+        has(txt, &["\n  - Paralog genes (Paraphase, PacBio HiFi)\n"]);
+    });
 }
 
 fn card<'a>(html: &'a str, title: &str) -> &'a str {
     html.split_once(&format!("<h2>{title}</h2>"))
         .unwrap_or_else(|| panic!("missing {title} card"))
         .1
-        .split("<h2>")
-        .next()
-        .unwrap()
+        .split_once("\n  </div>")
+        .unwrap_or_else(|| panic!("unclosed {title} card"))
+        .0
 }
 
 fn report_row<'a>(text: &'a str, locus: &str) -> &'a str {
@@ -985,11 +999,13 @@ fn paralog_reports_explain_hba_marker_and_copy_number_readings() {
     });
     put_parascopy(&d);
     with_reports(&d, |txt, html| {
+        let caveat = og_render::sections::smn1::SMN1_MARKER_CAVEAT;
         has(
             txt,
             &[
                 &format!("{after_cn}present, 5 of 40 reads carry it, about 0.5 copies\n"),
                 "  SMN1 marker reading: SMN1 g.27134T>G (rs143838139): present",
+                &format!("\n  SMN1 marker caveat: {caveat}\n"),
                 "  HBA1 and HBA2 together (alpha-globin genes, from depth): 4 (four alpha-globin genes (aa/aa): no deletion seen; estimate 4.02)\n",
             ],
         );
@@ -998,6 +1014,7 @@ fn paralog_reports_explain_hba_marker_and_copy_number_readings() {
             &[
                 ">SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)<",
                 "present, 5 of 40 reads carry it",
+                &og_render::escape::e(caveat),
                 "does not prove 2+0",
                 ">HBA1 and HBA2 together (alpha-globin genes, from depth)<",
                 "estimate 4.02",
@@ -1290,7 +1307,9 @@ fn annotsv_reports_list_rule_downgrades_separately() {
     });
     put_annotsv_checked(&d, true);
     with_reports(&d, |txt, html| {
-        has(txt, &[og_render::notes::ANNOTSV_NOTE]);
+        let note = og_render::notes::ANNOTSV_NOTE;
+        assert!(note.contains("Step 05's rules"));
+        has(txt, &[note]);
         has(
             html,
             &[
@@ -1498,14 +1517,12 @@ fn corrupt_vcf_leaves_clinvar_readable_in_both_reports() {
     let d = Sample::new("report-corrupt-vcf", "S");
     put_bash(&d);
     let name = "vcf/S.vcf.gz";
-    let mut corrupt = fs::read(d.path(name)).unwrap();
-    let crc = corrupt.len() - 8;
-    corrupt[crc] ^= 1;
-    for bytes in [b"\x1f\x8b\x08\x00not gzip\n".as_slice(), &corrupt] {
+    for (_, bytes) in damaged_vcfs(&d, name) {
         d.put(name, bytes);
         with_reports(&d, |txt, html| {
             has(txt, &["Pathogenic/Likely Pathogenic hits: 3"]);
             has(html, &["badge-yellow\">3</span>"]);
+            has(card(html, "Variant Calling"), &["badge-gray\">Unreadable<"]);
         });
     }
 }
