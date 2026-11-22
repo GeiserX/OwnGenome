@@ -6,8 +6,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
     let mut out = Adapter::default();
     match id {
         "traits-panel" => {
-            let sec = summary.section("traits");
-            let d = sec.data;
+            let d = summary.section("traits").data;
             let rows = array(d, "rows")?
                 .iter()
                 .filter(|r| {
@@ -58,7 +57,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     ("No genotype at the position", "not_covered"),
                 ],
             );
-            if let Some(count) = low_gq_count(&sec)? {
+            if let Some(count) = low_gq_count(d) {
                 out.fact(LOW_GQ_LABEL, count.to_string());
             }
             for r in array(d, "rules")? {
@@ -158,24 +157,17 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
             out.attention = truthy(val(sec.data, "low_reads"));
         }
         "viral" => {
-            let sec = summary.section("viral");
-            let d = sec.data;
-            let hhv6_value = val(d, "hhv6");
-            out.fact(
-                "HHV-6",
-                if matches!(hhv6_value, Value::Null) {
-                    cell(hhv6_value)
-                } else {
-                    viral::hhv6(&sec)?
-                },
-            );
+            let d = summary.section("viral").data;
+            let found = array(d, "found")?;
+            let hhv6 = cell(val(d, "hhv6"));
+            out.fact("HHV-6", viral::hhv6_reading(&hhv6, found));
             out.fact("Genomes searched", cell(val(d, "genomes")));
             out.fields_table(
                 &["Virus", "Reads", "Breadth", "Copies per cell", "Call"],
-                array(d, "found")?,
+                found,
                 &["virus", "reads", "breadth", "copies_per_cell", "call"],
             );
-            out.lines = viral::threshold_notes(&sec)?;
+            out.lines = viral::threshold_notes(found);
         }
         "consumer-export" => {
             let sec = summary.section("consumer_export");
