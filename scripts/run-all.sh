@@ -234,7 +234,7 @@ elif [ -n "$fb" ] && [ -n "$fv" ]; then
     GCOL=",gvcf,gvcf_index" GROW=",${GV},${GV}.tbi"
     echo "NOTE: PharmCAT and PRS read the gVCF beside it (${GV})."
   else
-    echo "NOTE: The VCF has no gVCF with its index beside it (${GV}). PharmCAT and PRS read its variant sites only. Set INPUT=bam to call again and write a gVCF."
+    echo "NOTE: starting from the existing VCF, with no gVCF with its index beside it (${GV}). PharmCAT and PRS read its variant sites only. Set INPUT=bam to call again and write a gVCF."
   fi
 elif [ -n "$fb" ]; then
   echo "Starting from the existing BAM: calling variants"
