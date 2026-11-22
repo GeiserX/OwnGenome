@@ -995,18 +995,20 @@ else
 fi
 
 # --- OwnGenome's og binary (bin/.og, scripts/setup.sh --og) ---
-# One built from another rust/ than this checkout's would give results from
-# other code than the checkout says, so it fails; none at all is a note until
-# a step calls og (rust/og.sh, REQUIRED).
 header "OwnGenome binary"
-# A partial copy of the scripts (some tests make one) has no rust/og.sh.
-OG_MSG="NOTE: rust/og.sh is not here, so og was not checked"
-[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || true
-case "$OG_MSG" in
-  OK:*) pass "${OG_MSG#OK: }" ;;
-  NOTE:*) info "${OG_MSG#NOTE: }" ;;
-  *) fail "${OG_MSG#ERROR: }" ;;
+# x86_64 hosts run the x86_64 build. Arm hosts also run tools in amd64
+# images under emulation and need both builds unless OG_ARCHES is set.
+case "$(uname -m)" in
+  x86_64) og_arches="${OG_ARCHES:-x86_64}" ;;
+  *) og_arches="${OG_ARCHES:-x86_64 aarch64}" ;;
 esac
+if [ ! -x "${PGP_ROOT}/bin/og" ]; then
+  fail "bin/og is missing or not executable. Restore it from the checkout and run scripts/setup.sh --og."
+elif OG_MSG=$(OG_ARCHES="$og_arches" bash "${PGP_ROOT}/rust/og.sh" check --required 2>&1); then
+  pass "${OG_MSG#OK: }"
+else
+  fail "${OG_MSG#ERROR: }"
+fi
 
 ###############################################################################
 # 5. Sample Data (optional — only if $1 is provided)
