@@ -2,9 +2,8 @@
 //! pages, `state.json`, `/runs.json`, the event stream, the run files, the
 //! policy on every answer, the access log, the plugins' parts of
 //! `state.json` and the family pages. These are the checks of the Python
-//! server's tests that need no login (`tests/test_owngenome_live.py`
-//! keeps the login, the sessions and the ingest listener until they are
-//! ported).
+//! server's tests that need no login; the login, the sessions and the
+//! ingest listener are `port_live_auth_ingest*.rs`.
 
 #[path = "port_live_server_util.rs"]
 mod util;
@@ -681,10 +680,16 @@ fn the_command_line_refuses_what_it_cannot_do_yet() {
         let code = server::cli(&args, &mut out, &mut err);
         (code, String::from_utf8_lossy(&err).into_owned())
     };
-    let (code, err) = run(&["--root", &root, "--bind", "0.0.0.0", "--port", "0"]);
+    // Through configure_with with no hash: an exported
+    // OWNGENOME_LIVE_PASSWORD_HASH would let cli start and never return.
+    let bind_any: Vec<String> = ["--root", &root, "--bind", "0.0.0.0", "--port", "0"]
+        .iter()
+        .map(|x| (*x).to_owned())
+        .collect();
+    let (code, err) = server::configure_with(&bind_any, None).err().unwrap();
     assert!(code == 2 && err.contains("password"), "{code} {err}");
     let (code, err) = run(&["--root", &root, "--password-file", "/nonexistent"]);
-    assert!(code == 2 && err.contains("not ported yet"), "{code} {err}");
+    assert!(code == 1 && err.contains("password hash"), "{code} {err}");
     let (code, err) = run(&["--port", "0"]);
     assert!(
         code == 2 && err.contains("--root is required"),

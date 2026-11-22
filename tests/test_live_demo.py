@@ -30,12 +30,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "bin"))
 sys.path.insert(0, os.path.join(REPO, "tests", "demo"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
+sys.path.insert(0, os.path.join(REPO, "tests", "browser"))
 import build_live_demo  # noqa: E402
 import make_demo_events  # noqa: E402
 import owngenome_live  # noqa: E402
 import run_state  # noqa: E402
 from owngenome_live_results import og_results  # noqa: E402
-from test_owngenome_live import Chrome, asset_problems, find_chrome  # noqa: E402
+from cdp import Chrome, asset_problems, find_chrome  # noqa: E402
 
 FAILS = []
 S, FAM = build_live_demo.SAMPLE, build_live_demo.FAMILY

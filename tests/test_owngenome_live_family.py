@@ -428,8 +428,8 @@ def finding_route_checks(live, get, root):
 
 
 def browser_checks(port, work):
-    sys.path.insert(0, os.path.join(REPO, "tests"))
-    import test_owngenome_live as tpl
+    sys.path.insert(0, os.path.join(REPO, "tests", "browser"))
+    import cdp as tpl
     chrome = tpl.find_chrome()
     if not chrome:
         ci = os.environ.get("CI") == "true"
