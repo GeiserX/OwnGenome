@@ -10,8 +10,9 @@
 //!   bytes on every machine.
 //! - [`simulate`]: an admixed diploid genome with known truth, built from
 //!   held-out people's haplotypes; every engine's truth tests start from it.
-//! - [`paint`] and [`project`]: our own local-ancestry painting and the
-//!   projection of ancestry fractions (empty until their units land).
+//! - [`paint`]: our own local-ancestry painting.
+//! - [`project`]: the ancestry fractions projected on fixed group
+//!   frequencies, in place of `admixture -P`, and its block bootstrap.
 
 use std::fmt;
 use std::io;
