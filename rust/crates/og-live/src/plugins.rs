@@ -436,11 +436,11 @@ fn family_page(live: &Live, name: &str, d: &Path) -> Result<Value, String> {
 
 /// `GET /metrics`: every run's health in Prometheus' text format. Without a
 /// password the site is loopback only and `/metrics` is open, like every
-/// page.
+/// page; with one it needs a login or `--metrics-token-file`'s bearer token.
 fn metrics(req: &mut Req<'_>) -> io::Result<()> {
     let who = Asker {
-        login_required: false,
-        logged_in: false,
+        login_required: req.live.cfg.auth.hash.is_some(),
+        logged_in: req.sid.is_some(),
         authorization: req.header("authorization"),
     };
     let token = req.live.cfg.metrics_token_file.clone();
