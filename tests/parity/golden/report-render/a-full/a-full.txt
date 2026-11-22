@@ -1,5 +1,7 @@
 ================================================================================
   GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
   Sample: S
   Generated: 2026-01-02 03:04 UTC
 ================================================================================

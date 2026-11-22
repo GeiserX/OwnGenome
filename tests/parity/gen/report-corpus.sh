@@ -566,6 +566,13 @@ cat > oracle.sh << 'ORACLE'
 # A PRS row whose counts the summary has as null reads "not available", as
 # og writes it; render_report.py writes "None" there (and stops its HTML
 # report on that row), so the text report's "None" is read as og's words.
+# og's frame for a phone and a keyboard, which render_report.py never had,
+# is added to the Python's reports here, line for line as og writes it
+# (rust/crates/og-render: html.rs, text.rs and READING in css.rs): the
+# research-only line under the title of both reports, the skip link, the
+# contents in a details element, main#main, each table in a scroll region
+# named by its card's title (the manifest's "Run manifest") and the CSS.
+# Every section stays compared with the Python's.
 #   sh ./oracle.sh PROG --summary F -o R.txt -o R.html
 set -e
 prog=$1
@@ -575,13 +582,69 @@ cp py/*.py "$d"/
 cp "$prog" "$d/render_report.py"
 PYTHONPATH=$d python3 "$d/render_report.py" "$@"
 rm -rf "$d"
+frame_text() {
+  awk '{ print }
+$0 == "  GENOMICS ANALYSIS REPORT" {
+  print "  Research software, not a clinical report: confirm any finding in a"
+  print "  certified laboratory before acting on it."
+}' "$1" > "$1.kept"
+  mv "$1.kept" "$1"
+}
+frame_html() {
+  awk 'function rep(s, a, b,   i, out) {
+  out = ""
+  while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1) b; s = substr(s, i + length(a)) }
+  return out s
+}
+{ line = $0 }
+line == "</style>" {
+  print "  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;"
+  print "           background: var(--card); color: var(--accent); font-weight: 600; }"
+  print "  .skip:focus { top: 8px; }"
+  print "  main:focus { outline: none; }"
+  print "  .header .research-only { font-weight: 600; margin-bottom: 8px; }"
+  print "  .sec, .card { min-width: 0; overflow-wrap: anywhere; }"
+  print "  td { overflow-wrap: anywhere; }"
+  print "  .tscroll { overflow-x: auto; max-width: 100%; }"
+  print "  .tscroll:focus-visible { outline: 2px solid var(--accent); }"
+  print "  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }"
+  print "  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }"
+  print "  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }"
+  print "  @supports selector(::details-content) {"
+  print "    @media (min-width: 901px) {"
+  print "      .toc-fold > summary { display: none; }"
+  print "      .toc-fold::details-content { content-visibility: visible; display: block; }"
+  print "    }"
+  print "  }"
+  print "  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }"
+}
+line == "<body>" { print; print "<a class=\"skip\" href=\"#main\">Skip to results</a>"; next }
+line == "<nav class=\"toc\" aria-label=\"Contents\">" { print "<details class=\"toc-fold\">"; print "<summary>Contents</summary>"; print; next }
+line == "</nav>" { print; print "</details>"; next }
+line == "<main>" { print "<main id=\"main\" tabindex=\"-1\">"; next }
+line == "  <h1>Genomic Analysis Report</h1>" {
+  print
+  print "  <p class=\"research-only\">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>"
+  next
+}
+line ~ /^    <h2>.*<\/h2>$/ { label = substr(line, 9, length(line) - 13) }
+index(line, "<summary>Run manifest (run_manifest.tsv)</summary>") { label = "Run manifest" }
+index(line, "table>") {
+  line = rep(line, "<table>", "<div class=\"tscroll\" role=\"region\" aria-label=\"" label "\" tabindex=\"0\"><table>")
+  line = rep(line, "</table>", "</table></div>")
+}
+{ print line }' "$1" > "$1.kept"
+  mv "$1.kept" "$1"
+}
 while [ $# -gt 0 ]; do
   case "$1" in
     -o)
       case "$2" in
         *.txt)
           sed 's| None (None/None variants matched) | not available (not available/not available variants matched) |' "$2" > "$2.kept"
-          mv "$2.kept" "$2" ;;
+          mv "$2.kept" "$2"
+          frame_text "$2" ;;
+        *.html) [ ! -e "$2" ] || frame_html "$2" ;;
       esac
       shift ;;
   esac

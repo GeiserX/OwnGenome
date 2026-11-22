@@ -100,10 +100,32 @@
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
     body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
   }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  .sec, .card { min-width: 0; overflow-wrap: anywhere; }
+  td { overflow-wrap: anywhere; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to results</a>
 <div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
 <nav class="toc" aria-label="Contents">
   <h2 class="toc-title">Contents</h2>
   <ol>
@@ -162,9 +184,11 @@
     <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
   </ol>
 </nav>
-<main>
+</details>
+<main id="main" tabindex="-1">
 <header class="header">
   <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
   <div class="meta">
     Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC &nbsp;|&nbsp; Latest run: 2020-01-01 00:00 UTC
   </div>
@@ -263,9 +287,9 @@
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
     <p class="note">Class 4-5 SVs: 6 (single caller: 0, not known: 6; deletions on exon edges: 1; common: 1)</p>
     <p class="note">Moved to class 3 by step 05&#x27;s rules, not counted above: 1</p>
-    <table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:45338000-45340000</td><td>5</td><td>MUTYH</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: </td><td><a class="locus" href="http://127.0.0.1:8765/#1:45338000-45340000" target="_blank" rel="noopener noreferrer">1:45338000-45340000</a></td></tr><tr><td>DEL chr2:47386000-47388000</td><td>4</td><td>EPCAM</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#chr2:47386000-47388000" target="_blank" rel="noopener noreferrer">chr2:47386000-47388000</a></td></tr><tr><td>DUP 17:43000000-43100000</td><td>4</td><td>BRCA1, NBR2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#17:43000000-43100000" target="_blank" rel="noopener noreferrer">17:43000000-43100000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>5</td><td>GJB2, NOTAGENE</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>4</td><td>GJB2, XYZ1</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>BTD</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV)" tabindex="0"><table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:45338000-45340000</td><td>5</td><td>MUTYH</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: </td><td><a class="locus" href="http://127.0.0.1:8765/#1:45338000-45340000" target="_blank" rel="noopener noreferrer">1:45338000-45340000</a></td></tr><tr><td>DEL chr2:47386000-47388000</td><td>4</td><td>EPCAM</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#chr2:47386000-47388000" target="_blank" rel="noopener noreferrer">chr2:47386000-47388000</a></td></tr><tr><td>DUP 17:43000000-43100000</td><td>4</td><td>BRCA1, NBR2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#17:43000000-43100000" target="_blank" rel="noopener noreferrer">17:43000000-43100000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>5</td><td>GJB2, NOTAGENE</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 13:20180000-20200000</td><td>4</td><td>GJB2, XYZ1</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#13:20180000-20200000" target="_blank" rel="noopener noreferrer">13:20180000-20200000</a></td></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>BTD</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table></div>
     <h3>Moved to class 3 by step 05's rules</h3>
-    <table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>3</td><td>BTD</td><td>not named</td><td>no detail</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV)" tabindex="0"><table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>DEL 3:15600000-15700000</td><td>5</td><td>3</td><td>BTD</td><td>not named</td><td>no detail</td><td><a class="locus" href="http://127.0.0.1:8765/#3:15600000-15700000" target="_blank" rel="noopener noreferrer">3:15600000-15700000</a></td></tr></table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
   </div>
   </section>
@@ -329,7 +353,7 @@
     <div class="stat"><span class="label">CYP21A2 (RCCX module, from depth and six PSV sites)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cyp21a2_psv.tsv is not in this run&#x27;s output)</span></div>
     <div class="stat"><span class="label">Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cn_dosage.tsv is not in this run&#x27;s output)</span></div>
     <div class="stat"><span class="label">Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)</span><span class="value">3 rows (3 called); 3 with a deletion or a duplication</span></div>
-    <table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>CFTR region</td><td>CFTR_del</td><td>chr7:117500001-117600000</td><td>1 of 2</td><td>deletion</td></tr><tr><td>x</td><td>DUP1</td><td>chr1:2-100</td><td>3 of 2</td><td>duplication</td></tr><tr><td>x</td><td>GJB6</td><td>chr13:x-2</td><td>1 of 2</td><td>deletion</td></tr></table>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy)" tabindex="0"><table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>CFTR region</td><td>CFTR_del</td><td>chr7:117500001-117600000</td><td>1 of 2</td><td>deletion</td></tr><tr><td>x</td><td>DUP1</td><td>chr1:2-100</td><td>3 of 2</td><td>duplication</td></tr><tr><td>x</td><td>GJB6</td><td>chr13:x-2</td><td>1 of 2</td><td>deletion</td></tr></table></div>
   </div>
   </section>
   </div>
@@ -363,11 +387,11 @@
   </div>
   <div class="card full-width">
     <h2>Genes With a Non-Normal or Unresolved Phenotype (CPIC)</h2>
-    <table>
+    <div class="tscroll" role="region" aria-label="Genes With a Non-Normal or Unresolved Phenotype (CPIC)" tabindex="0"><table>
       <tr><th>Gene</th><th>Diplotype</th><th>Phenotype</th></tr>
 <tr><td>CYP2D6</td><td>*1/*4</td><td>Intermediate Metabolizer</td></tr>
 <tr><td>CYP2C19</td><td>*1/*17</td><td>Rapid</td></tr>
-    </table>
+    </table></div>
     <div class="stale">WARNING: CYP2C19 has two possible phenotypes</div>
     <div class="stale">WARNING: last</div>
     <p>Drugs for each gene: cpic/S_cpic_recommendations.txt</p>
