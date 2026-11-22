@@ -42,12 +42,12 @@ grep -q '^install_fine_maps() {$' "${WORK}/fn.sh" || { echo "FAIL: install_fine_
 # shellcheck source=/dev/null
 . "${WORK}/fn.sh"
 # shellcheck disable=SC2034  # PGP_ROOT is read by install_fine_maps
-PYTHON_IMAGE=python-image PGP_ROOT=$REPO ANCESTRY_FINE_MAP_SHA256=0123abcd
+OG_IMAGE=og-image PGP_ROOT=$REPO ANCESTRY_FINE_MAP_SHA256=0123abcd
 OG_CALLS="${WORK}/og.calls"
 need_og() { return 0; }
 cpath() { printf '%s\n' "$1"; }
 run_in() {
-  while [ "$1" != "$PYTHON_IMAGE" ]; do shift; done
+  while [ "$1" != "$OG_IMAGE" ]; do shift; done
   shift
   [ "$1" = /pgp-bin/og ] || { echo "run_in: unexpected command $1" >&2; return 1; }
   shift
@@ -146,7 +146,7 @@ CTRL="${WORK}/control"
 old_install "$CTRL"
 for c in chr21 chr22; do
   [ -s "${CTRL}/maps/${c}.rfmix.map" ] && continue
-  run_in --rw "$CTRL" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" --rfmix "$c" > /dev/null
+  run_in --rw "$CTRL" "$OG_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" --rfmix "$c" > /dev/null
 done
 if same_maps "$CTRL"; then
   bad "control: the rule of before also left whole maps, so check 1 cannot fail"
