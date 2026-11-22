@@ -660,12 +660,12 @@ input[type=password] { font: inherit; background: var(--paper); color: var(--ink
   .tabbar .ti { font: italic 15px var(--serif); color: var(--brass); }
   section.sec { padding-top: 26px !important; margin-top: 26px !important; }
   /* Big enough for a finger, with the page barely taller: each caveat's More and each card's caveat summary are
-     44 px tall, padding around the word, and negative margins give back most of what they grew. position: relative
-     puts the whole box over the text next to it, so all 44 px take a tap. The More's bottom margin stops short of
-     the next finding's summary. The replay's slider and Play button are 44 px tall and the bar's padding gives it
-     back. */
-  .toggle { min-height: 44px; box-sizing: border-box; padding: 14.5px 0; margin: -14px 0 -9px; position: relative; }
-  .caveat-full > summary { min-height: 44px; box-sizing: border-box; padding: 12.3px 0; margin: -12.3px 0; position: relative; }
+     44 px tall, padding around the word, and a negative top margin gives back part of what they grew. position:
+     relative puts the whole box over the text above it, so all 44 px take a tap. No bottom margin: the box
+     does not reach over what follows it, so the next control (a link, a fold's summary) keeps its whole tap. The
+     replay's slider and Play button are 44 px tall and the bar's padding gives it back. */
+  .toggle { min-height: 44px; box-sizing: border-box; padding: 14.5px 0; margin: -14px 0 0; position: relative; }
+  .caveat-full > summary { min-height: 44px; box-sizing: border-box; padding: 12.3px 0; margin: -12.3px 0 0; position: relative; }
   .replay { padding-top: 4px; padding-bottom: 5px; }
   .replay input[type=range], .replay button { min-height: 44px; }
   /* The step timeline grows with its steps instead of scrolling inside the page, and a tapped step's detail

@@ -528,6 +528,18 @@
       return [U.LEVEL_WORDS[f.level] || f.level, f.title, f.viewer];
     });
   }
+  // The name of a finding's More. Two hits in one gene share a title ("Pathogenic change in <gene>"): a detail line
+  // no other finding of that title has tells them apart; with no such line (none, or the same as another's), the
+  // finding's place among them does ("(2 of 2)"), so no two Mores are named alike.
+  function moreName(f) {
+    var group = findingsNow().filter(function (g) { return g.title === f.title; });
+    if (group.length < 2) { return f.title; }
+    var detail = function (g) { return String(g.detail == null ? '' : g.detail).trim(); };
+    var mine = detail(f);
+    var alone = mine && group.filter(function (g) { return detail(g) === mine; }).length === 1;
+    var at = group.map(function (g) { return g.id; }).indexOf(f.id) + 1;
+    return f.title + ' (' + (alone ? mine : at + ' of ' + group.length) + ')';
+  }
   function findingArticle(f, big) {
     var row = el('div', { 'class': 'row' });
     var art = el('div', { 'class': 'finding', id: 'f-' + f.id, 'data-finding': f.id, 'data-level': f.level });
@@ -549,9 +561,7 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    // Two hits in one gene share a title ("Pathogenic change in <gene>"): the detail line tells their Mores apart.
-    var same = findingsNow().filter(function (g) { return g.title === f.title; }).length > 1;
-    add(side, caveatNote(f.caveat, f.id, same && f.detail ? f.title + ' (' + f.detail + ')' : f.title));
+    add(side, caveatNote(f.caveat, f.id, moreName(f)));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r; });
     if (rel.length) {
       var box = el('div', {});

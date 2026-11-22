@@ -8,18 +8,23 @@
 //! 2. On DEMO-001 at 320x800 and at 390x844, every caveat's More
 //!    (`summary.toggle`) has a min-height of at least 44 px, is that tall
 //!    and takes a tap over 44 px of its height; so does every card's
-//!    caveat summary (`.caveat-full > summary`) once its card is open. The
-//!    replay's slider and its Play button are 44 px tall. Each More is
-//!    named for its own finding, so no two share a name.
+//!    caveat summary (`.caveat-full > summary`) once its card is open. No
+//!    tap on the control just before or just after one of them (a link, a
+//!    fold's summary) lands on it. The replay's slider
+//!    and its Play button are 44 px tall. Each More is named for its own
+//!    finding, so no two share a name.
 //! 3. At 390x844, a tap on the Cyrius row of the step timeline brings the
 //!    step's detail into view, clear of the masthead and the tab bar, and
 //!    the timeline's box does not scroll inside the page.
 //! 4. Two findings with one title (two hits in one gene) get two different
 //!    More names: the test adds a second finding with the title of one of
 //!    DEMO-002's to the copy of the demo it serves, since the demo has no
-//!    such pair.
+//!    such pair. With two detail lines, each More names its own; with no
+//!    detail line on either, or the same one on both, each names its place
+//!    ("(1 of 2)", "(2 of 2)").
 //!
-//! Each check was red on main before this change (the PR says where).
+//! Each check was red on main before this change, or on an earlier head of
+//! it for the neighbours' check (the PR says where).
 //! Without Chrome, python3 or a built og the test says SKIP, and fails in CI.
 
 use og_browser::{Browser, Scratch, StaticServer, Value, chrome_or_skip, js_str, repo_root};
@@ -77,13 +82,25 @@ fn find_og() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
+/// python3 when it is 3.10 or newer, read from `python3 --version`
+/// ("Python 3.12.1"; a Python 2 writes it to stderr).
 fn find_python() -> Option<PathBuf> {
-    let ok = Command::new("python3")
-        .arg("-c")
-        .arg("import sys; sys.exit(sys.version_info < (3, 10))")
-        .status()
-        .is_ok_and(|s| s.success());
-    ok.then(|| PathBuf::from("python3"))
+    let out = Command::new("python3").arg("--version").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut part = said
+        .trim()
+        .strip_prefix("Python ")?
+        .split('.')
+        .map(|p| p.parse::<u32>().ok());
+    let (major, minor) = (part.next()??, part.next()??);
+    ((major, minor) >= (3, 10)).then(|| PathBuf::from("python3"))
 }
 
 /// The page's size, as a reader's window; on a phone with touch.
@@ -192,32 +209,87 @@ macro_rules! hit {
     };
 }
 
+/// A page function `beside(s)`: whether `s` (a fold's summary grown to
+/// 44 px) takes taps meant for the controls next to it. For the nearest
+/// visible control (a link, a summary, a button or a form field) before
+/// `s`'s fold and the nearest one after it, it brings the control to the
+/// middle of the screen and asks elementFromPoint at each pixel row of the
+/// control's first box, from 0.1 px below its top to 0.1 px above its
+/// bottom, at its left edge, its middle and its right edge (2 px in).
+/// Returns [[what it is, rows, rows where a tap lands on `s`], ...], one
+/// entry per neighbour there is.
+macro_rules! beside {
+    () => {
+        "var beside = function (s) { var d = s.parentElement, out = []; \
+           var all = Array.prototype.filter.call(document.querySelectorAll('a[href], summary, button, input, select, textarea'), \
+             function (c) { return !d.contains(c) && !c.contains(d) && c.checkVisibility() && c.getBoundingClientRect().height > 0; }); \
+           var before = all.filter(function (c) { return d.compareDocumentPosition(c) & 2; }).pop(); \
+           var after = all.filter(function (c) { return d.compareDocumentPosition(c) & 4; })[0]; \
+           [before, after].forEach(function (e) { if (!e) { return; } \
+             e.scrollIntoView({ block: 'center' }); var r = e.getClientRects()[0], ys = [], rows = 0, taken = 0; \
+             for (var y = r.top + 0.1; y < r.bottom - 0.1; y += 1) { ys.push(y); } ys.push(r.bottom - 0.1); \
+             ys.forEach(function (y) { rows += 1; \
+               if ([r.left + 2, (r.left + r.right) / 2, r.right - 2].some(function (x) { \
+                 var h = document.elementFromPoint(x, y); return h && s.contains(h); })) { taken += 1; } }); \
+             out.push([e.tagName + ' ' + (e.textContent || '').trim().slice(0, 40), rows, taken]); }); \
+           return out; }; "
+    };
+}
+
+/// Read `beside`'s answer: (what, rows, rows taken) per neighbour.
+fn neighbours(v: &Value) -> Vec<(String, f64, f64)> {
+    match v {
+        Value::Array(n) => n
+            .iter()
+            .map(|e| match e {
+                Value::Array(e) if e.len() == 3 => {
+                    (text(Some(e[0].clone())), num(&e[1]), num(&e[2]))
+                }
+                _ => (format!("{e:?}"), 0.0, f64::NAN),
+            })
+            .collect(),
+        _ => vec![(format!("{v:?}"), 0.0, f64::NAN)],
+    }
+}
+
+/// The neighbours that lose part of their tap: (what, rows, rows taken).
+fn covered(all: &[Vec<(String, f64, f64)>]) -> Vec<(String, f64, f64)> {
+    all.iter()
+        .flatten()
+        .filter(|n| n.1 <= 0.0 || n.2 != 0.0)
+        .cloned()
+        .collect()
+}
+
 /// The sizes a finger meets on the person page: every `summary.toggle`
 /// [its height, its min-height, its name, its finding's title, the px of
-/// it that take a tap], the slider and the Play button.
+/// it that take a tap, its neighbours (`beside`)], the slider and the Play
+/// button.
 const SIZES: &str = concat!(
     "(function () { ",
     hit!(),
+    beside!(),
     "var t = Array.prototype.map.call(document.querySelectorAll('summary.toggle'), function (s) { \
        var row = s.closest('.row'), h = row && row.querySelector('h3'); \
        return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, \
-         s.getAttribute('aria-label') || s.textContent, h ? h.textContent : '', hit(s)]; }); \
+         s.getAttribute('aria-label') || s.textContent, h ? h.textContent : '', hit(s), beside(s)]; }); \
      return JSON.stringify([t, document.getElementById('replay-slider').getBoundingClientRect().height, \
        document.getElementById('replay-play').getBoundingClientRect().height]); }())"
 );
 
 /// Open the folds around the first card caveat, then every card caveat
 /// summary that shows: [its height, its min-height, the px of it that take
-/// a tap].
+/// a tap, its neighbours (`beside`)].
 const CAVEATS: &str = concat!(
     "(function () { ",
     hit!(),
+    beside!(),
     "var c = document.querySelector('.caveat-full'); if (!c) { return '[]'; } \
      for (var d = c.parentElement; d; d = d.parentElement) { if (d.tagName === 'DETAILS') { d.open = true; } } \
      var s = Array.prototype.filter.call(document.querySelectorAll('.caveat-full > summary'), function (s) { \
        return s.checkVisibility(); }); \
      return JSON.stringify(s.map(function (s) { \
-       return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, hit(s)]; })); }())"
+       return [s.getBoundingClientRect().height, parseFloat(getComputedStyle(s).minHeight) || 0, hit(s), beside(s)]; })); }())"
 );
 
 /// The More names of a finding and of its twin (the finding the test adds
@@ -234,16 +306,27 @@ fn twin_names(id: &str, twin: &str) -> String {
     )
 }
 
-/// Give DEMO-002's results.json, in the served copy, a second finding with
-/// the title of one of its findings, as two hits in one gene would: the
-/// first finding with a caveat and a detail line in a section the page
-/// draws as full articles (section 1, or one of sections 2 to 5 with at
-/// most two findings, so at most three with the twin). The twin gets its
-/// own id and detail line and sits next to it in that section. Returns the
-/// finding's [id, title, detail] and the twin's [id, detail].
-fn add_twin(results: &Path) -> Option<([String; 3], [String; 2])> {
-    let raw = std::fs::read_to_string(results).ok()?;
-    let mut v = json::loads(&raw).ok()?;
+/// How the test's twin differs from the finding it copies.
+#[derive(Clone, Copy, Debug)]
+enum Twin {
+    /// Its own detail line: each More names its finding's detail.
+    Distinct,
+    /// No detail line on either (null on the finding, absent on the twin).
+    Missing,
+    /// The finding's own detail line on both.
+    Repeated,
+}
+
+/// Write DEMO-002's results.json (`raw`), in the served copy, with a second
+/// finding with the title of one of its findings, as two hits in one gene
+/// would: the first finding with a caveat and a detail line in a section the
+/// page draws as full articles (section 1, or one of sections 2 to 5 with at
+/// most two findings, so at most three with the twin). The twin gets its own
+/// id and sits next to it in that section, last in the findings list; its
+/// detail line is as `how` says. Returns the finding's and the twin's ids
+/// and the More names they must get.
+fn add_twin(results: &Path, raw: &str, how: Twin) -> Option<([String; 2], [String; 2])> {
+    let mut v = json::loads(raw).ok()?;
     let Value::Object(top) = &mut v else {
         return None;
     };
@@ -291,13 +374,26 @@ fn add_twin(results: &Path) -> Option<([String; 3], [String; 2])> {
         field(&first, "title"),
         field(&first, "detail"),
     );
-    let (twin_id, twin_detail) = (format!("{id}-twin"), format!("{detail}, second hit"));
+    let twin_id = format!("{id}-twin");
     let mut twin = first;
     if let Value::Object(m) = &mut twin {
         m.insert("id".into(), Value::Str(twin_id.clone()));
-        m.insert("detail".into(), Value::Str(twin_detail.clone()));
+        match how {
+            Twin::Distinct => {
+                m.insert("detail".into(), Value::Str(format!("{detail}, second hit")));
+            }
+            Twin::Missing => {
+                m.shift_remove("detail");
+            }
+            Twin::Repeated => {}
+        }
     }
     if let Some(Value::Array(fs)) = top.get_mut("findings") {
+        if let Twin::Missing = how
+            && let Some(Value::Object(m)) = fs.iter_mut().find(|f| field(f, "id") == id)
+        {
+            m.insert("detail".into(), Value::Null);
+        }
         fs.push(twin);
     }
     if let Some(Value::Array(journal)) = top.get_mut("journal")
@@ -311,7 +407,12 @@ fn add_twin(results: &Path) -> Option<([String; 3], [String; 2])> {
         list.insert(at, Value::Str(twin_id.clone()));
     }
     std::fs::write(results, json::dumps(&v, &json::Dump::default()).ok()?).ok()?;
-    Some(([id, title, detail], [twin_id, twin_detail]))
+    let more = |tail: &str| format!("More of the caveat: {title} ({tail})");
+    let names = match how {
+        Twin::Distinct => [more(&detail), more(&format!("{detail}, second hit"))],
+        Twin::Missing | Twin::Repeated => [more("1 of 2"), more("2 of 2")],
+    };
+    Some(([id, twin_id], names))
 }
 
 /// Bring the Cyrius row to the middle of the screen (the page's scroll,
@@ -365,7 +466,9 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         String::from_utf8_lossy(&built.stderr)
     );
 
-    let twin = add_twin(&site.join("demo/runs/DEMO-002/results.json"));
+    let results = site.join("demo/runs/DEMO-002/results.json");
+    let raw = std::fs::read_to_string(&results).unwrap();
+    let twin = add_twin(&results, &raw, Twin::Distinct);
 
     let srv = StaticServer::start(&site, &[]).unwrap();
     let mut b = Browser::launch(&chrome, &work.join("chrome")).unwrap();
@@ -428,17 +531,19 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         let Value::Array(toggles) = &a[0] else {
             panic!("{sizes}")
         };
-        let rows: Vec<(f64, f64, String, String, f64)> = toggles
+        type Toggle = (f64, f64, String, String, f64, Vec<(String, f64, f64)>);
+        let rows: Vec<Toggle> = toggles
             .iter()
             .map(|t| match t {
-                Value::Array(t) if t.len() == 5 => (
+                Value::Array(t) if t.len() == 6 => (
                     num(&t[0]),
                     num(&t[1]),
                     text(Some(t[2].clone())),
                     text(Some(t[3].clone())),
                     num(&t[4]),
+                    neighbours(&t[5]),
                 ),
-                _ => (0.0, 0.0, String::new(), String::new(), 0.0),
+                _ => (0.0, 0.0, String::new(), String::new(), 0.0, Vec::new()),
             })
             .collect();
         check(
@@ -452,6 +557,14 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             &format!("{w}x{h}: a tap lands on each More over at least 44 px of its height"),
             rows.len() >= 2 && rows.iter().all(|r| r.4 >= TAP),
             format!("{:?}", rows.iter().map(|r| r.4).collect::<Vec<_>>()),
+        );
+        let near: Vec<_> = rows.iter().map(|r| r.5.clone()).collect();
+        check(
+            &format!(
+                "{w}x{h}: no tap on the control just before or just after a More lands on the More"
+            ),
+            rows.len() >= 2 && near.iter().any(|n| !n.is_empty()) && covered(&near).is_empty(),
+            format!("covered {:?} of {near:?}", covered(&near)),
         );
         let mut names: Vec<&String> = rows.iter().map(|r| &r.2).collect();
         names.sort();
@@ -471,12 +584,15 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             format!("slider {} play {}", num(&a[1]), num(&a[2])),
         );
         let caveats = text(b.eval(CAVEATS).ok());
-        let cav: Vec<(f64, f64, f64)> = match json::loads(&caveats) {
+        type Caveat = (f64, f64, f64, Vec<(String, f64, f64)>);
+        let cav: Vec<Caveat> = match json::loads(&caveats) {
             Ok(Value::Array(v)) => v
                 .iter()
                 .map(|c| match c {
-                    Value::Array(c) if c.len() == 3 => (num(&c[0]), num(&c[1]), num(&c[2])),
-                    _ => (0.0, 0.0, 0.0),
+                    Value::Array(c) if c.len() == 4 => {
+                        (num(&c[0]), num(&c[1]), num(&c[2]), neighbours(&c[3]))
+                    }
+                    _ => (0.0, 0.0, 0.0, Vec::new()),
                 })
                 .collect(),
             _ => Vec::new(),
@@ -487,7 +603,16 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
                  is 44 px tall and takes a tap over 44 px"
             ),
             !cav.is_empty() && cav.iter().all(|c| c.0 >= TAP && c.1 >= TAP && c.2 >= TAP),
-            caveats,
+            caveats.clone(),
+        );
+        let near: Vec<_> = cav.iter().map(|c| c.3.clone()).collect();
+        check(
+            &format!(
+                "{w}x{h}: no tap on the control just before or just after a caveat summary (such as Open in \
+                 the report) lands on the caveat summary"
+            ),
+            near.iter().any(|n| !n.is_empty()) && covered(&near).is_empty(),
+            format!("covered {:?} of {near:?}", covered(&near)),
         );
     }
 
@@ -531,34 +656,39 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
         _ => check("390x844: the Cyrius row is on the timeline", false, row),
     }
 
-    // 4. Two findings with one title: each More names its own detail line.
-    match &twin {
-        Some(([id, title, detail], [twin_id, twin_detail])) => {
-            visit(&mut b, &srv.url("/demo/runs/DEMO-002/?twin"));
-            b.wait(
-                &format!(
-                    "!!document.getElementById({})",
-                    js_str(&format!("f-{twin_id}"))
-                ),
-                Duration::from_secs(20),
-            );
-            let got = text(b.eval(&twin_names(id, twin_id)).ok());
-            let want = format!(
-                "[{},{}]",
-                js_str(&format!("More of the caveat: {title} ({detail})")),
-                js_str(&format!("More of the caveat: {title} ({twin_detail})"))
-            );
-            check(
-                "two findings with one title: each More is named with its own detail line",
-                json::loads(&got).ok() == json::loads(&want).ok(),
-                format!("{got}, want {want}"),
-            );
-        }
-        None => check(
+    // 4. Two findings with one title: each More gets a name of its own, with
+    //    two detail lines, with none and with the same one on both.
+    if twin.is_none() {
+        check(
             "DEMO-002 has a finding with a caveat and a detail line to give a twin",
             false,
             String::new(),
-        ),
+        );
+    }
+    for how in [Twin::Distinct, Twin::Missing, Twin::Repeated] {
+        let Some(([id, twin_id], want)) = add_twin(&results, &raw, how) else {
+            continue;
+        };
+        visit(&mut b, &srv.url(&format!("/demo/runs/DEMO-002/?{how:?}")));
+        b.wait(
+            &format!(
+                "!!document.getElementById({})",
+                js_str(&format!("f-{twin_id}"))
+            ),
+            Duration::from_secs(20),
+        );
+        let got = text(b.eval(&twin_names(&id, &twin_id)).ok());
+        let names: Option<Vec<String>> = match json::loads(&got) {
+            Ok(Value::Array(v)) => Some(v.into_iter().map(|n| text(Some(n))).collect()),
+            _ => None,
+        };
+        check(
+            &format!(
+                "two findings with one title ({how:?}): each More gets a name of its own, not empty"
+            ),
+            names.as_deref() == Some(&want[..]) && want[0] != want[1],
+            format!("{got}, want {want:?}"),
+        );
     }
 
     let errors = b.page_errors();
