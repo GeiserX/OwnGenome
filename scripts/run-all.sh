@@ -94,7 +94,7 @@ if [[ "${EVERYTHING:-}" =~ ^(true|1)$ ]]; then
 fi
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 B="${S}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam" V="${S}/vcf/${SAMPLE}.vcf.gz" F="${S}/fastq/${SAMPLE}_R"
-input_mode=${INPUT-auto}
+input_mode=${INPUT:-auto}
 row="" input_files=()
 # Check an explicit input before replacing the previous run's status or samplesheet.
 case "$input_mode" in
@@ -126,7 +126,7 @@ if ! command -v nextflow >/dev/null 2>&1 || [[ ! "${java_major:-}" =~ ^[0-9]+$ ]
   printf '%s\n' "ERROR: run-all.sh starts the Nextflow pipeline and needs Java 17 or later (found: ${java_major:-none}) and Nextflow ($(command -v nextflow || echo 'not on PATH'))." \
     "  Install the release CI validates:  curl -s https://get.nextflow.io | NXF_VER=${NEXTFLOW_VERSION} bash && sudo mv nextflow /usr/local/bin/" \
     "  Or run the steps one by one: ./scripts/<step>.sh ${SAMPLE} (docs/getting-started.md)." >&2; exit 2; fi
-on SKIP_VALIDATION || "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
+on SKIP_VALIDATION || INPUT="$input_mode" "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
   || { echo "ERROR: setup validation failed; fix the items above. To bypass: SKIP_VALIDATION=true $0 ${SAMPLE} ${SEX}" >&2; exit 1; }
 # og (bin/.og) built from another rust/ than this checkout's stops the run, SKIP_VALIDATION or not (rust/og.sh); before the family plan, which runs og.
 [ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || { echo "$OG_MSG" >&2; exit 2; }
@@ -241,6 +241,10 @@ elif [ -n "$fb" ]; then
 else
   echo "Starting from the existing VCF: reusing variant calls"
 fi
+NOGV="no gVCF: ${GV#"$G"/}"
+if [ "$input_mode" = vcf ] && [ -f "$GV" ]; then
+  NOGV="INPUT=vcf: the gVCF beside the VCF is not read"
+fi
 printf 'sample,fastq_1,fastq_2,bam,bam_index,vcf,vcf_index,sex%s\n%s,%s,%s%s\n' "$GCOL" "$SAMPLE" "$row" "$SEX" "$GROW" > "$SHEET"
 if [ -n "$NOBAM" ]; then RUNS=(16); else printf 'step\t16\tskipped (no BAM)\n' >> "$STATUS"; fi
 echo "[Steps] ${SAMPLE} (${SEX})"
@@ -308,7 +312,7 @@ plan "37 Y haplogroup (Yleaf)" y_haplogroup "$(optin y_haplogroup || if [ "$SEX"
   else echo 'female sample: no Y chromosome'; fi)" && NF+=(--yleaf_data "$YD")
 # Step 40 reads the gVCF: a row that starts from a VCF without one beside it has none.
 CS="${G}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
-plan "40 Raw-data export" consumer_export "$(optin consumer_export || if [ -n "$fv" ] && [ -z "$GROW" ]; then echo 'no gVCF beside the VCF'; else need "$CS"; fi)" \
+plan "40 Raw-data export" consumer_export "$(optin consumer_export || if [ -n "$fv" ] && [ -z "$GROW" ]; then echo "$NOGV"; else need "$CS"; fi)" \
   && NF+=(--consumer_sites "$CS")
 # Step 41 (blood groups) is opt-in and listed only when TOOLS names it; without a BAM its RhD is not determined.
 if [[ ",${T// /}," == *",bloodtype,"* ]]; then plan "41 Blood groups" bloodtype || true; else KNOWN+=" bloodtype"; fi
@@ -322,19 +326,19 @@ if [[ ",${T// /}," == *",chip,"* ]]; then plan "49 CHIP (clonal blood cells)" ch
   && for r in chip_germline_resource:af-only-gnomad chip_pon:1000g_pon chip_common_sites:small_exac_common_3; do f="${G}/somatic/${r#*:}.hg38.vcf.gz"; [ ! -e "${f}.tbi" ] || arg "--${r%%:*}" "$f"; done
 else KNOWN+=" chip"; fi
 # Step 42 reads the gVCF only: DeepVariant writes one for a FASTQ or BAM row, a BAM+VCF row has one when it lies beside the VCF.
-plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "no gVCF: ${GV#"$G"/}")" || true
+plan "42 Traits panel" traits "$([ -z "$fv" ] || [ -n "$GROW" ] || echo "$NOGV")" || true
 # Step 43 against the table setup.sh --archaic builds (DONE is written last); the genes of its segments come from GENCODE.
 # It reads the gVCF too (a site with no call is the reference only inside a reference block): with the table installed,
 # a row that starts from a VCF without one beside it is skipped, as for step 42.
 AR=${ARCHAIC_DIR:-${G}/reference/archaic/${ARCHAIC_DATA_VERSION}}
 plan "43 Archaic ancestry (IBDmix)" archaic "$(if [ "$AR" = none ]; then echo 'ARCHAIC_DIR=none'
-  elif [ -e "${AR}/DONE" ] && [ -n "$fv" ] && [ -z "$GROW" ]; then echo "no gVCF: ${GV#"$G"/}"; else need "${AR}/DONE"; fi)" \
+  elif [ -e "${AR}/DONE" ] && [ -n "$fv" ] && [ -z "$GROW" ]; then echo "$NOGV"; else need "${AR}/DONE"; fi)" \
   && NF+=(--archaic_data "$AR" --archaic_pop "${ARCHAIC_POP:-ALL}") && { [[ " ${NF[*]} " == *" --hla_genes "* ]] || [ ! -s "$GT" ] || NF+=(--hla_genes "$GT"); }
 # Step 44 (ancient populations) is opt-in and listed only when TOOLS names it; it reads the gVCF and the panel
 # setup.sh --ancient-panel builds (DONE is written last). ANCIENT_PANEL_DIR picks another panel.
 AN=${ANCIENT_PANEL_DIR:-${G}/reference/ancient/aadr_${AADR_VERSION}}
 if [[ ",${T// /}," == *",ancient,"* ]]; then
-  plan "44 Ancient populations" ancient "$(if [ -n "$fv" ] && [ -z "$GROW" ]; then echo "no gVCF: ${GV#"$G"/}"; else need "${AN}/DONE"; fi)" \
+  plan "44 Ancient populations" ancient "$(if [ -n "$fv" ] && [ -z "$GROW" ]; then echo "$NOGV"; else need "${AN}/DONE"; fi)" \
     && NF+=(--ancient_panel "$AN")
 else KNOWN+=" ancient"; fi
 # Step 45 (Y-STR repeat counts) is opt-in and listed only when TOOLS names it; it reads chrY, so a female sample is skipped.
