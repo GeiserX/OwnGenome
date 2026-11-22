@@ -120,18 +120,6 @@ def collect(sample, sample_dir, declared_sex=None, out=None):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# ClinVar review status -> stars. og clinvar hits (rust/crates/og-clinvar) holds the same table
-# (tests/test_collect_summary.py checks that the two agree).
-STARS = {
-    "practice_guideline": 4,
-    "reviewed_by_expert_panel": 3,
-    "criteria_provided,_multiple_submitters,_no_conflicts": 2,
-    "criteria_provided,_single_submitter": 1,
-    "criteria_provided,_conflicting_classifications": 1,
-    "criteria_provided,_conflicting_interpretations": 1,
-}
-
-
 # gnomAD allele frequency above which a P/LP hit is marked common.
 COMMON_AF = 0.01
 

@@ -877,13 +877,26 @@ jobs:
 
       # The fake-docker job has no og, so this case skips its schema check
       # there; here og is built and the check must run.
-      - name: The fake-docker case that validates summary.json with og dev schema
+      - name: Validate summary.json with og dev schema
         working-directory: .
         run: |
           out=$(scripts/ci/run-fake-docker-suite.sh reports-stale-step 2>&1) || { echo "$out"; exit 1; }
           echo "$out"
           grep -q 'summary.json validates (og dev schema)' <<< "$out" \
             || { echo "ERROR: reports-stale-step did not run og dev schema"; exit 1; }
+
+          # An unknown section must still have the shape of a summary section.
+          schema=tests/schema/summary.schema.json
+          sample=$(mktemp -d)
+          trap 'rm -rf "$sample"' EXIT
+          bin/og summary collect --sample S --sample-dir "$sample"
+          bin/og dev schema "$schema" "$sample/summary.json"
+          jq '.sections.planted_extra = true' "$sample/summary.json" > "$sample/extra.json"
+          rc=0
+          out=$(bin/og dev schema "$schema" "$sample/extra.json") || rc=$?
+          echo "$out"
+          test "$rc" -eq 1
+          grep -Fq 'INVALID $.sections.planted_extra:' <<< "$out"
 
       # Every test that carries the line `# og-leg: OG_REQUIRED` runs here,
       # with bin/og and OG_REQUIRED=1 (the tests that run og clinvar, the
