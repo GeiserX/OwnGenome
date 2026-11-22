@@ -3,7 +3,7 @@
 # bucket by setup.sh --ancestry-fine-panel for the fixture's slices plus
 # chr22:20-35 Mb (the slices are too short to paint: RFMix needs 5 cM):
 #   - without the panel, step 26b says so in one line and exits 0;
-#   - the panel installs: both ADMIXTURE levels, painting references, and
+#   - the panel installs: both levels of the model, painting references, and
 #     neither person of the synthetic mix in it. Oceania, which has one
 #     unrelated person in the panel's metadata, is left out of the model at
 #     both levels (5 continental and 17 regional groups), and the install log
@@ -78,11 +78,11 @@ check "Oceania has no reference person and no painting reference" \
   awk -F'\t' '$3 == "OCE" && ($5 == 1 || $6 == 1) {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
 check "the install log names Oceania as left out" \
   has 'Left out of the model, fewer than 10 unrelated reference people: Oceania \(continental and regional group\)' "$(cat "$STEP_LOG")"
-check_ge "SNVs for ADMIXTURE" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
+check_ge "SNVs of the model" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
 check_ge "painting references" "$(wc -l < "${PANEL}/model/paint_map.tsv" 2>/dev/null | tr -d ' ')" 150
 check "the two people of the mix are not in the panel" \
   awk -F'\t' -v a="$A" -v b="$B" '$1 == a || $1 == b {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
-printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s for ADMIXTURE\n\n' \
+printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s in the model\n\n' \
   "$LONG_CHR" "$LONG_START" "$LONG_END" "$T_SETUP" "$(du -sh "$PANEL" | cut -f1)" \
   "$(wc -l < "${PANEL}/panel/sites.tsv" | tr -d ' ')" "$(wc -l < "${PANEL}/model/ref.bim" | tr -d ' ')" >> "$E2E_NOTES"
 
@@ -95,7 +95,7 @@ cat "${G}/${SAMPLE}/ancestry_fine/${SAMPLE}_ancestry_fine.tsv" 2>/dev/null
 check "it read the gVCF" has 'Input: the gvcf' "$(cat "$STEP_LOG")"
 SUM=$(awk -F'\t' '$1 == "continent" {s += $4} END {printf "%.3f", s}' "${G}/${SAMPLE}/ancestry_fine/${SAMPLE}_ancestry_fine.tsv" 2>/dev/null)
 check "the continental fractions sum to 1 (${SUM})" between "$SUM" 0.99 1.01
-# Only about a quarter of the panel's SNVs for ADMIXTURE fall in the fixture's
+# Only about a quarter of the model's SNVs fall in the fixture's
 # slices and are called in the gVCF, too few to name a group: this run checks
 # the shape of the output, and HG002T below checks where the genome lands.
 check_ge "SNVs of the panel genotyped from the gVCF" \
@@ -135,6 +135,14 @@ check "HG002T: the report says Oceania was left out of the model" \
   has '^Left out of the model: Oceania \(continental and regional group\)' "$(cat "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.txt" 2>/dev/null)"
 check "HG002T: and the table has its left_out rows" \
   awk -F'\t' '$1 == "left_out" && $2 == "OCE" {n++} END {exit n != 2}' "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
+# og ancestry-fine project wrote each level's fit, after a bootstrap that drew
+# the reference people again.
+for l in continent region; do
+  # shellcheck disable=SC2016 # $1 and $2 are awk's fields
+  check "HG002T: the ${l} fit drew 100 replicates with the reference people drawn again" \
+    awk -F'\t' '$1 == "replicates" {r = $2} $1 == "reference_resampling" {s = $2} END {exit !(r == 100 && s == "yes")}' \
+    "${G}/HG002T/ancestry_fine/work/fractions/HG002T_${l}.fit.tsv"
+done
 T_LOG="${G}/HG002T/ancestry_fine/work/paint/${LONG_CHR}.log"
 check "HG002T: RFMix painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
 check "HG002T: RFMix's log of ${LONG_CHR} is there" test -s "$T_LOG"

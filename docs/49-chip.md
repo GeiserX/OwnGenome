@@ -20,7 +20,7 @@ The germline caller of step 3 is built for 50% and 100% alleles and does not rep
 
 ## Docker Image
 
-- `GATK_IMAGE`, `BCFTOOLS_IMAGE` and `PYTHON_IMAGE`
+- `GATK_IMAGE`, `BCFTOOLS_IMAGE` and `OG_IMAGE`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 

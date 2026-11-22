@@ -20,9 +20,10 @@ pypgx also calls genes absent from PharmCAT entirely, among them COMT, MTHFR, AB
 
 ## Docker Image
 
-- `PYPGX_IMAGE`
+- `PYPGX_IMAGE` runs pypgx and `og pgx cyp2d6-measure`.
+- `MOSDEPTH_IMAGE` measures depth. The Bash step runs the other `og` helpers in `OG_IMAGE` (stock Ubuntu).
 
-Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
+Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 ## Prerequisites
 

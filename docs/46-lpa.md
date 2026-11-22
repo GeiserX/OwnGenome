@@ -26,7 +26,7 @@ A VCF cannot show the repeat count or the 4925G>A variant: the six KIV-2 units i
 
 ## Docker Image
 
-- `SAMTOOLS_IMAGE` for the depth and the pileup, `PYTHON_IMAGE` for the count and the 4925G>A reading
+- `SAMTOOLS_IMAGE` for the depth and the pileup, `OG_IMAGE` for the count and the 4925G>A reading
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. The step adds no image and no reference data.
 

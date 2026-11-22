@@ -14,7 +14,7 @@ The pipeline produces output across many directories in different formats (VCF, 
 
 ## Docker Image
 
-- `PYTHON_IMAGE`
+- `OG_IMAGE`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 

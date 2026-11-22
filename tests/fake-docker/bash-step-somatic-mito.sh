@@ -15,6 +15,8 @@
 # (the stub runs in nextflow.yml go through that check).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
+# shellcheck source=../../versions.env
+. "${REPO_ROOT}/versions.env"
 
 export GENOME_DIR="${CASE_WORK}/genome"
 seed_reference "$GENOME_DIR"
@@ -98,7 +100,7 @@ docker_log_has '^run image=[^ ]*gatk.* Mutect2 ' "step 29 reused a result withou
 run_expect 0 mito-no-depth "${SCRIPTS}/20-mtoolbox.sh" sample1
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*--autosomal-coverage 0 ' "step 20 did not run NuMTFilterTool"
 output_has mito-no-depth 'WARNING: no mosdepth output'
-docker_log_has '^run image=[^ ]*python.* /pgp-bin/og mito annotate .*--numt-default --out ' \
+docker_log_has "^run image=${OG_IMAGE//./\\.} :: .* /pgp-bin/og mito annotate .*--numt-default --out " \
   "step 20 without a depth did not tell og mito annotate the NuMT filter used the default depth"
 M="${GENOME_DIR}/sample1/mosdepth"
 mkdir -p "$M"
@@ -117,7 +119,7 @@ run_expect 0 mito "${SCRIPTS}/20-mtoolbox.sh" sample1
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*--autosomal-coverage 30 ' "step 20 did not pass the median autosomal depth (30)"
 docker_log_has '^run image=[^ ]*gatk.* NuMTFilterTool .*-O /genome/sample1/mito/sample1_chrM_filtered\.vcf\.gz' \
   "NuMTFilterTool does not write the file the reports read"
-docker_log_has '^run image=[^ ]*python.* /pgp-bin/og mito annotate ' "step 20 did not annotate its calls"
+docker_log_has "^run image=${OG_IMAGE//./\\.} :: .* /pgp-bin/og mito annotate " "step 20 did not annotate its calls"
 if grep -q -- '--numt-default' "$FAKE_DOCKER_LOG"; then fail "step 20 with a measured depth still said the NuMT filter used the default"; fi
 : > "$FAKE_DOCKER_LOG"
 AUTOSOMAL_COVERAGE=25 run_expect 0 mito-given-depth "${SCRIPTS}/20-mtoolbox.sh" sample1

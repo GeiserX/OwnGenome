@@ -1574,7 +1574,7 @@ def parascopy_section(work, schema):
         "silent carrier): in Luo 2014 it raised the residual carrier risk of a two-copy result (in African Americans "
         "from about 1 in 121 to 1 in 34); the figures depend on ancestry. This marker does not prove 2+0, and its "
         "absence does not rule 2+0 out.\n")
-    summ_m, txt_m, html_m = render(d)
+    _, txt_m, html_m = render(d)
     card_m = html_m.split("<h2>SMN1/SMN2 Copy Number (Parascopy)</h2>", 1)[-1].split("<h2>", 1)[0]
     check("parascopy: a marker table with 5 of 40 reads reads as present beside the psCN in the text report, "
           "with the reader's message and the caveat",
@@ -1585,12 +1585,6 @@ def parascopy_section(work, schema):
           ">SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)<" in card_m
           and "present, 5 of 40 reads carry it" in card_m and render_report.E(caveat) in card_m
           and "does not prove 2+0" in card_m, card_m)
-    import live_results
-    lv = live_results.a_paralogs(summ_m["sections"], {})
-    check("live: the paralog card has the SMN1 copies and the marker as facts, and its lines with the caveat",
-          ["SMN1 g.27134T>G silent-carrier marker", "present, 5 of 40 reads carry it, about 0.5 copies"] in lv["facts"]
-          and ["SMN1 copies", "2 (quality 33, filter PASS)"] in lv["facts"]
-          and f"SMN1 marker caveat: {caveat}" in lv["lines"], lv)
     put(mk, "metric\tvalue\nstatus\tmaybe\n")
     _, txt_b, _ = render(d)
     check("parascopy: a marker table with no known status reads as not assessed, never as a result",

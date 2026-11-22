@@ -20,7 +20,7 @@ The reads a human alignment leaves unmapped are already in the BAM and nothing e
 
 ## Docker Image
 
-- `SAMTOOLS_IMAGE`, `MINIMAP2_IMAGE` and `PYTHON_IMAGE` in the bash step; `MINIMAP2_SAMTOOLS_IMAGE` (the same minimap2 and samtools releases in one image) and `PYTHON_IMAGE` in the Nextflow processes
+- `SAMTOOLS_IMAGE`, `MINIMAP2_IMAGE` and `OG_IMAGE` in the bash step; `MINIMAP2_SAMTOOLS_IMAGE` (the same minimap2 and samtools releases in one image) and `OG_IMAGE` in the Nextflow processes
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. The step adds no image.
 

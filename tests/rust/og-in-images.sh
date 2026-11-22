@@ -8,13 +8,13 @@
 # setup command.
 #
 # Usage: tests/rust/og-in-images.sh [IMAGE_VAR ...]
-#   default: PYTHON_IMAGE BCFTOOLS_IMAGE MANTA_IMAGE PARASCOPY_IMAGE
+#   default: OG_IMAGE PYTHON_IMAGE BCFTOOLS_IMAGE MANTA_IMAGE PARASCOPY_IMAGE
 # Needs bin/.og built (scripts/setup.sh --og). Exit 1 when any run fails.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=../../versions.env
 . "${ROOT}/versions.env"
-[ $# -gt 0 ] || set -- PYTHON_IMAGE BCFTOOLS_IMAGE MANTA_IMAGE PARASCOPY_IMAGE
+[ $# -gt 0 ] || set -- OG_IMAGE PYTHON_IMAGE BCFTOOLS_IMAGE MANTA_IMAGE PARASCOPY_IMAGE
 BIN="${ROOT}/bin"
 for a in x86_64 aarch64; do
   [ -x "${BIN}/.og/og-linux-${a}" ] || { echo "ERROR: ${BIN}/.og/og-linux-${a} is missing: run scripts/setup.sh --og" >&2; exit 1; }

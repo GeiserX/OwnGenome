@@ -181,9 +181,12 @@ jobs:
           fi
           echo "SMOKE_WORK=${work}" >> "$GITHUB_ENV"
 
-      # The LOCITYPER_IMAGE row runs /pgp-bin/og locityper report in the image.
+      # Both rows run og inside the tested image.
       - name: Build og as scripts/setup.sh --og does
-        if: matrix.var == 'LOCITYPER_IMAGE'
+        if: matrix.var == 'OG_IMAGE' || matrix.var == 'LOCITYPER_IMAGE'
+        env:
+          OG_ARCHES: x86_64
+          OG_DARWIN_ARCHES: ''
         run: |
           scripts/setup.sh --og
           rust/og.sh check --required

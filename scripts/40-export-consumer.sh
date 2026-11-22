@@ -31,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image PYTHON_IMAGE
+require_image OG_IMAGE
 case "$SEX" in
   ''|male|female) ;;
   *) echo "ERROR: sex must be 'male' or 'female' (or left out), got '${SEX}'." >&2; exit 2 ;;
@@ -63,7 +63,7 @@ echo "Sex:    ${SEX:-not given (each site keeps the ploidy of its call)}"
 mkdir -p "$OUTDIR"
 rm -f "${OUTDIR}/${SAMPLE}_23andme_v5.zip" "${OUTDIR}/${SAMPLE}_ancestrydna_layout.zip" "${OUTDIR}/${SAMPLE}_consumer_export.tsv"
 # og reads the BGZF gVCF on up to 4 cores; bin/og runs it in this image.
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 4 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 4 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og consumer export \
     --gvcf "$(cpath "$GVCF")" --sites "$(cpath "$SITES")" --sample "$SAMPLE" --sex "$SEX" \
     --par /pgp-assets/par_grch38.bed --out-dir "$(cpath "$OUTDIR")"

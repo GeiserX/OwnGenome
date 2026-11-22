@@ -158,7 +158,7 @@ done
 check_fail=0
 : > "${W}/depth_check.tsv"
 for kind in no-ALT with-ALT; do
-  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${REPO}/bin:/pgp-bin:ro" -v "${W}:/w" -w /w "$PYTHON_IMAGE" \
+  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${REPO}/bin:/pgp-bin:ro" -v "${W}:/w" -w /w "$OG_IMAGE" \
     /pgp-bin/og pgx cyp2d6-check --all "${kind}_cyp2d_q0.regions.bed.gz" \
     --mapq1 "${kind}_cyp2d_q1.regions.bed.gz" --out "depth_check_${kind}.tsv"
   status=$(awk -F'\t' '$1 == "status" {print $2}' "${W}/depth_check_${kind}.tsv")

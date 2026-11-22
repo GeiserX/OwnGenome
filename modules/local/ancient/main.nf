@@ -83,13 +83,14 @@ process ANCIENT_GENO {
         --snp ${panel}/moderns.snp --moderns-geno ${panel}/moderns.geno --out merged.geno --stats stats.tsv
     { cat ${panel}/moderns.ind; printf '%s\\tU\\tPerson\\n' '${meta.id}'; } > merged.ind
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch merged.geno merged.ind stats.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -154,7 +155,8 @@ process ANCIENT_REPORT {
         --out-tsv ${meta.id}_ancient.tsv --out-info ${meta.id}_ancient_info.tsv \\
         --out-txt ${meta.id}_ancient.txt --out-svg ${meta.id}_ancient_pca.svg
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -162,6 +164,6 @@ process ANCIENT_REPORT {
     printf 'rank\\tgroup\\tn\\tdistance\\tpc1\\tpc2\\tdate_bp\\tdates\\tcountry\\tlocality\\n' > ${meta.id}_ancient.tsv
     printf 'key\\tvalue\\n' > ${meta.id}_ancient_info.tsv
     touch ${meta.id}_ancient_pca.svg ${meta.id}_ancient.txt
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

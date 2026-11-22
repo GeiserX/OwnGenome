@@ -31,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image PYTHON_IMAGE SAMTOOLS_IMAGE BCFTOOLS_IMAGE
+require_image OG_IMAGE SAMTOOLS_IMAGE BCFTOOLS_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 VCF="${S}/vcf/${SAMPLE}.vcf.gz"
@@ -61,7 +61,7 @@ if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
   # left out: their sites get no depth row and are not determined. The
   # BLOODTYPE_DEPTH process runs the same commands.
   # shellcheck disable=SC2016  # $1 belongs to the inner shell
-  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$PYTHON_IMAGE" \
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 1g "$OG_IMAGE" \
     sh -c '/pgp-bin/og cn bed --locus RHD > "$1"' _ "${O}/rhd.bed"
   # shellcheck disable=SC2016  # $1 to $6 belong to the inner bash, the two programs to awk
   run_in -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c '
@@ -161,7 +161,7 @@ run_in -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$BCFTOOLS_IM
   "$CONTIG_AWK" "$DECLARE_AWK"
 [ -s "$NORM" ] || { echo "ERROR: no left-aligned VCF written (${NORM})" >&2; exit 1; }
 echo "[3/3] Blood group rules (og bloodtype report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og bloodtype report --sample "$SAMPLE" --vcf "$(cpath "$NORM")" \
     --markers /pgp-assets/bloodtype_markers.tsv ${ARGS[@]+"${ARGS[@]}"} \
     --out "$(cpath "$TABLE")" --evidence "$(cpath "$EVIDENCE")"

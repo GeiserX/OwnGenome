@@ -42,7 +42,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image MEGANE_IMAGE SAMTOOLS_IMAGE PYTHON_IMAGE
+require_image MEGANE_IMAGE SAMTOOLS_IMAGE OG_IMAGE
 case "$SEX" in
   male|female) ;;
   "") SEX=unknown ;;
@@ -148,7 +148,7 @@ cp "$VCF" "${P}_megane.vcf"
 ANNOTSV_ARGS=()
 if $ANNOTSV; then
   echo "[3/4] AnnotSV on the insertions..."
-  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
     /pgp-bin/og mei annotsv-input --sample "$SAMPLE" --vcf "${O}_megane.vcf" --out "${O}_mei_annotsv_input.vcf"
   AC=$(cpath "$ANNOTATIONS_DIR")
   run_in --rw "$ANNOTATIONS_DIR" --cpus 4 --memory 8g "$ANNOTSV_IMAGE" \
@@ -162,7 +162,7 @@ else
 fi
 
 echo "[4/4] Calls and the catalog (og mei report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SITES}:/pgp-sites.tsv:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SITES}:/pgp-sites.tsv:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og mei report --sample "$SAMPLE" --vcf "${O}_megane.vcf" --sites /pgp-sites.tsv \
     --depth "${O}_mei_depth.tsv" ${ANNOTSV_ARGS[@]+"${ANNOTSV_ARGS[@]}"} --out-calls "${O}_mei.tsv" --out-sites "${O}_mei_sites.tsv"
 rm -rf "$WORK" "${P}_mei_mainchr.txt"

@@ -16,9 +16,10 @@ PharmCAT (step 7) calls no CYP2D6 from a VCF. Cyrius was purpose-built by Illumi
 
 ## Docker Image
 
-- `PYTHON_IMAGE`
+- `PYTHON_IMAGE` installs and runs Cyrius.
+- `MOSDEPTH_IMAGE` measures depth. The Bash step runs `og pgx cyp2d6-bed` and `og pgx cyp2d6-check` in `OG_IMAGE` (stock Ubuntu). The Nextflow `CYRIUS` task runs the check in the same image as Cyrius.
 
-Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
+Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 Cyrius is not in any image. `./scripts/setup.sh --cyrius ${GENOME_DIR}` installs it once, in this image, into `${GENOME_DIR}/tools/cyrius-1.1.1/`:
 

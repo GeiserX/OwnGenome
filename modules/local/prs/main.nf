@@ -59,14 +59,15 @@ process PRS_PREPARE {
     """
     og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb}
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     mkdir -p pgs
     touch pgs/PGS000000.txt.gz score_alleles.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -366,7 +367,8 @@ process PRS_SUMMARY {
         --scores pgs --input-kind ${input_kind} --sex '${sex}' --target ${target} \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
     cp -p ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.\$(date -r ${meta.id}_prs_summary.tsv +%Y%m%d-%H%M).tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -374,6 +376,6 @@ process PRS_SUMMARY {
     printf 'Condition\\tPGS_ID\\tScore_SUM\\tVariants_Matched\\tVariants_Total\\tMatched_Pct\\tPercentile\\tAncestry_Group\\tChrX\\tAmbiguous\\tApplies_To\\tSex_Check\\tPercentile_Note\\tInput\\n' > ${meta.id}_prs_summary.tsv
     cp ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.20260101-0000.tsv
     if [ -n "${panel_name}" ]; then printf 'key\\tvalue\\nsample\\t%s\\n' ${meta.id} > ${meta.id}_ancestry.tsv; fi
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

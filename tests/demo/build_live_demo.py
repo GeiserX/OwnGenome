@@ -10,7 +10,7 @@ writes DIR, which the docs workflow publishes at /demo/ of the docs site:
   assets/                       assets/live/ as it is: core.js, live.js, person.js, live.css, plugins/*.js
   runs/DEMO-001/index.html      the person page (assets/live/index.html) in replay mode
   runs/DEMO-001/frames.json     the page's state.json at each moment of the run
-  runs/DEMO-001/results.json    the person's results (bin/live_results.py), as the results
+  runs/DEMO-001/results.json    the person's results (og live results), as the results
                                 plugin serves them at the end of the run; each card shows
                                 once the replay reaches the end of its steps
   runs/DEMO-001/map.json        the genome map of Figure 1: `og map build` with those results on
@@ -87,9 +87,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 BIN = os.path.join(REPO, "bin")
 sys.path.insert(0, BIN)
-import live_results  # noqa: E402
 import owngenome_live  # noqa: E402
 import owngenome_live_family  # noqa: E402
+from owngenome_live_results import og_results  # noqa: E402
 import run_headroom  # noqa: E402
 import run_state  # noqa: E402
 
@@ -128,14 +128,14 @@ def epoch(text):
 
 # --- the run folder -------------------------------------------------------------------------
 
-def report(d, sample=SAMPLE):
+def report(d, sample=SAMPLE, og=OG):
     """bin/render_report.py with the arguments scripts/24-html-report.sh gives it."""
     subprocess.run([sys.executable, os.path.join(BIN, "render_report.py"), "--assets", os.path.join(REPO, "assets"),
                     "--sample", sample, "--sample-dir", d, "--json", os.path.join(d, "summary.json"),
                     "-o", os.path.join(d, f"{sample}_report.html"),
                     "--search-index", os.path.join(d, f"{sample}_search_index.json"),
                     "--charts-json", os.path.join(d, f"{sample}_charts.json")],
-                   check=True, stdout=subprocess.DEVNULL)
+                   check=True, stdout=subprocess.DEVNULL, env=dict(os.environ, OG=og))
 
 
 def demo_sample(og, root, *args):
@@ -154,7 +154,7 @@ def other_person(root, name, sex, seed, records, og=OG):
         started = next(int(x.split("\t")[2]) for x in f if x.startswith("meta\tstarted_epoch\t"))
     with open(status, "a") as f:
         f.write(f"meta\tfinished_utc\t{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(started + 30 * 3600))}\n")
-    report(d, name)
+    report(d, name, og)
 
 
 def prepare(root, genome_dir=None, records=20000, og=OG):
@@ -168,7 +168,7 @@ def prepare(root, genome_dir=None, records=20000, og=OG):
     else:
         demo_sample(og, root, "--records", str(records))
     if not os.path.isfile(os.path.join(d, f"{SAMPLE}_report.html")):
-        report(d)
+        report(d, og=og)
     for rel in OTHER_RUN:
         p = os.path.join(d, rel)
         if os.path.isfile(p):
@@ -290,8 +290,9 @@ def replay(root, held, drop_hook=None, og=OG):
         run, d = live.run(SAMPLE), os.path.join(root, SAMPLE)
         # The demo's run folder has no run_status.tsv (OTHER_RUN), so the server knows it from its
         # messages alone; the files it may serve are those of the folder all the same.
-        results = live_results.build(SAMPLE, live.summary(SAMPLE, d, live.base_state(run)),
-                                     owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE}))
+        files = owngenome_live.Live.run_files(None, {"dir": d, "name": SAMPLE})
+        results = og_results(live.summary(SAMPLE, d, live.base_state(run)), "--sample", SAMPLE,
+                             files=files, og=og)
         results["generated_utc"] = checked
         if live.gated(SAMPLE, d, live.base_state(run)):  # as the results plugin adds it
             results["saved_attention"] = live.attention(d)[0]
@@ -302,8 +303,9 @@ def replay(root, held, drop_hook=None, og=OG):
             st = live.state(r)
             st["generated_utc"] = checked
             st["plugins"] = relink(st["plugins"])
-            res = live_results.build(name, live.summary(name, od, live.base_state(r)),
-                                     owngenome_live.Live.run_files(None, {"dir": od, "name": name}))
+            files = owngenome_live.Live.run_files(None, {"dir": od, "name": name})
+            res = og_results(live.summary(name, od, live.base_state(r)), "--sample", name,
+                             files=files, og=og)
             res["generated_utc"] = checked
             if live.gated(name, od, live.base_state(r)):
                 res["saved_attention"] = live.attention(od)[0]

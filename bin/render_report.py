@@ -948,9 +948,9 @@ CHAPTERS = (
 )
 # The section id of each summary key.
 SECTION_OF = {k: sid for _, _, _, secs in CHAPTERS for sid, _, keys in secs for k in keys}
-# The caveats of each section, by constant name, in the order the card shows them: the first is the
-# one the live site shows under a card's title. caveat_notes() is unkeyed, so the live site
-# (bin/live_results.py) reads this map; tests/test_live_results.py checks every section id has one.
+# The caveats of each section, by constant name, in card order. The first appears below the title.
+# The Rust live results read og_render::notes.
+# rust/crates/og-live/tests/results_journal.rs checks that every Rust card keeps its report caveats.
 SECTION_NOTES = {
     "qc": ("COVERAGE_NOTE", "KARYOTYPE_NOTE"),
     "callability": ("CALLABILITY_NOTE",),

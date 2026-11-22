@@ -132,13 +132,14 @@ process TRAITS {
     og traits table --table ${table} --rules ${rules} --genotypes ${genotypes} ${phased_arg} --sample ${meta.id} \\
         --out ${meta.id}_traits.tsv --rules-out ${meta.id}_genotype_rules.tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     printf 'rsid\\tgene\\tchrom\\tpos\\ttrait\\tgenotype\\tstatus\\treading\\tancestry\\tnote\\tpmids\\n' > ${meta.id}_traits.tsv
     printf 'rule\\tgene\\ttrait\\trsids\\tchrom\\tpos\\tgenotypes\\tgq\\tphase\\tresult\\tstatus\\treading\\tancestry\\tnote\\tpmids\\n' > ${meta.id}_genotype_rules.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

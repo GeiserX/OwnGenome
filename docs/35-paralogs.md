@@ -317,7 +317,7 @@ On a short-read genome these genes stay where step 35 leaves them: SMN1 and SMN2
 ### Docker Image
 
 - `PARAPHASE_IMAGE` (optional: pulled the first time the step runs)
-- `PYTHON_IMAGE` for the read-group check and the two tables (`og paraphase`, `rust/crates/og-steps/src/paraphase.rs`)
+- `OG_IMAGE` for the read-group check and the two tables (`og paraphase`, `rust/crates/og-steps/src/paraphase.rs`)
 
 ### Command
 

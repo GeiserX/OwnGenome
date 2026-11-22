@@ -20,15 +20,22 @@
 //! and the plugins' routes ([`crate::plugins`]). The plugins are compiled
 //! in: there is no plugin folder.
 //!
-//! Not here yet: the password, the sessions, TLS, the proxy options and the
-//! ingest listener. Until they land, `og live serve` listens on loopback
-//! only, takes no password, and refuses the flags that would make a site
-//! less safe if they were ignored (exit 2). It reads the messages another
-//! process stores under `STATE_DIR/runs/<run>/events.jsonl` (the Python
-//! server's ingest listener today), so both can run beside each other on one
-//! state folder. The access log (`STATE_DIR/access.log`, TSV) records who
-//! opened what, never a query string, a request body or a result.
+//! With a password hash every route but `/login`, `/assets/` and
+//! `/metrics` (which takes its own bearer token) needs a session
+//! ([`crate::auth`]). The ingest listener ([`crate::ingest`]) stores the
+//! run's messages under `STATE_DIR/runs/<run>/events.jsonl`, the file the
+//! pages read. The access log (`STATE_DIR/access.log`, TSV) records who
+//! opened what, never a query string, a request body, a result or the
+//! password.
+//!
+//! Without a password hash the site serves loopback only, and it refuses
+//! what would put it in front of other people: the proxy, Host and TLS
+//! flags exit 2, and a request a proxy forwarded (`Forwarded`,
+//! `X-Forwarded-*`, `X-Real-IP`) gets 403. The ingest port listens on
+//! loopback only and takes a message only at the path that holds the
+//! token the server keeps in `STATE_DIR/ingest-token`.
 
+use crate::auth::{self, Auth, Net};
 use crate::csp::{self, CSP, DENY, RUN_HTML_CSP};
 use crate::family::{inside, realpath};
 use crate::ops::OpsConfig;
@@ -37,34 +44,45 @@ use crate::runs::{self, Run};
 use crate::state::{self, Live, dumps, lock};
 use crate::static_files as sf;
 use crate::viewer::unquote;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-/// How long a client may take to send its request (an event stream writes
-/// every [`HEARTBEAT`]).
+/// How long a client may take to send its whole request, head and body
+/// (after the TLS handshake); each write of the answer gets as long. An
+/// event stream, which only writes once its request is read, lives on.
 pub const REQUEST_SECONDS: u64 = 60;
+/// The connections each listener serves at once; one more is closed at
+/// once.
+pub const MAX_CONNECTIONS: usize = 256;
 /// How often an open event stream writes when nothing happens.
 pub const HEARTBEAT: Duration = Duration::from_secs(15);
 /// The largest request head read.
 const MAX_HEAD: usize = 64 * 1024;
-/// The cookie the login sets (`og live serve` sets none yet; logout clears
-/// it).
+/// The cookie a login sets.
 pub const COOKIE: &str = "owngenome_live";
 
 const USAGE: &str =
     "usage: og live serve --root GENOME_DIR [--state-dir DIR] [--bind ADDR] [--port N]
-                     [--max-streams N] [--access-log FILE] [--access-log-max-mb N]
-                     [--config FILE] [--quiet]
+                     [--ingest-bind ADDR] [--ingest-port N] [--password-file FILE]
+                     [--allowed-host NAME ...] [--trust-proxy CIDR ...]
+                     [--tls-cert FILE --tls-key FILE] [--cookie-secure]
+                     [--session-hours H] [--session-idle-minutes M] [--login-max-failures N]
+                     [--max-streams N] [--max-body-kb N] [--access-log FILE]
+                     [--access-log-max-mb N] [--config FILE] [--quiet]
                      [--viewer-fasta FILE --viewer-igv-js FILE]
                      [--disk-warn-percent N] [--mem-warn-percent N] [--stall-minutes N]
                      [--metrics-token-file FILE] [--eta-box NAME] [--eta-cores N]
+       og live serve hash-password
 ";
 
 /// What the site is started with.
@@ -100,12 +118,32 @@ pub struct Config {
     pub viewer_igv_js: Option<PathBuf>,
     /// The og the map runs (`og map build`, `og map genes`): this binary.
     pub og: PathBuf,
-    /// Each person's results (`results.json`); `None` until `og live
-    /// results` lands, and then the results, the findings and the map say
-    /// they are not here yet.
+    /// The producer for results, findings and the map. The CLI configures it.
     pub results: Option<ResultsFns>,
     /// How often a quiet event stream writes.
     pub heartbeat: Duration,
+    /// The password and the sessions.
+    pub auth: Arc<Auth>,
+    /// Host names the browser may use besides loopback and the bind
+    /// address.
+    pub allowed_host: Vec<String>,
+    /// The proxies whose `X-Forwarded-For` names the client.
+    pub trust_proxy: Vec<Net>,
+    /// The certificate chain and key of HTTPS.
+    pub tls: Option<(PathBuf, PathBuf)>,
+    /// Mark the cookie `Secure` (TLS ends at a proxy).
+    pub cookie_secure: bool,
+    /// Where the ingest listener listens; `None`: none is started.
+    pub ingest: Option<(String, u16)>,
+    /// The largest message the ingest listener takes.
+    pub max_body_kb: usize,
+    /// The token the ingest listener takes, made by [`Server::start`]
+    /// (`STATE_DIR/ingest-token`); `None`: it takes no message.
+    pub ingest_token: Option<String>,
+    /// How long a client may take to send its request ([`REQUEST_SECONDS`]).
+    pub request_timeout: Duration,
+    /// The connections each listener serves at once ([`MAX_CONNECTIONS`]).
+    pub max_connections: usize,
 }
 
 /// The first ancestor of this binary that holds `rel`.
@@ -143,6 +181,16 @@ impl Config {
             og: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("og")),
             results: None,
             heartbeat: HEARTBEAT,
+            auth: Arc::new(Auth::default()),
+            allowed_host: Vec::new(),
+            trust_proxy: Vec::new(),
+            tls: None,
+            cookie_secure: false,
+            ingest: None,
+            max_body_kb: 1024,
+            ingest_token: None,
+            request_timeout: Duration::from_secs(REQUEST_SECONDS),
+            max_connections: MAX_CONNECTIONS,
         }
     }
 }
@@ -232,7 +280,13 @@ pub struct Req<'a> {
     pub path: String,
     pub query: String,
     headers: Vec<(String, String)>,
+    /// The peer, or the client a trusted proxy names.
     pub client: String,
+    /// The session id (SHA-256 of the cookie) when it is live.
+    pub sid: Option<String>,
+    /// Its first 8 characters for the access log, else `-`.
+    pub session8: String,
+    input: &'a mut dyn BufRead,
     out: &'a mut dyn Write,
 }
 
@@ -364,9 +418,21 @@ impl Req<'_> {
 
     /// One access-log row for this request.
     pub fn log(&self, action: &str, run: &str, section: &str, status: u16) {
-        self.live
-            .access
-            .write(&[&self.client, "-", action, run, section, &status.to_string()]);
+        self.live.access.write(&[
+            &self.client,
+            &self.session8,
+            action,
+            run,
+            section,
+            &status.to_string(),
+        ]);
+    }
+
+    /// The first `n` bytes of the request's body.
+    pub fn read_body(&mut self, n: usize) -> io::Result<Vec<u8>> {
+        let mut b = Vec::with_capacity(n);
+        Read::take(&mut *self.input, n as u64).read_to_end(&mut b)?;
+        Ok(b)
     }
 
     /// The folder of run `name`, when the site knows it and it has one.
@@ -444,8 +510,25 @@ fn netloc(url: &str) -> &str {
     &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())]
 }
 
+/// Whether a request says it came through a proxy: a `Forwarded`,
+/// `X-Forwarded-*` or `X-Real-IP` header. Without a password the site is
+/// for this machine only, and a proxy would hand it to anyone who reaches
+/// the proxy.
+fn forwarded(req: &Req<'_>) -> bool {
+    req.headers
+        .iter()
+        .any(|(k, _)| k == "forwarded" || k == "x-real-ip" || k.starts_with("x-forwarded-"))
+}
+
 /// Answers one request.
 pub fn handle(req: &mut Req<'_>) -> io::Result<()> {
+    if req.live.cfg.auth.hash.is_none() && forwarded(req) {
+        req.log("forwarded-refused", "-", "-", 403);
+        return req.deny(
+            403,
+            Some("a request through a proxy needs a password (docs/live-site.md)"),
+        );
+    }
     if !host_ok(req) {
         req.log("host-refused", "-", "-", 403);
         return req.deny(403, None);
@@ -454,25 +537,25 @@ pub fn handle(req: &mut Req<'_>) -> io::Result<()> {
         req.log("origin-refused", "-", "-", 403);
         return req.deny(403, None);
     }
+    let authed = auth::begin(req);
     let path = req.path.clone();
     if path == "/login" {
-        return login(req);
+        return auth::login(req);
     }
     if path == "/logout" && req.method == "POST" {
-        req.log("logout", "-", "-", 303);
-        let clear = format!("{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
-        return req.send(
-            303,
-            "text/plain",
-            b"",
-            &[("Location", "/login".into()), ("Set-Cookie", clear)],
-            CSP,
-        );
+        return auth::logout(req);
     }
     if req.method == "GET"
         && let Some(name) = path.strip_prefix("/assets/")
     {
         return asset(req, name);
+    }
+    // /metrics takes a bearer token of its own (crate::plugins).
+    if !authed && path != "/metrics" {
+        if req.method != "GET" {
+            return req.deny(404, None);
+        }
+        return auth::refuse(req);
     }
     if plugins::route(req, &path)? {
         return Ok(());
@@ -508,18 +591,6 @@ pub fn handle(req: &mut Req<'_>) -> io::Result<()> {
             req.redirect(301, &to)
         }
         Some(rest) => run_path(req, &run, rest),
-    }
-}
-
-/// `/login`: the login page; a POST goes home (no password is set).
-fn login(req: &mut Req<'_>) -> io::Result<()> {
-    if req.method == "POST" {
-        return req.redirect(303, "/");
-    }
-    let next = sf::query_value(&req.query, "next").unwrap_or_else(|| "/".into());
-    match sf::login_page(&req.live.cfg.assets, "", &next) {
-        Ok(page) => req.send_body(200, "text/html; charset=utf-8", page),
-        Err(_) => req.deny(500, None),
     }
 }
 
@@ -667,6 +738,7 @@ fn events(req: &mut Req<'_>, run: &Run) -> io::Result<()> {
     if req.head_only {
         return req.out().flush();
     }
+    let token = auth::cookie_token(req.header("cookie"));
     let out = req.out();
     out.write_all(b"retry: 3000\n\n")?;
     out.flush()?;
@@ -675,6 +747,9 @@ fn events(req: &mut Req<'_>, run: &Run) -> io::Result<()> {
         let new = live
             .store
             .wait(name, sent, live.cfg.heartbeat, &live.stopping);
+        if live.cfg.auth.hash.is_some() && !live.cfg.auth.alive(token.as_deref()) {
+            break; // logged out or expired: an open stream ends with its session
+        }
         if new.is_empty() {
             out.write_all(b": heartbeat\n\n")?;
         } else {
@@ -700,13 +775,11 @@ type Headers = Vec<(String, String)>;
 
 /// The head of one request: method, target and headers (names lowered);
 /// `None` for one that cannot be read.
-fn read_head(r: &mut impl BufRead) -> Option<(String, String, Headers)> {
+pub(crate) fn read_head(r: &mut dyn BufRead) -> Option<(String, String, Headers)> {
     let mut head = Vec::new();
     loop {
         let mut line = Vec::new();
-        let n = r
-            .by_ref()
-            .take((MAX_HEAD - head.len()) as u64 + 1)
+        let n = Read::take(&mut *r, (MAX_HEAD - head.len()) as u64 + 1)
             .read_until(b'\n', &mut line)
             .ok()?;
         if n == 0 {
@@ -742,20 +815,144 @@ fn read_head(r: &mut impl BufRead) -> Option<(String, String, Headers)> {
     Some((method.to_owned(), target.to_owned(), headers))
 }
 
-fn serve_conn(live: &Live, stream: TcpStream) {
-    let timeout = Some(Duration::from_secs(REQUEST_SECONDS));
-    let _ = stream.set_read_timeout(timeout);
-    let _ = stream.set_write_timeout(timeout);
-    let client = stream
+/// A socket whose reads share one deadline, so a client that sends its
+/// request a byte at a time cannot hold the connection past it. A write
+/// keeps the socket's own write timeout.
+pub(crate) struct ReadBy {
+    pub(crate) tcp: TcpStream,
+    pub(crate) end: Instant,
+}
+
+impl Read for ReadBy {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let left = self.end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the request took too long",
+            ));
+        }
+        self.tcp.set_read_timeout(Some(left))?;
+        (&self.tcp).read(buf)
+    }
+}
+
+impl Write for ReadBy {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&self.tcp).write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        (&self.tcp).flush()
+    }
+}
+
+/// One TLS connection, read and written by turns from the one thread that
+/// serves it.
+struct Shared(Rc<RefCell<rustls::StreamOwned<rustls::ServerConnection, ReadBy>>>);
+
+impl Read for Shared {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.borrow_mut().read(buf)
+    }
+}
+
+impl Write for Shared {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.borrow_mut().write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.borrow_mut().flush()
+    }
+}
+
+fn serve_conn(live: &Live, stream: TcpStream, tls: Option<&Arc<rustls::ServerConfig>>) {
+    let peer = stream
         .peer_addr()
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|_| "-".into());
-    let Ok(read_half) = stream.try_clone() else {
+    let timeout = live.cfg.request_timeout;
+    let Some(cfg) = tls else {
+        let _ = stream.set_write_timeout(Some(timeout));
+        let Ok(read_half) = stream.try_clone() else {
+            return;
+        };
+        let mut reader = BufReader::new(ReadBy {
+            tcp: read_half,
+            end: Instant::now() + timeout,
+        });
+        let mut out = io::BufWriter::new(&stream);
+        serve_io(live, &peer, &mut reader, &mut out);
+        drop(out);
+        let _ = stream.shutdown(Shutdown::Write);
+        // What the client still sends is read and dropped once the answer
+        // is out, so closing does not reset the connection before the
+        // client has read it.
+        reader.get_mut().end = Instant::now() + Duration::from_secs(1);
+        let _ = io::copy(&mut reader.take(MAX_HEAD as u64), &mut io::sink());
         return;
     };
-    let mut reader = BufReader::new(read_half);
-    let mut out = io::BufWriter::new(&stream);
-    let Some((method, target, headers)) = read_head(&mut reader) else {
+    let Some(tls) = auth::accept_tls(cfg, stream) else {
+        return;
+    };
+    // The request's deadline starts after the handshake, which has its own.
+    let (conn, sock) = tls.into_parts();
+    let _ = sock.set_write_timeout(Some(timeout));
+    let sock = ReadBy {
+        tcp: sock,
+        end: Instant::now() + timeout,
+    };
+    let tls = Rc::new(RefCell::new(rustls::StreamOwned::new(conn, sock)));
+    let mut reader = BufReader::new(Shared(Rc::clone(&tls)));
+    let mut out = io::BufWriter::new(Shared(Rc::clone(&tls)));
+    serve_io(live, &peer, &mut reader, &mut out);
+    drop(out);
+    let mut t = tls.borrow_mut();
+    t.conn.send_close_notify();
+    let _ = t.flush();
+    let _ = t.sock.tcp.shutdown(Shutdown::Write);
+}
+
+/// One connection being served; dropping it frees its place.
+struct Slot(Arc<AtomicUsize>);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Serves each connection of `listener` with `serve`, on a thread of its
+/// own, until `live` is stopping. At most `cfg.max_connections` are served
+/// at once: one more is closed at once, so a flood of connections cannot
+/// start a thread each.
+pub(crate) fn accept_loop<F>(live: Arc<Live>, listener: TcpListener, serve: F) -> JoinHandle<()>
+where
+    F: Fn(&Live, TcpStream) + Clone + Send + 'static,
+{
+    thread::spawn(move || {
+        let open = Arc::new(AtomicUsize::new(0));
+        for conn in listener.incoming() {
+            if live.stopping.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(stream) = conn else { continue };
+            let before = open.fetch_add(1, Ordering::SeqCst);
+            let slot = Slot(Arc::clone(&open));
+            if before >= live.cfg.max_connections {
+                continue; // drops the stream, which closes it, and the slot
+            }
+            let (l, serve) = (Arc::clone(&live), serve.clone());
+            thread::spawn(move || {
+                let _slot = slot;
+                serve(&l, stream);
+            });
+        }
+    })
+}
+
+/// Reads one request from `reader` and answers it on `out`.
+fn serve_io(live: &Live, peer: &str, reader: &mut dyn BufRead, out: &mut dyn Write) {
+    let Some((method, target, headers)) = read_head(reader) else {
         let _ = out.write_all(
             b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 12\r\n\
               Connection: close\r\n\r\nbad request\n",
@@ -782,6 +979,15 @@ fn serve_conn(live: &Live, stream: TcpStream) {
             return;
         }
     };
+    // Every X-Forwarded-For field in the order sent, as one list: a proxy
+    // may add its entry as a field of its own.
+    let forwarded_for: Vec<&str> = headers
+        .iter()
+        .filter(|(k, _)| k == "x-forwarded-for")
+        .map(|(_, v)| v.as_str())
+        .collect();
+    let forwarded_for = (!forwarded_for.is_empty()).then(|| forwarded_for.join(","));
+    let client = auth::client(peer, forwarded_for.as_deref(), &live.cfg.trust_proxy);
     let mut req = Req {
         live,
         method: m.into(),
@@ -790,17 +996,13 @@ fn serve_conn(live: &Live, stream: TcpStream) {
         query: query.split('#').next().unwrap_or("").to_owned(),
         headers,
         client,
-        out: &mut out,
+        sid: None,
+        session8: "-".into(),
+        input: reader,
+        out,
     };
     let _ = handle(&mut req);
-    let _ = out.flush();
-    drop(out);
-    let _ = stream.shutdown(Shutdown::Write);
-    // No route reads a body: what the client still sends is read and
-    // dropped once the answer is out, so closing does not reset the
-    // connection before the client has read it.
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-    let _ = io::copy(&mut reader.take(MAX_HEAD as u64), &mut io::sink());
+    let _ = req.out.flush();
 }
 
 /// A running site: [`Server::start`] binds and serves on threads, dropping
@@ -808,44 +1010,96 @@ fn serve_conn(live: &Live, stream: TcpStream) {
 pub struct Server {
     live: Arc<Live>,
     addr: SocketAddr,
+    ingest_addr: Option<SocketAddr>,
     accept: Option<JoinHandle<()>>,
+    ingest: Option<JoinHandle<()>>,
+}
+
+/// Binds `bind:port` (a bracketed IPv6 address too).
+fn listen(bind: &str, port: u16, what: &str) -> Result<TcpListener, String> {
+    let host = bind.trim_matches(|c| c == '[' || c == ']');
+    TcpListener::bind((host, port))
+        .map_err(|e| format!("cannot listen{what} on {bind}:{port}: {e}"))
 }
 
 impl Server {
     /// Reads steps.tsv, opens the access log, binds `cfg.bind:cfg.port` (0:
-    /// any free port) and serves.
-    pub fn start(cfg: Config) -> Result<Server, String> {
+    /// any free port) and the ingest listener of `cfg.ingest`, and serves.
+    pub fn start(mut cfg: Config) -> Result<Server, String> {
         let steps = og_runlog::steps::read_steps(&cfg.steps).map_err(|e| format!("steps: {e}"))?;
-        fs::create_dir_all(&cfg.state_dir)
+        // Mode 755 (less under a stricter umask): the ingest port needs a
+        // state folder no other account can write to.
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o755)
+            .create(&cfg.state_dir)
             .map_err(|e| format!("--state-dir {}: {e}", cfg.state_dir.display()))?;
         let access = AccessLog::new(&cfg.access_log, cfg.access_log_max_mb)
             .map_err(|e| format!("--access-log {}: {e}", cfg.access_log.display()))?;
-        let host = cfg.bind.trim_matches(|c| c == '[' || c == ']').to_owned();
-        let listener = TcpListener::bind((host.as_str(), cfg.port))
-            .map_err(|e| format!("cannot listen on {}:{}: {e}", cfg.bind, cfg.port))?;
+        let tls = match &cfg.tls {
+            Some((cert, key)) => Some(auth::tls_config(cert, key)?),
+            None => None,
+        };
+        let listener = listen(&cfg.bind, cfg.port, "")?;
         let addr = listener.local_addr().map_err(|e| e.to_string())?;
-        let live = Arc::new(Live::new(cfg, steps, access));
-        let l2 = Arc::clone(&live);
-        let accept = thread::spawn(move || {
-            for conn in listener.incoming() {
-                if l2.stopping.load(Ordering::SeqCst) {
-                    break;
+        // The address that was bound, not the name: with no password the
+        // site, and always the ingest port, stay on loopback.
+        if cfg.auth.hash.is_none() && !addr.ip().is_loopback() {
+            return Err(format!(
+                "--bind {} listens on {addr}, not loopback, and no password hash is set",
+                cfg.bind
+            ));
+        }
+        let ingest_listener = match &cfg.ingest {
+            Some((bind, port)) => {
+                let l = listen(bind, *port, " for ingest")?;
+                let a = l.local_addr().map_err(|e| e.to_string())?;
+                if !a.ip().is_loopback() {
+                    return Err(format!("--ingest-bind {bind} listens on {a}, not loopback"));
                 }
-                let Ok(stream) = conn else { continue };
-                let l3 = Arc::clone(&l2);
-                thread::spawn(move || serve_conn(&l3, stream));
+                Some(l)
             }
+            None => None,
+        };
+        if ingest_listener.is_some() {
+            cfg.ingest_token = Some(crate::ingest::token(&cfg.state_dir)?);
+        }
+        let mut live = Live::new(cfg, steps, access);
+        let more: Vec<String> = live
+            .cfg
+            .allowed_host
+            .iter()
+            .map(|h| h.to_lowercase())
+            .collect();
+        live.allowed.extend(more);
+        let live = Arc::new(live);
+        let (ingest_addr, ingest) = match ingest_listener {
+            Some(l) => (
+                Some(l.local_addr().map_err(|e| e.to_string())?),
+                Some(crate::ingest::serve(Arc::clone(&live), l)),
+            ),
+            None => (None, None),
+        };
+        let accept = accept_loop(Arc::clone(&live), listener, move |l, s| {
+            serve_conn(l, s, tls.as_ref())
         });
         Ok(Server {
             live,
             addr,
+            ingest_addr,
             accept: Some(accept),
+            ingest,
         })
     }
 
     /// The port it listens on.
     pub fn port(&self) -> u16 {
         self.addr.port()
+    }
+
+    /// The port of the ingest listener, when it has one.
+    pub fn ingest_port(&self) -> Option<u16> {
+        self.ingest_addr.map(|a| a.port())
     }
 
     /// The state it serves.
@@ -864,10 +1118,15 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.live.stopping.store(true, Ordering::SeqCst);
-        // Wakes the accept loop so it sees the flag.
-        let _ = TcpStream::connect_timeout(&self.addr, Duration::from_secs(1));
-        if let Some(h) = self.accept.take() {
-            let _ = h.join();
+        // Wakes each accept loop so it sees the flag.
+        for (a, h) in [
+            (Some(self.addr), self.accept.take()),
+            (self.ingest_addr, self.ingest.take()),
+        ] {
+            if let (Some(a), Some(h)) = (a, h) {
+                let _ = TcpStream::connect_timeout(&a, Duration::from_secs(1));
+                let _ = h.join();
+            }
         }
     }
 }
@@ -895,29 +1154,6 @@ pub fn is_loopback(addr: &str) -> bool {
 
 /// The flags that take no value.
 const SWITCHES: [&str; 2] = ["quiet", "cookie_secure"];
-
-/// The flags of a site with a password, TLS or a proxy: refused until they
-/// are ported, because a site that ignored them would be less safe than
-/// its owner asked for.
-const NOT_YET: [&str; 6] = [
-    "password_file",
-    "allowed_host",
-    "trust_proxy",
-    "tls_cert",
-    "tls_key",
-    "cookie_secure",
-];
-
-/// Flags read and not used yet: the ingest listener's and the sessions'.
-/// `og live serve` starts neither, so they change nothing.
-const UNUSED: [&str; 6] = [
-    "ingest_bind",
-    "ingest_port",
-    "max_body_kb",
-    "session_hours",
-    "session_idle_minutes",
-    "login_max_failures",
-];
 
 /// Every flag, by its name with `_`.
 const FLAGS: [&str; 26] = [
@@ -1074,33 +1310,15 @@ fn number<T: std::str::FromStr>(f: &Flags, k: &str, kind: &str) -> Result<Option
 }
 
 /// The site's [`Config`] from the command line, or (exit code, message).
-pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
+/// `env_hash` is `OWNGENOME_LIVE_PASSWORD_HASH`, read only without
+/// `--password-file`.
+pub fn configure_with(args: &[String], env_hash: Option<&str>) -> Result<Config, (u8, String)> {
     let usage = |m: String| (2u8, format!("{USAGE}og live serve: error: {m}"));
     let f = parse_args(args).map_err(usage)?;
-    for k in NOT_YET {
-        if f.get(k).is_some_and(|v| v.iter().any(|x| !x.is_empty())) {
-            return Err((
-                2,
-                format!(
-                    "og live serve: --{} is not ported yet: the password, TLS and proxy options \
-                     land with the login (bin/owngenome_live.py has them until then)",
-                    k.replace('_', "-")
-                ),
-            ));
-        }
-    }
     if f.contains_key("plugin_dir") {
         return Err((
             2,
             "og live serve: --plugin-dir: the plugins are compiled into og".into(),
-        ));
-    }
-    if std::env::var("OWNGENOME_LIVE_PASSWORD_HASH").is_ok_and(|h| !h.trim().is_empty()) {
-        return Err((
-            2,
-            "og live serve: OWNGENOME_LIVE_PASSWORD_HASH is set, and the password is not ported \
-             yet (bin/owngenome_live.py has it until then)"
-                .into(),
         ));
     }
     let Some(root) = one(&f, "root").filter(|r| !r.is_empty()) else {
@@ -1109,6 +1327,7 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
         ));
     };
     let mut cfg = Config::new(root);
+    cfg.results = Some(crate::results::FNS);
     if let Some(s) = one(&f, "state_dir").filter(|s| !s.is_empty()) {
         cfg.state_dir = PathBuf::from(s);
     }
@@ -1127,12 +1346,22 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
     if let Some(n) = number::<f64>(&f, "access_log_max_mb", "float").map_err(usage)? {
         cfg.access_log_max_mb = n;
     }
-    for k in UNUSED {
-        if k.ends_with("hours") || k.ends_with("minutes") {
-            number::<f64>(&f, k, "float").map_err(usage)?;
-        } else if k != "ingest_bind" {
-            number::<i64>(&f, k, "int").map_err(usage)?;
+    let ingest_bind = one(&f, "ingest_bind").unwrap_or("127.0.0.1").to_owned();
+    let ingest_port = number::<u16>(&f, "ingest_port", "int")
+        .map_err(usage)?
+        .unwrap_or(8788);
+    cfg.ingest = Some((ingest_bind, ingest_port));
+    if let Some(n) = number::<usize>(&f, "max_body_kb", "int").map_err(usage)? {
+        // A Content-Length is read as a signed 64-bit number.
+        if n.checked_mul(1024)
+            .is_none_or(|b| i64::try_from(b).is_err())
+        {
+            return Err(usage(format!(
+                "argument --max-body-kb: {n} is too large (at most {})",
+                i64::MAX / 1024
+            )));
         }
+        cfg.max_body_kb = n;
     }
     if let Some(a) = one(&f, "assets") {
         cfg.assets = PathBuf::from(a);
@@ -1144,6 +1373,7 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
         cfg.steps = PathBuf::from(s);
     }
     cfg.quiet = one(&f, "quiet").is_some_and(|v| !v.is_empty());
+    cfg.cookie_secure = one(&f, "cookie_secure").is_some_and(|v| !v.is_empty());
     let path = |k: &str| one(&f, k).filter(|v| !v.is_empty()).map(PathBuf::from);
     cfg.viewer_fasta = path("viewer_fasta");
     cfg.viewer_igv_js = path("viewer_igv_js");
@@ -1156,12 +1386,85 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
         mem_warn_percent: one(&f, "mem_warn_percent").map(str::to_owned),
         stall_minutes: number::<f64>(&f, "stall_minutes", "float").map_err(usage)?,
     };
-    if !is_loopback(&cfg.bind) {
+    let list = |k: &str| -> Vec<String> {
+        f.get(k)
+            .map(|v| v.iter().filter(|x| !x.is_empty()).cloned().collect())
+            .unwrap_or_default()
+    };
+    cfg.allowed_host = list("allowed_host");
+    cfg.trust_proxy = list("trust_proxy")
+        .iter()
+        .map(|c| Net::parse(c))
+        .collect::<Result<_, _>>()
+        .map_err(|e| (2, format!("ERROR: {e}")))?;
+    let (cert, key) = (path("tls_cert"), path("tls_key"));
+    // An empty --password-file (or password_file= in --config) is a
+    // mistake, never a request for a site with no login.
+    if one(&f, "password_file").is_some_and(|v| v.trim().is_empty()) {
+        return Err(usage(
+            "argument --password-file: empty: give the file 'og live serve hash-password' \
+             wrote, or leave the flag out for a loopback site with no login"
+                .into(),
+        ));
+    }
+    let hash = auth::read_password_hash(path("password_file").as_deref(), env_hash)
+        .map_err(|e| (1, format!("ERROR: password hash: {e}")))?;
+    let mut a = Auth::new(hash);
+    // NaN or inf would make a login last for ever.
+    let limit = |k: &str| -> Result<Option<f64>, (u8, String)> {
+        match number::<f64>(&f, k, "float").map_err(usage)? {
+            Some(v) if !v.is_finite() => Err(usage(format!(
+                "argument --{}: invalid float value: '{v}'",
+                k.replace('_', "-")
+            ))),
+            v => Ok(v),
+        }
+    };
+    if let Some(h) = limit("session_hours")? {
+        a.session_hours = h;
+    }
+    if let Some(m) = limit("session_idle_minutes")? {
+        a.session_idle_minutes = m;
+    }
+    if let Some(n) = number::<usize>(&f, "login_max_failures", "int").map_err(usage)? {
+        a.login_max_failures = n;
+    }
+    let password = a.hash.is_some();
+    cfg.auth = Arc::new(a);
+    if !password && let Some(flag) = network_flag(&cfg, cert.is_some() || key.is_some()) {
         return Err((
             2,
             format!(
-                "ERROR: --bind {} is not loopback, and og live serve takes no password yet: \
-                 it listens on loopback only until the login is ported",
+                "ERROR: {flag} is for a site reached through a proxy or over the network, and \
+                 no password hash is set, so anyone who reaches it would see the runs: run \
+                 'og live serve hash-password' and pass --password-file (or \
+                 OWNGENOME_LIVE_PASSWORD_HASH), or leave {flag} out"
+            ),
+        ));
+    }
+    cfg.tls = match (cert, key) {
+        (Some(c), Some(k)) => Some((c, k)),
+        (None, None) => None,
+        _ => return Err((1, "ERROR: --tls-cert and --tls-key go together".into())),
+    };
+    if let Some((bind, _)) = &cfg.ingest
+        && !is_loopback(bind)
+    {
+        return Err((
+            2,
+            format!(
+                "ERROR: --ingest-bind {bind} is not loopback: the ingest port takes the messages \
+                 of runs on this machine only (in a container, give it the host's network)"
+            ),
+        ));
+    }
+    if !password && !is_loopback(&cfg.bind) {
+        return Err((
+            2,
+            format!(
+                "ERROR: --bind {} is not loopback and no password hash is set: run \
+                 'og live serve hash-password' and pass --password-file (or \
+                 OWNGENOME_LIVE_PASSWORD_HASH)",
                 cfg.bind
             ),
         ));
@@ -1175,9 +1478,60 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
     Ok(cfg)
 }
 
+/// The first flag of a site reached through a proxy or over the network
+/// that `cfg` sets (`tls`: `--tls-cert` or `--tls-key` was given).
+fn network_flag(cfg: &Config, tls: bool) -> Option<&'static str> {
+    if !cfg.trust_proxy.is_empty() {
+        Some("--trust-proxy")
+    } else if !cfg.allowed_host.is_empty() {
+        Some("--allowed-host")
+    } else if tls {
+        Some("--tls-cert and --tls-key")
+    } else if cfg.cookie_secure {
+        Some("--cookie-secure")
+    } else {
+        None
+    }
+}
+
+/// [`configure_with`] the `OWNGENOME_LIVE_PASSWORD_HASH` of the process.
+pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
+    let env = std::env::var("OWNGENOME_LIVE_PASSWORD_HASH").ok();
+    configure_with(args, env.as_deref())
+}
+
+/// The lines `og live serve` prints as it starts, before it listens: what
+/// is open to whom.
+pub fn start_notes(cfg: &Config) -> Vec<String> {
+    let mut out = Vec::new();
+    if cfg.auth.hash.is_none() {
+        out.push(
+            "og live serve: no password hash set: anyone who can reach the loopback port sees \
+             the runs"
+                .into(),
+        );
+    }
+    if cfg.auth.hash.is_some() && cfg.tls.is_none() && !is_loopback(&cfg.bind) {
+        out.push(format!(
+            "og live serve: WARNING: --bind {} is not loopback and serves plain HTTP: the \
+             password, the session cookie and every page cross the network unencrypted; add \
+             --tls-cert and --tls-key, or bind 127.0.0.1 behind a proxy that does TLS",
+            cfg.bind
+        ));
+    }
+    out
+}
+
 /// `og live serve ARGS`: serves until it is stopped. Exit 2 for flags it
-/// cannot take, 1 when it cannot start.
+/// cannot take, 1 when it cannot start. `og live serve hash-password`
+/// prints the hash of a password.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    if args.first().is_some_and(|a| a == "hash-password") {
+        use std::io::IsTerminal;
+        let stdin = io::stdin();
+        let tty = stdin.is_terminal();
+        return auth::hash_password_cli(&args[1..], &mut stdin.lock(), tty, out, err);
+    }
     if args.iter().any(|a| a == "-h" || a == "--help") {
         let _ = write!(out, "{USAGE}");
         return 0;
@@ -1189,19 +1543,49 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             return code;
         }
     };
+    serve_cli(cfg, err)
+}
+
+/// `bind` as the host of a URL: an IPv6 address in brackets.
+fn url_host(bind: &str) -> String {
+    if bind.contains(':') && !bind.starts_with('[') {
+        format!("[{bind}]")
+    } else {
+        bind.to_owned()
+    }
+}
+
+/// Prints the start notes, starts the site of `cfg` and serves until the
+/// process ends; 1 when it cannot start.
+pub fn serve_cli(cfg: Config, err: &mut dyn Write) -> u8 {
+    for line in start_notes(&cfg) {
+        let _ = writeln!(err, "{line}");
+    }
     let bind = cfg.bind.clone();
+    let scheme = if cfg.tls.is_some() { "https" } else { "http" };
     let srv = match Server::start(cfg) {
         Ok(s) => s,
         Err(e) => {
             let _ = writeln!(err, "og live serve: {e}");
+            let _ = err.flush();
             return 1;
         }
     };
-    let _ = writeln!(
+    let _ = write!(
         err,
-        "og live serve: no password hash set: anyone who can reach the loopback port sees the runs"
+        "og live serve: browser {scheme}://{}:{}/",
+        url_host(&bind),
+        srv.port()
     );
-    let _ = writeln!(err, "og live serve: browser http://{bind}:{}/", srv.port());
+    if let (Some(p), Some((ib, _))) = (srv.ingest_port(), &srv.live().cfg.ingest) {
+        let _ = write!(
+            err,
+            " ; ingest http://{}:{p}/<token>/ingest/<run> (the token is in {})",
+            url_host(ib),
+            srv.live().cfg.state_dir.join("ingest-token").display()
+        );
+    }
+    let _ = writeln!(err);
     let _ = err.flush();
     srv.wait();
     0
@@ -1240,15 +1624,27 @@ mod tests {
         assert!(cfg.quiet);
         assert_eq!(cfg.viewer_fasta.as_deref(), Some(Path::new("/r.fa")));
         assert_eq!(cfg.state_dir, dir.join(".owngenome-live"));
-        let refused = |a: &[&str]| configure(&args(a)).err().map(|e| e.0);
+        let refused = |a: &[&str]| configure_with(&args(a), None).err().map(|e| e.0);
         let root = dir.to_str().unwrap();
-        assert_eq!(refused(&["--root", root, "--password-file", "/x"]), Some(2));
+        assert_eq!(refused(&["--root", root, "--password-file", "/x"]), Some(1));
         assert_eq!(refused(&["--root", root, "--bind", "0.0.0.0"]), Some(2));
         assert_eq!(refused(&["--root", root, "--tls-cert", "a"]), Some(2));
         assert_eq!(refused(&["--root", root, "--port", "x"]), Some(2));
         assert_eq!(refused(&["--root", root, "--nope"]), Some(2));
         assert_eq!(refused(&["--port", "1"]), Some(2));
         assert_eq!(refused(&["--root", root, "--ingest-port", "8788"]), None);
+        for v in ["nan", "inf", "-inf"] {
+            assert_eq!(
+                refused(&["--root", root, "--session-hours", v]),
+                Some(2),
+                "{v}"
+            );
+            assert_eq!(
+                refused(&["--root", root, "--session-idle-minutes", v]),
+                Some(2),
+                "{v}"
+            );
+        }
         fs::write(&c, "nope=1\n").unwrap();
         assert_eq!(refused(&["--config", c.to_str().unwrap()]), Some(2));
         fs::remove_dir_all(&dir).unwrap();

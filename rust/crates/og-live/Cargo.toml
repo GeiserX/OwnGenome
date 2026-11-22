@@ -25,6 +25,13 @@ og-bloodtype.workspace = true
 # og live serve: the summary the step headlines read while summary.json is
 # older than the steps that are done (og summary collect, in-process).
 og-summary.workspace = true
+# og live serve: the password hash (PBKDF2-SHA256), the session ids and
+# HTTPS (--tls-cert), with ring as its only crypto, built from source.
+sha2 = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The ingest port's state folder: files opened relative to it, never
+# through a symlink, and the account the server runs as.
+rustix = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 regex.workspace = true

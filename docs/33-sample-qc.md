@@ -19,7 +19,7 @@ Contamination only warns. A contaminated sample is still your sample; its calls 
 ## Docker Image
 - `SOMALIER_IMAGE`
 - `VERIFYBAMID2_IMAGE`
-- `PYTHON_IMAGE` (the verdict, from `og qc sample`, and the mosaic estimate, from `og qc sex-loss`, the Rust binary `scripts/setup.sh --og` builds)
+- `OG_IMAGE` (the verdict, from `og qc sample`, and the mosaic estimate, from `og qc sex-loss`, the Rust binary `scripts/setup.sh --og` builds)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 

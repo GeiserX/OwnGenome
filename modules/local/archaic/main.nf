@@ -38,9 +38,11 @@ process ARCHAIC_GENOTYPES {
     """
     og archaic genotypes --table-dir ${archaic_data} --vcf ${vcf} --gvcf ${gvcf} --pop ${params.archaic_pop} --out-dir gt
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -52,7 +54,8 @@ process ARCHAIC_GENOTYPES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }
@@ -131,9 +134,11 @@ process ARCHAIC_REPORT {
     og archaic report --sample ${meta.id} --ibdmix-dir ${ibdmix} --spans ${ibdmix}/spans.tsv \\
         --pop ${params.archaic_pop} ${genes_arg} --out-dir .
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -145,7 +150,8 @@ process ARCHAIC_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

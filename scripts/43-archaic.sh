@@ -33,7 +33,7 @@ THREADS=${THREADS:-4}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image PYTHON_IMAGE IBDMIX_IMAGE
+require_image OG_IMAGE IBDMIX_IMAGE
 
 DATA=${ARCHAIC_DIR:-${GENOME_DIR}/reference/archaic/${ARCHAIC_DATA_VERSION}}
 POP=${ARCHAIC_POP:-ALL}
@@ -67,7 +67,7 @@ mkdir -p "${WORK}/ibdmix"
 W=$(cpath "$WORK")
 
 echo "[1/3] Writing IBDmix's genotype files (your VCF and gVCF, the archaic genomes, the stand-ins)..."
-run_in --cpus 1 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og archaic genotypes --table-dir "$D" --vcf "/genome/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
     --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --pop "$POP" --out-dir "${W}/gt"
 
@@ -107,7 +107,7 @@ if [ -s "$GENES" ]; then
 else
   echo "  No GENCODE gene file (${GENES}): the segments are listed without their genes (setup.sh installs it)."
 fi
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
   /pgp-bin/og archaic report --sample "$SAMPLE" --ibdmix-dir "${W}/ibdmix" \
     --spans "${W}/gt/spans.tsv" --pop "$POP" ${GARG[@]+"${GARG[@]}"} --out-dir "$(cpath "$OUT")"
 for f in "${OUT}/${SAMPLE}_archaic.tsv" "${OUT}/${SAMPLE}_archaic_segments.tsv"; do

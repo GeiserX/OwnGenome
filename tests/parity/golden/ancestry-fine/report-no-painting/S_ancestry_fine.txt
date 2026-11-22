@@ -1,0 +1,24 @@
+Fine-grained ancestry of S (step 26b)
+Reference panel: ; .
+
+Left out of the model: Oceania (continental and regional group), Southern Africa (regional group). The panel has fewer than 10 unrelated
+reference people for it, too few to stand for a population, so the model has no such group and
+any ancestry from it is spread over the groups below.
+
+Continental groups (projection on the frequencies of 3 groups, 0 bootstrap replicates):
+  West Eurasia (Europe, Middle East, North Africa)     90%
+  East Asia                                             5%
+  Africa                                                5%
+
+Regional groups (projection on the frequencies of 4 groups, 0 bootstrap replicates):
+  Iberia                                               60%
+  Italy                                                39%
+
+Chromosome painting: none. No chromosome had enough genotyped SNVs spanning 5 cM.
+
+What this means: each name is a group of reference populations we put together and named,
+not a nationality. The fractions say which groups your genome is most similar to; the range
+after each is the 2.5 to 97.5 percentile of the bootstrap. Continental groups are well apart;
+neighbouring regions are not: splits within Iberia are weak for every method, and Greek and
+Southern Italian ancestry overlap (the panel has no Greek population at all). Read a regional
+fraction with its range, never as one exact percentage. See docs/26b-ancestry-fine.md.
