@@ -8,12 +8,13 @@
 #   A full run on 8 CPUs can take more than a day: start it inside tmux or screen, or with nohup. A closed terminal stops
 #   it, and -resume then restarts the task that was running (DeepVariant is one task).
 # Needs Docker, bash 4.4+, Java 17+ and Nextflow (NEXTFLOW_VERSION in versions.env). Results: GENOME_DIR/<sample>/.
-# Input, first match: aligned/<sample>_sorted.bam with .bai (plus vcf/<sample>.vcf.gz with .tbi: not called
-#   again, and the gVCF beside it, vcf/<sample>.g.vcf.gz with .tbi, goes to PharmCAT and PRS); fastq/<sample>_R1.fastq.gz
-#   and _R2; the VCF alone. Kept in <sample>/nextflow/samplesheet.csv while its files exist, its BAM is this call's
-#   and it is no lower in that order or its run did not end: after a run that ended, a FASTQ row gives way to the BAM
-#   and VCF that run published.
-# Switches: SKIP_VALIDATION=true; THREADS=N (--max_cpus); SKIP_TRIM=true (--skip_trim);
+# With INPUT=auto, the first match is an indexed BAM with an indexed VCF, an indexed BAM, the two gzipped FASTQs,
+#   or an indexed VCF. The previous samplesheet can be reused while its files exist and its BAM matches ALIGN_DIR,
+#   if it ranks as high as the first match or the previous run did not finish.
+# Switches: INPUT=auto (default), fastq (align and call), bam (call from the indexed BAM), or vcf (use the indexed
+#   VCF alone). With auto, only a BAM+VCF row takes the indexed gVCF beside the VCF. With fastq or bam, DeepVariant
+#   writes a VCF and a gVCF. With vcf, the samplesheet gives PharmCAT and PRS the variant sites from the VCF.
+#   SKIP_VALIDATION=true; THREADS=N (--max_cpus); SKIP_TRIM=true (--skip_trim);
 #   INTERVALS="chr20 chr22" (--intervals); ALIGN_DIR=dir (the BAM from <sample>/dir/); TOOLS=a,b
 #   (only these --tools names; parascopy, paraphase, y_haplogroup, y_str, consumer_export, bloodtype, ancient, lpa, vntyper, viral, chip, mei, mocha and locityper run only when named; paraphase needs the BAM
 #   to be PacBio HiFi, PL:PACBIO, or its step fails and the rest goes on; cyrius runs when setup.sh --cyrius installed it, whose
@@ -60,7 +61,7 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
 # shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
-SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
+SWITCHES=(GENOME_DIR INPUT SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS TIDDIT IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
   FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION EVERYTHING NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
@@ -92,6 +93,20 @@ if [[ "${EVERYTHING:-}" =~ ^(true|1)$ ]]; then
   echo "[Everything] EVERYTHING=true: every optional step (${EVF}); one that lacks its data stops the run before Nextflow"
 fi
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
+B="${S}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam" V="${S}/vcf/${SAMPLE}.vcf.gz" F="${S}/fastq/${SAMPLE}_R"
+input_mode=${INPUT-auto}
+row="" input_files=()
+# Check an explicit input before replacing the previous run's status or samplesheet.
+case "$input_mode" in
+  auto) ;;
+  fastq) input_files=("${F}1.fastq.gz" "${F}2.fastq.gz"); row="${F}1.fastq.gz,${F}2.fastq.gz,,,," ;;
+  bam) input_files=("$B" "${B}.bai"); row=",,${B},${B}.bai,," ;;
+  vcf) input_files=("$V" "${V}.tbi"); row=",,,,${V},${V}.tbi" ;;
+  *) echo "ERROR: INPUT must be auto, fastq, bam, or vcf, got '${input_mode}'." >&2; exit 2 ;;
+esac
+for f in "${input_files[@]}"; do
+  [ -f "$f" ] || { echo "ERROR: INPUT=${input_mode} requires ${f}." >&2; exit 2; }
+done
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
 SF=${CPSR_SECONDARY_FINDINGS:-true}  # as scripts/17-cpsr.sh reads it: unset or empty is true, else true or false only
 [[ "$SF" =~ ^(true|false)$ ]] || { echo "ERROR: CPSR_SECONDARY_FINDINGS must be true or false, got '${SF}'" >&2; exit 2; }
@@ -190,32 +205,43 @@ for s in whole_genome_SNVs.tsv.gz:cadd_snv gnomad.genomes.r4.0.indel.tsv.gz:cadd
   f="${A}/${s%%:*}"; [ -e "${f}.tbi" ] || f=${f/.raw./.masked.}
   [ ! -e "${f}.tbi" ] || SCORES+=("--${s#*:}" "$f" "--${s#*:}_index" "${f}.tbi")
 done
-# The samplesheet: the first match below, or the last run's while every file it names exists, its BAM is this call's
+# In auto mode, use the first match below, or the last run's row while every file it names exists, its BAM is this call's
 # (ALIGN_DIR) and either it starts no earlier in that list or the run that wrote it did not end (so -resume continues it).
 # A run ended when main.nf wrote process_status.tsv with no failed, ignored or unfinished task: after it, a FASTQ row
 # gives way to the BAM and VCF that run produced.
-SHEET="${S}/nextflow/samplesheet.csv" row="" first="" ended="" PT="${S}/nextflow/process_status.tsv"
-[ ! -s "$PT" ] || ! awk -F'\t' 'NR > 1 && ($4 + $5 + $6) > 0 {bad = 1} END {exit bad}' "$PT" || ended=1
-B="${S}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam" V="${S}/vcf/${SAMPLE}.vcf.gz" F="${S}/fastq/${SAMPLE}_R"
+SHEET="${S}/nextflow/samplesheet.csv"
 rank() { local f1 b v; IFS=, read -r f1 _ b _ v _ <<< "$1"  # 1 BAM+VCF, 2 BAM, 3 FASTQ, 4 VCF: the order of the first match
   if [ -n "$b" ] && [ -n "$v" ]; then echo 1; elif [ -n "$b" ]; then echo 2; elif [ -n "$f1" ]; then echo 3; else echo 4; fi; }
-[ ! -f "$SHEET" ] || row=$(awk -F, 'NR == 2 {print $2","$3","$4","$5","$6","$7}' "$SHEET")
-IFS=, read -r -a cols <<< "$row"; for f in "${cols[@]}"; do [ -z "$f" ] || [ -e "$f" ] || row=""; done
-[ "${cols[2]:-}" = "$B" ] || [ -z "${cols[2]:-}${ALIGN_DIR:-}" ] || row=""
-if [ -f "$B" ] && [ -f "${B}.bai" ] && [ -f "$V" ] && [ -f "${V}.tbi" ]; then first=",,${B},${B}.bai,${V},${V}.tbi"
-elif [ -f "$B" ] && [ -f "${B}.bai" ]; then first=",,${B},${B}.bai,,"
-elif [ -f "${F}1.fastq.gz" ] && [ -f "${F}2.fastq.gz" ]; then first="${F}1.fastq.gz,${F}2.fastq.gz,,,,"
-elif [ -f "$V" ] && [ -f "${V}.tbi" ]; then first=",,,,${V},${V}.tbi"; fi
-[ -n "$row" ] && { [ -z "$first" ] || [ -z "$ended" ] || [ "$(rank "$row")" -le "$(rank "$first")" ]; } || row=$first
-[ -n "$row" ] || { echo "ERROR: no input for ${SAMPLE}: no ${B}, no ${F}1/2.fastq.gz and no ${V}, each with its index." >&2; exit 1; }
+if [ "$input_mode" = auto ]; then
+  first="" ended="" PT="${S}/nextflow/process_status.tsv"
+  [ ! -s "$PT" ] || ! awk -F'\t' 'NR > 1 && ($4 + $5 + $6) > 0 {bad = 1} END {exit bad}' "$PT" || ended=1
+  [ ! -f "$SHEET" ] || row=$(awk -F, 'NR == 2 {print $2","$3","$4","$5","$6","$7}' "$SHEET")
+  IFS=, read -r -a cols <<< "$row"; for f in "${cols[@]}"; do [ -z "$f" ] || [ -e "$f" ] || row=""; done
+  [ "${cols[2]:-}" = "$B" ] || [ -z "${cols[2]:-}${ALIGN_DIR:-}" ] || row=""
+  if [ -f "$B" ] && [ -f "${B}.bai" ] && [ -f "$V" ] && [ -f "${V}.tbi" ]; then first=",,${B},${B}.bai,${V},${V}.tbi"
+  elif [ -f "$B" ] && [ -f "${B}.bai" ]; then first=",,${B},${B}.bai,,"
+  elif [ -f "${F}1.fastq.gz" ] && [ -f "${F}2.fastq.gz" ]; then first="${F}1.fastq.gz,${F}2.fastq.gz,,,,"
+  elif [ -f "$V" ] && [ -f "${V}.tbi" ]; then first=",,,,${V},${V}.tbi"; fi
+  [ -n "$row" ] && { [ -z "$first" ] || [ -z "$ended" ] || [ "$(rank "$row")" -le "$(rank "$first")" ]; } || row=$first
+  [ -n "$row" ] || { echo "ERROR: no input for ${SAMPLE}: no ${B}, no ${F}1/2.fastq.gz and no ${V}, each with its index." >&2; exit 1; }
+fi
 IFS=, read -r f1 _ fb _ fv _ <<< "$row"; NOBAM=${f1}${fb} GV="${S}/vcf/${SAMPLE}.g.vcf.gz" GCOL="" GROW=""
-# A BAM+VCF row is not called again: the gVCF beside the VCF, when there is one with its index, gives PharmCAT and PRS the reference calls.
-if [ -n "$fb" ] && [ -n "$fv" ]; then
-  if [ -f "$GV" ] && [ -f "${GV}.tbi" ]; then GCOL=",gvcf,gvcf_index" GROW=",${GV},${GV}.tbi"; echo "NOTE: starting from the existing VCF; PharmCAT and PRS read the gVCF beside it (${GV})."
-  else echo "NOTE: starting from the existing VCF, with no gVCF with its index beside it (${GV}): PharmCAT and PRS read its variant sites only. To call again with a gVCF, remove the VCF and its index."; fi
+if [ -n "$f1" ]; then
+  echo "Starting from FASTQ: aligning and calling"
+elif [ -n "$fb" ] && [ -n "$fv" ]; then
+  echo "Starting from the existing BAM and VCF: alignment and calling are reused"
+  if [ -f "$GV" ] && [ -f "${GV}.tbi" ]; then
+    GCOL=",gvcf,gvcf_index" GROW=",${GV},${GV}.tbi"
+    echo "NOTE: PharmCAT and PRS read the gVCF beside it (${GV})."
+  else
+    echo "NOTE: The VCF has no gVCF with its index beside it (${GV}). PharmCAT and PRS read its variant sites only. Set INPUT=bam to call again and write a gVCF."
+  fi
+elif [ -n "$fb" ]; then
+  echo "Starting from the existing BAM: calling variants"
+else
+  echo "Starting from the existing VCF: reusing variant calls"
 fi
 printf 'sample,fastq_1,fastq_2,bam,bam_index,vcf,vcf_index,sex%s\n%s,%s,%s%s\n' "$GCOL" "$SAMPLE" "$row" "$SEX" "$GROW" > "$SHEET"
-echo "[Input] ${SHEET}: ${row}"
 if [ -n "$NOBAM" ]; then RUNS=(16); else printf 'step\t16\tskipped (no BAM)\n' >> "$STATUS"; fi
 echo "[Steps] ${SAMPLE} (${SEX})"
 for p in "07 PharmCAT:pharmcat" "27 CPIC lookup:cpic" "11 ROH:roh" "12 Mito haplogroup:mito_haplogroup" "16b mosdepth:mosdepth" \

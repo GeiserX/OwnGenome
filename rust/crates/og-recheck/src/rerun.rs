@@ -127,6 +127,7 @@ pub enum Rerun {
 /// `LD_PRELOAD` or `DYLD_*` to the `bash` it starts.
 pub const SWITCHES: &[&str] = &[
     "GENOME_DIR",
+    "INPUT",
     "SKIP_VALIDATION",
     "THREADS",
     "SKIP_TRIM",
