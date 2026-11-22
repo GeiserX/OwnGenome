@@ -19,6 +19,14 @@ const RULES: &str = "sections.traits.data.rules[]";
 pub const LOW_GQ_LABEL: &str = "Low-quality genotype calls";
 pub const LOW_GQ_READING: &str = "not read (low genotype quality)";
 
+/// A count to display when weak calls were included in the summary.
+pub fn low_gq_count(d: &Section<'_>) -> Result<Option<i128>, Malformed> {
+    Ok(match d.get("low_gq")? {
+        Some(Value::Int(count)) if *count > 0 => Some(*count),
+        _ => None,
+    })
+}
+
 /// A list in the section's data, `[]` when it is absent or empty.
 fn list<'a>(d: &Section<'a>, key: &str, need_it: bool) -> Result<&'a [Value], Malformed> {
     let v = if need_it {
@@ -49,8 +57,8 @@ pub fn text_lines(d: &Section<'_>, sample: &str) -> Result<Vec<String>, Malforme
         n("not_covered")?,
         n("other_allele")?
     )];
-    if let Some(count) = d.get("low_gq")?.filter(|v| !matches!(v, Value::Null)) {
-        out.push(format!("  {LOW_GQ_LABEL}: {}", py(count)?));
+    if let Some(count) = low_gq_count(d)? {
+        out.push(format!("  {LOW_GQ_LABEL}: {count}"));
     }
     let rows = list(d, "rows", true)?;
     let mut missing = Vec::new();
@@ -239,10 +247,10 @@ pub fn html_lines(d: &Section<'_>, sample: &str) -> Result<Vec<Line>, Malformed>
             n("other_allele")?
         )),
     )];
-    if let Some(count) = d.get("low_gq")?.filter(|v| !matches!(v, Value::Null)) {
+    if let Some(count) = low_gq_count(d)? {
         out.push(Line::Stat(
             LOW_GQ_LABEL.to_owned(),
-            Inline::Text(py(count)?),
+            Inline::Text(count.to_string()),
         ));
     }
     out.push(Line::Table(Table {

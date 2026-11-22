@@ -53,7 +53,7 @@ Mutect2 in tumor-only mode looks for somatic mutations -- variants acquired duri
 
 ## Traits panel (Step 42)
 
-The text and HTML reports and the live results card count low-quality genotype calls when the summary includes the count. A low-quality site appears as **not read**. The position had a call, but its quality was below the panel's floor or the caller filtered it. See [Genome Traits Panel](../42-traits.md) for the call rules.
+The text and HTML reports and the live results card show the low-quality genotype call count when the panel flagged at least one call. A low-quality site appears as **not read**. The position had a call, but its quality was below the panel's floor or the caller filtered it. See [Genome Traits Panel](../42-traits.md) for the call rules.
 
 ## Blood groups (Step 41)
 

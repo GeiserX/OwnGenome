@@ -1,12 +1,13 @@
 use super::*;
-use og_render::sections::traits::{LOW_GQ_LABEL, LOW_GQ_READING};
+use og_render::sections::traits::{LOW_GQ_LABEL, LOW_GQ_READING, low_gq_count};
 use og_render::sections::{apoe, bloodtype, consumer, g2, prs, telomere, viral};
 
 pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
     let mut out = Adapter::default();
     match id {
         "traits-panel" => {
-            let d = summary.section("traits").data;
+            let sec = summary.section("traits");
+            let d = sec.data;
             let rows = array(d, "rows")?
                 .iter()
                 .filter(|r| {
@@ -57,8 +58,8 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     ("No genotype at the position", "not_covered"),
                 ],
             );
-            if !matches!(val(d, "low_gq"), Value::Null) {
-                out.fact(LOW_GQ_LABEL, cell(val(d, "low_gq")));
+            if let Some(count) = low_gq_count(&sec)? {
+                out.fact(LOW_GQ_LABEL, count.to_string());
             }
             for r in array(d, "rules")? {
                 out.lines.push(format!(
