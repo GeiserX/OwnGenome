@@ -478,14 +478,15 @@
     rows.forEach(function (r) { add(dl, el('dt', {}, r[0]), el('dd', {}, r[1])); });
     return dl;
   }
-  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys).
-  function caveatNote(list, key) {
+  // key: the finding's id, so a redraw keeps this fold open on its own finding (foldKeys). title: the finding's
+  // title, so each More is named for its own finding.
+  function caveatNote(list, key, title) {
     if (!list || !list.length) { return null; }
     var box = el('div', {});
     var lead = U.firstSentence(list[0]);
     add(box, el('span', {}, lead + ' '));
     var d = el('details', key ? { 'data-card': 'cav-' + key } : {});
-    add(d, el('summary', { 'class': 'toggle' }, 'More'));
+    add(d, el('summary', { 'class': 'toggle', 'aria-label': title ? 'More of the caveat: ' + title : null }, 'More'));
     list.forEach(function (t) { add(d, el('p', {}, t)); });
     add(box, d);
     return note('Caveat', box, 'caveat-note');
@@ -548,7 +549,7 @@
     var side = el('aside', {});
     var ev = evidence(f.evidence);
     if (ev) { add(side, note('Evidence', ev)); }
-    add(side, caveatNote(f.caveat, f.id));
+    add(side, caveatNote(f.caveat, f.id, f.title));
     var rel = (f.related || []).map(findingById).filter(function (r) { return r; });
     if (rel.length) {
       var box = el('div', {});
