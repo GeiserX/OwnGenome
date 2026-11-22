@@ -105,8 +105,8 @@
   .skip:focus { top: 8px; }
   main:focus { outline: none; }
   .header .research-only { font-weight: 600; margin-bottom: 8px; }
-  .sec, .card { min-width: 0; overflow-wrap: anywhere; }
-  td { overflow-wrap: anywhere; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
   .tscroll { overflow-x: auto; max-width: 100%; }
   .tscroll:focus-visible { outline: 2px solid var(--accent); }
   .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
@@ -309,9 +309,9 @@
     <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
     <p class="note">Class 4-5 SVs: 3 (single caller: 0, not known: 3; deletions on exon edges: 1; common: 1)</p>
     <p class="note">Moved to class 3 by step 05&#x27;s rules, not counted above: 1</p>
-    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV)" tabindex="0"><table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:1100-5100</td><td>5</td><td>GENE1, GENE2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#1:1100-5100" target="_blank" rel="noopener noreferrer">1:1100-5100</a></td></tr><tr><td>DUP 2:150-880</td><td>4</td><td>GENE3</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#2:150-880" target="_blank" rel="noopener noreferrer">2:150-880</a></td></tr><tr><td>DEL 9:1-100</td><td>4</td><td>G9</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#9:1-100" target="_blank" rel="noopener noreferrer">9:1-100</a></td></tr></table></div>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV), table 1" tabindex="0"><table><tr><th>SV</th><th>Class</th><th>Genes</th><th>Callers</th><th>Checks</th><th>Viewer</th></tr><tr><td>DEL 1:1100-5100</td><td>5</td><td>GENE1, GENE2</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>on exon edges: exon 2; benign-set AF 0.001 (gnomAD)</td><td><a class="locus" href="http://127.0.0.1:8765/#1:1100-5100" target="_blank" rel="noopener noreferrer">1:1100-5100</a></td></tr><tr><td>DUP 2:150-880</td><td>4</td><td>GENE3</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>none</td><td><a class="locus" href="http://127.0.0.1:8765/#2:150-880" target="_blank" rel="noopener noreferrer">2:150-880</a></td></tr><tr><td>DEL 9:1-100</td><td>4</td><td>G9</td><td>not known (step 22&#x27;s consensus cannot tell)</td><td>benign-set AF 0.2 (gnomAD), common</td><td><a class="locus" href="http://127.0.0.1:8765/#9:1-100" target="_blank" rel="noopener noreferrer">9:1-100</a></td></tr></table></div>
     <h3>Moved to class 3 by step 05's rules</h3>
-    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV)" tabindex="0"><table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>INV 7:1-100</td><td>4</td><td>3</td><td>no gene</td><td>mhc</td><td>the MHC</td><td><a class="locus" href="http://127.0.0.1:8765/#7:1-100" target="_blank" rel="noopener noreferrer">7:1-100</a></td></tr></table></div>
+    <div class="tscroll" role="region" aria-label="Structural Variants, Class 4 and 5 (AnnotSV): Moved to class 3 by step 05's rules" tabindex="0"><table><tr><th>SV</th><th>AnnotSV class</th><th>Class</th><th>Genes</th><th>Rule</th><th>Why</th><th>Viewer</th></tr><tr><td>INV 7:1-100</td><td>4</td><td>3</td><td>no gene</td><td>mhc</td><td>the MHC</td><td><a class="locus" href="http://127.0.0.1:8765/#7:1-100" target="_blank" rel="noopener noreferrer">7:1-100</a></td></tr></table></div>
     <p class="viewer">The Viewer column opens the reads at each row in the genome viewer on this computer (start it first: scripts/owngenome-view.sh &lt;sample&gt;, docs/viewer.md).</p>
   </div>
   </section>
@@ -480,9 +480,9 @@
     <div class="stat"><span class="label">HP (haptoglobin) copies (from depth)</span><span class="value">2 (estimate 2.1). Reading: usual</span></div>
     <div class="stat"><span class="label">LCE3B/LCE3C copies (from depth)</span><span class="value">1 (estimate 1.0). Reading: one deleted</span></div>
     <div class="stat"><span class="label">CCL3L1/CCL3L3 copies (from depth)</span><span class="value">not assessed (low depth)</span></div>
-    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy)" tabindex="0"><table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>GBA1, GBAP1</td><td>4 (2 region(s), quality 35.25 or more, filter PASS)</td><td>agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy</td></tr><tr><td>STRC, STRCP1</td><td>unreadable: S_strc_copy_number.tsv lacks the copy-number columns</td><td>.</td></tr><tr><td>mytable</td><td>not assessed: no read over the locus</td><td>.</td></tr><tr><td>pms2</td><td>chr7:5970001-5980000 4 (quality 50, filter PASS); chr7:5980001-5990000 3 (quality 12, filter LowQual)</td><td>.</td></tr></table></div>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy), table 1" tabindex="0"><table><tr><th>Genes</th><th>Copies together (agCN)</th><th>Reading</th></tr><tr><td>GBA1, GBAP1</td><td>4 (2 region(s), quality 35.25 or more, filter PASS)</td><td>agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy</td></tr><tr><td>STRC, STRCP1</td><td>unreadable: S_strc_copy_number.tsv lacks the copy-number columns</td><td>.</td></tr><tr><td>mytable</td><td>not assessed: no read over the locus</td><td>.</td></tr><tr><td>pms2</td><td>chr7:5970001-5980000 4 (quality 50, filter PASS); chr7:5980001-5990000 3 (quality 12, filter LowQual)</td><td>.</td></tr></table></div>
     <div class="stat"><span class="label">Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)</span><span class="value">4 rows (3 called, 1 not assessed); 2 with a deletion or a duplication</span></div>
-    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy)" tabindex="0"><table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>AZFc</td><td>AZFc</td><td>chrY:23000001-26000000</td><td>0 of 1</td><td>deletion</td></tr><tr><td>dup</td><td>X1</td><td>chr1:2-2</td><td>3 of 2</td><td>duplication</td></tr></table></div>
+    <div class="tscroll" role="region" aria-label="SMN1/SMN2 Copy Number (Parascopy), table 2" tabindex="0"><table><tr><th>Region</th><th>Row</th><th>Place</th><th>Copies</th><th>Change</th></tr><tr><td>AZFc</td><td>AZFc</td><td>chrY:23000001-26000000</td><td>0 of 1</td><td>deletion</td></tr><tr><td>dup</td><td>X1</td><td>chr1:2-2</td><td>3 of 2</td><td>duplication</td></tr></table></div>
   </div>
   </section>
   </div>
@@ -589,13 +589,13 @@
     <p class="sec-meta">Step 26b &middot; <span class="badge badge-gray">Not run</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#ancestry-fine">link to this section</a></p>
     <p class="caveat">Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.</p>
     <h3>Continental groups</h3>
-    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry" tabindex="0"><table>
+    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry: Continental groups" tabindex="0"><table>
       <tr><th>Group</th><th>Fraction</th><th>Bootstrap range</th></tr>
 <tr><td>West Eurasia</td><td>95%</td><td>93% to 97%</td></tr>
 <tr><td>Africa</td><td>5%</td><td>.</td></tr>
     </table></div>
     <h3>Regional groups</h3>
-    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry" tabindex="0"><table>
+    <div class="tscroll" role="region" aria-label="Fine-Grained Ancestry: Regional groups" tabindex="0"><table>
       <tr><th>Group</th><th>Fraction</th><th>Bootstrap range</th></tr>
 <tr><td>Iberia</td><td>60%</td><td>50% to 70%</td></tr>
     </table></div>
@@ -691,7 +691,7 @@
     <p class="sec-meta">Step 42 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
     <p class="caveat">Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how.</p>
     <div class="stat"><span class="label">Read / no genotype / other allele</span><span class="value">3 / 1 / 1</span></div>
-    <div class="tscroll" role="region" aria-label="Traits" tabindex="0"><table>
+    <div class="tscroll" role="region" aria-label="Traits, table 1" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
       <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs10455872</span></td><td>A/G</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs3798220</span></td><td>T|C</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
@@ -701,14 +701,14 @@
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>C/T</td><td>A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
     </table></div>
     <h3>Genotype rules (several sites read together)</h3>
-    <div class="tscroll" role="region" aria-label="Traits" tabindex="0"><table>
+    <div class="tscroll" role="region" aria-label="Traits: Genotype rules (several sites read together)" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene and sites</th><th>Genotypes</th><th>Result</th><th>Reading</th><th>Source</th></tr>
       <tr><td>bitter</td><td>TAS2R38<br><span style="font-size:12px;color:#666">rs1</span></td><td>C/G</td><td>PAV/AVI (not phased)</td><td>taster<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>kidney</td><td>APOL1<br><span style="font-size:12px;color:#666">rs73885319, rs60910145</span></td><td>A/G, T/T</td><td>G0/G1<br>With G2: G1/G2</td><td>one G1<br>With G2: Two APOL1 risk copies (G1/G2): the high-risk genotype of Genovese 2010, which went with focal segmental glomerulosclerosis and hypertension-attributed kidney failure in African Americans. A risk factor, not a diagnosis.<br><span style="font-size:12px;color:#666">G2 (rs71785313): 1 copy of the deletion called.</span><br><span style="font-size:12px;color:#666">.</span></td><td>PMID 20647424</td></tr>
     </table></div>
     <p class="note">Every rule line: traits/S_genotype_rules.tsv</p>
     <details><summary>APOE and Alzheimer&#x27;s disease: a risk factor, not a diagnosis. Many people choose not to learn their APOE result; docs/42-traits.md explains it. Open to show it.</summary>
-    <div class="tscroll" role="region" aria-label="Traits" tabindex="0"><table>
+    <div class="tscroll" role="region" aria-label="Traits, table 3" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
       <tr><td>APOE</td><td>APOE<br><span style="font-size:12px;color:#666">rs429358</span></td><td>T/C</td><td>e3/e4<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
     </table></div></details>

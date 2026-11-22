@@ -571,8 +571,14 @@ cat > oracle.sh << 'ORACLE'
 # (rust/crates/og-render: html.rs, text.rs and READING in css.rs): the
 # research-only line under the title of both reports, the skip link, the
 # contents in a details element, main#main, each table in a scroll region
-# named by its card's title (the manifest's "Run manifest") and the CSS.
-# Every section stays compared with the Python's.
+# named by its card's title (the manifest's "Run manifest"; in a card with
+# several tables, plus the subheading above the table, else its number) and
+# the CSS. The adapter only adds lines and wraps tables: every byte of each
+# section the Python writes stays as it wrote it. An output with no golden
+# is compared directly with this adapted oracle. An output with a golden
+# (tests/parity/golden/report-render) is still compared with its golden,
+# and each golden is still checked against this adapted oracle: a golden
+# the oracle also writes is stale and fails.
 #   sh ./oracle.sh PROG --summary F -o R.txt -o R.html
 set -e
 prog=$1
@@ -596,6 +602,12 @@ frame_html() {
   while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1) b; s = substr(s, i + length(a)) }
   return out s
 }
+NR == FNR {
+  if ($0 ~ /^    <h2>.*<\/h2>$/ || index($0, "<summary>Run manifest (run_manifest.tsv)</summary>")) c++
+  t = $0
+  tables[c] += gsub(/<table>/, "", t)
+  next
+}
 { line = $0 }
 line == "</style>" {
   print "  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;"
@@ -603,8 +615,8 @@ line == "</style>" {
   print "  .skip:focus { top: 8px; }"
   print "  main:focus { outline: none; }"
   print "  .header .research-only { font-weight: 600; margin-bottom: 8px; }"
-  print "  .sec, .card { min-width: 0; overflow-wrap: anywhere; }"
-  print "  td { overflow-wrap: anywhere; }"
+  print "  main { overflow-wrap: anywhere; }"
+  print "  .sec, .card { min-width: 0; }"
   print "  .tscroll { overflow-x: auto; max-width: 100%; }"
   print "  .tscroll:focus-visible { outline: 2px solid var(--accent); }"
   print "  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }"
@@ -627,13 +639,23 @@ line == "  <h1>Genomic Analysis Report</h1>" {
   print "  <p class=\"research-only\">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>"
   next
 }
-line ~ /^    <h2>.*<\/h2>$/ { label = substr(line, 9, length(line) - 13) }
-index(line, "<summary>Run manifest (run_manifest.tsv)</summary>") { label = "Run manifest" }
+line ~ /^    <h2>.*<\/h2>$/ { card++; n = 0; subh = ""; label = substr(line, 9, length(line) - 13) }
+index(line, "<summary>Run manifest (run_manifest.tsv)</summary>") { card++; n = 0; subh = ""; label = "Run manifest" }
+line ~ /^    <h3>.*<\/h3>$/ { subh = substr(line, 9, length(line) - 13) }
 index(line, "table>") {
-  line = rep(line, "<table>", "<div class=\"tscroll\" role=\"region\" aria-label=\"" label "\" tabindex=\"0\"><table>")
-  line = rep(line, "</table>", "</table></div>")
+  out = ""
+  s = line
+  while ((i = index(s, "<table>")) > 0) {
+    n++
+    name = label
+    if (tables[card] > 1) name = (subh != "" ? label ": " subh : label ", table " n)
+    subh = ""
+    out = out substr(s, 1, i - 1) "<div class=\"tscroll\" role=\"region\" aria-label=\"" name "\" tabindex=\"0\"><table>"
+    s = substr(s, i + 7)
+  }
+  line = rep(out s, "</table>", "</table></div>")
 }
-{ print line }' "$1" > "$1.kept"
+{ print line }' "$1" "$1" > "$1.kept"
   mv "$1.kept" "$1"
 }
 while [ $# -gt 0 ]; do

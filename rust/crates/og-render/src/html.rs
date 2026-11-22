@@ -160,27 +160,65 @@ fn table(out: &mut Vec<String>, t: &Table) {
     }
 }
 
+/// The (already escaped) text of a card title line, `    <h2>…</h2>`.
+fn card_title(l: &str) -> Option<&str> {
+    l.strip_prefix("    <h2>")?.strip_suffix("</h2>")
+}
+
 /// Puts each table of `lines` in a scroll region, so a table wider than its
 /// card scrolls inside it instead of widening the page on a phone. The
 /// region takes the focus, so a keyboard can scroll it too. It is named by
 /// the title of the card it sits in (the last card title line above it),
-/// else by `label`.
+/// else by `label`. In a card with several tables each region adds the
+/// subheading (`    <h3>…</h3>`) right above its table, else its number in
+/// the card ("Traits, table 1", "Traits: Genotype rules …"), so a screen
+/// reader's list of regions tells them apart.
 fn scroll_tables(lines: &mut [String], label: &str) {
-    let mut name = e(label).into_owned();
-    for l in lines.iter_mut() {
-        if let Some(title) = l
-            .strip_prefix("    <h2>")
-            .and_then(|t| t.strip_suffix("</h2>"))
-        {
-            name = title.to_owned();
-        } else if l.contains("table>") {
-            let open = format!(
-                "<div class=\"tscroll\" role=\"region\" aria-label=\"{name}\" tabindex=\"0\"><table>"
-            );
-            *l = l
-                .replace("<table>", &open)
-                .replace("</table>", "</table></div>");
+    // How many tables each card holds; card 0 is what comes before any title.
+    let mut counts = vec![0usize];
+    for l in lines.iter() {
+        if card_title(l).is_some() {
+            counts.push(0);
         }
+        if let Some(n) = counts.last_mut() {
+            *n += l.matches("<table>").count();
+        }
+    }
+    let (mut card, mut n) = (0, 0);
+    let mut name = e(label).into_owned();
+    let mut sub: Option<String> = None;
+    for l in lines.iter_mut() {
+        if let Some(title) = card_title(l) {
+            (card, n, name, sub) = (card + 1, 0, title.to_owned(), None);
+            continue;
+        }
+        if let Some(h) = l
+            .strip_prefix("    <h3>")
+            .and_then(|t| t.strip_suffix("</h3>"))
+        {
+            sub = Some(h.to_owned());
+            continue;
+        }
+        if !l.contains("table>") {
+            continue;
+        }
+        let mut out = String::with_capacity(l.len() + 96);
+        let mut rest = l.as_str();
+        while let Some(i) = rest.find("<table>") {
+            n += 1;
+            let region = match (counts[card] > 1, sub.take()) {
+                (false, _) => name.clone(),
+                (true, Some(h)) => format!("{name}: {h}"),
+                (true, None) => format!("{name}, table {n}"),
+            };
+            out.push_str(&rest[..i]);
+            out.push_str(&format!(
+                "<div class=\"tscroll\" role=\"region\" aria-label=\"{region}\" tabindex=\"0\"><table>"
+            ));
+            rest = &rest[i + "<table>".len()..];
+        }
+        out.push_str(rest);
+        *l = out.replace("</table>", "</table></div>");
     }
 }
 

@@ -103,8 +103,10 @@ pub const CSS: &str = r#"
 
 /// Rules after [`CSS`] in the same `<style>` element, for reading on a phone
 /// and from the keyboard: the skip link shows only with the focus; the
-/// research-only line under the title; sections, cards and table cells shrink
-/// to the screen and wrap long words (paths, coordinates); each table
+/// research-only line under the title; everything in `main` (the header,
+/// the cards, the table cells, the manifest) wraps long words such as paths,
+/// coordinates, a commit or a sample name, and sections and cards shrink to
+/// the screen; each table
 /// scrolls inside its region; the contents fold under 900 px and show
 /// without their summary line above it where the browser can style
 /// `::details-content` (elsewhere the summary opens them); a printout keeps
@@ -114,8 +116,8 @@ pub const READING: &str = r#"  .skip { position: absolute; left: 8px; top: -60px
   .skip:focus { top: 8px; }
   main:focus { outline: none; }
   .header .research-only { font-weight: 600; margin-bottom: 8px; }
-  .sec, .card { min-width: 0; overflow-wrap: anywhere; }
-  td { overflow-wrap: anywhere; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
   .tscroll { overflow-x: auto; max-width: 100%; }
   .tscroll:focus-visible { outline: 2px solid var(--accent); }
   .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
