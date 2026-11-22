@@ -27,6 +27,8 @@ The `-bash` build is used because the plain `15.1.0` tag is distroless: it has n
 
 ## Data
 
+Exomiser's hg38 and phenotype bundles include third-party data with their own terms. Review Exomiser's [data source notes](https://exomiser.readthedocs.io/en/15.1.0/advanced_analysis.html#pathogenicitysources) before installing, including the terms for REVEL and SpliceAI.
+
 Exomiser's data release `EXOMISER_DATA_VERSION` (2602, from 13 May 2026), installed by
 
 ```bash

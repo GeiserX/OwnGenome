@@ -29,6 +29,8 @@ In the Nextflow pipeline (`ancient` in `--tools`, with `--ancient_panel <folder>
 
 ## The Panel
 
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
+
 `scripts/setup.sh --ancient-panel <genome_dir>` builds it once:
 
 1. Downloads the AADR release `AADR_VERSION` (v66.p1, 1240K) from Harvard Dataverse: the `.anno`, `.ind`, `.snp` and the 7.1 GB `.geno`, each checked against the md5 Dataverse publishes (`AADR_*_MD5` in `versions.env`). UCSC's hg19ToHg38 chain is checked against `HG19_TO_HG38_CHAIN_SHA256`.

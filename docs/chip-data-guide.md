@@ -60,6 +60,8 @@ The conversion requires two stages:
 
 ### Prerequisites
 
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
+
 One-time downloads (~3.5 GB total, plus the GRCh38 reference from [step 00](00-reference-setup.md)):
 
 ```bash

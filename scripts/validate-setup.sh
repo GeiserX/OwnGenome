@@ -1097,6 +1097,22 @@ if [ -n "$SAMPLE" ]; then
 
     check_stale_indexes "$SAMPLE_DIR"
 
+    case "${INPUT:-auto}" in
+      fastq)
+        $HAS_BAM && info "INPUT=fastq: the existing BAM is not read, so it is not checked"
+        $HAS_VCF && info "INPUT=fastq: the existing VCF is not read, so it is not checked"
+        HAS_BAM=false HAS_VCF=false
+        ;;
+      bam)
+        $HAS_VCF && info "INPUT=bam: the existing VCF is not read, so it is not checked"
+        HAS_VCF=false
+        ;;
+      vcf)
+        $HAS_BAM && info "INPUT=vcf: the BAM is not read, so it is not checked"
+        HAS_BAM=false
+        ;;
+    esac
+
     # Validate genome build (GRCh38) if BAM or VCF exists
     if $HAS_BAM && command -v "$CONTAINER_ENGINE" >/dev/null 2>&1; then
       echo ""
@@ -1238,6 +1254,8 @@ if [ -n "$SAMPLE" ]; then
       echo "       or step by step, starting with:  ./scripts/06-clinvar-screen.sh ${SAMPLE}"
       if $HAS_BAM; then
         echo "       BAM also available — all pipeline steps can run."
+      elif [ -f "$BAM" ]; then
+        echo "       INPUT=vcf: the BAM is not read — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       else
         echo "       No BAM found — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       fi

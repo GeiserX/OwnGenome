@@ -27,6 +27,7 @@ CHAIN="${GENOME_DIR}/liftover/hg19ToHg38.over.chain.gz"
 
 echo "=== Chip-to-VCF Converter: ${SAMPLE} ==="
 echo "Format: ${FORMAT}"
+echo "UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See docs/chip-data-guide.md."
 
 # --- Validate prerequisites ---
 # Picard LiftoverVcf reads the GRCh38 sequence dictionary (setup.sh creates it);
