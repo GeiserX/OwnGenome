@@ -60,6 +60,12 @@ pub const MAX_ITERATIONS: usize = 100_000;
 pub const SLACK_TOLERANCE: f64 = 1e-7;
 /// The largest r_k - 1 the answer may have (no group would gain).
 pub const GAIN_TOLERANCE: f64 = 1e-4;
+
+/// Whether the KKT measures of an answer are within their tolerances.
+pub fn kkt_holds(slack: f64, gain: f64) -> bool {
+    slack <= SLACK_TOLERANCE && gain <= GAIN_TOLERANCE
+}
+
 /// The length of a bootstrap block on the genetic map, in cM.
 pub const BLOCK_CM: f64 = 5.0;
 
@@ -332,7 +338,7 @@ pub fn project(p: &Problem<'_>, opts: &Options) -> Result<Fit> {
             fit.iterations, fit.loglik, fit.q
         )));
     }
-    if !converged || slack > SLACK_TOLERANCE || gain > GAIN_TOLERANCE {
+    if !converged || !kkt_holds(slack, gain) {
         return Err(Error(format!(
             "the projection stopped after {} passes short of the maximum: the KKT conditions do not hold (largest q|r - 1| {:e}, largest r - 1 {:e}{})",
             fit.iterations,
@@ -485,6 +491,31 @@ mod tests {
             e.contains("KKT conditions do not hold") && !e.contains("within"),
             "{e}"
         );
+    }
+
+    #[test]
+    fn a_stop_short_only_on_slack_fails_the_kkt_check() {
+        // At this step size the run ends with slack 3.6e-6, over its
+        // tolerance, and gain 6.0e-6, under its own: only the slack half of
+        // the check can refuse it.
+        let (g, f) = simulate(&[0.6, 0.3, 0.1], 5_000, 7);
+        let p = Problem::new(3, &g, &f, None).unwrap();
+        let opts = Options {
+            tolerance: 1e-5,
+            ..Options::default()
+        };
+        let e = project(&p, &opts).unwrap_err().0;
+        assert!(
+            e.contains("KKT conditions do not hold") && !e.contains("within"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn each_kkt_measure_fails_the_check_alone() {
+        assert!(kkt_holds(SLACK_TOLERANCE, GAIN_TOLERANCE));
+        assert!(!kkt_holds(2.0 * SLACK_TOLERANCE, 0.0));
+        assert!(!kkt_holds(0.0, 2.0 * GAIN_TOLERANCE));
     }
 
     #[test]
