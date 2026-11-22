@@ -142,6 +142,17 @@ fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
         .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
         .stdout(Stdio::null())
         .stderr(std::fs::File::create(&err_log).unwrap());
+    let og = std::env::var_os("OG")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            let test = std::env::current_exe().ok()?;
+            let binary = test.parent()?.parent()?.join("og");
+            binary.is_file().then_some(binary)
+        });
+    if let Some(og) = og {
+        cmd.env("OG", og);
+    }
     if let Some(d) = plugin_dir {
         cmd.arg("--plugin-dir").arg(d);
     }
@@ -169,7 +180,12 @@ fn open_finding(plugin_dir: Option<&Path>) -> Result<(String, String), String> {
             Some(Value::Str(id)) => id.clone(),
             other => return Err(format!("the first finding has no id: {other:?}")),
         },
-        other => return Err(format!("results.json has no findings: {other:?}")),
+        other => {
+            return Err(format!(
+                "results.json has no findings ({other:?}). {}",
+                why()
+            ));
+        }
     };
     match get(port, &format!("/runs/{RUN}/finding/{fid}/")) {
         Some((200, _)) => {}
