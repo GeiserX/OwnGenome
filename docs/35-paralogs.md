@@ -306,13 +306,15 @@ A row whose field of `region_specific_info` Paraphase did not write is **not ass
 
 ### Why Only PacBio HiFi
 
-Paraphase is written for HiFi reads: a read of 10 kb or more spans the few differences between the copies, so the copies can be told apart. Short reads cannot do that, which is why step 35 uses Parascopy. Its licence (the PacBio Software License Agreement, from Paraphase 3.3.0 on) also allows it only on data from a PacBio instrument. So the step reads the BAM header first and stops unless every read group says `PL:PACBIO`. Step 02b with `PLATFORM=hifi` writes such a BAM, as PacBio's pbmm2 does.
+Paraphase is written for HiFi reads: a read of 10 kb or more spans the few differences between the copies, so the copies can be told apart. Short reads cannot do that, which is why step 35 uses Parascopy.
+
+The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio. The agreement applies from Paraphase 3.3.2. Read the [Paraphase licence](https://github.com/PacificBiosciences/paraphase/blob/v4.1.0/LICENSE.md) before downloading or running the tool. The step reads the BAM header first and stops unless every read group says `PL:PACBIO`. Step 02b with `PLATFORM=hifi` writes such a BAM, as PacBio's pbmm2 does.
 
 On a short-read genome these genes stay where step 35 leaves them: SMN1 and SMN2 from Parascopy, HBA1 and HBA2 counted together from depth, the others not assessed.
 
 ### Tool
 
-- **Paraphase** 4.1.0 (Chen et al., Nature Communications 2025), PacBio Software License Agreement: free to use, binary only, for data from a PacBio instrument
+- **Paraphase** 4.1.0 (Chen et al., Nature Communications 2025), PacBio Software License Agreement
 
 ### Docker Image
 

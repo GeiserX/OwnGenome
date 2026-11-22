@@ -110,6 +110,11 @@ set -euo pipefail
 # Keep an explicit checksum override for fixture tests and verified mirrors.
 PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
 
+# These notices also print before the corresponding downloads.
+ANNOTSV_TERMS="AnnotSV's annotation bundle includes third-party data with their own terms."
+EXOMISER_TERMS="Exomiser's hg38 and phenotype bundles include third-party data with their own terms."
+UCSC_CHAIN_TERMS="UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence."
+
 # The usage text below names data releases, so read them before it prints.
 # shellcheck source=../versions.env
 . "$(dirname "$0")/../versions.env"
@@ -220,6 +225,15 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  --vep-cache   Install the VEP ${VEP_CACHE_RELEASE:-} cache (step 13 and the Nextflow VEP: ~26 GB download, ~30 GB"
   echo "                unpacked, both on disk during the install) and exit. Without it a run skips VEP, vcfanno,"
   echo "                the clinical filter and slivar."
+  echo ""
+  echo "Download and use terms (see docs/licences.md for the sources):"
+  echo "  ${ANNOTSV_TERMS}"
+  echo "  PCGR/CPSR reference data includes third-party databases with their own terms."
+  echo "  ${EXOMISER_TERMS}"
+  echo "  The REVEL authors make the scores freely available for non-commercial use."
+  echo "  ${UCSC_CHAIN_TERMS}"
+  echo "  Illumina's DRAGEN ORA Decompression Software requires acceptance of its end-user licence."
+  echo "  The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio."
   echo ""
   echo "Example:"
   echo "  ./scripts/setup.sh /data/genomics"
@@ -601,6 +615,7 @@ install_exomiser_data() {
     echo "[OK] Exomiser ${EXOMISER_DATA_VERSION} data (step 48) already present: ${dest}"
     return 0
   fi
+  echo "  ${EXOMISER_TERMS} See docs/48-exomiser.md."
   mkdir -p "$dest"
   while read -r part sha; do
     [ -d "${dest}/${EXOMISER_DATA_VERSION}_${part}" ] && continue
@@ -893,6 +908,9 @@ install_ancient_panel() {
   for f in "$REF_FASTA" "${REF_FASTA}.fai"; do
     [ -s "$f" ] || { echo "[WARN] ${f} is missing: install the reference first (${0} ${GENOME_DIR})."; return 1; }
   done
+  if [ -z "${ANCIENT_CHAIN:-}" ] && [ ! -s "$chain" ]; then
+    echo "  ${UCSC_CHAIN_TERMS} See docs/44-ancient.md."
+  fi
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
   need_og "chooses the ancient panel's people and places its sites" || return 1
@@ -1633,6 +1651,7 @@ install_annotsv_bundle() {
     echo "[OK] AnnotSV annotation data already present."
     return 0
   fi
+  echo "  ${ANNOTSV_TERMS} See docs/05-annotsv.md."
   echo "Downloading AnnotSV ${ANNOTSV_ANNOTATIONS_VERSION} annotation data (~5.3 GB)..."
   echo "  The AnnotSV server is slow (about 0.8 MB/s measured from a GitHub runner), so this can take"
   echo "  1-2 hours. An interrupted download resumes when setup.sh runs again."
@@ -1915,6 +1934,8 @@ install_archaic() {
   local regions=${ARCHAIC_REGIONS:-} rstamp=all chroms="" c g v k stamp wk n
   local genomes="Altai:Altai Vindija33.19:Vindija Denisova:Denisova"
   cpath "$dir" >/dev/null || return 1
+  { [ -s "${dir}/hg19ToHg38.over.chain.gz" ] && [ "$(_digest sha256 "${dir}/hg19ToHg38.over.chain.gz")" = "$ARCHAIC_CHAIN_SHA256" ]; } \
+    || echo "  ${UCSC_CHAIN_TERMS} See docs/43-archaic.md."
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
   for v in BCFTOOLS_IMAGE PICARD_IMAGE OG_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1

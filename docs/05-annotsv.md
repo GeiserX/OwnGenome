@@ -7,7 +7,7 @@ Classifies every structural variant from Manta that passes duphold's depth filte
 Raw Manta output contains thousands of SVs with no clinical interpretation. AnnotSV tells you which ones matter by cross-referencing known pathogenic SVs, gene databases, and population data.
 
 ## Tool
-- **AnnotSV** — ACMG-compliant structural variant annotation and classification
+- **AnnotSV** — ACMG-compliant structural variant annotation and classification (GPL-3.0)
 
 ## Docker Image
 - `ANNOTSV_IMAGE`
@@ -15,6 +15,9 @@ Raw Manta output contains thousands of SVs with no clinical interpretation. Anno
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
 ## Annotation Data
+
+AnnotSV's annotation bundle includes third-party data with their own terms. The [AnnotSV manual](https://www.lbgi.fr/AnnotSV/Documentation/README.AnnotSV_latest.pdf) lists the sources and versions, including OMIM-derived annotations. GeneHancer and COSMIC require separate licences and come separately. The pipeline does not redistribute the bundle: `setup.sh` downloads it from AnnotSV's server.
+
 The image holds AnnotSV's code only. Its annotation data (genes, known pathogenic SVs, population frequencies) is a separate 5.3 GB download that unpacks to about 20 GB, and AnnotSV exits with an error without it. The server is slow (about 0.8 MB/s measured from a GitHub runner), so the download can take 1-2 hours; `curl -C -` resumes it. `./scripts/setup.sh` downloads and unpacks it into `${GENOME_DIR}/annotsv_annotations/`. To do it by hand:
 
 ```bash
@@ -25,8 +28,6 @@ tar -xzf ${GENOME_DIR}/Annotations_Human_3.5.tar.gz -C ${GENOME_DIR}/annotsv_ann
 ```
 
 The script checks for `${GENOME_DIR}/annotsv_annotations/Annotations_Human/Genes/GRCh38` and stops with a pointer to `setup.sh` when it is missing. `run-all.sh` reports step 5 as skipped in that case.
-
-> **License:** AnnotSV's code is GPL-3.0. Its annotation bundle gathers many sources, each under its own terms, OMIM-derived gene annotations among them; AnnotSV's manual lists each source and its version for the release. AnnotSV leaves GeneHancer and COSMIC out of the bundle because they need a licence of their own. The pipeline does not redistribute the bundle: `setup.sh` downloads it from AnnotSV's server, the same file AnnotSV's own installer fetches. Check the terms of each source before any commercial use.
 
 ### gnomAD-SV frequencies and MANE Select transcripts
 
