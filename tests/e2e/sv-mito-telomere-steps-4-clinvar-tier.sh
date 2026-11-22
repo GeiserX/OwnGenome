@@ -13,48 +13,48 @@ rm -rf "${GENOME_DIR:?}/${T}"
 mkdir -p "${GENOME_DIR}/${T}/vep"
 SRC="${GENOME_DIR}/${SAMPLE}/vep/${SAMPLE}_vep.vcf"
 OUT="${GENOME_DIR}/${T}/vep/${T}_vep.vcf"
-python3 - "$SRC" "$OUT" "${CASE_TMP}/ab.tsv" <<'PY'
-import re, sys
-src, out, ab = sys.argv[1:]
-fmt, a, b, lines = None, None, None, []
-for line in open(src):
-    if line.startswith("##INFO=<ID=CSQ"):
-        fmt = re.search(r"Format: ([^\"]+)", line).group(1).split("|")
-        old = "|".join(fmt)
-        missing = "CLIN_SIG" not in fmt
-        fmt = fmt + (["CLIN_SIG"] if missing else [])
-        line = line.replace(old, "|".join(fmt + ["ClinVar_CLNSIG"]))
-        lines.append(line)
-        continue
-    if line.startswith("#"):
-        lines.append(line)
-        continue
-    r = line.rstrip("\n").split("\t")
-    if r[6] != "PASS":
-        lines.append(line)
-        continue
-    info = r[7].split(";")
-    k = next(i for i, x in enumerate(info) if x.startswith("CSQ="))
-    trs = info[k][4:].split(",")
-    ci = fmt.index("CLIN_SIG")
-    if a is None:
-        a, add, cache = (r[0], r[1]), "Pathogenic", ""
-    elif b is None:
-        b, add, cache = (r[0], r[1]), "", "pathogenic"
-    else:
-        add, cache = "", None
-    new = []
-    for tr in trs:
-        v = tr.split("|") + ([""] if missing else [])
-        if cache is not None:
-            v[ci] = cache
-        new.append("|".join(v + [add]))
-    info[k] = "CSQ=" + ",".join(new)
-    r[7] = ";".join(info)
-    lines.append("\t".join(r) + "\n")
-open(out, "w").writelines(lines)
-open(ab, "w").write(f"{a[0]}\t{a[1]}\n{b[0]}\t{b[1]}\n")
-PY
+# The CSQ header gains ClinVar_CLNSIG (and CLIN_SIG when it lacks one); each
+# PASS record's transcripts gain the field: Pathogenic on the first (A), empty
+# on the rest, with CLIN_SIG set to "" on A and to "pathogenic" on the second
+# (B). A and B go to ab.tsv.
+awk -F'\t' -v OFS='\t' -v ab="${CASE_TMP}/ab.tsv" '
+  function repl(s, x, y,   o, i) {  # every x in s replaced by y, as written
+    o = ""
+    while ((i = index(s, x)) > 0) { o = o substr(s, 1, i - 1) y; s = substr(s, i + length(x)) }
+    return o s
+  }
+  /^##INFO=<ID=CSQ/ {
+    if (match($0, /Format: [^"]+/)) {
+      old = substr($0, RSTART + 8, RLENGTH - 8)
+      n = split(old, f, "|"); ci = 0
+      for (i = 1; i <= n; i++) if (f[i] == "CLIN_SIG") { ci = i; break }
+      missing = !ci
+      if (missing) ci = n + 1
+      $0 = repl($0, old, old (missing ? "|CLIN_SIG" : "") "|ClinVar_CLNSIG")
+    }
+    print; next
+  }
+  /^#/ || $7 != "PASS" { print; next }
+  {
+    m = split($8, info, ";"); k = 0
+    for (i = 1; i <= m; i++) if (substr(info[i], 1, 4) == "CSQ=") { k = i; break }
+    if (a == "") { a = $1 "\t" $2; add = "Pathogenic"; cache = ""; set = 1 }
+    else if (b == "") { b = $1 "\t" $2; add = ""; cache = "pathogenic"; set = 1 }
+    else { add = ""; set = 0 }
+    t = split(substr(info[k], 5), trs, ","); out = ""
+    for (j = 1; j <= t; j++) {
+      nv = split(trs[j], v, "|")
+      if (missing) v[++nv] = ""
+      if (set) v[ci] = cache
+      s = v[1]; for (x = 2; x <= nv; x++) s = s "|" v[x]
+      out = out (j > 1 ? "," : "") s "|" add
+    }
+    info[k] = "CSQ=" out
+    s = info[1]; for (x = 2; x <= m; x++) s = s ";" info[x]
+    $8 = s
+    print
+  }
+  END { printf "%s\n%s\n", a, b > ab }' "$SRC" > "$OUT"
 read -r A_CHR A_POS < <(sed -n 1p "${CASE_TMP}/ab.tsv")
 read -r B_CHR B_POS < <(sed -n 2p "${CASE_TMP}/ab.tsv")
 echo "A ${A_CHR}:${A_POS} (ClinVar_CLNSIG Pathogenic), B ${B_CHR}:${B_POS} (CLIN_SIG pathogenic only)"

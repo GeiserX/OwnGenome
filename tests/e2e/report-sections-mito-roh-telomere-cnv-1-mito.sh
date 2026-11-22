@@ -81,16 +81,16 @@ ln -f "${GENOME_DIR}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam.bai" "${GENOME_DIR}/
 run_step 10-telomere-hunter.sh "$TS"
 check_step_exit 10-telomere-hunter.sh
 head -n 2 "${GENOME_DIR}/${TS}/telomere/${TS}/${TS}/${TS}_summary.tsv" 2>/dev/null | cut -f1-11
-TEL=$(python3 - "${REPO}/bin" "${GENOME_DIR}/${TS}" "$TS" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import collect_summary, render_report
-s = collect_summary.collect(sys.argv[3], sys.argv[2])
-d = s["sections"]["telomere"]["data"]
-print(f"reads={d.get('intratelomeric_reads')} depth={d.get('depth')} floor={d.get('read_floor')} low={d.get('low_reads')}")
-print(render_report.text_report(s))
-PY
-)
+# The summary's telomere numbers (a missing one as None), then the text report.
+TEL_SUM="${CASE_TMP}/${TS}.summary.json"
+rm -f "$TEL_SUM" "${CASE_TMP}/${TS}_report.txt"
+"${REPO}/bin/og" summary collect --sample "$TS" --sample-dir "${GENOME_DIR}/${TS}" --assets "${REPO}/assets" \
+  --out "$TEL_SUM" > "${CASE_TMP}/${TS}.collect.log" 2>&1 || cat "${CASE_TMP}/${TS}.collect.log"
+"${REPO}/bin/og" report render --summary "$TEL_SUM" -o "${CASE_TMP}/${TS}_report.txt" > /dev/null 2>&1
+TEL=$(jq -r 'def p: if . == null then "None" elif . == true then "True" elif . == false then "False" else tostring end;
+  .sections.telomere.data
+  | "reads=\(.intratelomeric_reads | p) depth=\(.depth | p) floor=\(.read_floor | p) low=\(.low_reads | p)"' "$TEL_SUM" 2>&1
+  cat "${CASE_TMP}/${TS}_report.txt" 2>/dev/null)
 grep -E '^reads=|Intratelomeric|WARNING' <<< "$TEL"
 check "the summary reads TelomereHunter's intratel_reads, total_reads and read_length" \
   has '^reads=[0-9]+ depth=[0-9.]+ floor=[0-9]+ low=(True|False)$' "$TEL"

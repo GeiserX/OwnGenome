@@ -102,7 +102,7 @@ check_eq "input: genotypes from the gVCF (score and panel sites)" "$(col Input)"
 check "no raw-score line in the step log" lacks 'Raw score only' "$LOG26"
 
 # --- the reports ------------------------------------------------------------------
-python3 "${REPO}/bin/render_report.py" --sample "$SAMPLE" --sample-dir "$D" --json "${CASE_TMP}/summary.json" \
+"${REPO}/bin/og" report render --sample "$SAMPLE" --sample-dir "$D" --json "${CASE_TMP}/summary.json" \
   -o "${CASE_TMP}/report.txt" -o "${CASE_TMP}/report.html" >/dev/null
 check "text report: the percentile with its group" grep -q "percentile ${PCT:-none} (${POP:-none})" "${CASE_TMP}/report.txt"
 check "HTML report: the percentile with its group" grep -q "<td>${PCT:-none} (${POP:-none})</td>" "${CASE_TMP}/report.html"

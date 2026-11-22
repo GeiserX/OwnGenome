@@ -59,22 +59,13 @@ trace_names() {
 # the run's own metadata (time, version, file names), as sorted canonical JSON.
 # Two runs that called the same thing print the same text.
 json_calls() {
-  python3 - "$1" <<'PY'
-import json, re, sys
-try:
-    data = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable: {e}")
-    sys.exit(0)
-SKIP = re.compile(r"(?i)(metadata|timestamp|date|time|file|path|version|title)")
-def strip(x):
-    if isinstance(x, dict):
-        return {k: strip(v) for k, v in x.items() if not SKIP.search(k)}
-    if isinstance(x, list):
-        return [strip(v) for v in x]
-    return x
-print(json.dumps(strip(data), sort_keys=True))
-PY
+  jq -S -c 'def strip:
+      if type == "object" then
+        with_entries(select(.key | test("metadata|timestamp|date|time|file|path|version|title"; "i") | not)
+          | .value |= strip)
+      elif type == "array" then map(strip)
+      else . end;
+    strip' "$1" 2>/dev/null || echo "unreadable: $1"
 }
 
 # html_stat FILE HEADING LABEL: the value of the stat LABEL in the card titled HEADING.

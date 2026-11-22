@@ -17,7 +17,7 @@
 #      task that got the HBA table, each partner's CYP21A2 table in
 #      COUPLE_CARRIER, and DEEPVARIANT's gVCF in the HTML_REPORT task of each
 #      called sample. Its process table has a CPSR_CDNA_CHECK row, which
-#      bin/run_state.py maps to step 17. Red control: a copy of the pipeline
+#      assets/steps.tsv maps to step 17. Red control: a copy of the pipeline
 #      without the new lines stages none of them.
 #   3. --tools locityper with a --locityper_data folder that has no DONE stops
 #      a -preview run (the workflow is built, no task runs) with the setup.sh
@@ -80,26 +80,27 @@ linked() {
   l=$(find "${CASE_TMP}/work-$1" -path "*/layout/${S}/vcf/$2" 2>/dev/null | head -1)
   [ -n "$l" ] && [ -s "$l" ] && case "$(basename "$(readlink -f "$l")")" in "given.gvcf.gz"*) true ;; *) false ;; esac
 }
-summary() {  # summary NAME EXPR: a Python expression over d, the summary.json of run NAME
-  python3 -c "import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except (OSError, ValueError):
-    print('no summary'); sys.exit(0)
-print($2)" "${CASE_TMP}/$1/${S}/summary.json" 2>&1
+summary() {  # summary NAME JQ: a jq program over the summary.json of run NAME
+  local f="${CASE_TMP}/$1/${S}/summary.json"
+  jq -e . "$f" > /dev/null 2>&1 || { echo "no summary"; return 0; }
+  jq -r "$2" "$f" 2>&1
 }
 report_run report "${REPO}/modules/local/html_report/main"
 check_eq "HTML_REPORT with the gVCF and both tables exits 0" "$NF_RC" 0
 check "the gVCF is linked as vcf/${S}.g.vcf.gz" linked report "${S}.g.vcf.gz"
 check "and its index as vcf/${S}.g.vcf.gz.tbi" linked report "${S}.g.vcf.gz.tbi"
-PARA="(d['sections'].get('parascopy') or {}).get('data') or {}"
+# py: a value as Python's repr prints it (strings quoted, null as None).
+PY_REPR='def py: if type == "string" then "\u0027" + . + "\u0027" elif . == null then "None" elif . == true then "True"
+  elif . == false then "False" else tostring end;'
+PARA='(.sections.parascopy // {} | .data // {})'
 check_eq "summary.json: the CYP21A2 finding and copies" \
-  "$(summary report "[($PARA).get('cyp21a2', {}).get(k) for k in ('status', 'finding', 'cyp21a2_copies')]")" \
+  "$(summary report "${PY_REPR} ${PARA} | .cyp21a2 // {} | \"[\" + ([.status, .finding, .cyp21a2_copies] | map(py) | join(\", \")) + \"]\"")" \
   "['called', 'deletion', '1']"
 check_eq "summary.json: the HP dosage count" \
-  "$(summary report "[(r['locus'], r['copies']) for r in ($PARA).get('dosage') or []]")" "[('HP', '3')]"
+  "$(summary report "${PY_REPR} ${PARA} | \"[\" + ([(.dosage // [])[] | \"(\\(.locus | py), \\(.copies | py))\"] | join(\", \")) + \"]\"")" \
+  "[('HP', '3')]"
 check_eq "summary.json: the manifest names the release" \
-  "$(summary report "[r[2] for r in d['manifest'] if r[:2] == ['run', 'pipeline_version']]")" "['${DECLARED}']"
+  "$(summary report "${PY_REPR} \"[\" + ([.manifest[] | select(.[0:2] == [\"run\", \"pipeline_version\"]) | .[2] | py] | join(\", \")) + \"]\"")" "['${DECLARED}']"
 check "the report itself shows the release" grep -q "pipeline_version</td><td>${DECLARED}<" "${CASE_TMP}/report/${S}/${S}_report.html"
 check "the run manifest is not published (run-all.sh writes the full one there)" test ! -e "${CASE_TMP}/report/${S}/run_manifest.tsv"
 
@@ -118,7 +119,7 @@ report_run report-nogvcf "${NP}/nogvcf/main"
 check_eq "control: that module still runs" "$NF_RC" 0
 check "red: it links no gVCF" test -z "$(find "${CASE_TMP}/work-report-nogvcf" -path "*/layout/${S}/vcf/${S}.g.vcf.gz" 2>/dev/null)"
 check_eq "red: and its manifest has no release" \
-  "$(summary report-nogvcf "[r[2] for r in d['manifest'] if r[:2] == ['run', 'pipeline_version']]")" "[]"
+  "$(summary report-nogvcf "${PY_REPR} \"[\" + ([.manifest[] | select(.[0:2] == [\"run\", \"pipeline_version\"]) | .[2] | py] | join(\", \")) + \"]\"")" "[]"
 
 # --- 2. main.nf: stub run of the stub pedigree ---------------------------------------
 staged_in() {  # staged_in WORK PROCESS PATTERN: tasks of PROCESS in WORK that stage a file matching PATTERN (ERE)
@@ -167,18 +168,35 @@ check_ge "control: the stub run without the lines still ran COUPLE_CARRIER" "$(s
 check_eq "red: and COUPLE_CARRIER stages no CYP21A2 table" "$(staged_in "$S0" COUPLE_CARRIER '_cyp21a2_psv[.]tsv')" 0
 check_eq "red: and no HTML_REPORT task stages a gVCF" "$(staged_in "$S0" HTML_REPORT '[.]g[.]vcf[.]gz')" 0
 # CPSR's read check under step 17: the run's process table, read the way run-all.sh and the live view read it
-STEP17=$(python3 - "${CASE_TMP}/stub/process_status.tsv" "${REPO}" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[2] + "/bin")
-import run_state
-ps = run_state.read_process_status(sys.argv[1]) or {}
-step_of = {p: s["step"] for s in run_state.read_steps(sys.argv[2] + "/assets/steps.tsv") for p in s["processes"]}
-r = ps.get("CPSR_CDNA_CHECK") or {}
-print(step_of.get("CPSR_CDNA_CHECK"), sum(v for v in r.values() if isinstance(v, int)))
-PY
-)
+# The step of CPSR_CDNA_CHECK in assets/steps.tsv (its processes column), and
+# the tasks of its row in the run's process table (the process name without
+# the workflow prefix; succeeded, cached, failed, ignored and unfinished
+# summed), read as run-all.sh and the live view read the two files.
+PS="${CASE_TMP}/stub/process_status.tsv"
+[ -f "$PS" ] || PS=/dev/null
+STEP17=$(awk -F'\t' -v p=CPSR_CDNA_CHECK '
+  FILENAME == ARGV[1] {
+    if (/^#/ || /^[[:space:]]*$/) next
+    if (!nh++) { for (i = 1; i <= NF; i++) sc[$i] = i; next }
+    n = split($sc["processes"], ps, ","); for (i = 1; i <= n; i++) if (ps[i] == p) step = $sc["step"]
+    next
+  }
+  FNR == 1 { for (i = 1; i <= NF; i++) pc[$i] = i; cols = NF; next }
+  NF == cols && ("process" in pc) {
+    t = 0; ok = 1
+    split("succeeded cached failed ignored unfinished", ks, " ")
+    for (k = 1; k <= 5; k++) {
+      if (!(ks[k] in pc)) { ok = 0; break }
+      v = $pc[ks[k]]
+      if (v !~ /^[[:space:]]*[+-]?[0-9]+[[:space:]]*$/) { ok = 0; break }
+      t += v
+    }
+    name = $pc["process"]; sub(/.*:/, "", name)
+    if (ok && name == p) tasks = t
+  }
+  END { print (step == "" ? "None" : step), tasks + 0 }' "${REPO}/assets/steps.tsv" "$PS")
 echo "CPSR_CDNA_CHECK: step and tasks: ${STEP17}"
-check "the process table has CPSR_CDNA_CHECK tasks, and run_state.py maps them to step 17" \
+check "the process table has CPSR_CDNA_CHECK tasks, and assets/steps.tsv maps them to step 17" \
   has '^17 [1-9]' "$STEP17"
 
 # --- 3. Locityper's DONE, before any task ------------------------------------------
