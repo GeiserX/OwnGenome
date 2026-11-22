@@ -21,7 +21,9 @@
 //!    DEMO-002's to the copy of the demo it serves, since the demo has no
 //!    such pair. With two detail lines, each More names its own; with no
 //!    detail line on either, or the same one on both, each names its place
-//!    ("(1 of 2)", "(2 of 2)").
+//!    ("(1 of 2)", "(2 of 2)"). That place does not follow the order of
+//!    results.json's findings list: served again with the list reversed,
+//!    each finding keeps its own name.
 //!
 //! Each check was red on main before this change, or on an earlier head of
 //! it for the neighbours' check (the PR says where).
@@ -415,6 +417,20 @@ fn add_twin(results: &Path, raw: &str, how: Twin) -> Option<([String; 2], [Strin
     Some(([id, twin_id], names))
 }
 
+/// Write the served results.json again with its findings list in the
+/// other order, as the next read of a live run may list them.
+fn reverse_findings(results: &Path) -> Option<()> {
+    let mut v = json::loads(&std::fs::read_to_string(results).ok()?).ok()?;
+    let Value::Object(top) = &mut v else {
+        return None;
+    };
+    let Some(Value::Array(fs)) = top.get_mut("findings") else {
+        return None;
+    };
+    fs.reverse();
+    std::fs::write(results, json::dumps(&v, &json::Dump::default()).ok()?).ok()
+}
+
 /// Bring the Cyrius row to the middle of the screen (the page's scroll,
 /// then the timeline box's own when it has one) and give its place.
 const CYRIUS_ROW: &str = "(function () { \
@@ -665,11 +681,30 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             String::new(),
         );
     }
-    for how in [Twin::Distinct, Twin::Missing, Twin::Repeated] {
+    //    With no detail line, the place must not follow the findings list's
+    //    order: read again with the list reversed, each finding keeps its name.
+    for (how, reversed) in [
+        (Twin::Distinct, false),
+        (Twin::Missing, false),
+        (Twin::Missing, true),
+        (Twin::Repeated, false),
+    ] {
         let Some(([id, twin_id], want)) = add_twin(&results, &raw, how) else {
             continue;
         };
-        visit(&mut b, &srv.url(&format!("/demo/runs/DEMO-002/?{how:?}")));
+        if reversed && reverse_findings(&results).is_none() {
+            check(
+                "the served results.json has a findings list to reverse",
+                false,
+                String::new(),
+            );
+            continue;
+        }
+        let tag = if reversed { "reversed" } else { "" };
+        visit(
+            &mut b,
+            &srv.url(&format!("/demo/runs/DEMO-002/?{how:?}{tag}")),
+        );
         b.wait(
             &format!(
                 "!!document.getElementById({})",
@@ -682,9 +717,14 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
             Ok(Value::Array(v)) => Some(v.into_iter().map(|n| text(Some(n))).collect()),
             _ => None,
         };
+        let order = if reversed {
+            ", findings listed in the other order"
+        } else {
+            ""
+        };
         check(
             &format!(
-                "two findings with one title ({how:?}): each More gets a name of its own, not empty"
+                "two findings with one title ({how:?}{order}): each More gets a name of its own, not empty"
             ),
             names.as_deref() == Some(&want[..]) && want[0] != want[1],
             format!("{got}, want {want:?}"),
