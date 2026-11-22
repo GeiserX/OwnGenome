@@ -1,9 +1,9 @@
 // finding.js: one finding on a page of its own (assets/live/finding.html, the route
-// /runs/<run>/finding/<id>/ of bin/owngenome_live_results.py). It answers "what do I do about it?":
+// /runs/<run>/finding/<id>/). It answers "what do I do about it?":
 // the explanation, the plan under it, then the evidence (the numbers, the frequency on a log strip, the
 // reads with a link to the genome viewer), the caveat, the related findings and the family. Everything
-// comes from the run's results.json (bin/live_results.py findings); nothing is computed here about
-// genetics. A child's finding page draws only once the report gate (core.js) has released the child's report.
+// comes from the findings that og live results writes to results.json.
+// A child's finding page draws after the report gate (core.js) opens the report.
 (function () {
   'use strict';
   window.PGPUI.ready.then(function () {

@@ -1,7 +1,6 @@
 // person.js: a person's genome as a report, the Journal design (docs/design/journal/), on their page
-// (assets/live/index.html), from results.json (bin/live_results.py, served by
-// bin/owngenome_live_results.py) and the run's states (live.js). The page reads top to bottom: the lead
-// paragraph built from the findings, the counts by level, the genome map of the findings (map.js), then ten
+// (assets/live/index.html), from results.json (og live results) and the run's states (live.js).
+// The page opens with the lead paragraph, counts by level, and the genome map (map.js), then shows ten
 // numbered sections: 1 To act on, 2 Medicines, 3 For your family, 4 Worth a look, 5 Can I trust this?,
 // 6 Origins, 7 Traits and scores, 8 Assessed, no finding, 9 What it cannot see, 10 Sources and files.
 // A run still going is the same report being written: each section carries its stamp (written, being

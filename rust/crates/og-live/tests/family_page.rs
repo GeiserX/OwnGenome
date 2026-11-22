@@ -27,8 +27,7 @@
 //!   listed unreadable.
 //!
 //! Each check runs again on a planted mistake and must fail there. The
-//! wording gate on family.json stays in tests/test_live_results.py, with
-//! the rest of that gate.
+//! wording check for family.json runs in tests/results_journal.rs.
 
 use og_live::family::{
     Given, candidates_given, cli, families, family_page, family_state, member_summary, read_tsv,

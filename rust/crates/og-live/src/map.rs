@@ -18,10 +18,9 @@
 //! `map`, with the run (or `genes` as the section for a gene file) and never
 //! a finding, a gene or a chromosome.
 //!
-//! A run's map is built from its results, which hold the veil of the results
-//! a child's page keeps closed. While the site has no results
-//! ([`crate::plugins::ResultsFns`]), the map is not built at all: 503, and og
-//! never runs.
+//! The map uses the run's live results, including the veil for a child's
+//! closed results. With no configured results producer, it returns 503
+//! before calling `og map build`.
 
 use crate::server::Req;
 use crate::state::dumps;

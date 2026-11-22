@@ -780,3 +780,75 @@ fn a_family_folder_is_a_run_with_its_own_page_and_files() {
             .any(|r| r[3] == "family" && r[4] == fam && r[5] == "pedigree.svg" && r[6] == "200")
     );
 }
+
+#[test]
+fn cli_configuration_serves_the_journal_and_finding_pages() {
+    let w = Work::new("cli-results");
+    let root = make_root(&w);
+    let events = fixture_events();
+    store(
+        &w,
+        RUN,
+        &events.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    store(&w, RUN, &[CLINVAR_DONE, STEP06_OK]);
+    write(
+        &root.join(RUN).join("summary.json"),
+        r#"{"sample":"DEMO-001","sections":{"clinvar":{"state":"ok","data":{"hits":[
+            {"gene":"GENEA","chrom":"chr1","pos":100,"ref":"A","alt":"G",
+             "significance":"Pathogenic","stars":2}
+        ]}}}}"#,
+    );
+    let assets = repo().join("assets");
+    let args = [
+        "--root",
+        root.to_str().unwrap(),
+        "--state-dir",
+        w.state().to_str().unwrap(),
+        "--assets",
+        assets.join("live").to_str().unwrap(),
+        "--steps",
+        assets.join("steps.tsv").to_str().unwrap(),
+        "--port",
+        "0",
+        "--quiet",
+    ]
+    .map(str::to_owned);
+    let srv = start(server::configure(&args).unwrap());
+    let port = srv.port();
+    let response = get(port, &format!("/runs/{RUN}/results.json"));
+    assert_eq!(response.status, 200);
+    let results = response.json();
+    assert_eq!(s(get_key(&results, "sample")), RUN);
+    assert!(
+        matches!(get_key(&results, "chapters"), Value::Array(chapters) if chapters.len() == 7),
+        "{results:?}"
+    );
+    let Value::Array(findings) = get_key(&results, "findings") else {
+        panic!("missing journal findings");
+    };
+    let id = s(get_key(&findings[0], "id"));
+    assert_eq!(get(port, &format!("/runs/{RUN}/finding/{id}/")).status, 200);
+    assert_eq!(
+        get(port, &format!("/runs/{RUN}/finding/unknown/")).status,
+        404
+    );
+    assert_eq!(get(port, &format!("/runs/{RUN}/summary.json")).status, 404);
+
+    let index = get(port, "/runs.json").json();
+    let Value::Array(runs) = get_key(&index, "runs") else {
+        panic!("missing runs");
+    };
+    let run = runs
+        .iter()
+        .find(|run| s(get_key(run, "name")) == RUN)
+        .unwrap();
+    assert_eq!(get_key(run, "screened"), &Value::Bool(true));
+    let rows = log_rows(&w);
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row[3] == "results" && row[4] == RUN)
+            .count(),
+        1
+    );
+}

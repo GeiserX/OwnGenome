@@ -100,9 +100,7 @@ pub struct Config {
     pub viewer_igv_js: Option<PathBuf>,
     /// The og the map runs (`og map build`, `og map genes`): this binary.
     pub og: PathBuf,
-    /// Each person's results (`results.json`); `None` until `og live
-    /// results` lands, and then the results, the findings and the map say
-    /// they are not here yet.
+    /// The producer for results, findings and the map. The CLI configures it.
     pub results: Option<ResultsFns>,
     /// How often a quiet event stream writes.
     pub heartbeat: Duration,
@@ -1109,6 +1107,7 @@ pub fn configure(args: &[String]) -> Result<Config, (u8, String)> {
         ));
     };
     let mut cfg = Config::new(root);
+    cfg.results = Some(crate::results::FNS);
     if let Some(s) = one(&f, "state_dir").filter(|s| !s.is_empty()) {
         cfg.state_dir = PathBuf::from(s);
     }
@@ -1182,14 +1181,13 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         let _ = write!(out, "{USAGE}");
         return 0;
     }
-    let mut cfg = match configure(args) {
+    let cfg = match configure(args) {
         Ok(c) => c,
         Err((code, m)) => {
             let _ = writeln!(err, "{m}");
             return code;
         }
     };
-    cfg.results = Some(crate::results::FNS);
     let bind = cfg.bind.clone();
     let srv = match Server::start(cfg) {
         Ok(s) => s,
