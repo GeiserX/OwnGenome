@@ -9,9 +9,11 @@
 //! per group); for the bootstrap also `ref.geno`, `ref.fam`, the panel's
 //! `samples.tsv` beside the model folder, and the genetic maps (`--maps`).
 //!
-//! A SNV counts when the person has a called genotype of the `.bim`'s two
-//! alleles there; the last such record at a position decides it. With
-//! fewer than `--min-sites` (100) the command stops.
+//! At each position the last VCF record with a called GT decides the SNV:
+//! it counts when that genotype holds only the `.bim`'s two alleles, and
+//! is left out when it holds another one, even after an earlier record
+//! that matched. With fewer than `--min-sites` (100) SNVs the command
+//! stops.
 //!
 //! The bootstrap cuts the genotyped SNVs into blocks of 5 cM on the genetic
 //! map, per chromosome, so no block holds two chromosomes. Each replicate
