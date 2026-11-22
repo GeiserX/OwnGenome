@@ -647,6 +647,43 @@ pub fn cpic_report(a: &CpicArgs) -> u8 {
         );
     }
 
+    let unread: Vec<&GeneCall> = calls.iter().filter(|c| c.incomplete()).collect();
+    if !unread.is_empty() {
+        lines.extend([
+            "Genes Called With Positions Not Read:".to_owned(),
+            rule(),
+            String::new(),
+        ]);
+        for c in &unread {
+            let n = c.unread.len();
+            let mark = if c.status() == Status::Incomplete {
+                "incomplete, "
+            } else {
+                ""
+            };
+            lines.push(format!(
+                "  {} -- {}, {}: {mark}{n} defining position{} not read ({}).",
+                c.gene,
+                c.diplotype,
+                c.phenotype,
+                if n == 1 { "" } else { "s" },
+                c.unread.join(", ")
+            ));
+        }
+        lines.extend(
+            [
+                "  PharmCAT calls a gene from the positions it read. An allele defined at a",
+                "  position it never read cannot be called, so the gene can come out normal",
+                "  when it is not (an exome misses many such positions). A gene marked",
+                "  incomplete gets no drug guidance here. A non-normal gene keeps its drug",
+                "  list above, but its true result can differ. Step 07's missing_pgx_var.vcf",
+                "  and the PharmCAT HTML report list the positions it could not read.",
+                "",
+            ]
+            .map(str::to_owned),
+        );
+    }
+
     let unclassified: Vec<&GeneCall> = by_status(Status::Unclassified).collect();
     if !unclassified.is_empty() {
         lines.extend([
@@ -809,8 +846,16 @@ pub fn cpic_report(a: &CpicArgs) -> u8 {
             );
         }
     }
+    // The count of incomplete genes is printed only when there is one, so
+    // the line stays the same for every report that has none.
+    let incomplete = by_status(Status::Incomplete).count();
+    let incomplete = if incomplete > 0 {
+        format!("; incomplete: {incomplete}")
+    } else {
+        String::new()
+    };
     println!(
-        "Genes parsed: {}; non-normal: {}; ambiguous: {}; unclassified: {}; not called: {}",
+        "Genes parsed: {}; non-normal: {}; ambiguous: {}; unclassified: {}; not called: {}{incomplete}",
         calls.len(),
         listed.len(),
         ambiguous.len(),

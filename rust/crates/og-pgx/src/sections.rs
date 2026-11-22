@@ -243,9 +243,9 @@ pub fn compare(calls: &[GeneCall], pypgx: &HashMap<String, PypgxCall>) -> Vec<Co
     rows
 }
 
-/// Lines for genes PharmCAT reports on but could not call while pypgx did:
-/// the medications section is silent on them, so say so. Genes step 36 held
-/// back are left to its section.
+/// Lines for genes PharmCAT reports on but could not call, or called
+/// `incomplete`, while pypgx did: the medications section is silent on them,
+/// so say so. Genes step 36 held back are left to its section.
 pub fn pypgx_warnings(
     calls: &[GeneCall],
     pypgx: &HashMap<String, PypgxCall>,
@@ -255,7 +255,11 @@ pub fn pypgx_warnings(
 ) -> Vec<String> {
     let mut lines = Vec::new();
     for c in calls {
-        if (c.called && !c.ambiguous()) || held_back.contains(&c.gene) {
+        // An incomplete call rests on positions PharmCAT never read and gets
+        // no drug guidance: pypgx's call is the other one that can settle it.
+        if (c.called && !c.ambiguous() && c.status() != Status::Incomplete)
+            || held_back.contains(&c.gene)
+        {
             continue;
         }
         let Some(p) = pypgx.get(&c.gene) else {
@@ -264,7 +268,12 @@ pub fn pypgx_warnings(
         if !pypgx_called(&p.diplotype) {
             continue;
         }
-        let what = if c.called {
+        let what = if c.status() == Status::Incomplete {
+            format!(
+                "a call that rests on positions it never read ({})",
+                c.unread.join(", ")
+            )
+        } else if c.called {
             format!("no single result ({} possible diplotypes)", c.labels.len())
         } else {
             "no result".to_owned()

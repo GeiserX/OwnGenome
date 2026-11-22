@@ -1162,6 +1162,63 @@ fn an_ambiguous_pgx_call_is_left_out_and_its_gene_partial() {
 }
 
 #[test]
+fn an_incomplete_pgx_call_is_left_out_and_its_gene_partial() {
+    // Issue #411, plat-49: step 27 marks CYP2C19 *38/*38 `incomplete` when
+    // PharmCAT never read rs4244285 (the *2 site). That call is not proven
+    // normal, so it brings no reference call and no standard-dose guidance:
+    // it is left out like an ambiguous call, and its gene is partial.
+    let normal = r#"{"gene":"CYP2C19","diplotype":"*38/*38","phenotype":"Normal Metabolizer","status":"normal"}"#;
+    let sections = full_sections();
+    assert!(sections.contains(normal));
+    let (b, _) = run(
+        "pgx-incomplete",
+        &sections.replace(
+            normal,
+            r#"{"gene":"CYP2C19","diplotype":"*38/*38","phenotype":"Normal Metabolizer [incomplete: positions not read: rs4244285]","status":"incomplete"}"#,
+        ),
+    );
+    assert!(fact(&b, "pgx", "CYP2C19").is_empty(), "{:?}", facts(&b));
+    let row = coverage(&b, "CYP2C19")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(st(row, &["note"]).contains("never read"), "{row:?}");
+}
+
+#[test]
+fn a_non_normal_pgx_call_with_unread_positions_keeps_its_phenotype_at_medium_confidence() {
+    // Issue #411, plat-49: a non-normal call stays non-normal with the mark
+    // `[incomplete: positions not read: ...]` on its phenotype. The fact
+    // keeps the phenotype without the mark, on the fact and on its
+    // guidance; its confidence is medium and its gene partial.
+    let nat2 = r#"{"gene":"NAT2","diplotype":"*1/*1","phenotype":"Rapid Metabolizer [incomplete: positions not read: rs200893121]","status":"non-normal"},"#;
+    let (b, _) = run(
+        "pgx-unread-non-normal",
+        &full_sections().replacen("\"genes\":[", &format!("\"genes\":[{nat2}"), 1),
+    );
+    let found = fact(&b, "pgx", "NAT2");
+    assert_eq!(found.len(), 1, "{:?}", facts(&b));
+    let f = found[0];
+    assert_eq!(st(f, &["value", "phenotype"]), "Rapid Metabolizer", "{f:?}");
+    assert_eq!(st(f, &["confidence", "level"]), "medium", "{f:?}");
+    assert!(
+        st(f, &["confidence", "basis"]).contains("rs200893121"),
+        "{f:?}"
+    );
+    let guidance = arr(f, "drug_guidance");
+    assert!(!guidance.is_empty(), "{f:?}");
+    for g in guidance {
+        assert_eq!(st(g, &["phenotype"]), "Rapid Metabolizer", "{g:?}");
+    }
+    assert!(
+        !b.warnings.iter().any(|w| w.starts_with("NAT2: phenotype")),
+        "{:?}",
+        b.warnings
+    );
+    let row = coverage(&b, "NAT2")[0];
+    assert_eq!(st(row, &["state"]), "partial", "{row:?}");
+    assert!(st(row, &["note"]).contains("rs200893121"), "{row:?}");
+}
+
+#[test]
 fn guidance_belongs_to_the_call_the_fact_holds() {
     // PharmCAT's report holds an outside CYP2D6 call (*1/*3) that step 27
     // did not confirm; the fact holds pypgx's probable *4/*5, so none of

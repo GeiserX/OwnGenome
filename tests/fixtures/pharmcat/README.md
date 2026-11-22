@@ -19,6 +19,15 @@ the release to `REAL_REPORTS` in `rust/crates/og-pgx/tests/port_tests_pgx_cpic.r
 bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERSION.json
 ```
 
+## Positions PharmCAT never read
+
+For `rust/crates/og-pgx/tests/i411_pgx_incomplete.rs`. Both files are invented PharmCAT 3.4.0 reports written by hand in its layout: each gene with one diplotype and its `variants`, the positions with their GRCh38 place, rsID and the alleles PharmCAT defines there. A position PharmCAT never read has no call: PharmCAT 3.4.0 writes `"call": null`, as at `exome-cyp2c19-unread.json`'s CYP2C19 rs4244285 and CYP2C9 rs1057910. A missing field and a blank string are read the same way.
+
+| File | What it holds |
+|---|---|
+| `exome-cyp2c19-unread.json` | An exome that never read CYP2C19 \*2's site (rs4244285), so PharmCAT called `*1/*1`, Normal Metabolizer; CYP2C9 `*1/*2`, Intermediate Metabolizer, with its \*3 site (rs1057910) unread; and CYP3A5 `*3/*3` with its one position read. |
+| `wgs-cyp2c19-complete.json` | The same three genes with every position read, as on a whole genome. |
+
 ## Reference blocks over PharmCAT's positions longer than one base
 
 For `rust/crates/og-filters/tests/port_tests_pgx_refblock.rs` and the e2e case `tests/e2e/pharmcat-indel-refblocks-1.sh`.

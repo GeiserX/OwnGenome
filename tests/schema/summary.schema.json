@@ -491,6 +491,7 @@
                "ambiguous",
                "not called",
                "unclassified",
+               "incomplete",
                ""
               ]
              }
@@ -521,6 +522,11 @@
           "unclassified": {
            "type": "integer",
            "minimum": 0
+          },
+          "incomplete": {
+           "description": "Genes whose call rests on positions PharmCAT never read; written only when there is one.",
+           "type": "integer",
+           "minimum": 1
           }
          }
         }
