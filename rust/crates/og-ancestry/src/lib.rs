@@ -618,6 +618,14 @@ fn check_types(spec: &Spec, a: &Args) -> std::result::Result<(), ArgError> {
             _ => {}
         }
     }
+    // report's folder has two names, --fractions and the older --admixture,
+    // so Spec.required cannot hold it; a missing folder stays a usage
+    // error (exit 2), as when --admixture was required.
+    if spec.verb == "report" && a.get("--fractions").is_none() && a.get("--admixture").is_none() {
+        return Err(ArgError::Usage(
+            "the following arguments are required: --fractions".into(),
+        ));
+    }
     Ok(())
 }
 

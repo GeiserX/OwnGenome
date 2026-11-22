@@ -570,9 +570,7 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
     let adm = a
         .get("--fractions")
         .or_else(|| a.get("--admixture"))
-        .ok_or_else(|| {
-            Fail("--fractions DIR is required (the folder og ancestry-fine project wrote)".into())
-        })?;
+        .expect("checked by check_types");
     let paint = a.get("--paint").unwrap_or("");
     let panel = a.get("--panel").unwrap_or("");
     let levels = read_levels(model)?;
@@ -859,8 +857,11 @@ mod tests {
             "--out",
             &d.path("none"),
         ]);
-        assert_eq!(rc, 1);
-        assert!(err.contains("--fractions DIR is required"), "{err}");
+        assert_eq!(rc, 2);
+        assert!(
+            err.contains("error: the following arguments are required: --fractions"),
+            "{err}"
+        );
     }
 
     #[test]
