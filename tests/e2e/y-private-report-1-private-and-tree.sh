@@ -181,7 +181,7 @@ if [ -s "$NF_TREE" ] && [ -s "${R}/${SAMPLE}_report.html" ]; then
   rm -rf "$CC"; mkdir -p "${CC}/${SAMPLE}"
   cp -R "${R}/y_haplogroup" "${CC}/${SAMPLE}/y_haplogroup"
   rm -f "${CC}/${SAMPLE}/y_haplogroup/${SAMPLE}_y_tree.txt" "${CC}/${SAMPLE}/y_haplogroup/${SAMPLE}_y_tree_path.tsv"
-  python3 "${REPO}/bin/render_report.py" --sample "$SAMPLE" --sample-dir "${CC}/${SAMPLE}" \
+  "${REPO}/bin/og" report render --sample "$SAMPLE" --sample-dir "${CC}/${SAMPLE}" \
     --assets "${REPO}/assets" --json "${CC}/${SAMPLE}/summary.json" -o "${CC}/${SAMPLE}/report.html" \
     > "${CASE_TMP}/nf-control.log" 2>&1 || true
   tail -3 "${CASE_TMP}/nf-control.log"

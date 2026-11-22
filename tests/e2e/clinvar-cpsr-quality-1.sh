@@ -27,14 +27,12 @@ in_user() {
   local image=$1; shift
   docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w /genome "$image" "$@"
 }
-summary_py() {  # summary_py <sample> <python expression over d, the summary>
-  python3 - "$1" "$2" "${REPO}" "${GENOME_DIR}" <<'PY'
-import os, sys
-sys.path.insert(0, os.path.join(sys.argv[3], "bin"))
-import collect_summary
-d = collect_summary.collect(sys.argv[1], os.path.join(sys.argv[4], sys.argv[1]))
-print(eval(sys.argv[2]))
-PY
+summary() {  # summary <sample>: og summary collect of the sample's folder, to a file; prints its path
+  local out="${CASE_TMP}/$1.summary.json"
+  rm -f "$out"
+  "${REPO}/bin/og" summary collect --sample "$1" --sample-dir "${GENOME_DIR}/$1" --assets "${REPO}/assets" \
+    --out "$out" > /dev/null 2>&1
+  echo "$out"
 }
 
 # --- 1. the sample as case 30 left it ------------------------------------------
@@ -48,7 +46,8 @@ check_eq "og clinvar hits prints 13 columns on every hit" \
 check_eq "every hit has a GQ and a DP from DeepVariant" \
   "$(awk -F'\t' '$11 ~ /^[0-9]+$/ && $12 ~ /^[0-9]+$/' <<< "$HIT_ROWS" | wc -l | tr -d ' ')" "$N"
 check_eq "the summary marks the same hits low confidence as og clinvar hits" \
-  "$(summary_py "$SAMPLE" "' '.join(f\"{h['chrom']}:{h['pos']}\" for h in sorted(d['sections']['clinvar']['data']['hits'], key=lambda h: (h['chrom'], h['pos'])) if h['low_confidence'])")" \
+  "$(jq -r '[.sections.clinvar.data.hits | sort_by(.chrom, .pos)[] | select(.low_confidence) | "\(.chrom):\(.pos)"] | join(" ")' \
+     "$(summary "$SAMPLE")" 2>/dev/null)" \
   "$(awk -F'\t' '$13 == "yes" {print $2 ":" $3}' <<< "$HIT_ROWS" | sort -t: -k1,1 -k2,2n | tr '\n' ' ' | sed 's/ $//')"
 
 # --- 2. step 06 on a copy with a floor no call reaches -------------------------
@@ -67,7 +66,7 @@ check "the step counts every hit low confidence" \
   has "Low-confidence calls among them \(GQ below 99 or DP below 999\): ${TN}$" "$(cat "$STEP_LOG")"
 check "the step marks the planted hit" has "${CHR}:${POS} ${REF}>${ALT} .*LOW-CONFIDENCE CALL" "$(cat "$STEP_LOG")"
 check_eq "the summary leaves every hit out of the headline count and counts them apart" \
-  "$(summary_py "$T" "(d['sections']['clinvar']['data']['count'], d['sections']['clinvar']['data']['low_confidence'])")" \
+  "$(jq -r '.sections.clinvar.data | "(\(.count), \(.low_confidence))"' "$(summary "$T")" 2>/dev/null)" \
   "(0, ${TN})"
 CLINVAR_MIN_GQ=x run_step 06-clinvar-screen.sh "$T"
 check "a floor that is not a whole number stops the step" test "$STEP_RC" -ne 0
@@ -75,43 +74,8 @@ check "and says which" has "CLINVAR_MIN_GQ must be a whole number" "$(cat "$STEP
 
 # --- 3. the gnomAD AF through an htslib index ----------------------------------
 mkdir -p "${GENOME_DIR}/${T}/vep"
-python3 - "${GENOME_DIR}/${T}/clinvar/${T}_clinvar_hits.tsv" "${GENOME_DIR}/${T}/vep/plain.vcf" \
-  "${CASE_TMP}/want.tsv" "$CHR" "$POS" <<'PY'
-import sys
-hits, out, want, pchrom, ppos = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
-rows = [l.rstrip("\n").split("\t") for l in open(hits)][1:]
-recs = {}
-expect = []
-for i, r in enumerate(rows):
-    chrom, pos, ref, alt = r[0], int(r[1]), r[2], r[3]
-    af = 0.03 if (chrom, pos) == (pchrom, ppos) else round(0.0001 * (i + 1), 6)
-    snv = len(ref) == 1 and len(alt) == 1
-    allele = alt if snv or alt[:1] != ref[:1] else (alt[1:] or "-")
-    recs[(chrom, pos, ref, alt)] = f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\tCSQ={allele}|x|LOW|G|{af}|{af / 2}\tGT\t0/1"
-    expect.append(f"{chrom}:{pos}\t{af}")
-# Filler records around the planted hit (2 Mb each side) and the others
-# (50 kb), so the file spans many BGZF blocks and many 16 kb windows of the
-# linear index.
-at = {(c, p) for c, p, _, _ in recs}
-for chrom, pos in sorted(at):
-    span = 2_000_000 if (chrom, pos) == (pchrom, ppos) else 50_000
-    for p in range(max(1, pos - span), pos + span, 97):
-        if (chrom, p) not in at:
-            recs.setdefault((chrom, p, "A", "C"), f"{chrom}\t{p}\t.\tA\tC\t50\tPASS\tCSQ=C|x|LOW|G|0.4|0.4\tGT\t0/1")
-order = {c: i for i, c in enumerate(sorted({k[0] for k in recs}, key=lambda c: (len(c), c)))}
-with open(out, "w") as f:
-    f.write("##fileformat=VCFv4.2\n")
-    for c in order:
-        f.write(f"##contig=<ID={c}>\n")
-    f.write('##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. '
-            'Format: Allele|Consequence|IMPACT|SYMBOL|gnomADe_AF|gnomADg_AF">\n')
-    f.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
-    f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
-    for k in sorted(recs, key=lambda k: (order[k[0]], k[1])):
-        f.write(recs[k] + "\n")
-open(want, "w").write("\n".join(sorted(expect)) + "\n")
-print(f"{len(recs)} VEP records, {len(expect)} at hits")
-PY
+"${REPO}/bin/og" dev fixture vep-af "${GENOME_DIR}/${T}/clinvar/${T}_clinvar_hits.tsv" "${GENOME_DIR}/${T}/vep/plain.vcf" \
+  "$CHR" "$POS" --filler --want "${CASE_TMP}/want.tsv"
 in_user "$BCFTOOLS_IMAGE" bcftools view --no-version -Oz -o "${T}/vep/${T}_vep.vcf.gz" "${T}/vep/plain.vcf"
 in_user "$BCFTOOLS_IMAGE" bcftools index -t "${T}/vep/${T}_vep.vcf.gz"
 VEPGZ="${GENOME_DIR}/${T}/vep/${T}_vep.vcf.gz"
@@ -120,12 +84,14 @@ check "bcftools wrote the VEP file and its .tbi" test -s "${VEPGZ}.tbi"
 check_ge "the VEP text spans 30 BGZF blocks or more (bytes)" \
   "$(wc -c < "${GENOME_DIR}/${T}/vep/plain.vcf" | tr -d ' ')" 2000000
 rm -f "${GENOME_DIR}/${T}/vep/plain.vcf"
-GOT=$(summary_py "$T" "'\n'.join(sorted(f\"{h['chrom']}:{h['pos']}\t{h['af']}\" for h in d['sections']['clinvar']['data']['hits']))")
+SUM_T=$(summary "$T")
+GOT=$(jq -r '[.sections.clinvar.data.hits[] | "\(.chrom):\(.pos)\t\(.af)"] | sort | join("\n")' "$SUM_T" 2>/dev/null)
 check_eq "every hit's gnomAD AF is read through the .tbi" "$GOT" "$(cat "${CASE_TMP}/want.tsv")"
 check_eq "the planted 3% hit is the one marked common" \
-  "$(summary_py "$T" "[f\"{h['chrom']}:{h['pos']}\" for h in d['sections']['clinvar']['data']['hits'] if h['common']]")" \
+  "$(jq -r '"[" + ([.sections.clinvar.data.hits[] | select(.common) | "\u0027\(.chrom):\(.pos)\u0027"] | join(", ")) + "]"' \
+     "$SUM_T" 2>/dev/null)" \
   "['${CHR}:${POS}']"
-python3 "${REPO}/bin/render_report.py" --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
+"${REPO}/bin/og" report render --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
   -o "${CASE_TMP}/t.txt" -o "${CASE_TMP}/t.html"
 check "the text report prints the AF and the common mark" \
   has "frequency: gnomAD AF 0.03; common: unlikely to be a high-penetrance finding" "$(cat "${CASE_TMP}/t.txt" 2>/dev/null)"

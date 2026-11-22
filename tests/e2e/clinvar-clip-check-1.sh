@@ -55,39 +55,44 @@ TO=$((P0 + 5000))
 in_user() { docker run --rm -u "$(id -u):$(id -g)" -v "${GENOME_DIR}:/genome" -w /genome "$SAMTOOLS_IMAGE" samtools "$@"; }
 in_user view -h "${SAMPLE}/aligned/${SAMPLE}_sorted.bam" "${CHR}:$((FROM + 1))-${TO}" > "${CASE_TMP}/region.sam"
 in_user faidx reference/GRCh38_no_alt_analysis_set.fasta "${CHR}:$((FROM + 1))-${TO}" > "${CASE_TMP}/region.fa"
-python3 - "${CASE_TMP}/region.sam" "${CASE_TMP}/region.fa" "${GENOME_DIR}/${T}/aligned/planted.sam" \
-  "$CHR" "$FROM" "$P0" "$REF" "$ALT" "$E" "$B0" <<'PY'
-import re, sys
-sam, fa, out, chrom = sys.argv[1:5]
-frm, p0 = int(sys.argv[5]), int(sys.argv[6])
-ref, alt = sys.argv[7], sys.argv[8]
-e, b0 = int(sys.argv[9]), int(sys.argv[10])
-g = "".join(l.strip() for l in open(fa) if not l.startswith(">")).upper()
-base = lambda a, b: g[a - frm:b - frm]
-assert base(p0, p0 + 1) == ref.upper(), f"the reference has {base(p0, p0 + 1)} at the planted position, not {ref}"
-lines, dropped = [], 0
-for l in open(sam):
-    if not l.startswith("@"):
-        f = l.split("\t")
-        start = int(f[3]) - 1
-        span = sum(int(n) for n, op in re.findall(r"(\d+)([MDN=X])", f[5]))
-        if start <= p0 < start + span:
-            dropped += 1
-            continue
-    lines.append(l)
-q = lambda n: "I" * n
-for i in range(10):  # genomic reads with the ref allele, running on into the intron
-    s = p0 - 50 + 3 * i
-    lines.append(f"ref{i}\t0\t{chrom}\t{s + 1}\t60\t100M\t*\t0\t0\t{base(s, s + 100)}\t{q(100)}\n")
-for i in range(12):  # spliced alt reads: clipped at the exon end, the rest on the next exon
-    aligned = 70 + i
-    s, clip = e - aligned, 100 - aligned
-    seq = base(s, p0) + alt.upper() + base(p0 + 1, e) + base(b0, b0 + clip)
-    lines.append(f"cdna{i}\t0\t{chrom}\t{s + 1}\t60\t{aligned}M{clip}S\t*\t0\t0\t{seq}\t{q(100)}\t"
-                 f"SA:Z:{chrom},{b0 + 1},+,{aligned}S{clip}M,60,0;\n")
-open(out, "w").writelines(lines)
-print(f"replaced {dropped} reads at the planted position with 10 ref and 12 spliced alt reads")
-PY
+# The region's reads, less those over the planted position, plus 10
+# genomic reads with the ref allele running on into the intron and 12
+# spliced alt reads: clipped at the exon end, the rest on the next exon.
+awk -F'\t' -v chrom="$CHR" -v frm="$FROM" -v p0="$P0" -v ref="$REF" -v alt="$ALT" -v e="$E" -v b0="$B0" \
+    -v out="${GENOME_DIR}/${T}/aligned/planted.sam" '
+  function base(a, b) { return substr(g, a - frm + 1, b - a) }
+  function q(n,   s) { s = ""; while (n-- > 0) s = s "I"; return s }
+  FILENAME == ARGV[1] { if (!/^>/) { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); g = g toupper($0) } next }
+  /^@/ { lines[++n] = $0; next }
+  {
+    span = 0; c = $6
+    while (match(c, /[0-9]+[MIDNSHP=X]/)) {
+      op = substr(c, RSTART + RLENGTH - 1, 1)
+      if (op ~ /[MDN=X]/) span += substr(c, RSTART, RLENGTH - 1)
+      c = substr(c, RSTART + RLENGTH)
+    }
+    start = $4 - 1
+    if (start <= p0 && p0 < start + span) { dropped++; next }
+    lines[++n] = $0
+  }
+  END {
+    if (base(p0, p0 + 1) != toupper(ref)) {
+      print "the reference has " base(p0, p0 + 1) " at the planted position, not " ref > "/dev/stderr"
+      exit 1
+    }
+    for (i = 0; i < 10; i++) {
+      s = p0 - 50 + 3 * i
+      lines[++n] = "ref" i "\t0\t" chrom "\t" s + 1 "\t60\t100M\t*\t0\t0\t" base(s, s + 100) "\t" q(100)
+    }
+    for (i = 0; i < 12; i++) {
+      aligned = 70 + i; s = e - aligned; clip = 100 - aligned
+      seq = base(s, p0) toupper(alt) base(p0 + 1, e) base(b0, b0 + clip)
+      lines[++n] = "cdna" i "\t0\t" chrom "\t" s + 1 "\t60\t" aligned "M" clip "S\t*\t0\t0\t" seq "\t" q(100) \
+        "\tSA:Z:" chrom "," b0 + 1 ",+," aligned "S" clip "M,60,0;"
+    }
+    for (i = 1; i <= n; i++) print lines[i] > out
+    print "replaced " dropped + 0 " reads at the planted position with 10 ref and 12 spliced alt reads"
+  }' "${CASE_TMP}/region.fa" "${CASE_TMP}/region.sam"
 in_user sort -o "${T}/aligned/${T}_sorted.bam" "${T}/aligned/planted.sam"
 in_user index "${T}/aligned/${T}_sorted.bam"
 rm -f "${GENOME_DIR}/${T}/aligned/planted.sam"
@@ -105,9 +110,9 @@ check_eq "the other hits stay unflagged" \
 
 # --- 3. both reports print the flag beside the hit --------------------------------
 FLAG="possible cDNA/transgene contamination: check the reads"
-python3 "${REPO}/bin/render_report.py" --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
+"${REPO}/bin/og" report render --sample "$T" --sample-dir "${GENOME_DIR}/${T}" --json "${CASE_TMP}/t.json" \
   -o "${CASE_TMP}/t.txt" -o "${CASE_TMP}/t.html"
-python3 "${REPO}/bin/render_report.py" --sample "$SAMPLE" --sample-dir "${GENOME_DIR}/${SAMPLE}" \
+"${REPO}/bin/og" report render --sample "$SAMPLE" --sample-dir "${GENOME_DIR}/${SAMPLE}" \
   --json "${CASE_TMP}/s.json" -o "${CASE_TMP}/s.txt" -o "${CASE_TMP}/s.html"
 check "the text report prints the flag" has "reads: ${FLAG}" "$(cat "${CASE_TMP}/t.txt" 2>/dev/null)"
 check "the HTML hits table has the cDNA read check column" has '<th>cDNA read check</th>' "$(cat "${CASE_TMP}/t.html" 2>/dev/null)"

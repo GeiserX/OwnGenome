@@ -50,15 +50,11 @@ reading() {
   cp "$CAT" "${t}/assets/callability_genes.tsv"
   ln -s "$1" "${t}/S/mosdepth/S_callability.bed.gz"
   "${REPO}/bin/og" summary collect --sample S --sample-dir "${t}/S" --assets "${t}/assets" --out "${t}/summary.json" > /dev/null
-  python3 - "$CAT" "${t}/summary.json" <<'PY'
-import csv, json, sys
-rows = list(csv.DictReader(open(sys.argv[1]), delimiter="\t"))
-d = json.load(open(sys.argv[2]))["sections"]["callability"]["data"]
-bad = {g["gene"]: g for g in d["not_read"]}
-for r in rows:
-    g = bad.get(r["gene"])
-    print(r["gene"], "not_read" if g else "read", g["share"] if g else "")
-PY
+  # shellcheck disable=SC2016  # a jq program: $cat, $l and $bad are jq variables
+  jq -r --rawfile cat "$CAT" '(.sections.callability.data.not_read | map({(.gene): .}) | add // {}) as $bad
+    | ($cat | split("\n") | map(select(. != ""))) as $l | ($l[0] | split("\t") | index("gene")) as $gi
+    | $l[1:][] | split("\t")[$gi] as $g
+    | if $bad[$g] then "\($g) not_read \($bad[$g].share)" else "\($g) read " end' "${t}/summary.json"
 }
 for s in "$CAL" "$RAW"; do
   CALLABILITY_GENES="$CAT" run_step 16b-mosdepth.sh "$s"
@@ -118,7 +114,7 @@ expected() {
 }
 # listed SUMMARY_JSON: the section's state and its count of genes not read with no owner
 listed() {
-  python3 -c 'import json, sys; s = json.load(open(sys.argv[1]))["sections"]["callability"]; print(s["state"], len(s["data"].get("not_read", [])))' "$1" 2>&1
+  jq -r '.sections.callability | "\(.state) \(.data.not_read // [] | length)"' "$1" 2>&1
 }
 B_T="${GENOME_DIR}/${SAMPLE}/mosdepth/${SAMPLE}_callability.bed.gz"
 check "bash: step 16b wrote the per-gene table" test -s "$B_T"

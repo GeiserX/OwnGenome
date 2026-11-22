@@ -45,7 +45,7 @@ CHAIN_URL=https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.ov
 CHAIN_SHA256=5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d
 
 # unz ZIP OUT: the one member of ZIP to OUT
-unz() { python3 -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); open(sys.argv[2], "wb").write(z.read(z.namelist()[0]))' "$1" "$2"; }
+unz() { unzip -p "$1" "$(unzip -Z1 "$1" | head -n 1)" > "$2"; }
 
 # --- 1. step 40 ----------------------------------------------------------------
 run_step 40-export-consumer.sh "$SAMPLE" male
@@ -70,57 +70,7 @@ check_eq "every site of the table is in the file" "$(grep -vc '^#' "${CASE_TMP}/
 # (male rules), looked up among all records with a bisect, not the step's walk:
 # '--' inside a non-reference deletion or longer allele; else the variant
 # record that starts at the site; else the reference block over it.
-expected_calls() {
-  python3 - "$1" "$2" "${REPO}/assets/par_grch38.bed" <<'PY'
-import bisect, gzip, re, sys
-gvcf, sites, par_bed = sys.argv[1:4]
-par = [(l.split()[0], int(l.split()[1]) + 1, int(l.split()[2])) for l in open(par_bed) if l.strip()]
-recs = {}
-for line in gzip.open(gvcf, "rt"):
-    if line.startswith("#"):
-        continue
-    c = line.rstrip("\n").split("\t")
-    pos, ref, alts = int(c[1]), c[3].upper(), c[4].upper().split(",")
-    m = re.search(r"(?:^|;)END=(\d+)", c[7])
-    end = int(m.group(1)) if m else pos + len(ref) - 1
-    keys, vals = c[8].split(":"), c[9].split(":")
-    recs.setdefault(c[0], []).append((pos, end, ref, alts, c[6], vals[keys.index("GT")]))
-starts = {k: [r[0] for r in v] for k, v in recs.items()}
-comp = {"A": "T", "C": "G", "G": "C", "T": "A"}
-symbolic = lambda a: a in ("<*>", "<NON_REF>", ".")
-for line in gzip.open(sites, "rt"):
-    if line.startswith("#"):
-        continue
-    rsid, chrom, pos37, ref37, pos38, ref38, strand = line.rstrip("\n").split("\t")
-    p, contig = int(pos38), ("chrM" if chrom == "MT" else "chr" + chrom)
-    lst = recs.get(contig, [])
-    j = bisect.bisect_right(starts.get(contig, []), p)
-    cover = [r for r in lst[max(0, j - 50):j] if r[0] <= p <= r[1]]
-    nonref = lambda r: any(i not in ("0", ".", "") for i in re.split(r"[/|]", r[5]))
-    inside = [r for r in cover if r[0] < p and not all(symbolic(a) for a in r[3]) and len(r[2]) > 1 and nonref(r)]
-    at = [r for r in cover if r[0] == p and not all(symbolic(a) for a in r[3])]
-    blk = [r for r in cover if all(symbolic(a) for a in r[3])]
-    letters = None
-    if inside:
-        pass
-    elif at:
-        r = at[0]
-        idx = re.split(r"[/|]", r[5])
-        if "." not in idx and not (r[4] not in ("PASS", ".") and any(i != "0" for i in idx)) and r[2][0] == ref38:
-            bases = [([r[2]] + r[3])[int(i)][0] for i in idx]
-            letters = bases if all(b in "ACGT" for b in bases) else None
-    elif blk:
-        idx = re.split(r"[/|]", blk[-1][5])
-        letters = [ref38] * len(idx) if all(i == "0" for i in idx) else None
-    if letters is not None:
-        haploid = chrom == "MT" or (chrom in ("X", "Y") and not any(c == contig and s <= p <= e for c, s, e in par))
-        if haploid and len(letters) == 2:
-            letters = letters[:1] if letters[0] == letters[1] else None
-    if letters is not None and strand == "-":
-        letters = [comp[b] for b in letters]
-    print(f"{rsid}\t{''.join(sorted(letters)) if letters else '--'}")
-PY
-}
+expected_calls() { "$OG" dev fixture consumer-expected "$1" "$2" "${REPO}/assets/par_grch38.bed"; }
 # weak_as_nocall IN OUT: IN with the GT of every weak reference call (GT all
 # 0 with GQ under 20, or a FILTER other than PASS, . or RefCall) set to ./.,
 # so expected_calls reads those as no-calls; a missing GQ stays readable (D10).
@@ -165,31 +115,23 @@ check_ge "reference bases checked against the table" "$(val reference_checked "$
 H=HG002CXH
 rm -rf "${G:?}/${H}"
 mkdir -p "${G}/${H}/vcf"
-HOLE=$(python3 - "$GVCF" "${G}/${H}/vcf/${H}.g.vcf.gz" "${CASE_TMP}/exported.tsv" "$SITES" <<'PY'
-import gzip, re, sys
-src, dst, exported, sites = sys.argv[1:5]
-called = {l.split("\t")[0] for l in open(exported) if l.rstrip("\n").split("\t")[1] != "--"}
-site = None
-for l in gzip.open(sites, "rt"):
-    c = l.rstrip("\n").split("\t")
-    if not l.startswith("#") and c[1] == "20" and c[0] in called:
-        site = c
-        break
-p = int(site[4])
-dropped = 0
-with gzip.open(dst, "wt") as out:
-    for line in gzip.open(src, "rt"):
-        c = line.split("\t", 8)
-        if not line.startswith("#") and c[0] == "chr20":
-            m = re.search(r"(?:^|;)END=(\d+)", c[7])
-            end = int(m.group(1)) if m else int(c[1]) + len(c[3]) - 1
-            if int(c[1]) <= p <= end:
-                dropped += 1
-                continue
-        out.write(line)
-print(f"{site[0]} {dropped}")
-PY
-)
+# The first chr20 site of the table that step 40 called; every chr20 gVCF
+# record over it is left out of the copy.
+HOLE_SITE=$(awk -F'\t' 'FILENAME == ARGV[1] { if ($2 != "--") called[$1] = 1; next }
+  !/^#/ && $2 == "20" && ($1 in called) { print $1 "\t" $5; exit }' "${CASE_TMP}/exported.tsv" <(gzip -dc "$SITES"))
+HOLE=""
+if [ -n "$HOLE_SITE" ]; then
+  HOLE_RECS=$(gzip -dc "$GVCF" | awk -F'\t' -v p="$(cut -f2 <<< "$HOLE_SITE")" -v kept="${G}/${H}/vcf/${H}.g.vcf" '
+    !/^#/ && $1 == "chr20" {
+      end = $2 + length($4) - 1
+      if (match(";" $8, /;END=[0-9]+/)) end = substr(";" $8, RSTART + 5, RLENGTH - 5) + 0
+      if ($2 <= p + 0 && p + 0 <= end) { dropped++; next }
+    }
+    { print > kept }
+    END { print dropped + 0 }')
+  gzip -f "${G}/${H}/vcf/${H}.g.vcf"
+  HOLE="$(cut -f1 <<< "$HOLE_SITE") ${HOLE_RECS}"
+fi
 read -r HOLE_ID HOLE_RECS <<< "$HOLE"
 echo "planted hole: ${HOLE_ID} (${HOLE_RECS} gVCF record(s) removed)"
 run_step 40-export-consumer.sh "$H" male
@@ -264,31 +206,7 @@ rm -rf "${G:?}/${K}"
 # site (N elsewhere; those bases agree with dbSNP's GRCh37 records, see
 # tests/fixtures/consumer_export/README.md) and UCSC's chain.
 mkdir -p "${G}/reference_hg19" "${G}/liftover"
-python3 - "$SITES" "${G}/reference_hg19/human_g1k_v37.fasta" <<'PY'
-import gzip, sys
-sites, fa = sys.argv[1:3]
-order = [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
-bases = {}
-for l in gzip.open(sites, "rt"):
-    if l.startswith("#"):
-        continue
-    c = l.rstrip("\n").split("\t")
-    bases.setdefault(c[1], {})[int(c[2])] = c[3]
-off = 0
-with open(fa, "w") as f, open(fa + ".fai", "w") as fai:
-    for chrom in [c for c in order if c in bases]:
-        n = max(bases[chrom]) + 1
-        head = f">{chrom}\n"
-        f.write(head)
-        off += len(head)
-        fai.write(f"{chrom}\t{n}\t{off}\t60\t61\n")
-        seq = bytearray(b"N" * n)
-        for p, b in bases[chrom].items():
-            seq[p - 1] = ord(b)
-        for i in range(0, n, 60):
-            f.write(seq[i:i + 60].decode() + "\n")
-        off += n + (n + 59) // 60
-PY
+"$OG" dev fixture sites-fasta "$SITES" "${G}/reference_hg19/human_g1k_v37.fasta"
 if curl -fsSL --retry 3 -o "${G}/liftover/hg19ToHg38.over.chain.gz" "$CHAIN_URL"; then
   check_eq "UCSC's hg19ToHg38 chain has the pinned sha256" \
     "$(sha256sum "${G}/liftover/hg19ToHg38.over.chain.gz" | cut -d' ' -f1)" "$CHAIN_SHA256"
@@ -306,53 +224,7 @@ roundtrip() {
   run_step chip-to-vcf.sh "$n" "$3" >&2
   bcf query -f '%ID\t%CHROM\t%POS[\t%GT]\t%REF\t%ALT\n' "${n}/vcf/${n}.vcf.gz" > "${CASE_TMP}/${n}_lifted.tsv" 2>/dev/null
   bcf query -f '%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT]\n' "${SAMPLE}/vcf/${SAMPLE}.vcf.gz" > "${CASE_TMP}/calls.tsv" 2>/dev/null
-  python3 - "${CASE_TMP}/${n}_lifted.tsv" "${CASE_TMP}/calls.tsv" "$SITES" "$2" <<'PY'
-import gzip, re, sys
-lifted, calls, sites, txt = sys.argv[1:5]
-table = {}
-for l in gzip.open(sites, "rt"):
-    if not l.startswith("#"):
-        c = l.rstrip("\n").split("\t")
-        table[c[0]] = c
-dv = {}
-for l in open(calls):
-    chrom, pos, ref, alt, flt, gt = l.rstrip("\n").split("\t")
-    if flt == "PASS":
-        al = [ref] + alt.split(",")
-        dv[(chrom, int(pos))] = {al[int(i)][0] for i in re.split(r"[/|]", gt) if i not in (".", "")}
-called = 0
-for l in open(txt):
-    c = l.rstrip("\n").split("\t")
-    if l.startswith("#") or c[0] == "rsid" or c[0] not in table or table[c[0]][1] == "MT":
-        continue
-    if c[-1] not in ("--", "0") and "0" not in c[3:]:
-        called += 1
-got = moved = compared = nonref = bad = 0
-for l in open(lifted):
-    rid, chrom, pos, gt, ref, alt = l.rstrip("\n").split("\t")
-    t = table.get(rid)
-    if t is None or t[1] == "MT":
-        continue
-    idx = [i for i in re.split(r"[/|]", gt) if i not in (".", "")]
-    if not idx:
-        continue
-    got += 1
-    if int(pos) != int(t[4]):
-        moved += 1
-        if moved <= 5:
-            print(f"moved {rid}: GRCh37 {t[1]}:{t[2]} lifts to {chrom}:{pos}, dbSNP's GRCh38 position is {t[4]}", file=sys.stderr)
-        continue
-    al = [ref] + alt.split(",")
-    have = {al[int(i)][0] for i in idx}
-    want = dv.get((chrom, int(pos)), {t[5]})
-    compared += 1
-    nonref += want != {t[5]}
-    if have != want:
-        bad += 1
-        if bad <= 5:
-            print(f"mismatch {rid} {chrom}:{pos} lifted {sorted(have)} calls {sorted(want)}", file=sys.stderr)
-print(called, got, moved, compared, nonref, bad)
-PY
+  "$OG" dev fixture consumer-roundtrip "${CASE_TMP}/${n}_lifted.tsv" "${CASE_TMP}/calls.tsv" "$SITES" "$2"
 }
 
 # rt_checks LABEL "called lifted moved compared nonref mismatches"
