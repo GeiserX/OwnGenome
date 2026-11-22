@@ -59,15 +59,15 @@ const CLOSED: &str = r#"{
       {"gene":"GENE1","chrom":"chr2","pos":130,"ref":"C","alt":"T","stars":1},
       {"gene":"GENE2","chrom":"chr3","pos":7,"ref":"T","alt":"C","stars":1}
     ],"deep_intronic":[
-      {"gene":"GENE1","chrom":"chr2","pos":123,"ref":"A","alt":"T","call":"het"},
-      {"gene":"GENE2","chrom":"chr3","pos":8,"ref":"C","alt":"A","call":"het"}
+      {"gene":"GENE1","chrom":"chr2","pos":123,"ref":"A","alt":"T","call":"het","detail":"GQ 40"},
+      {"gene":"GENE2","chrom":"chr3","pos":8,"ref":"C","alt":"A","call":"het","detail":"GQ 40"}
     ]}},
     "annotsv":{"state":"ok","data":{"consensus":true,"count":1,"rows":[
       {"type":"DEL","sv":"chr2:100-200","length":100,"acmg_class":"5","genes":["GENE1"],"support":null}
     ]}},
-    "exomiser":{"state":"ok","data":{"genes":[{"gene":"GENE1","rank":1},{"gene":"GENE2","rank":2}]}},
+    "roh":{"state":"ok","data":{}},"exomiser":{"state":"ok","data":{"genes":[{"gene":"GENE1","rank":1},{"gene":"GENE2","rank":2}]}},
     "chip":{"state":"ok","data":{"genes":[{"gene":"GENE1","mean_depth":75,"detection_limit_vaf":0.06}],
-      "calls":[{"gene":"GENE2","vaf":0.08},{"gene":"GENE1","vaf":0.12}]}},
+      "calls":[{"gene":"GENE2","vaf":0.08,"protein_change":"p.A1T","depth":75,"alt_reads":6,"note":"clone"},{"gene":"GENE1","vaf":0.12,"protein_change":"p.G2A","depth":75,"alt_reads":9,"note":"clone"}]}},
     "carrier":{"state":"ok","data":{"two_hits":{"genes":["SMN1"]}}},
     "paralogs":{"state":"ok","data":{"genes":[{"gene":"SMN1","copy_number":1,"status":"called"},
       {"gene":"SMN2","copy_number":2,"status":"called"}]}},
@@ -97,7 +97,7 @@ fn veil_distinguishes_exact_loci_spans_and_unrelated_rows() {
     assert_eq!(field(veil, &["lines", "clinvar"]), &text_list(&[sf, None]));
     assert_eq!(
         field(veil, &["findings", "exomiser-gene1"]),
-        &Value::Str(sf.unwrap().into())
+        &Value::Str("sf-gene1-chr2-110-a-g".into())
     );
     assert!(matches!(field(veil, &["marks", "genome"]), Value::Object(m) if !m.is_empty()));
     assert!(matches!(field(veil, &["spans"]), Value::Array(a) if a.len() >= 3));

@@ -1182,13 +1182,14 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         let _ = write!(out, "{USAGE}");
         return 0;
     }
-    let cfg = match configure(args) {
+    let mut cfg = match configure(args) {
         Ok(c) => c,
         Err((code, m)) => {
             let _ = writeln!(err, "{m}");
             return code;
         }
     };
+    cfg.results = Some(crate::results::FNS);
     let bind = cfg.bind.clone();
     let srv = match Server::start(cfg) {
         Ok(s) => s,
