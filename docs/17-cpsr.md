@@ -25,6 +25,8 @@ PCGR 2.3.2 bundles VEP 115, which requires the **release-115** cache (~24 GB). T
 
 ### 2. PCGR ref data bundle
 PCGR 2.x uses a separate ref data bundle (`20260620`, about 7 GB).
+PCGR/CPSR reference data includes third-party databases with their own terms. Review the licences in the [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) before installing.
+
 A plain setup installs the VEP 115 cache and this bundle by default, alongside VEP 116 for step 13.
 For an existing setup, install or retry all three with:
 
@@ -36,7 +38,7 @@ The bundle goes to `pcgr_data/20260620/data/`; the caches coexist under `vep_cac
 Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction, then removes each archive.
 It checks free space for each install and continues with a warning if one fails or does not fit.
 `--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
-See [reference setup](00-reference-setup.md) for disk peaks and the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) for the bundled databases. Review each source's terms before use.
+See [reference setup](00-reference-setup.md) for disk peaks.
 
 ### Upgrading from PCGR 2.2.5
 PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.

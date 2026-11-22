@@ -56,6 +56,8 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 | 1000 Genomes | the GRCh38 strict mask, `20160622.allChr.mask.bed` (128 MB) | sha256 |
 | UCSC | `hg19ToHg38.over.chain.gz` | sha256 |
 
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
+
 > **Terms:** MPI-EVA makes the snpAD genotypes and the FilterBed masks freely available under the terms in https://cdna.eva.mpg.de/neandertal/Vindija/README: users are asked to observe the Fort Lauderdale principles, and the data can be used freely for studies of individual genes or other features of the genome. All three genomes' files come from that folder. Cite the genome papers in References. MPI-EVA gives no standard licence such as an SPDX one. The pipeline does not redistribute these files: `setup.sh --archaic` downloads them from MPI-EVA onto your disk, and deletes each chromosome's files once its table rows are built.
 
 MPI-EVA publishes md5 lists, not sha256 sums, for 66 genotype files of about 2.5 GB each. Pinning the sha256 of the three lists pins every file's md5 without downloading 150 GB to hash it. The FilterBed files have no checksum file beside them and are about 1.5 MB each, so each one's sha256 is pinned directly.

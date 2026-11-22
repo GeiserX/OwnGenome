@@ -20,6 +20,8 @@ An interrupted transfer resumes. Existing caches and bundles are kept.
 Without these data, `run-all.sh` skips the affected steps and records the reason.
 A bare `nextflow run` still needs its tools and data parameters. Setup does not change that selection.
 
+See [Licences for downloads](licences.md) for the terms that apply to individual bundles and tools.
+
 ## GRCh38 Reference Genome
 
 The foundation for everything. All tools need this. The pipeline uses NCBI's **GRCh38 no-ALT analysis set**: chr1-22, X, Y and M, the unplaced and unlocalized scaffolds and the EBV genome, 195 sequences, with UCSC names (`chr1`, `chrM`). `setup.sh` downloads it, checks it and stores it as `reference/GRCh38_no_alt_analysis_set.fasta`:
@@ -151,6 +153,8 @@ It downloads the new file under `clinvar/.refresh/`, checks the md5, builds both
 
 ## AnnotSV Annotations (~5 GB)
 
+AnnotSV's annotation bundle includes third-party data with their own terms. Review the sources in the [AnnotSV manual](https://www.lbgi.fr/AnnotSV/Documentation/README.AnnotSV_latest.pdf) before downloading.
+
 Required for step 5. `setup.sh` downloads them (about 5 GB, about 20 GB unpacked) into `${GENOME_DIR}/annotsv_annotations/`; its source server is slow, so this can take an hour or two, and an interrupted download resumes when `setup.sh` runs again. `./scripts/setup.sh --annotsv-data ${GENOME_DIR}` installs only these (the bundle when it is missing) and the two files below.
 
 | File | Source | Used by | Without it |
@@ -197,6 +201,8 @@ Required for step 17 (CPSR cancer predisposition screening). Includes ClinVar, g
 
 > **Important:** PCGR 2.3.2 bundles VEP 115, which requires a **release-115** cache — different from the release-116 cache used by step 13 above. See the next section for the VEP 115 download. The bundle date (`PCGR_DATA_BUNDLE`) and the cache release (`PCGR_VEP_CACHE_RELEASE`) are in `versions.env` and move with `PCGR_IMAGE`.
 
+PCGR/CPSR reference data includes third-party databases with their own terms. Review the licences in the [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) before installing. Setup prints the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) before it downloads the bundle.
+
 Setup installs it by default. To add the clinical data to an existing setup:
 
 ```bash
@@ -206,7 +212,6 @@ Setup installs it by default. To add the clinical data to an existing setup:
 The installer checks the archive against `PCGR_DATA_SHA256` in `versions.env`, then extracts it into a temporary folder.
 The server publishes no checksum, so the size (`PCGR_DATA_BYTES`) and the digest are measured from a full download. `PCGR_DATA_MEASURED_FOR` names the image tag and bundle date they belong to, and `scripts/ci/check-coupled-versions.sh` fails when `PCGR_IMAGE` or `PCGR_DATA_BUNDLE` moves without it.
 Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive is deleted after installation.
-The [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) names the bundle's third-party databases. Their own terms apply. Setup prints the resource link before downloading.
 
 ## VEP 115 Cache for CPSR (~24 GB)
 
@@ -340,6 +345,8 @@ Step 30 and `validate-setup.sh` find the masked files under these names. They al
 ### REVEL v1.3 — ~0.6 GB
 
 Ensemble pathogenicity scoring for missense variants, combining 13 individual tools. Recommended by ClinGen for missense variant classification.
+
+The REVEL authors make the scores freely available for non-commercial use. The [Zenodo record](https://doi.org/10.5281/zenodo.7072866) lists ODbL 1.0. For other uses, contact the maintainers through the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads) before downloading.
 
 ```bash
 source versions.env   # from the repository root

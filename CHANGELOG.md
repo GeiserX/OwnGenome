@@ -526,6 +526,8 @@ Each release's notes. From 1.0.0 on, a major or minor release has hand-written n
 
 - Nextflow vcfanno now writes CADD, REVEL and AlphaMissense scores as floating-point INFO fields, matching step 30. The clinical filter can compare them with its numeric thresholds.
 
+- Setup and the step guides now point to the terms for AnnotSV, PCGR/CPSR, Exomiser, REVEL, the UCSC chain, Illumina ORA, and Paraphase. See [Licences for downloads](docs/licences.md).
+
 ## Releases
 
 - 1.0.0 (not released yet): [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)

@@ -8,7 +8,7 @@
 //!
 //! `check-bam` reads the BAM's header and exits 0 only when every read
 //! group says `PL:PACBIO`. Paraphase is written for PacBio HiFi reads, and
-//! its licence (the PacBio Software License Agreement, from Paraphase 3.3.0
+//! its licence (the PacBio Software License Agreement, from Paraphase 3.3.2
 //! on) allows it only on data from a PacBio instrument. Another BAM stops
 //! here with exit 3 and the reason; an unreadable one with exit 1.
 //!
@@ -891,6 +891,8 @@ const USAGE: &str = "usage: og paraphase check-bam BAM
                           --out-variants OUT_VARIANTS [--genes GENES]
 ";
 
+const LICENCE_NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with data from PacBio instruments. See docs/35-paralogs.md.";
+
 /// `og paraphase ARGS`.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let refuse = |err: &mut dyn Write, msg: &str| {
@@ -901,12 +903,14 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     match args.first().map(String::as_str) {
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = writeln!(out, "{LICENCE_NOTICE}");
             0
         }
         Some("check-bam") => {
             let rest = &args[1..];
             if rest.iter().any(|a| a == "-h" || a == "--help") {
                 let _ = out.write_all(USAGE.as_bytes());
+                let _ = writeln!(out, "{LICENCE_NOTICE}");
                 return 0;
             }
             let [bam] = rest else {
