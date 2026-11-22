@@ -470,6 +470,24 @@ mod tests {
     }
 
     #[test]
+    fn a_loose_stop_fails_the_kkt_check() {
+        // A run that stops by its step size, well short of the maximum
+        // pass count, can still be short of the optimum: only the KKT
+        // measures catch it, not the `converged` flag.
+        let (g, f) = simulate(&[0.6, 0.3, 0.1], 5_000, 7);
+        let p = Problem::new(3, &g, &f, None).unwrap();
+        let opts = Options {
+            tolerance: 1e-3,
+            ..Options::default()
+        };
+        let e = project(&p, &opts).unwrap_err().0;
+        assert!(
+            e.contains("KKT conditions do not hold") && !e.contains("within"),
+            "{e}"
+        );
+    }
+
+    #[test]
     fn the_answer_is_the_maximum() {
         // L at the answer is at least L at every point of a grid on the
         // simplex, and a group absent from the person ends at 0 with no
