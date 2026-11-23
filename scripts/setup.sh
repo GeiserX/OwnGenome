@@ -133,7 +133,7 @@ case "${1:-}" in
     shift ;;
   --og)
     exec "$(dirname "$0")/../rust/og.sh" install ;;
-  --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic|--annotation-scores|--somatic-data|--bwa-index|--cnvpytor-data|--pypgx-data)
+  --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--annotation-scores|--somatic-data|--bwa-index|--cnvpytor-data|--pypgx-data|--archaic)
     OPT_IN=${1#--}
     shift ;;
   --clinical-data)
