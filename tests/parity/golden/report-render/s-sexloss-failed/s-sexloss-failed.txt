@@ -154,8 +154,9 @@
 ## Clonal Haematopoiesis (CHIP, step 49)
 ---
   DNMT3A R882H: VAF 0.05 (3 of 60 reads), .
-  Detection limit: a clone of VAF about 10% or more is found 8 times in 10 at this depth (median 33x over the genes' coding exons). CHIP starts at a VAF of 2%: smaller clones are likely missed, so no call does not rule one out.
-  Too shallow or not on the reference: ASXL1, SRSF2.
+  Read-support limit: at a VAF of about 10%, a clone in the median CHIP gene has enough reads with the change 8 times in 10, calculated from the depth at each coding base (median gene depth 33x). The caller and its filters can miss more. No call here does not rule out CHIP.
+  Share of each gene's coding bases assessable at the stated VAF: DNMT3A 60%, TET2 90%, ASXL1 0%, JAK2 55%, TP53 40%, SRSF2 65%.
+  No gene-wide read-support limit: ASXL1, SRSF2.
   1 other protein changes listed, not counted: chip/S_chip.tsv.
   Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene's published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.
 
@@ -365,11 +366,12 @@
 ## Traits Panel (step 42)
 ---
   Read: 3  No genotype at the position: 1  Other allele: 1
+  Low-quality genotype calls: 1
   Lp(a) (LPA rs10455872): A/G. one copy (PMID 1)
   Lp(a) (LPA rs3798220): T|C. one copy (PMID 1)
   R117H (CFTR rs78655421): G/A. one copy (PMID 1)
   x (X rs2): C/C. other (PMID 1)
-  x (X rs3): C/T. A low-quality call at this position (genotype quality 5, below 20): not read; check the reads. (PMID 1)
+  x (X rs3): not read (low genotype quality).
   Not read (no genotype in the gVCF): rs1
   Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how. Notes per row: traits/S_traits.tsv
   Genotype rules (several sites read together; traits/S_genotype_rules.tsv):
