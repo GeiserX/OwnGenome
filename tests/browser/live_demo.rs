@@ -420,8 +420,46 @@ fn phone_fits(b: &mut Browser) -> bool {
     ) == Value::Bool(true)
 }
 
+fn phone_viewport(b: &mut Browser) {
+    call(
+        b,
+        "Emulation.setDeviceMetricsOverride",
+        r#"{"width":390,"height":844,"deviceScaleFactor":2,"mobile":false}"#,
+    );
+}
+
+fn phone_height(b: &mut Browser) {
+    // The system font can add hundreds of CSS pixels to an identical page.
+    // Keep the 8000 px budget with stable font choices for this measurement.
+    // The surrounding visibility and width checks use the site's real fonts.
+    let height = eval(
+        b,
+        r#"(() => {
+        const style = document.documentElement.style;
+        style.setProperty('--sans', 'Arial, sans-serif');
+        style.setProperty('--serif', 'Georgia, serif');
+        const before = document.documentElement.scrollHeight;
+        const folded = [...document.querySelectorAll('#results details:not([open])')];
+        folded.forEach(node => node.open = true);
+        const opened = document.documentElement.scrollHeight;
+        folded.forEach(node => node.open = false);
+        style.removeProperty('--sans');
+        style.removeProperty('--serif');
+        return [before, opened];
+    })()"#,
+    );
+    let Value::Array(heights) = height else {
+        panic!("Chrome returned no phone heights")
+    };
+    assert!(
+        matches!(heights.as_slice(), [Value::Int(before), Value::Int(opened)]
+        if *before > 0 && *before < 8000 && *opened >= 8000),
+        "expected the folded phone page under 8000 CSS px and the all-open control above it: {heights:?}"
+    );
+}
+
 fn phone(b: &mut Browser, base: &str) {
-    viewport(b, 390, 844);
+    phone_viewport(b);
     for (url, condition) in [
         (base.to_owned(), READY),
         (run_at(base, MAIN, ""), RESULTS),
@@ -446,8 +484,16 @@ fn phone(b: &mut Browser, base: &str) {
     );
     require(
         b,
-        "document.documentElement.scrollHeight < 8000 && !!document.querySelector('#results details.pfold')",
+        r#"(() => {
+        const openLevels = new Set(['act','medicine','carrier','review']);
+        const cards = [...document.querySelectorAll('#results [data-finding]')].filter(card => openLevels.has(card.dataset.level));
+        return cards.length > 0 && cards.every(card => card.checkVisibility())
+            && !!document.querySelector('#results details.pfold')
+            && !document.getElementById('card-roh').checkVisibility()
+            && !document.querySelector('#s7 details.secfold').open;
+    })()"#,
     );
+    phone_height(b);
     eval(b, "location.hash = '#s/roh'; true");
     require(
         b,
@@ -455,7 +501,7 @@ fn phone(b: &mut Browser, base: &str) {
     );
     viewport(b, 1280, 900);
     require(b, "!document.querySelector('#results details.pfold')");
-    viewport(b, 390, 844);
+    phone_viewport(b);
     require(
         b,
         "document.querySelector('details[data-card=\"fold-roh\"][open]')",

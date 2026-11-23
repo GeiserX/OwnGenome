@@ -220,6 +220,264 @@ fn report_problems(root: &Path, run: &Path, html: &str) -> Vec<String> {
         .collect()
 }
 
+fn object(value: &mut Value) -> &mut indexmap::IndexMap<String, Value> {
+    let Value::Object(fields) = value else {
+        panic!("expected a JSON object");
+    };
+    fields
+}
+
+fn chart_fixture(og: &Path, run: &Path, summary: &Path, html: &Path, charts: &Path) {
+    pass(
+        Command::new(og)
+            .args(["report", "render", "--summary"])
+            .arg(summary)
+            .arg("--sample-dir")
+            .arg(run)
+            .arg("-o")
+            .arg(html)
+            .arg("--charts-json")
+            .arg(charts)
+            .current_dir(repo_root())
+            .output()
+            .unwrap(),
+    );
+}
+
+fn fragment_links(html: &str) -> BTreeSet<String> {
+    let id = Regex::new(r#"\sid="([^"]+)""#).unwrap();
+    let ids: BTreeSet<_> = id.captures_iter(html).map(|m| m[1].to_owned()).collect();
+    let href = Regex::new(r##"href="#([^"]+)""##).unwrap();
+    href.captures_iter(html)
+        .map(|m| static_files::unescape(&m[1]))
+        .filter(|href| !ids.contains(href))
+        .collect()
+}
+
+fn charts_contract(og: &Path, work: &Path, scratch: &Path) {
+    let run = work.join(PEOPLE[0]);
+    let summary = run.join("summary.json");
+    let mut rendered = Vec::new();
+    for i in 1..=2 {
+        let html = scratch.join(format!("charts-{i}.html"));
+        let charts = scratch.join(format!("charts-{i}.json"));
+        chart_fixture(og, &run, &summary, &html, &charts);
+        let mut doc = json(&charts);
+        object(&mut doc).shift_remove("generated_utc");
+        rendered.push(doc);
+    }
+    assert_eq!(
+        rendered[0], rendered[1],
+        "the same summary generated different charts"
+    );
+    assert_eq!(field(&rendered[0], "schema_version"), &Value::Int(1));
+    let ids: Vec<_> = list(field(&rendered[0], "charts"))
+        .iter()
+        .filter_map(|chart| text(field(chart, "id")))
+        .collect();
+    assert_eq!(
+        ids,
+        ["clinvar-stars", "genome", "mito", "ancestry-fine", "prs"]
+    );
+    let mut planted = rendered[1].clone();
+    let Some(Value::Array(charts)) = object(&mut planted).get_mut("charts") else {
+        panic!("no charts")
+    };
+    let Some(Value::Array(marks)) = object(&mut charts[0]).get_mut("marks") else {
+        panic!("no ClinVar marks")
+    };
+    object(&mut marks[0]).insert("value".into(), Value::Int(-1));
+    assert_ne!(
+        rendered[0], planted,
+        "a changed chart value must be visible"
+    );
+
+    // The larger fixture includes a hit after the report table's row cap.
+    let mut merged = json(&summary);
+    let mut fixture = json(&repo_root().join("tests/fixtures/report_charts/sections.json"));
+    let fixture = object(&mut fixture).shift_remove("sections").unwrap();
+    let Value::Object(sections) = fixture else {
+        panic!("no chart sections")
+    };
+    object(object(&mut merged).get_mut("sections").unwrap()).extend(sections);
+    let overlaid = scratch.join("charts-summary.json");
+    fs::write(&overlaid, og_live::state::dumps_compact(&merged)).unwrap();
+    let html = scratch.join("charts-overlay.html");
+    chart_fixture(
+        og,
+        &run,
+        &overlaid,
+        &html,
+        &scratch.join("charts-overlay.json"),
+    );
+    let html = fs::read_to_string(html).unwrap();
+    assert!(!html.to_ascii_lowercase().contains("<script"));
+    assert_eq!(fragment_links(&html), BTreeSet::new());
+    assert_eq!(
+        fragment_links(&html.replace(r#"id="clinvar-hits""#, r#"id="gone""#)),
+        BTreeSet::from(["clinvar-hits".into()])
+    );
+    for (id, caveat) in [
+        ("clinvar", og_render::notes::CLINVAR_FREQ_NOTE),
+        ("roh", og_render::notes::ROH_NOTE),
+        ("mito", og_render::notes::MITO_NOTE),
+        ("ancestry-fine", og_render::notes::ANCESTRY_FINE_NOTE),
+        ("prs", og_render::notes::PRS_ANCESTRY_NOTE),
+    ] {
+        let section = Regex::new(&format!(
+            r#"(?s)<section class="sec[^"]*" id="{id}">(.*?)\n  </section>"#
+        ))
+        .unwrap();
+        let body = &section
+            .captures(&html)
+            .unwrap_or_else(|| panic!("missing chart section {id}"))[1];
+        let figure = r#"<figure class="chart">"#;
+        assert_eq!(
+            body.matches(figure).count(),
+            1,
+            "{id} should contain one figure"
+        );
+        assert!(
+            body.find(&static_files::esc(caveat)).unwrap() < body.find(figure).unwrap(),
+            "{id} shows its chart before the caveat"
+        );
+    }
+    assert_eq!(html.matches(r#"<a id="clinvar-hits"></a>"#).count(), 1);
+    assert!(html.matches("<tr><td>chr").count() >= 50);
+}
+
+#[test]
+fn live_charts_render_after_sign_in() {
+    use og_browser::{Browser, chrome_or_skip, js_str};
+    use og_live::auth::{Auth, hash_password};
+    use og_live::server::{Config, Server};
+    use std::sync::Arc;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    let Some(chrome) = chrome_or_skip("read charts on the live page") else {
+        return;
+    };
+    let Some(og) = og() else { return };
+    let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "demo-live-charts");
+    let site = scratch.path().join("site");
+    let work = scratch.path().join("work");
+    pass(
+        Command::new(&og)
+            .args(["live", "demo", "--records", "2000", "--out"])
+            .arg(&site)
+            .arg("--work")
+            .arg(&work)
+            .current_dir(repo_root())
+            .output()
+            .unwrap(),
+    );
+
+    let run = work.join(PEOPLE[0]);
+    let charts_path = run.join(format!("{}_charts.json", PEOPLE[0]));
+    let test_run = scratch.path().join(PEOPLE[0]);
+    fs::create_dir(&test_run).unwrap();
+    assert!(!truthy(&og_live::charts::state(&test_run)));
+    let copy = test_run.join(charts_path.file_name().unwrap());
+    fs::copy(charts_path, &copy).unwrap();
+    let plugin = og_live::charts::state(&test_run);
+    assert_eq!(text(field(&plugin, "file")), Some("DEMO-001_charts.json"));
+    let Value::Int(stamp) = field(&plugin, "mtime") else {
+        panic!("plugin has no chart mtime")
+    };
+    fs::File::open(copy)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_nanos(u64::try_from(*stamp + 1000).unwrap()))
+        .unwrap();
+    assert_eq!(
+        field(&og_live::charts::state(&test_run), "mtime"),
+        &Value::Int(*stamp + 1000)
+    );
+
+    let repo = repo_root();
+    let assets = site.join("assets");
+    // Use the same unfilled pages the live server loads, beside the site's
+    // existing script and style files.
+    for page in static_files::PAGES {
+        fs::copy(repo.join("assets/live").join(page), assets.join(page)).unwrap();
+    }
+    let route = format!("/runs/{}/", PEOPLE[0]);
+    let password = "synthetic chart test password";
+    for (tag, show) in [("charts", true), ("no-charts", false)] {
+        if !show {
+            fs::remove_file(assets.join("plugins/charts.js")).unwrap();
+        }
+        let mut cfg = Config::new(&work);
+        cfg.repo_assets = repo.join("assets");
+        cfg.assets = assets.clone();
+        cfg.steps = cfg.repo_assets.join("steps.tsv");
+        cfg.port = 0;
+        cfg.quiet = true;
+        cfg.og = og.clone();
+        cfg.auth = Arc::new(Auth::new(Some(hash_password(password, 1000).unwrap())));
+        cfg.results = Some(og_live::results::FNS);
+        let server = Server::start(cfg).unwrap();
+        let base = format!("http://127.0.0.1:{}", server.port());
+        let mut b = Browser::launch(&chrome, &scratch.path().join(tag)).unwrap();
+        b.call(
+            "Emulation.setEmulatedMedia",
+            loads(r#"{"features":[{"name":"prefers-color-scheme","value":"dark"}]}"#).unwrap(),
+        )
+        .unwrap();
+        b.go(&format!("{base}{route}")).unwrap();
+        let wait = Duration::from_secs(15);
+        assert!(
+            b.wait(
+                "location.pathname === '/login' && !!document.getElementById('password')",
+                wait
+            )
+            .is_some(),
+            "no login form"
+        );
+        b.eval(&format!("document.getElementById('password').value = {}; document.querySelector('form').submit(); true",
+            js_str(password))).unwrap();
+        assert!(b.wait(&format!("location.pathname === {} && document.documentElement.dataset.pgpStatus === 'ready'",
+            js_str(&route)), wait).is_some(), "the signed-in run page did not load");
+        if show {
+            assert!(
+                b.wait("document.documentElement.dataset.pgpCharts === '5'", wait)
+                    .is_some(),
+                "the live page did not draw five charts"
+            );
+            b.eval(r#"document.querySelector('figure[data-chart="genome"] a[data-mark^="hit-"]')
+                    .dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); true"#).unwrap();
+            let detail = format!(
+                r#"(() => {{
+                const panel = document.querySelector('.chart-detail');
+                return panel && !panel.hidden && panel.textContent.includes({})
+                    && /^viewer\/#chr[0-9XY]+:[0-9]+$/.test(panel.querySelector('a.viewer')?.getAttribute('href'))
+                    && location.pathname === {};
+            }})()"#,
+                js_str(og_render::notes::CLINVAR_FREQ_NOTE),
+                js_str(&route)
+            );
+            assert!(
+                b.wait(&detail, wait).is_some(),
+                "the live chart click did not open its caveat and viewer link"
+            );
+        } else {
+            assert!(
+                b.wait(
+                    "Boolean(document.documentElement.dataset.pgpCharts)",
+                    Duration::from_millis(700)
+                )
+                .is_none(),
+                "the planted demo without charts.js drew charts"
+            );
+        }
+        assert_eq!(b.eval(r#"performance.getEntriesByType('resource').every(entry => new URL(entry.name).origin === location.origin)"#).unwrap(), Value::Bool(true));
+        assert_eq!(
+            b.eval("document.documentElement.dataset.pgpBlocked || ''")
+                .unwrap(),
+            Value::Str(String::new())
+        );
+    }
+}
+
 #[test]
 fn the_weblog_matches_its_catalogue() {
     let Some(og) = og() else { return };
@@ -483,4 +741,5 @@ fn the_built_site_keeps_the_demo_contract() {
         r#"<script src="https://example.invalid/plant.js"></script>"#.into(),
     );
     assert!(!asset_problems(&texts).is_empty());
+    charts_contract(&og, &work, scratch.path());
 }
