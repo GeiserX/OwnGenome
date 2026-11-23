@@ -53,6 +53,8 @@ Not all ClinVar classifications are equally reliable. Each entry has a **review 
 - **Two** pathogenic variants in the same recessive gene (one from each parent)
 - Any variant in cancer predisposition genes (BRCA1, BRCA2, MLH1, MSH2, etc.)
 
+**When "no hit" means less:** no hit in a gene says nothing when the reads could not see the gene. The Quality chapter lists the hard-to-read genes this genome did not read ([step 16b](../16b-mosdepth.md#gene-callability)). A gene marked `exon not read` was read over most of its length, but one coding exon (named, as `GENE:exonN`) had fewer than 90% of its bases at 10 reads of mapping quality 20. A pathogenic variant in that exon would not be found, so a ClinVar screen with no hit there is not a clean result for that gene.
+
 
 ---
 
