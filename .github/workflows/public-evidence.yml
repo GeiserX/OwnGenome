@@ -1005,7 +1005,7 @@ jobs:
               url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
               ix=crai
             fi
-            [ -n "$url" ] || { echo "${s}: no 30x reads in the index"; return 1; }
+            [ -n "$url" ] || { echo "::error::${s}: no 30x reads in the index"; return 1; }
             mkdir -p "${G}/${s}/aligned"
             for n in 1 2 3 4; do
               rm -f "$bam" "${bam}.bai"
@@ -1040,7 +1040,7 @@ jobs:
           for s in "${want[@]}"; do
             if [ -s "${D}/rows/${s}.tsv" ]; then cat "${D}/rows/${s}.tsv" >> "${D}/calls.tsv"
             elif [ -e "${D}/unread/${s}" ]; then unread+=("$s")
-            else echo "::error::${s}: no row and not marked unread (step 46 failed on its reads)"; exit 1
+            else echo "::error::${s}: no row and not marked unread (no 30x index row, or step 46 failed on its reads; see its lines above)"; exit 1
             fi
           done
           cat "${D}/calls.tsv"
@@ -1055,10 +1055,10 @@ jobs:
           {
             echo "### LPA KIV-2 against assembled genomes"
             echo ""
-            bin/og dev evidence lpa-bench "${D}/calls.tsv" "${D}/bench.tsv" "$LPA_MIN"
-            echo ""
             echo "Gate: the interval holds the assembled count in at least ${LPA_MIN} of the genomes read."
             echo "Genomes: $(cat "${D}/read.txt")."
+            echo ""
+            bin/og dev evidence lpa-bench "${D}/calls.tsv" "${D}/bench.tsv" "$LPA_MIN"
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
           # Red control: each genome gets the estimate and interval of the
