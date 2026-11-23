@@ -5,7 +5,7 @@ Real PharmCAT output for `rust/crates/og-pgx/tests/port_tests_pgx_cpic.rs` (one 
 its listed diplotypes and `relatedDrugs`; up to 4 matched annotations per drug
 guideline).
 
-The reports include guidance from [PharmGKB](https://www.pharmgkb.org/) via PharmCAT.
+The reports include CPIC recommendation text ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)) and PharmGKB (ClinPGx) annotations of DPWG guidelines and FDA labels ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)), both via PharmCAT.
 
 | File | Source | Attribution |
 |---|---|---|
