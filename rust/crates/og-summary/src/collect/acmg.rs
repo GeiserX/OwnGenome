@@ -769,7 +769,9 @@ fn counting_keys(cands: &[&Cand]) -> HashMap<(String, AKey), AKey> {
 }
 
 /// `sf_structural`: step 05's class 4 and 5 SVs in genes whose rule allows
-/// them, and the class 4 or 5 deletions over a gene's sv_regions.
+/// them, and the class 4 or 5 deletions over a gene's sv_regions. A common
+/// SV is left out, but not one inside a much larger common SV, nor one with
+/// no frequency data ([`SvRow::common`](super::two_hits::SvRow::common)).
 fn sf_structural(
     inp: &DeletionInputs,
     rules: &IndexMap<String, Rule>,

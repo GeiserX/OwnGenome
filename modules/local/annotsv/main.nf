@@ -25,7 +25,9 @@
     5 rows are written to their own table, found by column name, and
     og sv postfilter writes each of them with its caller, whether a
     deletion sits on the exon edges of one transcript of AnnotSV's genes
-    file, its benign-set frequency, its read-depth support (a Delly RDCN
+    file, its benign-set frequency ("no frequency data" when AnnotSV gives
+    none), whether that benign record is about the call's size or much
+    larger (Benign_match), its read-depth support (a Delly RDCN
     against the same sex- and PAR-aware normal copies) and the class
     after the rule table assets/sv_rule_regions.tsv, which moves to class 3
     a call inside a coding tandem repeat, the IG and TR loci or the MHC,
@@ -95,8 +97,8 @@ process ANNOTSV {
         ${meta.id}_sv_annotated.tsv > ${meta.id}_sv_class4_5.tsv
 
     # Each class 4 or 5 SV with its caller, an exon-edge flag for a deletion,
-    # its benign-set frequency, its depth support and the class after the
-    # rule table. The support count is step 22's, which the reports join
+    # its benign-set frequency or "no frequency data", its benign match, its
+    # depth support and the class after the rule table. The support count is step 22's, which the reports join
     # when they are written.
     genes=${annotations_dir}/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed
     genes_arg=()

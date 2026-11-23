@@ -11,7 +11,8 @@
 # Output: *_sv_annotated.tsv (ACMG class 1-5 for each SV),
 #   *_sv_class4_5.tsv (its class 4 and 5 rows), *_sv_class4_5_checked.tsv
 #   (each of those with its caller, an exon-edge flag for a deletion, its
-#   benign-set frequency, its read-depth support and the class after the
+#   benign-set frequency or "no frequency data", whether the benign record
+#   is about its size or much larger, its read-depth support and the class after the
 #   rule table assets/sv_rule_regions.tsv, og sv postfilter) and
 #   *_annotsv_input.vcf
 #   (what AnnotSV read, each record with its caller in INFO SVCALLER)
@@ -173,7 +174,9 @@ fi
 # The checks a class 4 or 5 call needs (og sv postfilter): its
 # caller, whether a deletion sits on the exon edges of one transcript of
 # AnnotSV's genes file (a processed transcript aligned across an intron), the
-# benign-set frequency of its type, and whether its read depth shows the
+# benign-set frequency of its type ("no frequency data" when AnnotSV gives
+# none, which is not "rare"), whether that benign record is about the call's
+# size or much larger (Benign_match), and whether its read depth shows the
 # change (a Delly RDCN against the same sex- and PAR-aware normal copies as
 # above). The rule table moves to class 3 a call inside a coding tandem
 # repeat, the IG and TR loci or the MHC, one the depth contradicts, and one
