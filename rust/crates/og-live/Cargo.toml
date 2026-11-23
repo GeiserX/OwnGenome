@@ -14,6 +14,7 @@ fault-inject = ["og-runlog/fault-inject"]
 pycompat.workspace = true
 indexmap.workspace = true
 og-nf.workspace = true
+og-dev.workspace = true
 og-runlog.workspace = true
 jiff.workspace = true
 og-io.workspace = true
