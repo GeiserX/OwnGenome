@@ -796,14 +796,17 @@ pub fn bloodtype(c: &Ctx<'_>) -> Out {
         let system = r.get("system").flatten();
         let pheno = or_dot(r, "phenotype");
         by.insert(system.map(str::to_owned), pheno.clone());
-        systems.push(
-            Obj::new()
-                .set("system", opt_s(system))
-                .set("phenotype", s(&pheno))
-                .set("genotype", s(&or_dot(r, "genotype")))
-                .set("confidence", s(&or_dot(r, "confidence")))
-                .val(),
-        );
+        let mut row = Obj::new()
+            .set("system", opt_s(system))
+            .set("phenotype", s(&pheno))
+            .set("genotype", s(&or_dot(r, "genotype")))
+            .set("confidence", s(&or_dot(r, "confidence")));
+        if let Some(note) = r.get("note").flatten()
+            && !matches!(note.trim(), "" | ".")
+        {
+            row.put("note", s(note));
+        }
+        systems.push(row.val());
     }
     let get = |k: &str| s(by.get(&Some(k.to_owned())).map_or(".", String::as_str));
     let v = Obj::new()
@@ -1598,6 +1601,49 @@ pub fn exomiser(c: &Ctx<'_>) -> Out {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bloodtype_keeps_limits_and_phase_notes() {
+        let d = crate::testutil::Dir::new("bloodtype-notes");
+        d.put(
+            "S/bloodtype/S_bloodtype.tsv",
+            concat!(
+                "system\tphenotype\tgenotype\tconfidence\tnote\n",
+                "ABO\t.\t.\tlow\tABO limit\n",
+                "RhD\t.\t.\tlow\tRhD limit\n",
+                "Duffy\t.\t.\tlow\tDuffy phase\n",
+                "Kell\t.\t.\tlow\t.\n",
+                "MNS\t.\t.\tlow\t\n",
+            ),
+        );
+        std::fs::create_dir_all(d.0.join("assets")).unwrap();
+        let input = crate::collect::Input {
+            sample: "S".into(),
+            sample_dir: d.0.join("S").to_string_lossy().into_owned(),
+            declared_sex: None,
+            assets: d.0.join("assets").to_string_lossy().into_owned(),
+            group: crate::collect::Group::C,
+            tables: String::new(),
+        };
+        let summary = crate::collect::collect(&input).unwrap().to_json();
+        let at = |v: &Value, k: &str| text_at(v, k).unwrap().clone();
+        let data = at(&at(&at(&summary, "sections"), "bloodtype"), "data");
+        let Value::Array(systems) = at(&data, "systems") else {
+            panic!("missing blood groups");
+        };
+        let notes: Vec<_> = systems.iter().map(|row| text_at(row, "note")).collect();
+        let expected = ["ABO limit", "RhD limit", "Duffy phase"].map(s);
+        assert_eq!(
+            notes,
+            [
+                Some(&expected[0]),
+                Some(&expected[1]),
+                Some(&expected[2]),
+                None,
+                None
+            ]
+        );
+    }
 
     #[test]
     fn base64_matches_python() {
