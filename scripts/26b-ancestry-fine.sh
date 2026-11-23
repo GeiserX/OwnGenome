@@ -14,8 +14,8 @@
 #      5 cM blocks of the genome and of the reference people gives the spread
 #      of each fraction;
 #   3. Beagle phases your genotypes against the panel;
-#   4. RFMix paints each segment of each haplotype with the continental group
-#      it is most similar to;
+#   4. og ancestry-fine paint paints each segment of each haplotype with the
+#      continental group it is most similar to (our own local-ancestry model);
 #   5. og ancestry-fine report writes the fractions table, the painting
 #      (BED and PNG) and a plain-text summary.
 # A group name is ours: a set of reference populations, not a nationality.
@@ -57,7 +57,7 @@ case "$BOOT" in ''|*[!0-9]*) echo "ERROR: ANCESTRY_FINE_BOOTSTRAP must be a whol
 
 echo "============================================"
 echo "  Step 26b: Fine-grained ancestry (${ANCESTRY_FINE_PANEL})"
-echo "  Tools: og (fractions), Beagle, RFMix"
+echo "  Tools: og (fractions and painting), Beagle"
 echo "  Sample: ${SAMPLE}"
 echo "  Output: ${OUT}"
 echo "============================================"
@@ -156,21 +156,20 @@ else
       done' _ "$P" "$W" "$THREADS" "$CHROMS" \
     || { echo "ERROR: Beagle failed (log above)" >&2; exit 1; }
 
-  # --- 4. RFMix: the painting --------------------------------------------------------
-  # A chromosome RFMix fails on is named in paint/failed.txt, which the
-  # report lists as not painted, and the next one is still painted: one
-  # failure no longer costs the painting of every later chromosome.
-  echo "[4/5] Painting with RFMix ($(wc -l < "${PANEL}/model/paint_map.tsv" | tr -d ' ') reference individuals)..."
-  # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
-  run_in --cpus "$THREADS" --memory 8g "$RFMIX_IMAGE" bash -euo pipefail -c '
-      for c in $4; do
-        rfmix -f "$2/phase/$c.vcf.gz" -r "$1/panel/$c.vcf.gz" -m "$1/model/paint_map.tsv" -g "$1/maps/$c.rfmix.map" \
-          -o "$2/paint/$c" --chromosome="$c" --n-threads="$3" --random-seed=1 > "$2/paint/$c.log" 2>&1 \
-          || { tail -n 20 "$2/paint/$c.log"; echo "$c" >> "$2/paint/failed.txt"; rm -f "$2/paint/$c.msp.tsv"; }
-      done' _ "$P" "$W" "$THREADS" "$CHROMS" \
-    || { echo "ERROR: RFMix failed (log above)" >&2; exit 1; }
+  # --- 4. og ancestry-fine paint: the painting -----------------------------------------
+  # Our own local-ancestry model paints every phased chromosome at once, its
+  # parameters fitted over the whole genome and its proportions starting at
+  # the continental fractions of step 2 (og ancestry-fine paint,
+  # rust/crates/og-ancestry, says how). A chromosome it cannot read is named in
+  # paint/failed.txt, which the report lists as not painted, and the others
+  # are still painted.
+  echo "[4/5] Painting with og ($(wc -l < "${PANEL}/model/paint_map.tsv" | tr -d ' ') reference individuals)..."
+  run_in --cpus "$THREADS" --memory 8g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
+    /pgp-bin/og ancestry-fine paint --phased "${W}/phase" --panel "${P}/panel" --maps "${P}/maps" --model "${P}/model" \
+      --fractions "${W}/fractions" --sample "$SAMPLE" --threads "$THREADS" --out-dir "${W}/paint" \
+    || { echo "ERROR: the painting failed (message above)" >&2; exit 1; }
   if [ -s "${WORK}/paint/failed.txt" ]; then
-    echo "WARNING: RFMix failed on $(paste -sd' ' "${WORK}/paint/failed.txt") (last lines above, logs in ${WORK}/paint); the report lists them as not painted" >&2
+    echo "WARNING: the painting failed on $(paste -sd' ' "${WORK}/paint/failed.txt") (reasons above); the report lists them as not painted" >&2
   fi
 fi
 
@@ -187,5 +186,5 @@ echo ""
 echo "  Input: the ${INPUT_KIND}"
 echo "  Fractions: ${OUT}/${SAMPLE}_ancestry_fine.tsv"
 echo "  Painting:  ${OUT}/${SAMPLE}_painting.bed and ${SAMPLE}_painting.png"
-echo "  Intermediate files (genotypes, fractions and their fit, phased haplotypes, RFMix output): ${WORK}"
+echo "  Intermediate files (genotypes, fractions and their fit, phased haplotypes, painting): ${WORK}"
 echo "  See docs/26b-ancestry-fine.md for what the names mean and where the resolution ends."

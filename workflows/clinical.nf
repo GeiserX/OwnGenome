@@ -176,7 +176,7 @@ workflow CLINICAL {
     }
 
     //
-    // ANCESTRY_FINE — step 26b: og ancestry fractions and an RFMix painting
+    // ANCESTRY_FINE — step 26b: og ancestry fractions and an og painting
     // against the fine-grained panel. With a gVCF the panel's SNVs are
     // genotyped from it, as in PRS; without one the VCF must hold reference
     // calls, or ANCESTRY_FINE_GENOTYPE stops (the bash step's rule).
@@ -196,7 +196,14 @@ workflow CLINICAL {
                 .map { _id, meta, g, gi, c -> [meta, g, gi, c] },
             ch_ancestry_fine_panel
         )
-        ANCESTRY_FINE_PAINT(ANCESTRY_FINE_PHASE.out.phased, ch_ancestry_fine_panel)
+        // The painting's proportions start at the continental fractions.
+        ANCESTRY_FINE_PAINT(
+            ANCESTRY_FINE_PHASE.out.phased
+                .map { meta, d -> [meta.id, meta, d] }
+                .join(ANCESTRY_FINE_FRACTIONS.out.fractions.map { meta, f -> [meta.id, f] })
+                .map { _id, meta, d, f -> [meta, d, f] },
+            ch_ancestry_fine_panel
+        )
         ANCESTRY_FINE_REPORT(
             ANCESTRY_FINE_FRACTIONS.out.fractions
                 .map { meta, d -> [meta.id, meta, d] }
