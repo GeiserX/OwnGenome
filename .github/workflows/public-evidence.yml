@@ -1,9 +1,9 @@
 name: Public evidence
 
-# Runs three opt-in steps whole, on public data only (GIAB's HG002 and the
-# public archaic and ancient panels, 1000 Genomes men with published Y
-# haplogroups), and writes what they measured to the job summary. No pull
-# request runs it, so none of its jobs gates a merge.
+# Runs opt-in steps on public data only (GIAB's HG002 and the public archaic
+# and ancient panels, 1000 Genomes men with published Y haplogroups, genomes
+# with public assemblies and 30x reads), and writes what they measured to the
+# job summary. No pull request runs it, so none of its jobs gates a merge.
 #
 #   archaic-sites      the 1000 Genomes sites file setup.sh --archaic reads,
 #                      downloaded once (its md5 checked) and indexed, for
@@ -42,6 +42,15 @@ name: Public evidence
 #                      published branch or below it; the same calls handed
 #                      to other men are the red control and must fail it.
 #                      The full 58-man table is in docs/37-y-haplogroup.md.
+#   lpa-benchmark      step 46 on the reads over LPA of genomes whose KIV-2
+#                      repeats were counted on public assemblies (HG002's Q100
+#                      assembly and HPRC release 2; og dev evidence lpa-truth):
+#                      HG002 from DeepVariant's 35x BAM, the others from their
+#                      NYGC 30x CRAMs, and og dev evidence lpa-bench. Its gate
+#                      fails when the interval holds the assembled count in
+#                      fewer than LPA_MIN of the genomes; the estimates handed
+#                      to other genomes are the red control and must fail it.
+#                      The full 96-genome table is in docs/46-lpa.md.
 #
 # It runs by hand only (workflow_dispatch). Public repo: the GitHub-hosted
 # runner is free here.
@@ -76,6 +85,14 @@ on:
         description: "1000 Genomes men for the y-benchmark job, separated by spaces or commas (3 or more, from different haplogroups: the red control hands each man's calls to another; the docs table has 58)"
         type: string
         default: HG01890 HG02588 NA18952 HG01583 HG00530 HG00107
+      lpa_benchmark:
+        description: "Run the lpa-benchmark job"
+        type: boolean
+        default: true
+      lpa_samples:
+        description: "Genomes for the lpa-benchmark job, separated by spaces or commas (3 or more, from og dev evidence lpa-truth), or all (96)"
+        type: string
+        default: all
 
 permissions:
   contents: read
@@ -97,6 +114,12 @@ env:
   Y_REF: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
   Y_REF_CHRY_MD5: ce3e31103314a704255f3cd90369ecce
   Y_MIN: "0.95"
+  # lpa-benchmark: chr6 of the same reference (the CRAM header's M5), HG002's
+  # reads (the BAM e2e case lpa-1 reads), and the share of genomes whose
+  # interval must hold the assembled count.
+  LPA_REF_CHR6_MD5: 5691468a67c7e7a7b5f2a3a683792c29
+  LPA_HG002_BAM: https://storage.googleapis.com/deepvariant/case-study-testdata/HG002.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam
+  LPA_MIN: "0.95"
 
 jobs:
   archaic-sites:
@@ -910,6 +933,118 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: y-benchmark
+          path: |
+            ${{ env.D }}/calls.tsv
+            ${{ env.D }}/bench.tsv
+          if-no-files-found: ignore
+
+  lpa-benchmark:
+    if: inputs.lpa_benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build og as scripts/setup.sh --og does (og dev evidence)
+        run: |
+          scripts/setup.sh --og
+          rust/og.sh check --required
+
+      - name: The 30x index and chr6 of the reference the CRAMs were aligned to
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          D="${RUNNER_TEMP}/lpa"; G="${D}/genome"
+          mkdir -p "${G}/reference" "${D}/rows" "${D}/logs"
+          echo "D=${D}" >> "$GITHUB_ENV"
+          echo "G=${G}" >> "$GITHUB_ENV"
+          curl -fsSL --retry 5 -o "${D}/hc.index" "$Y_HC_INDEX"
+          echo "${Y_HC_INDEX_SHA256}  ${D}/hc.index" | sha256sum -c
+          docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}/reference:/r" \
+            "$SAMTOOLS_IMAGE" sh -c 'samtools faidx "$1" chr6 > /r/chr6.fa && samtools faidx /r/chr6.fa' _ "$Y_REF"
+          m5=$(docker run --rm -v "${G}/reference:/r:ro" "$SAMTOOLS_IMAGE" samtools dict /r/chr6.fa | grep -o 'M5:[0-9a-f]*')
+          [ "$m5" = "M5:${LPA_REF_CHR6_MD5}" ] || { echo "chr6 of ${Y_REF} has ${m5}, not M5:${LPA_REF_CHR6_MD5}"; exit 1; }
+
+      - name: Step 46 on each genome's reads over LPA
+        env:
+          SAMPLES: ${{ inputs.lpa_samples }}
+        run: |
+          set -euo pipefail
+          . ./versions.env
+          export GENOME_DIR="$G"
+          bin/og dev evidence lpa-truth > "${D}/truth.tsv"
+          read -ra want <<< "$(printf '%s' "$SAMPLES" | tr ',\r\n' '   ')"
+          [ "${want[*]:-all}" != all ] || mapfile -t want < <(awk 'NR > 1 {print $1}' "${D}/truth.tsv")
+          [ "${#want[@]}" -ge 3 ] || { echo "lpa_samples: name 3 genomes or more (the red control hands each one another's estimate)"; exit 1; }
+          for s in "${want[@]}"; do
+            awk -v s="$s" 'NR > 1 && $1 == s {f = 1} END {exit !f}' "${D}/truth.tsv" || { echo "lpa_samples: ${s} has no assembled count (og dev evidence lpa-truth)"; exit 1; }
+          done
+          # one NAME: the genome's reads over LPA (chr6:160,530,000-160,670,000, the
+          # region lpa-1 reads) from its 30x CRAM (HG002: DeepVariant's 35x
+          # BAM), step 46 on them, and his row of the calls. EBI fails a read
+          # now and then: 4 tries, 1, 2 and 4 minutes apart, each starting
+          # clean (samtools keeps the .crai it fetched and would read a bad
+          # copy again). A retry reads the same file again and nothing else.
+          one() {
+            local s=$1 url n bam="${G}/$1/aligned/$1_sorted.bam"
+            if [ "$s" = HG002 ]; then url=$LPA_HG002_BAM; else
+              url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
+            fi
+            [ -n "$url" ] || { echo "${s}: no 30x reads in the index"; return 1; }
+            mkdir -p "${G}/${s}/aligned"
+            for n in 1 2 3 4; do
+              rm -f "${G}/${s}/"*.crai "${G}/${s}/"*.bai "$bam" "${bam}.bai"
+              if docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w "/g/${s}" "$SAMTOOLS_IMAGE" \
+                sh -c 'samtools view -b -T /g/reference/chr6.fa -o "aligned/$2_sorted.bam" "$1" chr6:160530000-160670000 && samtools index "aligned/$2_sorted.bam"' \
+                _ "$url" "$s"; then
+                break
+              fi
+              [ "$n" -lt 4 ] || { echo "::error::${s}: reading LPA from ${url} failed 4 times"; return 1; }
+              echo "::warning::${s}: reading LPA from ${url} failed (try $n of 4); next try in $((60 << (n - 1))) s"
+              sleep $((60 << (n - 1)))
+            done
+            scripts/46-lpa.sh "$s" > "${D}/logs/${s}.log" 2>&1 || { cat "${D}/logs/${s}.log"; return 1; }
+            awk -F'\t' -v OFS='\t' -v s="$s" '{v[$1] = $2} END {print s, v["kiv2_copies"], v["ci95_low"], v["ci95_high"]}' \
+              "${G}/${s}/lpa/${s}_lpa_kiv2.tsv" > "${D}/rows/${s}.tsv"
+            rm -rf "${G:?}/${s}"
+          }
+          export -f one
+          export D G LPA_HG002_BAM SAMTOOLS_IMAGE
+          # Six genomes at a time: the reads are a few MB each, the wait is EBI's.
+          # shellcheck disable=SC2016  # $1 belongs to the inner bash
+          printf '%s\n' "${want[@]}" | xargs -P 6 -I{} bash -c 'one "$1"' _ {}
+          printf 'sample\tkiv2_copies\tci95_low\tci95_high\n' > "${D}/calls.tsv"
+          for s in "${want[@]}"; do cat "${D}/rows/${s}.tsv"; done >> "${D}/calls.tsv"
+          cat "${D}/calls.tsv"
+
+      - name: The intervals against the assembled counts (the gate), and the red control
+        run: |
+          set -euo pipefail
+          {
+            echo "### LPA KIV-2 against assembled genomes"
+            echo ""
+            bin/og dev evidence lpa-bench "${D}/calls.tsv" "${D}/bench.tsv" "$LPA_MIN"
+            echo ""
+            echo "Gate: the interval holds the assembled count in at least ${LPA_MIN} of the genomes."
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+          # Red control: each genome gets the estimate and interval of the
+          # genome half the list away; that must fail the gate, as the gate.
+          awk -F'\t' -v OFS='\t' 'NR == 1 {print; next} {s[++n] = $1; r[n] = $2 OFS $3 OFS $4}
+            END {for (i = 1; i <= n; i++) print s[i], r[(i - 1 + int(n / 2)) % n + 1]}' "${D}/calls.tsv" > "${D}/rotated.tsv"
+          if bin/og dev evidence lpa-bench "${D}/rotated.tsv" "${D}/rotated.out.tsv" "$LPA_MIN" > /dev/null 2> "${D}/rotated.err"; then
+            echo "red control: the rotated estimates passed the gate"; exit 1
+          fi
+          cat "${D}/rotated.err"
+          grep -q '^og dev evidence: lpa-bench gate: ' "${D}/rotated.err" || { echo "red control: failed, but not on the gate"; exit 1; }
+
+      - name: Upload the calls and their results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lpa-benchmark
           path: |
             ${{ env.D }}/calls.tsv
             ${{ env.D }}/bench.tsv
