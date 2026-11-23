@@ -47,14 +47,15 @@
 #                   numbers, then phrases that must start a word of ClinVar's condition name (case, commas
 #                   and dashes ignored). A hit whose every named condition matches no key is marked
 #                   condition_not_acmg in summary.json and still reported; "not provided", "not
-#                   specified" and panel names such as "Hereditary cancer-predisposing syndrome" never
+#                   specified", panel names such as "Hereditary cancer-predisposing syndrome" and a name
+#                   that only names the hit's own gene ("RYR1-related disorder" on a RYR1 hit) never
 #                   set the mark
 gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note	phenotype	phenotype_keys
-APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.	familial adenomatous polyposis	OMIM:175100; familial adenomatous polyposis; adenomatous polyposis coli; gardner syndrome
+APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.	familial adenomatous polyposis	OMIM:175100; familial adenomatous polyposis; adenomatous polyposis coli; gardner syndrome; familial multiple polyposis; carcinoma of colon; colorectal cancer; colon cancer
 RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.	familial medullary thyroid cancer, multiple endocrine neoplasia type 2	OMIM:155240; OMIM:171400; OMIM:162300; multiple endocrine neoplasia type 2; multiple endocrine neoplasia 2; men2; medullary thyroid; pheochromocytoma
-BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:604370; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer
-BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:612555; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer
-PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:114480; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer
+BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:604370; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
+BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:612555; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
+PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:114480; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
 SDHD	HGNC:10683	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:168000; paraganglioma; pheochromocytoma
 SDHAF2	HGNC:26034	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:601650; paraganglioma; pheochromocytoma
 SDHC	HGNC:10682	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:605373; paraganglioma; pheochromocytoma
@@ -63,11 +64,11 @@ MAX	HGNC:6913	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary paraganglioma-pheoch
 TMEM127	HGNC:26038	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:171300; paraganglioma; pheochromocytoma
 BMPR1A	HGNC:1076	AD	any	.	no	.	.	2.0	All P and LP	.	juvenile polyposis syndrome	OMIM:174900; juvenile polyposis
 SMAD4	HGNC:6770	AD	any	.	no	.	.	2.0	All P and LP	.	juvenile polyposis syndrome, hereditary hemorrhagic telangiectasia	OMIM:175050; juvenile polyposis; hemorrhagic telangiectasia; telangiectasia hereditary hemorrhagic
-TP53	HGNC:11998	AD	any	.	no	.	.	1.0	All P and LP	.	Li-Fraumeni syndrome	OMIM:151623; li fraumeni
-MLH1	HGNC:7127	AD	any	.	yes	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:609310; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre
-MSH2	HGNC:7325	AD	any	.	yes	chr2:47385166-47387020 EPCAM exons 8 and 9, the 3' end (ENST00000263735)	.	1.0	All P and LP	A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.	Lynch syndrome	OMIM:120435; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre
-MSH6	HGNC:7329	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614350; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre
-PMS2	HGNC:9122	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614337; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre
+TP53	HGNC:11998	AD	any	.	no	.	.	1.0	All P and LP	.	Li-Fraumeni syndrome	OMIM:151623; li fraumeni; adrenocortical carcinoma
+MLH1	HGNC:7127	AD	any	.	yes	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:609310; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+MSH2	HGNC:7325	AD	any	.	yes	chr2:47385166-47387020 EPCAM exons 8 and 9, the 3' end (ENST00000263735)	.	1.0	All P and LP	A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.	Lynch syndrome	OMIM:120435; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+MSH6	HGNC:7329	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614350; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+PMS2	HGNC:9122	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614337; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
 MEN1	HGNC:7010	AD	any	.	no	.	.	1.0	All P and LP	.	multiple endocrine neoplasia type 1	OMIM:131100; multiple endocrine neoplasia type 1; multiple endocrine neoplasia 1; men1
 MUTYH	HGNC:7527	AR	biallelic	.	no	.	.	1.0	P and LP (2 variants)	.	MUTYH-associated polyposis	OMIM:608456; mutyh associated polyposis; familial adenomatous polyposis 2; adenomatous polyposis
 NF2	HGNC:7773	AD	any	.	no	.	.	1.0	All P and LP	.	NF2-related schwannomatosis	OMIM:101000; neurofibromatosis type 2; neurofibromatosis 2; schwannomatosis

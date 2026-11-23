@@ -871,14 +871,37 @@ const ID_PREFIXES: [&str; 4] = ["OMIM:", "MedGen:", "MONDO:", "Orphanet:"];
 /// Condition names that ClinVar gives a whole panel of genes, not one
 /// disease (normalized as [`words`] writes them). They say nothing for or
 /// against the ACMG disease, so they never set the mark.
-const PANEL_TERMS: [&str; 6] = [
+const PANEL_TERMS: [&str; 7] = [
     "not provided",
     "not specified",
     "see cases",
     "inborn genetic diseases",
     "hereditary cancer predisposing syndrome",
     "cardiovascular phenotype",
+    "cardiac arrhythmia",
 ];
+
+/// What follows the gene in ClinVar's name for every disease of one gene,
+/// such as "RYR1-related disorder" (normalized as [`words`] writes them).
+const UMBRELLA_TAILS: [&str; 5] = [
+    "related disorder",
+    "related disorders",
+    "related condition",
+    "related conditions",
+    "related cancer predisposition",
+];
+
+/// Whether `name` only names `gene`, as "RYR1-related disorder" does on a
+/// RYR1 hit. Like a panel term it says nothing for or against the ACMG
+/// disease. Another gene's such name ("FBXO11-related disorders" on an
+/// MSH6 hit) is not this.
+fn umbrella(gene: &str, name: &str) -> bool {
+    let (g, n) = (words(gene), words(name));
+    !g.is_empty()
+        && n.strip_prefix(g.as_str())
+            .and_then(|tail| tail.strip_prefix(' '))
+            .is_some_and(|tail| UMBRELLA_TAILS.contains(&tail))
+}
 
 /// A name as the matching reads it: lower case, and every run of
 /// characters other than letters and digits one space.
@@ -928,16 +951,20 @@ impl Phenotype {
         })
     }
 
-    /// The mark: every condition ClinVar names for the allele is another
-    /// disease. A placeholder or a panel term counts neither way, so a hit
-    /// whose only condition is "not provided" or "Hereditary
-    /// cancer-predisposing syndrome" is not marked.
-    pub fn other_disease(&self, conditions: &[Condition]) -> bool {
-        let named: Vec<&Condition> = conditions
-            .iter()
-            .filter(|c| !c.placeholder() && !PANEL_TERMS.contains(&words(&c.name).as_str()))
-            .collect();
-        !named.is_empty() && !named.iter().any(|c| self.matches(c))
+    /// The mark on a hit of `gene`: every condition ClinVar names for the
+    /// allele is another disease. A placeholder, a panel term or a name
+    /// that only names `gene` counts neither way, so a hit whose only
+    /// condition is "not provided", "Hereditary cancer-predisposing
+    /// syndrome" or "RYR1-related disorder" (on RYR1) is not marked. A
+    /// condition with ids and no name never sets the mark, but its ids can
+    /// still be the ACMG disease.
+    pub fn other_disease(&self, gene: &str, conditions: &[Condition]) -> bool {
+        let other = conditions.iter().any(|c| {
+            !c.placeholder()
+                && !PANEL_TERMS.contains(&words(&c.name).as_str())
+                && !umbrella(gene, &c.name)
+        });
+        other && !conditions.iter().any(|c| self.matches(c))
     }
 }
 
@@ -1044,7 +1071,10 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     }
                     if let Some(p) = pheno.get(g) {
                         f.insert("acmg_phenotype".into(), Value::Str(p.name.clone()));
-                        f.insert("condition_not_acmg".into(), Value::Bool(p.other_disease(c)));
+                        f.insert(
+                            "condition_not_acmg".into(),
+                            Value::Bool(p.other_disease(g, c)),
+                        );
                     }
                 }
                 clinvar.push(Cand {
@@ -1445,14 +1475,35 @@ mod tests {
             "Hirschsprung disease, susceptibility to, 1",
             &["OMIM:142623"],
         )];
-        assert!(p.other_disease(&hd));
+        assert!(p.other_disease("RET", &hd));
         // A placeholder or a panel term counts neither way.
-        assert!(!p.other_disease(&[c("not provided", &[])]));
-        assert!(!p.other_disease(&[c("Hereditary cancer-predisposing syndrome", &[])]));
-        assert!(p.other_disease(&[hd[0].clone(), c("not provided", &[])]));
+        assert!(!p.other_disease("RET", &[c("not provided", &[])]));
+        assert!(!p.other_disease("RET", &[c("Hereditary cancer-predisposing syndrome", &[])]));
+        assert!(!p.other_disease("RET", &[c("Cardiac arrhythmia", &[])]));
+        assert!(p.other_disease("RET", &[hd[0].clone(), c("not provided", &[])]));
         // One condition of the ACMG disease is enough.
-        assert!(!p.other_disease(&[hd[0].clone(), c("MEN2A", &[])]));
-        assert!(!p.other_disease(&[]));
+        assert!(!p.other_disease("RET", &[hd[0].clone(), c("MEN2A", &[])]));
+        assert!(!p.other_disease("RET", &[]));
+        // A name that only names the hit's own gene counts neither way;
+        // another gene's such name, or a disease named after it, does.
+        for own in [
+            "RET-related disorder",
+            "RET-related disorders",
+            "RET related condition",
+            "RET-related conditions",
+            "RET-related cancer predisposition",
+        ] {
+            assert!(!p.other_disease("RET", &[c(own, &[])]), "{own}");
+        }
+        assert!(p.other_disease("RET", &[c("GLA-related disorder", &[])]));
+        assert!(p.other_disease("RET", &[c("RET-related myopathy", &[])]));
+        assert!(p.other_disease("RET", &[c("RET-related disorder", &[]), hd[0].clone()]));
+        assert!(!umbrella("", "related disorder"));
+        // A condition with ids and no name never sets the mark, and its ids
+        // can still be the ACMG disease.
+        assert!(!p.other_disease("RET", &[c("", &["OMIM:142623"])]));
+        assert!(!p.other_disease("RET", &[hd[0].clone(), c("", &["OMIM:171400"])]));
+        assert!(p.other_disease("RET", &[hd[0].clone(), c("", &["OMIM:1"])]));
         assert_eq!(Phenotype::of(Some("x"), Some(".")), None);
         assert_eq!(
             words("Ehlers-Danlos syndrome, type IV"),
