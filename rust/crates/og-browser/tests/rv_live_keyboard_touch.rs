@@ -1,5 +1,5 @@
 //! The live pages for a keyboard and for a finger, in a headless Chrome, on
-//! the demo the docs publish (tests/demo/build_live_demo.py, run with the og
+//! the demo the docs publish (og live demo, run with the og
 //! this test run built).
 //!
 //! 1. On the home, person, finding and family pages the first Tab focuses
@@ -86,25 +86,6 @@ fn find_og() -> Option<PathBuf> {
 
 /// python3 when it is 3.10 or newer, read from `python3 --version`
 /// ("Python 3.12.1"; a Python 2 writes it to stderr).
-fn find_python() -> Option<PathBuf> {
-    let out = Command::new("python3").arg("--version").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let said = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let mut part = said
-        .trim()
-        .strip_prefix("Python ")?
-        .split('.')
-        .map(|p| p.parse::<u32>().ok());
-    let (major, minor) = (part.next()??, part.next()??);
-    ((major, minor) >= (3, 10)).then(|| PathBuf::from("python3"))
-}
-
 /// The page's size, as a reader's window; on a phone with touch.
 fn viewport(b: &mut Browser, width: u32, height: u32, mobile: bool) {
     let p = json::loads(&format!(
@@ -459,25 +440,22 @@ fn a_keyboard_skips_to_the_results_and_a_finger_hits_the_controls() {
     let Some(og) = need(find_og(), "og (OG, or target/<profile>/og)") else {
         return;
     };
-    let Some(python) = need(find_python(), "python3 3.10 or newer") else {
-        return;
-    };
     // Declared before the server and the browser: dropped after them, also on a panic.
     let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "keyboard-touch");
     let work = scratch.path();
     let site = work.join("site");
-    let built = Command::new(&python)
-        .arg(repo_root().join("tests/demo/build_live_demo.py"))
+    let built = Command::new(&og)
+        .args(["live", "demo"])
+        .current_dir(repo_root())
         .arg("--out")
         .arg(site.join("demo"))
         .arg("--work")
         .arg(work.join("root"))
-        .env("OG", &og)
         .output()
         .unwrap();
     assert!(
         built.status.success(),
-        "tests/demo/build_live_demo.py failed:\n{}{}",
+        "og live demo failed:\n{}{}",
         String::from_utf8_lossy(&built.stdout),
         String::from_utf8_lossy(&built.stderr)
     );

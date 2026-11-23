@@ -196,7 +196,7 @@ fn frames_with(plugins: &str) -> String {
     json::dumps(&fr, &Dump::default()).unwrap()
 }
 
-/// A person page of the demo, as tests/demo/build_live_demo.py run_page fills it, with the ops and
+/// A person page of the demo, as og live demo fills it, with the ops and
 /// re-check plugins.
 fn run_page(dir: &Path, name: &str, template: &str, frames: &str, results: Option<&str>) {
     let tags = ["ops.js", "recheck.js"]

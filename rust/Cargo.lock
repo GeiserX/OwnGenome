@@ -740,6 +740,7 @@ dependencies = [
 name = "og-browser"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "indexmap",
  "pycompat",
  "regex",

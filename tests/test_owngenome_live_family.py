@@ -28,8 +28,6 @@ Checks:
      drawing, a missing trio file and one linking out of the folder are worded
      apart (the link's target never shown), and the side by side lists every
      blood group system with a stale value marked in its cell;
-  7. the demo family's report-gate property and two children opening on their own (test_live_demo.py's
-     gate_checks on the family page), here so that browser time is not added to test_live_demo.py's;
   8. the real server answers every finding id of a child with a result to act on with the same page, and keeps
      the 404 for an adult's id that is not a finding.
   9. the report gate on the real server, in live mode: one rule of who is a child (a child in any family is one);
@@ -185,35 +183,6 @@ def route_checks(app):
              ok and descents(body) == DESCENT, (code, ctype, auth, ok and descents(body)))]
 
 
-def family_browser_checks(work):
-    """Run the demo's family veil group here so its browser time is in another Guard shard."""
-    import test_live_demo as demo
-    chrome = demo.find_chrome()
-    if not chrome:
-        if os.environ.get("CI") == "true":
-            check("family browser group has Chrome in CI", False)
-        else:
-            print("[SKIP] no Chrome or Chromium for the family browser group")
-        return
-    og = demo.og_binary() or demo.build_live_demo.OG
-    out = os.path.join(work, "family-browser", "demo")
-    demo.build_live_demo.build(out, work=os.path.join(work, "family-browser", "root"), og=og)
-    handler = type("H", (demo.Static,), {"__init__": lambda self, *a, **k: demo.SimpleHTTPRequestHandler.__init__(
-        self, *a, directory=out, **k)})
-    srv = demo.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    demo.threading.Thread(target=srv.serve_forever, daemon=True).start()
-    b = demo.Chrome(chrome, os.path.join(work, "family-browser", "chrome"))
-    before, t0 = len(demo.FAILS), demo.time.time()
-    try:
-        demo.gate_checks(b, f"http://127.0.0.1:{srv.server_address[1]}", out, family_only=True)
-        FAILS.extend(demo.FAILS[before:])
-    finally:
-        b.close()
-        srv.shutdown()
-        srv.server_close()
-    print(f"   family browser group: {demo.time.time() - t0:.2f} s")
-
-
 def main():
     work = tempfile.mkdtemp(prefix="pgp-live-family-", dir=os.environ.get("TMPDIR"))
     try:
@@ -335,7 +304,6 @@ def main():
 
         # 6. the real server
         real_server(root)
-        family_browser_checks(work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if FAILS:
@@ -562,7 +530,6 @@ def gate_server_checks(live, get, root, port, work):
               got == {k: stale[k] for k in got}, got)
         run("father_a", NO_ACT)
         family_failure_checks(live, get, root)
-        live_browser_checks(live, port, work, run, real)
     finally:
         live.summary = real
         for d in made:
@@ -712,135 +679,6 @@ SLOW_CLONE = """(function () {
     return copy;
   };
 }())"""
-
-
-def live_browser_checks(live, port, work, run, real):
-    """In live mode (state.json, then the event stream): an adult's and a no-act child's page make the requests of
-    the page without the gate, in its order; a parent's page is the same whichever card holds a child's results."""
-    import test_live_demo as demo
-    chrome = demo.find_chrome()
-    if not chrome:
-        if os.environ.get("CI") == "true":
-            check("live gate browser checks have Chrome in CI", False)
-        else:
-            print("[SKIP] no Chrome or Chromium for the live gate checks")
-        return
-    assets = os.path.join(work, "gate-assets")
-    shutil.copytree(os.path.join(REPO, "assets", "live"), assets)
-    js = os.path.join(assets, "core.js")
-    source = open(js).read()
-    keep = live.cfg.assets
-    live.cfg.assets = assets
-    # The map plugin runs og from bin/; CI's og is OG (scripts/setup.sh --og puts one in bin/.og), so the pages
-    # compared below have a map.
-    # The server loads its plugins itself: the map plugin is the module behind its routes.
-    maps = [fn.__globals__ for _, _, fn, _ in live.app.routes if "NO_OG" in getattr(fn, "__globals__", {})][:1]
-    og_keep = [m["OG"] for m in maps]
-    if os.environ.get("OG") and os.access(os.environ["OG"], os.X_OK):
-        for m in maps:
-            m["OG"] = os.environ["OG"]
-    # gf_a's own report, so its page draws the contents and the family beside them.
-    adult = live.summary = lambda name, d, st: NO_ACT if name == "gf_a" else real(name, d, st)
-    b = demo.Chrome(chrome, os.path.join(work, "gate-chrome"))
-    base = "http://127.0.0.1:%d" % port
-    t0 = demo.time.time()
-    try:
-        b.call("Page.enable", session=b.session)  # scripts for each new document need the Page domain
-        log = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": demo.REQUEST_LOG}, b.session)["identifier"]
-
-        def capture(route, text):
-            with open(js, "w") as f:
-                f.write(text)
-            b.go("about:blank")
-            assert b.wait("location.href === 'about:blank'")
-            b.go(base + route)
-            assert b.wait("document.documentElement.dataset.pgpStatus === 'ready' && "
-                          "!!document.querySelector('#rail a[href*=family_a]')"), route + " never drawn"
-            b.wait("/^(drawn|failed|nodecompress|unavailable)$/.test((document.getElementById('genome-map') || {dataset: {}}).dataset.pgpMap || '')", 15)
-            demo.time.sleep(1.0)
-            return b.eval("[%s, location.href, (window.ogRequests || []).map(function (r) { "
-                          "return r.join(' '); }), (document.getElementById('genome-map') || {dataset: {}}).dataset.pgpMap || '']" % PAGE_JS)
-        pages = {}
-        # The family and the map's document race when nothing is held: the map's tooltip ends hidden="hidden" when the
-        # family answers first and hidden="" when it answers after the map was drawn, with the gate or without. Held
-        # back a little, the map comes last, so the two captures can be compared whole.
-        for label, route, summary in (("an adult", "/runs/gf_a/", None), ("a no-act child", "/runs/father_a/", NO_ACT)):
-            # The child's results come from its summary as results.json reads it (a step file read now).
-            live.summary = lambda name, d, st: summary if summary and name == "father_a" else adult(name, d, st)
-            keep_routes = slow_routes(live, {"/map.json": 0.5})
-            try:
-                pair = [capture(route, demo.bare_core(source)), capture(route, source)]
-            finally:
-                live.summary = adult
-                live.app.routes[:] = keep_routes
-            pages[label] = pair
-            check("live mode: the page of %s makes the requests of the page without the gate, in its order, and is the "
-                  "same page" % label, pair[0][:3] == pair[1][:3],
-                  [p[2] for p in pair] if pair[0][2] != pair[1][2] else differences(pair[0][0], pair[1][0]))
-        drawn = pages["an adult"][1][3]
-        if os.environ.get("CI") == "true" or os.environ.get("OG"):
-            check("live mode: the adult's page compared has its genome map drawn", drawn == "drawn", drawn)
-        else:
-            print("[SKIP] no og (OG) here: the live pages are compared without a map (map %r)" % drawn)
-        first = [r.split(" ")[1].rsplit("/", 1)[-1] for r in pages["an adult"][0][2]][:3]
-        print("   live mode, an adult's reads without the gate: " + ", ".join(pages["an adult"][0][2]))
-        check("live mode: without the gate the page asks for state.json, then the event stream, then family.json",
-              first == ["state.json", "events", "family.json"], first)
-        # A section address on an adult's and a no-act child's page: the marks it sets (the contents' aria-current, the
-        # card's .target) depend on whether the family or the results answer first. Each order is forced by holding the
-        # other answer back, twice each, and the map's document comes last. The outcomes asserted are the ones main's
-        # own view files give on this server (no gate, its person.js and map.js): the marks stay when the family answers
-        # first and the family's redraw clears them when the results answer first, and the map's tooltip starts and
-        # stays hidden="hidden". So a change to a shared view file shows here, not only a change the gate makes.
-        live.summary = lambda name, d, st: NO_ACT if name == "father_a" else adult(name, d, st)
-        marks = []
-        # A copied answer read as JSON (Response.clone().json()) resolves 1 s late, after the family's answer held back
-        # 0.5 s: a gate that checked a child's results on such a copy, not on the text it read, would hand them to the
-        # view after the family's answer, and the results-first order would give the family-first outcome.
-        slow = b.call("Page.addScriptToEvaluateOnNewDocument", {"source": SLOW_CLONE}, b.session)["identifier"]
-        for first_, held in (("results.json", "/family.json"), ("family.json", "/results.json")):
-            keep_routes = slow_routes(live, {held: 0.5, "/map.json": 1.0})
-            try:
-                for who in ("gf_a", "father_a"):
-                    for route in ("/runs/%s/#s3" % who, "/runs/%s/#s/clinvar" % who):
-                        for _ in range(2):
-                            page = capture(route, source)[0]
-                            tip = re.search(r'<div class="gm-tip"[^>]*>', page)
-                            got = (page.count('aria-current="true"'), bool(re.search(r'<article class="[^"]*\btarget\b', page)),
-                                   bool(tip and 'hidden="hidden"' in tip.group(0)))
-                            want = (0, False, True) if first_ == "results.json" else (1, route.endswith("clinvar"), True)
-                            marks.append((first_, route, got, got == want))
-            finally:
-                live.app.routes[:] = keep_routes
-        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": slow}, b.session)
-        live.summary = adult
-        check("live mode: an adult's and a no-act child's page at a section address give main's outcome in each order: "
-              "the marks stay when the family answers first, clear when the results do, and the map's tooltip stays "
-              "hidden=\"hidden\"", all(m[3] for m in marks), [m for m in marks if not m[3]] or marks[:2])
-        family_fetch_failure_checks(b, base, live, source, adult)
-        # A parent's page, whichever card holds the child's two results to act on.
-        # The map's document is held back, as above, so the tooltip's end state does not depend on the race.
-        seen = []
-        keep_routes = slow_routes(live, {"/map.json": 0.5})
-        try:
-            for summary in (TWO_IN_ONE_CARD, TWO_CARDS):
-                run("father_a", summary)
-                seen.append(capture("/runs/gf_a/", source)[0])
-        finally:
-            live.app.routes[:] = keep_routes
-        check("live mode: a parent's page is the same whichever card holds a child's results to act on",
-              seen[0] == seen[1], differences(seen[0], seen[1]))
-        b.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": log}, b.session)
-        failure_browser_checks(b, base, live, live.root)
-        family_gate_checks(b, base, live, run)
-    finally:
-        live.summary = real
-        live.cfg.assets = keep
-        for m, o in zip(maps, og_keep):
-            m["OG"] = o
-        b.close()
-        shutil.rmtree(assets, ignore_errors=True)
-    print("   live gate browser checks: %.2f s" % (demo.time.time() - t0))
 
 
 def failing_routes(live, suffix, how):

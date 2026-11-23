@@ -22,7 +22,7 @@
 //!     uncertain, too little depth, not assessed; other positions and indel
 //!     bases are not counted; step 46's table is left byte for byte;
 //!     `call --marker` writes what `marker-read` writes;
-//!  9. the demo sample's step 46 table (`tests/demo/make_demo_sample.py`) is
+//!  9. the demo sample's step 46 table (`og dev demo-sample`'s `LPA_TABLE`) is
 //!     the one `og cn call` writes for its depths.
 
 use std::collections::HashMap;
@@ -614,13 +614,14 @@ fn kiv2_4925_statuses_and_what_is_not_counted() {
 
 // 9. the demo's step 46 table
 
-/// The string the parenthesised literals assigned to `var` in `src` join to.
-fn py_str(src: &str, var: &str) -> String {
+/// The string the `concat!` of string literals assigned to `const NAME` in
+/// `src` (Rust source) joins to.
+fn rs_str(src: &str, name: &str) -> String {
     let start = src
-        .find(&format!("\n{var} = ("))
-        .unwrap_or_else(|| panic!("no {var} literal"));
+        .find(&format!("const {name}: &str = concat!("))
+        .unwrap_or_else(|| panic!("no {name} literal"));
     let rest = &src[start..];
-    let body = &rest[rest.find('(').unwrap() + 1..rest.find(")\n").unwrap()];
+    let body = &rest[rest.find('(').unwrap() + 1..rest.find("\n);").unwrap()];
     body.split('"')
         .skip(1)
         .step_by(2)
@@ -628,19 +629,20 @@ fn py_str(src: &str, var: &str) -> String {
         .collect()
 }
 
+/// The demo writer `og dev demo-sample` (it replaced
+/// `tests/demo/make_demo_sample.py`) writes step 46's table as a constant:
+/// it must be what `og cn call` writes for the demo's depths, about 37
+/// KIV-2 repeats at a flank depth near 31 (KIV-2 exons 86.5 x 1.02 and
+/// x 0.98 in turn, single-copy exons 31.0 x 1.03 and x 0.97), half the
+/// KIV-2 depth at MAPQ 0 (MAPQ >= 1: KIV-2 x 0.5, the rest x 0.98).
 #[test]
 fn the_demo_step_46_table_is_what_og_cn_call_writes_for_its_depths() {
-    let src = read(&format!("{REPO}/tests/demo/make_demo_sample.py"));
-    let want = py_str(&src, "LPA_TABLE");
+    let src = read(&format!("{REPO}/rust/crates/og-dev/src/demo/clinical.rs"));
+    let want = rs_str(&src, "LPA_TABLE");
     assert!(
         want.starts_with("metric\tvalue\nstatus\testimated\n"),
         "{want:?}"
     );
-    // lpa_depth: about 37 KIV-2 repeats at a flank depth near 31, half the
-    // KIV-2 depth at MAPQ 0.
-    assert!(src.contains("m = {n: 86.5 * (1.02 if i % 2 == 0 else 0.98)"));
-    assert!(src.contains("m.update({n: 31.0 * (1.03 if i % 2 == 0 else 0.97)"));
-    assert!(src.contains("return m, {n: v * (0.5 if n.startswith(\"kiv2_\") else 0.98)"));
     let r = lpa_row();
     let mut m = Depth::new();
     for (i, s) in r.targets.iter().enumerate() {

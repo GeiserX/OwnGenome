@@ -1,5 +1,5 @@
 //! The reads offers of the live demo, in a headless Chrome, on the demo the
-//! docs publish (tests/demo/build_live_demo.py, run with the og this test
+//! docs publish (og live demo, run with the og this test
 //! run built).
 //!
 //! 1. A finding's reads drawing says it is an illustration before the
@@ -63,15 +63,6 @@ fn find_og() -> Option<PathBuf> {
     exe(&p).then_some(p)
 }
 
-fn find_python() -> Option<PathBuf> {
-    let ok = Command::new("python3")
-        .arg("-c")
-        .arg("import sys; sys.exit(sys.version_info < (3, 10))")
-        .status()
-        .is_ok_and(|s| s.success());
-    ok.then(|| PathBuf::from("python3"))
-}
-
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for e in fs::read_dir(from).unwrap() {
@@ -86,8 +77,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// A term of the demo's search index with a mention at a place: its hit
-/// offers the reads (the first in sorted order, as tests/test_live_demo.py
-/// picks it).
+/// offers the reads (the first in sorted order, in sorted order).
 fn located_term(demo: &Path) -> Option<String> {
     let path = demo
         .join("runs")
@@ -195,26 +185,23 @@ fn the_demo_says_it_has_no_reads_and_the_reads_panel_comes_into_view() {
     let Some(og) = need(find_og(), "og (OG, or target/<profile>/og)") else {
         return;
     };
-    let Some(python) = need(find_python(), "python3 3.10 or newer") else {
-        return;
-    };
     // Declared before the server and the browser: dropped after them, also on a panic.
     let scratch = Scratch::new(Path::new(env!("CARGO_TARGET_TMPDIR")), "reads-sketch");
     let work = scratch.path();
     let site = work.join("site");
     let demo = site.join("demo");
-    let built = Command::new(&python)
-        .arg(repo_root().join("tests/demo/build_live_demo.py"))
+    let built = Command::new(&og)
+        .args(["live", "demo"])
+        .current_dir(repo_root())
         .arg("--out")
         .arg(&demo)
         .arg("--work")
         .arg(work.join("root"))
-        .env("OG", &og)
         .output()
         .unwrap();
     assert!(
         built.status.success(),
-        "tests/demo/build_live_demo.py failed:\n{}{}",
+        "og live demo failed:\n{}{}",
         String::from_utf8_lossy(&built.stdout),
         String::from_utf8_lossy(&built.stderr)
     );
@@ -362,7 +349,7 @@ fn the_demo_says_it_has_no_reads_and_the_reads_panel_comes_into_view() {
     );
 
     // The search box: a hit with a place says the demo has no reads, as the
-    // other offers do (the same steps as tests/test_live_demo.py's search).
+    // other offers do (the same search interaction as the demo smoke test).
     let term = located_term(&demo).unwrap_or_default();
     let plain = !term.is_empty()
         && term
