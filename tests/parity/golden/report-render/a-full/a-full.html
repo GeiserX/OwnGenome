@@ -413,8 +413,9 @@
     <p class="caveat">Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene&#x27;s published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.</p>
     <div class="stat"><span class="label">CHIP calls</span><span class="value">1</span></div>
     <p>DNMT3A R882H: VAF 0.05 (3 of 60 reads), .</p>
-    <p>Detection limit: a clone of VAF about 10% or more is found 8 times in 10 at this depth (median 33x over the genes&#x27; coding exons). CHIP starts at a VAF of 2%: smaller clones are likely missed, so no call does not rule one out.</p>
-    <p>Too shallow or not on the reference: ASXL1, SRSF2.</p>
+    <p>Read-support limit: at a VAF of about 10%, a clone in the median CHIP gene has enough reads with the change 8 times in 10, calculated from the depth at each coding base (median gene depth 33x). The caller and its filters can miss more. No call here does not rule out CHIP.</p>
+    <p>Share of each gene&#x27;s coding bases assessable at the stated VAF: DNMT3A 60%, TET2 90%, ASXL1 0%, JAK2 55%, TP53 40%, SRSF2 65%.</p>
+    <p>No read-support limit for the whole gene (too shallow or not on the reference): ASXL1, SRSF2.</p>
     <p>1 other protein changes listed, not counted: chip/S_chip.tsv.</p>
   </div>
   </section>
@@ -716,6 +717,7 @@
     <p class="sec-meta">Step 42 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
     <p class="caveat">Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how.</p>
     <div class="stat"><span class="label">Read / no genotype / other allele</span><span class="value">3 / 1 / 1</span></div>
+    <div class="stat"><span class="label">Low-quality genotype calls</span><span class="value">1</span></div>
     <div class="tscroll" role="region" aria-label="Traits, table 1" tabindex="0"><table>
       <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
       <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs10455872</span></td><td>A/G</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
@@ -723,7 +725,7 @@
       <tr><td>R117H</td><td>CFTR<br><span style="font-size:12px;color:#666">rs78655421</span></td><td>G/A</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs1</span></td><td>.</td><td>no reads<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs2</span></td><td>C/C</td><td>other<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
-      <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>C/T</td><td>A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
+      <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>.</td><td>A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
     </table></div>
     <h3>Genotype rules (several sites read together)</h3>
     <div class="tscroll" role="region" aria-label="Traits: Genotype rules (several sites read together)" tabindex="0"><table>

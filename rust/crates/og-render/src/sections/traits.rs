@@ -7,8 +7,8 @@ use pycompat::json::Value;
 
 use crate::html;
 use crate::model::{
-    Card, Cell, Colour, HtmlPart, Inline, Line, Malformed, Section, Summary, Table, is_str, need,
-    py, truthy,
+    Card, Cell, Colour, HtmlPart, Inline, Line, Malformed, Section, Summary, Table, get, is_str,
+    need, py, truthy,
 };
 use crate::notes::TRAITS_NOTE;
 use crate::sections::{apoe, g2};
@@ -16,6 +16,18 @@ use crate::text;
 
 const ROWS: &str = "sections.traits.data.rows[]";
 const RULES: &str = "sections.traits.data.rules[]";
+pub const LOW_GQ_LABEL: &str = "Low-quality genotype calls";
+
+/// A count to display when weak calls were included in the summary.
+pub fn low_gq_count(data: &Value) -> Option<i128> {
+    let Value::Object(fields) = data else {
+        return None;
+    };
+    match fields.get("low_gq") {
+        Some(Value::Int(count)) if *count > 0 => Some(*count),
+        _ => None,
+    }
+}
 
 /// A list in the section's data, `[]` when it is absent or empty.
 fn list<'a>(d: &Section<'a>, key: &str, need_it: bool) -> Result<&'a [Value], Malformed> {
@@ -47,12 +59,26 @@ pub fn text_lines(d: &Section<'_>, sample: &str) -> Result<Vec<String>, Malforme
         n("not_covered")?,
         n("other_allele")?
     )];
+    if let Some(count) = low_gq_count(d.data) {
+        out.push(format!("  {LOW_GQ_LABEL}: {count}"));
+    }
     let rows = list(d, "rows", true)?;
     let mut missing = Vec::new();
     for r in rows {
         let f = |k: &str| need(r, k, ROWS).and_then(py);
-        if is_str(Some(need(r, "status", ROWS)?), "not_covered") {
+        let status = need(r, "status", ROWS)?;
+        if is_str(Some(status), "not_covered") {
             missing.push(f("rsid")?);
+            continue;
+        }
+        if is_str(Some(status), "low_gq") {
+            out.push(format!(
+                "  {} ({} {}): {}",
+                f("trait")?,
+                f("gene")?,
+                f("rsid")?,
+                f("reading")?
+            ));
             continue;
         }
         let mark = if ancestry(r, ROWS)? {
@@ -142,6 +168,15 @@ fn row(r: &Value) -> Result<Vec<Cell>, Malformed> {
     let f = |k: &str| need(r, k, ROWS).and_then(py);
     let trait_ = f("trait")?;
     let gene = Cell::Sub(f("gene")?, f("rsid")?);
+    if is_str(get(r, "status", ROWS)?, "low_gq") {
+        return Ok(vec![
+            Cell::Text(trait_),
+            gene,
+            Cell::Text(".".to_owned()),
+            Cell::Sub(f("reading")?, f("note")?),
+            Cell::Text(format!("PMID {}", f("pmids")?)),
+        ]);
+    }
     let mut genotype = vec![Inline::Text(f("genotype")?)];
     genotype.extend(ancestry_badge(r, ROWS)?);
     Ok(vec![
@@ -206,25 +241,29 @@ fn rules_html(d: &Section<'_>, sample: &str) -> Result<Vec<Line>, Malformed> {
 /// read, the rules, and the APOE lines folded away behind a warning.
 pub fn html_lines(d: &Section<'_>, sample: &str) -> Result<Vec<Line>, Malformed> {
     let n = |k: &str| d.need(k).and_then(py);
-    let mut out = vec![
-        Line::Stat(
-            "Read / no genotype / other allele".to_owned(),
-            Inline::Text(format!(
-                "{} / {} / {}",
-                n("called")?,
-                n("not_covered")?,
-                n("other_allele")?
-            )),
-        ),
-        Line::Table(Table {
-            head: head(),
-            rows: list(d, "rows", true)?
-                .iter()
-                .map(row)
-                .collect::<Result<_, _>>()?,
-            ..Table::default()
-        }),
-    ];
+    let mut out = vec![Line::Stat(
+        "Read / no genotype / other allele".to_owned(),
+        Inline::Text(format!(
+            "{} / {} / {}",
+            n("called")?,
+            n("not_covered")?,
+            n("other_allele")?
+        )),
+    )];
+    if let Some(count) = low_gq_count(d.data) {
+        out.push(Line::Stat(
+            LOW_GQ_LABEL.to_owned(),
+            Inline::Text(count.to_string()),
+        ));
+    }
+    out.push(Line::Table(Table {
+        head: head(),
+        rows: list(d, "rows", true)?
+            .iter()
+            .map(row)
+            .collect::<Result<_, _>>()?,
+        ..Table::default()
+    }));
     out.extend(rules_html(d, sample)?);
     out.extend(apoe::html_line(list(d, "apoe", false)?, head(), row)?);
     out.push(Line::Note(format!(
