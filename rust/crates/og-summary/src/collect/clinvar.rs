@@ -115,6 +115,91 @@ pub struct Hit {
     pub low_confidence: bool,
     pub frequency: Option<Frequency>,
     pub cdna: Option<Value>,
+    /// The conditions ClinVar names for the allele; `None` when the record
+    /// carries neither `CLNDN` nor `CLNDISDB` (a hits VCF written before
+    /// step 06 kept them, or a hand-built ClinVar file without them).
+    pub conditions: Option<Vec<Condition>>,
+}
+
+/// One condition ClinVar names for an allele: its name (`CLNDN`, `_` read
+/// as a space) and its database ids (`CLNDISDB`, such as `OMIM:171400` or
+/// `MedGen:C0025269`), paired by their place in the `|` lists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Condition {
+    pub name: String,
+    pub ids: Vec<String>,
+}
+
+impl Condition {
+    /// ClinVar's placeholders for a submission that names no condition.
+    pub fn placeholder(&self) -> bool {
+        matches!(
+            self.name.to_ascii_lowercase().as_str(),
+            "" | "not provided" | "not specified"
+        )
+    }
+}
+
+/// The conditions of one INFO field, `None` without `CLNDN` and `CLNDISDB`.
+pub fn conditions(info: &HashMap<&str, &str>) -> Option<Vec<Condition>> {
+    let (names, dbs) = (info.get("CLNDN"), info.get("CLNDISDB"));
+    if names.is_none() && dbs.is_none() {
+        return None;
+    }
+    let split = |v: Option<&&str>| -> Vec<String> {
+        v.filter(|v| !v.is_empty() && **v != ".")
+            .map(|v| v.split('|').map(str::to_owned).collect())
+            .unwrap_or_default()
+    };
+    let (names, dbs) = (split(names), split(dbs));
+    Some(
+        (0..names.len().max(dbs.len()))
+            .map(|i| Condition {
+                name: names
+                    .get(i)
+                    .map(|n| n.replace('_', " ").trim().to_owned())
+                    .filter(|n| n != ".")
+                    .unwrap_or_default(),
+                ids: dbs
+                    .get(i)
+                    .map(|d| {
+                        d.split(',')
+                            .map(str::trim)
+                            .filter(|x| !x.is_empty() && *x != ".")
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+            .collect(),
+    )
+}
+
+/// The two summary fields of a hit's conditions: `clinvar_condition`, the
+/// names ClinVar gives joined by " / " (its placeholders "not provided" and
+/// "not specified" left out; null when no name is left), and
+/// `clinvar_condition_ids`, the database ids of those named conditions.
+pub fn condition_fields(c: &[Condition]) -> [(&'static str, Value); 2] {
+    let named: Vec<&Condition> = c.iter().filter(|x| !x.placeholder()).collect();
+    let mut ids: Vec<Value> = Vec::new();
+    for id in named.iter().flat_map(|x| &x.ids) {
+        let v = Value::Str(id.clone());
+        if !ids.contains(&v) {
+            ids.push(v);
+        }
+    }
+    let names: Vec<&str> = named.iter().map(|x| x.name.as_str()).collect();
+    [
+        (
+            "clinvar_condition",
+            if names.is_empty() {
+                Value::Null
+            } else {
+                Value::Str(names.join(" / "))
+            },
+        ),
+        ("clinvar_condition_ids", Value::Array(ids)),
+    ]
 }
 
 /// gnomAD and rsIDs of one hit from VEP.
@@ -174,6 +259,7 @@ impl Hit {
             low_confidence: gq.is_some_and(|v| v < floor.gq) || dp.is_some_and(|v| v < floor.dp),
             frequency: None,
             cdna: None,
+            conditions: conditions(&info),
         })
     }
 
@@ -224,6 +310,11 @@ impl Hit {
         put(&mut m, "dp", opt_int(self.dp));
         put(&mut m, "gq", opt_int(self.gq));
         put(&mut m, "low_confidence", Value::Bool(self.low_confidence));
+        if let Some(c) = &self.conditions {
+            for (k, v) in condition_fields(c) {
+                put(&mut m, k, v);
+            }
+        }
         if let Some(f) = &self.frequency {
             let af = py_max(f.exome.into_iter().chain(f.genome));
             put(&mut m, "gnomad_exome_af", opt_f(f.exome));
@@ -788,6 +879,40 @@ mod tests {
         assert_eq!(allele_copies(""), (0, 0));
         assert_eq!(zygosity_word(1, 1), "hemizygous");
         assert_eq!(zygosity_word(0, 2), "unknown");
+    }
+
+    #[test]
+    fn conditions_pair_names_with_their_ids() {
+        let info = info_map(
+            "GENEINFO=RET:5979;CLNDN=Hirschsprung_disease,_susceptibility_to,_1|not_provided;\
+             CLNDISDB=MONDO:MONDO:0018309,OMIM:142623|MedGen:CN517202",
+        );
+        let c = conditions(&info).unwrap();
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].name, "Hirschsprung disease, susceptibility to, 1");
+        assert_eq!(c[0].ids, ["MONDO:MONDO:0018309", "OMIM:142623"]);
+        assert!(c[1].placeholder());
+        let [(_, name), (_, ids)] = condition_fields(&c);
+        assert_eq!(
+            name,
+            Value::Str("Hirschsprung disease, susceptibility to, 1".into())
+        );
+        assert_eq!(
+            ids,
+            Value::Array(vec![
+                Value::Str("MONDO:MONDO:0018309".into()),
+                Value::Str("OMIM:142623".into())
+            ])
+        );
+        // Only placeholders: the field is there, with no name.
+        let only = conditions(&info_map("CLNDN=not_provided;CLNDISDB=MedGen:CN517202")).unwrap();
+        assert_eq!(condition_fields(&only)[0].1, Value::Null);
+        // Neither field: no conditions at all, so no new summary field.
+        assert_eq!(conditions(&info_map("GENEINFO=RET:5979")), None);
+        // CLNDN without CLNDISDB, as in a hand-built file.
+        let bare = conditions(&info_map("CLNDN=Medullary_thyroid_carcinoma")).unwrap();
+        assert_eq!(bare[0].name, "Medullary thyroid carcinoma");
+        assert!(bare[0].ids.is_empty());
     }
 
     #[test]
