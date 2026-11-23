@@ -50,6 +50,10 @@ name: Public evidence
 #                      fails when the interval holds the assembled count in
 #                      fewer than LPA_MIN of the genomes; the estimates handed
 #                      to other genomes are the red control and must fail it.
+#                      A genome whose reads EBI does not serve in 4 tries is
+#                      named and left out of the gate; the job fails when
+#                      fewer than LPA_READ_MIN of the genomes were read, or
+#                      when step 46 fails on reads it got.
 #                      The full 96-genome table is in docs/46-lpa.md.
 #
 # It runs by hand only (workflow_dispatch). Public repo: the GitHub-hosted
@@ -115,11 +119,14 @@ env:
   Y_REF_CHRY_MD5: ce3e31103314a704255f3cd90369ecce
   Y_MIN: "0.95"
   # lpa-benchmark: chr6 of the same reference (the CRAM header's M5), HG002's
-  # reads (the BAM e2e case lpa-1 reads), and the share of genomes whose
-  # interval must hold the assembled count.
+  # reads (the BAM e2e case lpa-1 reads), the share of genomes whose
+  # interval must hold the assembled count, and the share that must be read
+  # (0.93: 90 of 96; from the runner EBI failed to serve 1 or 2 of the 96 in
+  # 4 tries on each of two runs).
   LPA_REF_CHR6_MD5: 5691468a67c7e7a7b5f2a3a683792c29
   LPA_HG002_BAM: https://storage.googleapis.com/deepvariant/case-study-testdata/HG002.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam
   LPA_MIN: "0.95"
+  LPA_READ_MIN: "0.93"
 
 jobs:
   archaic-sites:
@@ -957,7 +964,7 @@ jobs:
           set -euo pipefail
           . ./versions.env
           D="${RUNNER_TEMP}/lpa"; G="${D}/genome"
-          mkdir -p "${G}/reference" "${D}/rows" "${D}/logs"
+          mkdir -p "${G}/reference" "${D}/rows" "${D}/unread" "${D}/logs"
           echo "D=${D}" >> "$GITHUB_ENV"
           echo "G=${G}" >> "$GITHUB_ENV"
           curl -fsSL --retry 5 -o "${D}/hc.index" "$Y_HC_INDEX"
@@ -990,7 +997,8 @@ jobs:
           # slice must be a whole BAM (samtools quickcheck). EBI fails a read
           # now and then: 4 tries, 1, 2 and 4 minutes apart; a bad index is
           # deleted and fetched again. A retry reads the same file again and
-          # nothing else.
+          # nothing else. A genome still not read is marked in unread/; a
+          # genome with neither a row nor that mark failed in step 46.
           one() {
             local s=$1 url ix n bam="${G}/$1/aligned/$1_sorted.bam"
             if [ "$s" = HG002 ]; then url=$LPA_HG002_BAM; ix=bai; else
@@ -1012,7 +1020,7 @@ jobs:
               fi
               # A whole .crai is kept for the next try; anything else is fetched again.
               if [ "$ix" = bai ] || ! gzip -t "${G}/${s}/reads.${ix}" 2> /dev/null; then rm -f "${G}/${s}/reads.${ix}"; fi
-              [ "$n" -lt 4 ] || { echo "::error::${s}: reading LPA from ${url} failed 4 times"; return 1; }
+              [ "$n" -lt 4 ] || { echo "::warning::${s}: reading LPA from ${url} failed 4 times; left out"; : > "${D}/unread/${s}"; return 1; }
               echo "::warning::${s}: reading LPA from ${url} failed (try $n of 4); next try in $((60 << (n - 1))) s"
               sleep $((60 << (n - 1)))
             done
@@ -1026,10 +1034,20 @@ jobs:
           # Three genomes at a time: the reads are a few MB each, the wait is
           # EBI's, and six streams at once got indexes cut short.
           # shellcheck disable=SC2016  # $1 belongs to the inner bash
-          printf '%s\n' "${want[@]}" | xargs -P 3 -I{} bash -c 'one "$1"' _ {}
+          printf '%s\n' "${want[@]}" | xargs -P 3 -I{} bash -c 'one "$1"' _ {} || true
           printf 'sample\tkiv2_copies\tci95_low\tci95_high\n' > "${D}/calls.tsv"
-          for s in "${want[@]}"; do cat "${D}/rows/${s}.tsv"; done >> "${D}/calls.tsv"
+          unread=()
+          for s in "${want[@]}"; do
+            if [ -s "${D}/rows/${s}.tsv" ]; then cat "${D}/rows/${s}.tsv" >> "${D}/calls.tsv"
+            elif [ -e "${D}/unread/${s}" ]; then unread+=("$s")
+            else echo "::error::${s}: no row and not marked unread (step 46 failed on its reads)"; exit 1
+            fi
+          done
           cat "${D}/calls.tsv"
+          read_n=$(( ${#want[@]} - ${#unread[@]} ))
+          echo "${read_n} of ${#want[@]} genomes read; not read: ${unread[*]:-none}" | tee "${D}/read.txt"
+          awk -v r="$read_n" -v n="${#want[@]}" -v m="$LPA_READ_MIN" 'BEGIN {exit !(r >= 3 && r >= m * n)}' ||
+            { echo "::error::only ${read_n} of ${#want[@]} genomes were read; the gate needs ${LPA_READ_MIN} of them, and 3 at least"; exit 1; }
 
       - name: The intervals against the assembled counts (the gate), and the red control
         run: |
@@ -1039,7 +1057,8 @@ jobs:
             echo ""
             bin/og dev evidence lpa-bench "${D}/calls.tsv" "${D}/bench.tsv" "$LPA_MIN"
             echo ""
-            echo "Gate: the interval holds the assembled count in at least ${LPA_MIN} of the genomes."
+            echo "Gate: the interval holds the assembled count in at least ${LPA_MIN} of the genomes read."
+            echo "Genomes: $(cat "${D}/read.txt")."
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
           # Red control: each genome gets the estimate and interval of the
