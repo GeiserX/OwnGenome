@@ -89,6 +89,14 @@ tests/fixtures/consumer_export/sites.tsv.gz
     licence (assets/licences/23andme2vcf-LICENSE.txt); NCBI dbSNP b157, no
     restriction on use (tests/fixtures/consumer_export/README.md).
 
+tests/fixtures/pharmcat/report-3.2.0.json
+tests/fixtures/pharmcat/report-3.4.0.json
+tests/fixtures/pharmcat/pharmcat-docs-example.json
+    PharmCAT report output. PharmGKB (ClinPGx) content is under CC BY-SA 4.0
+    (https://creativecommons.org/licenses/by-sa/4.0/). CPIC content is under
+    CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). The reports
+    were trimmed as described in tests/fixtures/pharmcat/README.md.
+
 The og binaries
 ---------------
 
