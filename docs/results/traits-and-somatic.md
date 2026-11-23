@@ -50,3 +50,21 @@ Mutect2 in tumor-only mode looks for somatic mutations -- variants acquired duri
 - This step has a much higher false positive rate than any other step in the pipeline
 - Do not interpret PASS variants as confirmed somatic without cross-referencing with the germline VCF (step 3) and gnomAD frequencies (step 13)
 - If a variant is also called at ~50% AF by DeepVariant in step 3, it is almost certainly germline
+
+## Traits panel (Step 42)
+
+The text and HTML reports and the live results card show the low-quality genotype call count when the panel flagged at least one call. A low-quality site appears as **not read**. The position had a call, but its quality was below the panel's floor or the caller filtered it. See [Genome Traits Panel](../42-traits.md) for the call rules.
+
+## Blood groups (Step 41)
+
+The ABO markers cover common alleles. RhD can require read depth, and the Duffy prediction can depend on whether the VCF phases its markers together. The reports and live results show the ABO and RhD limits and the Duffy phase when the summary supplies those notes. The original notes are in the step's blood-group TSV. See [Blood Group Genotyping](../41-bloodtype.md).
+
+## Clonal haematopoiesis (Step 49)
+
+When the depth table supplies an assessable share, the report and live results show the share of each gene's coding bases with enough read support at the stated variant allele fraction (VAF). The limit describes read support before the variant caller and its filters. Genes without a gene-wide read-support limit can still have some assessable bases.
+
+Read a call as possible clonal haematopoiesis. The call note labels it as non-diagnostic and says when the read counts also fit an inherited heterozygous variant. See [Clonal Haematopoiesis](../49-chip.md) for the limits of the screen.
+
+## Viral DNA (Step 47)
+
+A row marked **below threshold** has counted reads below the reporting minimum. The reports and live results show the reason when the row supplies it. A negative HHV-6 result in this context is limited to the reads examined. See [Viral DNA](../47-viral.md) for what a negative result covers.

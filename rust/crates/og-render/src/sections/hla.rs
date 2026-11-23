@@ -66,11 +66,14 @@ pub fn hla_text(locus: &Value) -> Result<String, Malformed> {
     if txt.is_empty() {
         txt = "no call".to_owned();
     }
+    let withheld = get(locus, "withheld_from_pharmcat", p)?.is_some_and(truthy);
     if get(locus, "low_confidence", p)?.is_some_and(truthy) {
         txt += "; low confidence (T1K quality 0 or below)";
-        if get(locus, "withheld_from_pharmcat", p)?.is_some_and(truthy) {
-            txt += ", not passed to PharmCAT";
-        }
+    } else if withheld {
+        txt += "; ambiguous for PharmCAT (tied candidates or an expression suffix)";
+    }
+    if withheld {
+        txt += ", not passed to PharmCAT";
     }
     if let Some(l) = get(locus, "label", p)?.filter(|v| truthy(v)) {
         txt += &format!(" [{}]", py(l)?);

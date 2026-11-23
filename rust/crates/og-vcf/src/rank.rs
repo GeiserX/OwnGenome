@@ -751,7 +751,7 @@ mod tests {
     use super::*;
 
     const HEAD: &str = "##fileformat=VCFv4.2\n##INFO=<ID=CSQ,Number=.,Type=String,Description=\"Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature|CANONICAL|MANE_SELECT|MAX_AF\">\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
-    /// The seven records of the summary's test (tests/test_collect_summary.py).
+    /// The seven records of the clinical MANE test (rust/crates/og-summary/tests/port_tests_summary.rs).
     const BODY: &str = "chr2\t100\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|TTN|ENST2|||0.0001,T|intron_variant|MODIFIER|TTN|ENST1|YES|NM_1|0.0001\tGT:GQ:DP:AD\t0/1:50:30:15,15
 chr13\t200\t.\tA\tAT\t50\tPASS\tCSQ=AT|frameshift_variant|HIGH|BRCA2|ENST3|YES|NM_2|0.0001\tGT:GQ:DP:AD\t0/1:12:.:3,2
 chr19\t300\t.\tG\tA\t50\tPASS\tCSQ=A|stop_gained|HIGH|LDLR|ENST4|YES|NM_3|0.0001\tGT:GQ:DP:AD\t1/1:11:17:12,5

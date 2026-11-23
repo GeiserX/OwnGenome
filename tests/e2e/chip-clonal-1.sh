@@ -118,7 +118,8 @@ check_eq "and the germline-looking call is not counted" \
 # --- the reports ----------------------------------------------------------------------
 "${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$P" --sample-dir "${G}/${P}" -o "${T}/P.txt" -o "${T}/P.html" >/dev/null
 check "the text report has the CHIP section with R882H" has 'DNMT3A R882H: VAF 0\.[0-9]+' "$(cat "${T}/P.txt" 2>/dev/null)"
-check "and the detection limit" has 'Detection limit: a clone of VAF about [0-9]+% or more' "$(cat "${T}/P.txt" 2>/dev/null)"
+check "and the read-support limit" has 'Read-support limit: at a VAF of about [0-9]+%' "$(cat "${T}/P.txt" 2>/dev/null)"
+check "and the assessable share" has "Share of each gene's coding bases assessable at the stated VAF: .*DNMT3A [0-9]+%" "$(cat "${T}/P.txt" 2>/dev/null)"
 check "the HTML report has the CHIP card" has 'Clonal Haematopoiesis \(CHIP\)</h2>' "$(cat "${T}/P.html" 2>/dev/null)"
 "${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$U" --sample-dir "${G}/${U}" -o "${T}/U.txt" >/dev/null
 check "control: the unplanted report says no CHIP call" has 'No CHIP call\.' "$(cat "${T}/U.txt" 2>/dev/null)"
