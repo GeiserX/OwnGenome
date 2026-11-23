@@ -76,23 +76,27 @@ pub fn read_count_text(d: &Section<'_>) -> Result<String, Malformed> {
 /// FREEMIX with its verdict, as both reports print it.
 pub fn freemix_text(q: &Section<'_>) -> Result<String, Malformed> {
     let freemix = q.get("freemix")?;
-    if contamination_is_uncertain(q)? {
+    let contamination = q.get("contamination")?;
+    let warned = is_str(contamination, "warn");
+    let uncertainty = if contamination_is_uncertain(q)? {
+        Some(match q.get("contamination_confidence_reason")? {
+            Some(Value::Str(reason)) if !reason.is_empty() => format!(": {reason}"),
+            _ => String::new(),
+        })
+    } else {
+        None
+    };
+    if is_str(contamination, "ok")
+        && let Some(reason) = &uncertainty
+    {
         let mut result = "uncertain".to_owned();
         if let Some(value) = freemix.filter(|v| truthy(v)) {
             result += &format!(" (FREEMIX {})", py(value)?);
         }
-        if is_str(q.get("contamination")?, "warn") {
-            result += " (above the warning threshold)";
-        }
-        if let Some(Value::Str(reason)) = q.get("contamination_confidence_reason")?
-            && !reason.is_empty()
-        {
-            result += ": ";
-            result += reason;
-        }
+        result += reason;
         return Ok(result);
     }
-    if is_str(q.get("contamination")?, "not_run") || !freemix.is_some_and(truthy) {
+    if is_str(contamination, "not_run") || !freemix.is_some_and(truthy) {
         return Ok("not run".to_owned());
     }
     let freemix = py(freemix.expect("checked above"))?;
@@ -102,11 +106,16 @@ pub fn freemix_text(q: &Section<'_>) -> Result<String, Malformed> {
     } else {
         ""
     };
-    Ok(if is_str(q.get("contamination")?, "warn") {
+    let mut result = if warned {
         format!("{freemix} (above {warn}: possible contamination, see docs/33-sample-qc.md{few})")
     } else {
         format!("{freemix} (warning above {warn}{few})")
-    })
+    };
+    if warned && let Some(reason) = uncertainty {
+        result += ". The estimate is uncertain";
+        result += &reason;
+    }
+    Ok(result)
 }
 
 /// One line per step that names a sex-chromosome karyotype (indexcov, step

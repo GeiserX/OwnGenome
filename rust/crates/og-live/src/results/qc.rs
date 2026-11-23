@@ -216,5 +216,16 @@ mod tests {
             ]
         );
         assert!(shown.attention);
+
+        let summary = Summary::parse(
+            r#"{"sections":{"sample_qc":{"state":"ok","data":{
+                "contamination":"ok","freemix":"0.0010",
+                "contamination_confidence":"uncertain",
+                "contamination_confidence_reason":"FREEMIX rests on 300 markers",
+                "identity":"checked"
+            }}}}"#,
+        )
+        .unwrap();
+        assert!(card("qc", &summary).unwrap().attention);
     }
 }

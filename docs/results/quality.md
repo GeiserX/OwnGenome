@@ -13,7 +13,7 @@ These steps check that the data is good enough for everything else. Look at them
 
 ## What Part of the Genome a Run Covered
 
-Some results are a share, a sum or a placement over the whole genome: callability, the polygenic scores, fine-grained ancestry, telomere content, runs of homozygosity and archaic ancestry. A run on part of the genome (`--intervals`, or a VCF or BAM cut down to a few chromosomes) can also produce these results. The reports list each result's scope in the run header when the summary has a mark for it.
+Some results are a share, a sum or a placement over the whole genome: callability, the polygenic scores, fine-grained ancestry, telomere content, runs of homozygosity and archaic ancestry. A run on part of the genome (`--intervals`, or a VCF or BAM cut down to a few chromosomes) can also produce these results. When the summary records a scope mark for a result, both reports show it in the result section and list it in the run header. The live site does not show scope marks yet.
 
 So `summary.json` records the run's scope under `scope`. It comes from the chromosomes that the records of the sample VCF are on (`chr20` and `20` count alike):
 
