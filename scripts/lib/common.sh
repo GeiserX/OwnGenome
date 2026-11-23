@@ -436,13 +436,14 @@ _get() {
   fi
 }
 
-# fetch URL DEST [md5|sha256|sum VALUE|CHECKSUM_URL]
+# fetch URL DEST [md5|sha256|sum|gzip-ends VALUE|CHECKSUM_URL]
 #
 # Downloads URL to DEST.part (resuming one left by an interrupted run), checks
 # it, then renames it to DEST. Nothing ever writes DEST directly, so a DEST
 # that exists is whole. The check is the checksum when one is given (VALUE, or
 # the file at CHECKSUM_URL: its only line, or the line naming URL's file), else
 # `gzip -t` for a .gz file, else non-empty.
+# For gzip-ends, VALUE is bytes:first-MiB-sha256:last-MiB-sha256.
 #
 # Each try downloads, then checks. A transfer that broke keeps DEST.part, and
 # the next try resumes it. A download that fails its check is deleted, and the
@@ -508,7 +509,18 @@ fetch() {
 # downloads it again; 2 for an error a new download cannot fix.
 _fetch_check() {
   local kind=$1 want=$2 part=$3 dest=$4 name=$5 got
-  if [ -n "$kind" ]; then
+  if [ "$kind" = gzip-ends ]; then
+    local bytes first last size
+    IFS=: read -r bytes first last <<< "$want"
+    size=$(stat -L -c %s "$part" 2>/dev/null || stat -L -f %z "$part") || return 2
+    if [ "$size" != "$bytes" ] \
+        || [ "$(head -c 1048576 "$part" | _digest sha256 -)" != "$first" ] \
+        || [ "$(tail -c 1048576 "$part" | _digest sha256 -)" != "$last" ] \
+        || ! gzip -t "$part" 2>/dev/null; then
+      echo "${name} failed its pinned size, SHA-256 range or gzip check"
+      return 1
+    fi
+  elif [ -n "$kind" ]; then
     got=$(_digest "$kind" "$part") || return 2
     if [ "$kind" = sum ]; then
       case "$want" in

@@ -7,15 +7,17 @@
 #   whose step runs it), excluded (left out: reason says why).
 # value: tool and input rows: how to install the data, '-' when none is needed; switch rows: the value EVERYTHING
 #   sets; setup and image rows: the rows they serve, comma separated.
+# setup.sh --everything runs the setup rows from top to bottom after base setup.
+
 # nextflow: switch rows with a Nextflow parameter: that parameter as conf/everything.config sets it, else '-'.
 # Rows named --<param> stand for a Nextflow parameter that has no run-all.sh switch.
 kind	name	value	nextflow	reason
 tool	pharmcat	-	-	step 07
 tool	cpic	-	-	step 27
 tool	clinvar	setup.sh	-	step 06
-tool	pypgx	the pypgx-bundle, by hand: docs/00-reference-setup.md	-	step 32
+tool	pypgx	setup.sh --pypgx-data	-	step 32
 tool	vep	setup.sh --vep-cache	-	step 13
-tool	vcfanno	setup.sh --vep-cache, then the score files of docs/00-reference-setup.md	-	step 30
+tool	vcfanno	setup.sh --vep-cache, then setup.sh --annotation-scores	-	step 30
 tool	slivar	setup.sh --vep-cache	-	step 31
 tool	clinical_filter	setup.sh --vep-cache	-	step 23
 tool	cpsr	setup.sh --clinical-data	-	step 17
@@ -33,7 +35,7 @@ tool	mito_variants	-	-	step 20
 tool	cyrius	setup.sh --cyrius	-	step 21; its licence is non-commercial, and installing it accepts that licence
 tool	manta	-	-	step 04
 tool	delly	-	-	step 19
-tool	cnvpytor	the CNVpytor resources, by hand: docs/00-reference-setup.md	-	step 18
+tool	cnvpytor	setup.sh --cnvpytor-data	-	step 18
 tool	duphold	-	-	step 15
 tool	annotsv	setup.sh --annotsv-data	-	step 05
 tool	survivor_merge	-	-	step 22
@@ -52,7 +54,7 @@ tool	archaic	setup.sh --archaic	-	step 43
 tool	ancient	setup.sh --ancient-panel	-	step 44
 tool	y_str	-	-	step 45; a female sample is skipped
 tool	viral	setup.sh --viral-data	-	step 47
-tool	chip	setup.sh --chip-data	-	step 49
+tool	chip	setup.sh --chip-data and setup.sh --somatic-data	-	step 49
 tool	mei	setup.sh --megane-kmers	-	step 50
 tool	mocha	setup.sh --mocha-data	-	step 51
 tool	locityper	setup.sh --locityper-data	-	step 53
@@ -123,8 +125,14 @@ setup	--locityper-data	locityper	-	Locityper's database
 setup	--vep-cache	vep,vcfanno,slivar,clinical_filter	-	the VEP cache; part of a full setup
 setup	--annotsv-data	annotsv	-	AnnotSV's data; part of a full setup
 setup	--archaic	archaic	-	the archaic table
+setup	--cnvpytor-data	cnvpytor	-	CNVpytor reference resources
+setup	--pypgx-data	pypgx	-	the PyPGx data bundle
+setup	--annotation-scores	vcfanno	-	CADD, masked SpliceAI, REVEL and AlphaMissense
+setup	--somatic-data	SOMATIC,chip	-	GATK resources for steps 29 and 49
+setup	--bwa-index	GRIDSS	-	the classic BWA index
 setup	--clinical-data	cpsr,vep	-	the VEP caches and the CPSR bundle; part of a full setup
 setup	--sample-qc-data	sample_qc	-	somalier's sites and VerifyBamID2's panel; part of a full setup
+excluded	--everything	-	-	runs all setup rows
 excluded	--masked-reference	-	-	another reference: every sample is aligned again on it
 excluded	--og	-	-	builds og, which a full setup does too
 excluded	--no-clinical-data	-	-	installs less
