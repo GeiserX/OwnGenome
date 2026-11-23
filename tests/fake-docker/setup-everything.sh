@@ -36,7 +36,7 @@ awk -v legacy="$legacy" '
 chmod +x "$SETUP"
 
 # Pin the exact bytes served by fake wget. Keep the real fetch and digest
-# code, including the SpliceAI range checks. All data files stay tiny.
+# code, including the SpliceAI range checks. The largest fixture is about two MiB.
 # shellcheck source=../../versions.env
 . "${REPO_ROOT}/versions.env"
 export FAKE_DOWNLOAD_DIR="${CASE_WORK}/downloads"
@@ -123,8 +123,13 @@ case "$1" in
     mkdir -p "$dest"
     printf '%s\n' "$FAKE_PYPGX_COMMIT" > "${dest}/commit" ;;
   -C)
-    [ "$3 $4" = 'rev-parse HEAD' ]
+    # Git accepts the checkout created by this setup process. The existing
+    # bundle below requires an explicit safe.directory override.
+    [[ "$2" = */.pypgx.*/bundle ]] && [ "$3 $4" = 'rev-parse HEAD' ] || exit 1
     cat "${2}/commit" ;;
+  -c)
+    [ "$2" = "safe.directory=$4" ] && [ "$3 $5 $6" = '-C rev-parse HEAD' ] || exit 1
+    cat "${4}/commit" ;;
   *) exit 1 ;;
 esac
 GIT
@@ -175,6 +180,92 @@ output_has retry '^Everything setup complete!$'
 [ "$(grep -c '^wget ' "$FAKE_DOCKER_LOG")" -eq 2 ] || fail 'retry downloaded more than the missing CADD pair'
 [ -s "${G}/annotations/whole_genome_SNVs.tsv.gz.tbi" ] || fail 'retry did not finish CADD'
 output_has retry 'Classic BWA index already present'
+
+# Force the score preflight to run one KiB short. The same free space
+# suffices after a one-KiB partial download is present.
+cadd="${G}/annotations/whole_genome_SNVs.tsv.gz"
+rm -f "$cadd" "${cadd}.tbi"
+printf 'CADD_SNV_BYTES=2048\n' >> "${COPY}/versions.env"
+export NORMAL_DF
+NORMAL_DF=$(command -v df)
+cat > "${CASE_WORK}/test-bin/df" <<'DF'
+#!/usr/bin/env bash
+if [ -n "${FAKE_SCORE_FREE_KIB:-}" ]; then
+  printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+  printf 'fakefs 2147483648 0 %s 0%% /\n' "$FAKE_SCORE_FREE_KIB"
+else
+  exec "$NORMAL_DF" "$@"
+fi
+DF
+chmod +x "${CASE_WORK}/test-bin/df"
+export PATH="${CASE_WORK}/test-bin:$PATH"
+: > "$FAKE_DOCKER_LOG"
+space_with_margin=$((5 * 1048576 + 1))
+FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 1 low-space "$SETUP" --annotation-scores "$G"
+output_has low-space '^\[WARN\] Skipping annotation scores: needs 2048 more bytes for CADD and SpliceAI plus a 5 GiB margin\.$'
+output_has low-space '^  Install later: .*setup\.sh --annotation-scores '
+[ ! -s "$FAKE_DOCKER_LOG" ] || fail 'low-space preflight started a download'
+head -c 1024 /dev/zero > "${cadd}.part"
+FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 0 resume-with-space "$SETUP" --annotation-scores "$G"
+[ -s "$cadd" ] && [ -s "${cadd}.tbi" ] || fail 'resumed download did not publish the CADD pair'
+[ ! -e "${cadd}.part" ] || fail 'resumed download left a .part'
+
+# The outer gzip members each span more than one MiB. Corrupt the middle
+# member's CRC to keep the pinned ends and size intact. Drop that member
+# entirely to retain valid gzip and both pinned ends with the wrong size.
+fixture="${CASE_WORK}/spliceai-gzip"
+mkdir "$fixture"
+for member in first last; do
+  head -c 1048576 /dev/urandom | gzip -n > "${fixture}/${member}.gz"
+  [ "$(wc -c < "${fixture}/${member}.gz")" -gt 1048576 ] || fail 'gzip member must span more than one MiB'
+done
+printf 'SpliceAI test payload\n' | gzip -n > "${fixture}/middle.gz"
+cat "${fixture}/first.gz" "${fixture}/middle.gz" "${fixture}/last.gz" > "${fixture}/good.gz"
+size=$(stat -c %s "${fixture}/good.gz")
+first=$(head -c 1048576 "${fixture}/good.gz" | sha256sum | awk '{print $1}')
+last=$(tail -c 1048576 "${fixture}/good.gz" | sha256sum | awk '{print $1}')
+read -r snv _ <<< "$SPLICEAI_MASKED_SNV_PIN"
+printf 'SPLICEAI_MASKED_SNV_PIN="%s gzip-ends %s:%s:%s"\n' "$snv" "$size" "$first" "$last" >> "${COPY}/versions.env"
+
+cp "${fixture}/good.gz" "${fixture}/bad-crc.gz"
+crc_offset=$(( $(stat -c %s "${fixture}/first.gz") + $(stat -c %s "${fixture}/middle.gz") - 8 ))
+crc_byte=$(od -An -tu1 -j "$crc_offset" -N 1 "${fixture}/good.gz")
+printf '%b' "\\$(printf '%03o' "$((crc_byte ^ 1))")" |
+  dd of="${fixture}/bad-crc.gz" bs=1 seek="$crc_offset" conv=notrunc status=none
+cat "${fixture}/first.gz" "${fixture}/last.gz" > "${fixture}/missing-member.gz"
+head -c "$((size - 1))" "${fixture}/good.gz" > "${fixture}/truncated.gz"
+
+masked="${G}/annotations/${snv}"
+for body in bad-crc missing-member truncated good; do
+  rm -f "$masked" "${masked}.tbi"
+  cp "${fixture}/${body}.gz" "${FAKE_DOWNLOAD_DIR}/${snv}"
+  if [ "$body" = good ]; then
+    run_expect 0 "gzip-${body}" "$SETUP" --annotation-scores "$G"
+    cmp "${fixture}/good.gz" "$masked"
+    [ -s "${masked}.tbi" ] || fail 'valid gzip is missing its index'
+  else
+    run_expect 1 "gzip-${body}" "$SETUP" --annotation-scores "$G"
+    output_has "gzip-${body}" 'failed its pinned size, SHA-256 range or gzip check'
+    [ ! -e "$masked" ] && [ ! -e "${masked}.tbi" ] || fail "published the invalid SpliceAI pair ($body)"
+  fi
+  [ ! -e "${masked}.part" ] || fail "left a SpliceAI .part ($body)"
+done
+
+# A complete raw SNV pair replaces only masked SNVs. Without a raw indel
+# index, setup still installs the masked indel pair.
+read -r indel _ <<< "$SPLICEAI_MASKED_INDEL_PIN"
+masked_indel="${G}/annotations/${indel}"
+raw_snv="${masked/.masked./.raw.}"
+raw_indel="${masked_indel/.masked./.raw.}"
+mv "$masked" "$raw_snv"
+mv "${masked}.tbi" "${raw_snv}.tbi"
+mv "$masked_indel" "$raw_indel"
+rm -f "${masked_indel}.tbi"
+FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 0 prefer-raw "$SETUP" --annotation-scores "$G"
+output_has prefer-raw '^\[OK\] SpliceAI raw scores already present: .*spliceai_scores\.raw\.snv\.hg38\.vcf\.gz and .*spliceai_scores\.raw\.snv\.hg38\.vcf\.gz\.tbi$'
+[ ! -e "$masked" ] && [ ! -e "${masked}.tbi" ] || fail 'downloaded masked SNVs despite a complete raw pair'
+[ -s "$masked_indel" ] && [ -s "${masked_indel}.tbi" ] || fail 'incomplete raw indels blocked the masked pair'
+
 
 # A manifest row with no handler must fail and be named in the summary.
 printf 'setup\t--missing-installer\tvcfanno\t-\tplanted test row\n' >> "${COPY}/assets/everything.tsv"

@@ -174,7 +174,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
   echo "  --everything  Run full setup and every installer in assets/everything.tsv."
-  echo "  --annotation-scores  Install CADD, masked SpliceAI, REVEL and AlphaMissense (~175 GB)."
+  echo "  --annotation-scores  Install CADD, masked SpliceAI, REVEL and AlphaMissense (~175 GiB)."
   echo "  --somatic-data       Install GATK somatic resources for steps 29 and 49."
   echo "  --bwa-index          Build the classic BWA index for GRIDSS."
   echo "  --cnvpytor-data      Install CNVpytor reference files (step 18)."
@@ -361,7 +361,6 @@ install_cyrius() {
     return 0
   fi
   echo "Installing Cyrius ${CYRIUS_VERSION} from ${lock} (hash-locked) into ${dest}"
-  if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then printf '  %s\n' "$CYRIUS_TERMS"; fi
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
   # --net: pip downloads the locked wheels from PyPI.
@@ -2297,13 +2296,65 @@ install_alphamissense() (
   [ -s "${stage}/${dest##*/}.tbi" ] && mv -f "${stage}/${dest##*/}.tbi" "${dest}.tbi"
 )
 
+annotation_score_disk_ok() {
+  local dir=$1 files=$2 rows file kind pin index dest bytes part remaining=0 free retry
+  rows=$(setup_pin_rows "$files") || return 1
+  while read -r file kind pin && read -r index _; do
+    dest="${dir}/${file}"
+    # A complete pair can be reused. A lone score file must match its pin
+    # before the installer can reuse it with a downloaded index.
+    if [ -s "$dest" ] && { [ -s "${dir}/${index}" ] || _fetch_check "$kind" "$pin" "$dest" "$dest" "$file" >/dev/null; }; then
+      continue
+    fi
+    case "$file" in
+      whole_genome_SNVs.tsv.gz) bytes=$CADD_SNV_BYTES ;;
+      gnomad.genomes.r4.0.indel.tsv.gz) bytes=$CADD_INDEL_BYTES ;;
+      *) bytes=${pin%%:*} ;;  # SpliceAI pins start with the byte count.
+    esac
+    if [ -s "${dest}.part" ]; then
+      part=$(stat -L -c %s "${dest}.part" 2>/dev/null || stat -L -f %z "${dest}.part") || return 1
+      bytes=$((bytes - part))
+    fi
+    if [ "$bytes" -gt 0 ]; then remaining=$((remaining + bytes)); fi
+  done <<< "$rows"
+  [ "$remaining" -gt 0 ] || return 0
+
+  retry="${SETUP_CMD} --annotation-scores $(printf '%q' "$GENOME_DIR")"
+  free=$(df -Pk "$dir" 2>/dev/null | awk 'NR == 2 {print $4}') || free=""
+  case "$free" in
+    ''|*[!0-9]*)
+      echo "[WARN] Cannot read free space for annotation scores. Retry: ${retry}" >&2
+      return 1 ;;
+  esac
+  if [ "$free" -lt "$(( (remaining + 1023) / 1024 + 5 * 1048576 ))" ]; then
+    echo "[WARN] Skipping annotation scores: needs ${remaining} more bytes for CADD and SpliceAI plus a 5 GiB margin." >&2
+    echo "  Install later: ${retry}" >&2
+    return 1
+  fi
+}
+
 install_annotation_scores() (
-  local dir="${GENOME_DIR}/annotations" rc=0
+  local dir="${GENOME_DIR}/annotations" rc=0 i key file raw masked_files=""
+  local pin_keys=()
   mkdir -p "$dir" || exit 1
   lock_acquire "${dir}/.setup-scores.lock" || exit 1
   trap 'lock_release "${dir}/.setup-scores.lock"' EXIT
+  read -r -a pin_keys <<< "$SPLICEAI_MASKED_FILES"
+  for ((i = 0; i < ${#pin_keys[@]}; i += 2)); do
+    key=${pin_keys[i]}
+    read -r file _ <<< "${!key}"
+    raw="${dir}/${file/.masked./.raw.}"
+    if [ -s "$raw" ] && [ -s "${raw}.tbi" ]; then
+      echo "[OK] SpliceAI raw scores already present: ${raw} and ${raw}.tbi"
+    else
+      masked_files+=" ${key} ${pin_keys[i+1]}"
+    fi
+  done
+  annotation_score_disk_ok "$dir" "$CADD_FILES $masked_files" || exit 1
   install_indexed_downloads "$dir" "$CADD_BASE_URL" "$CADD_FILES" || rc=1
-  install_indexed_downloads "$dir" "$SPLICEAI_MASKED_BASE_URL" "$SPLICEAI_MASKED_FILES" || rc=1
+  if [ -n "$masked_files" ]; then
+    install_indexed_downloads "$dir" "$SPLICEAI_MASKED_BASE_URL" "$masked_files" || rc=1
+  fi
   install_revel "$dir" || { echo '[WARN] Could not install REVEL.' >&2; rc=1; }
   install_alphamissense "$dir" || { echo '[WARN] Could not install AlphaMissense.' >&2; rc=1; }
   exit "$rc"
@@ -2363,7 +2414,7 @@ install_pypgx_data() (
   lock_acquire "${dest}.setup.lock" || exit 1
   trap 'if [ -n "$stage" ]; then rm -rf "$stage"; fi; lock_release "${dest}.setup.lock"' EXIT
   if [ -d "$dest" ]; then
-    [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null)" = "$PYPGX_BUNDLE_COMMIT" ] && exit 0
+    [ "$(git -c safe.directory="$dest" -C "$dest" rev-parse HEAD 2>/dev/null)" = "$PYPGX_BUNDLE_COMMIT" ] && exit 0
     echo "ERROR: move the existing PyPGx bundle aside before installing ${PYPGX_BUNDLE_VERSION}: ${dest}" >&2
     exit 1
   fi
@@ -2433,7 +2484,9 @@ case "$OPT_IN" in
   pypgx-data) install_pypgx_data; exit $? ;;
   ancestry-panel) install_ancestry_panel; exit $? ;;
   ancestry-fine-panel) install_ancestry_fine_panel; exit $? ;;
-  cyrius) ensure_image PYTHON_IMAGE 21 && install_cyrius; exit $? ;;
+  cyrius)
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then printf '  %s\n' "$CYRIUS_TERMS"; fi
+    ensure_image PYTHON_IMAGE 21 && install_cyrius; exit $? ;;
   parascopy-data) install_parascopy_data && ensure_image PARASCOPY_IMAGE 35; exit $? ;;
   kir-data) install_kir_data; exit $? ;;
   yleaf-data) install_yleaf_data && ensure_image YLEAF_IMAGE 37; exit $? ;;

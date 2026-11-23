@@ -304,7 +304,9 @@ Install all four score sets into `annotations/` with about 175 GiB of free disk 
 ./scripts/setup.sh --annotation-scores "$GENOME_DIR"
 ```
 
-Setup resumes interrupted transfers. It checks CADD scores against the publisher's MD5 and validates the masked SpliceAI scores against the pinned byte sizes, SHA-256 of the first and last MiB, and gzip integrity. Both publishers' Tabix indexes, the REVEL ZIP, and the AlphaMissense download use full SHA-256 pins in `versions.env`.
+Setup checks for enough space to finish the missing CADD and SpliceAI score downloads, plus a 5 GiB margin. It resumes interrupted transfers and skips masked SpliceAI SNV or indel scores when the corresponding raw file and its Tabix index are already present.
+
+It checks CADD scores against the publisher's MD5 and validates the masked SpliceAI scores against the pinned byte sizes, SHA-256 of the first and last MiB, and gzip integrity. Both publishers' Tabix indexes, the REVEL ZIP, and the AlphaMissense download use full SHA-256 pins in `versions.env`.
 
 
 ### CADD v1.7 Pre-scored (SNVs + Indels) — ~83 GB
