@@ -1,0 +1,35 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: MATCH_PHENOTYPE
+Date: 2026-11-23
+Source: PharmCAT  report (match-phenotype.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2C19      *1/*9                          Likely Intermediate Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP2C19 -- Likely Intermediate Metabolizer:
+    Diplotype: *1/*9
+    Drugs with guidance in this PharmCAT report:
+      - clopidogrel [CPIC, Strong]: Guidance for likely IM.
+      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

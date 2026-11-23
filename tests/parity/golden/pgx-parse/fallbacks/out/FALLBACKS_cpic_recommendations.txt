@@ -1,0 +1,55 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: FALLBACKS
+Date: 2026-11-23
+Source: PharmCAT  report (fallbacks.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2C19      *2/*2                          Poor Metabolizer
+ABCG2        rs2231142 variant (T)/rs2231142 variant (T) Poor Function
+NEWGENE      *1/*7                          Decreased Function
+CYP4F2       *1/*3                          Decreased Function
+SLCO1B1      *1/*1                          Normal Function
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP2C19 -- Poor Metabolizer:
+    Diplotype: *2/*2
+    Drugs (pipeline fallback table; the report names none): clopidogrel, voriconazole, escitalopram, citalopram, sertraline, amitriptyline, clomipramine, doxepin, imipramine, trimipramine, lansoprazole, omeprazole, pantoprazole, dexlansoprazole
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  ABCG2 -- Poor Function:
+    Diplotype: rs2231142 variant (T)/rs2231142 variant (T)
+    Drugs PharmCAT links to ABCG2 (no matched guidance text in the report): rosuvastatin
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  NEWGENE -- Decreased Function:
+    Diplotype: *1/*7
+    NOTE: NEWGENE has a non-normal phenotype but is not in the drug table; see the PharmCAT HTML report.
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  CYP4F2 -- Decreased Function:
+    Diplotype: *1/*3
+    Drugs with guidance in this PharmCAT report:
+      - warfarin [CPIC, Optional]: Increase the dose by 5-10%.
+      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      also named by DPWG, FDA label: Acenocoumarol
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

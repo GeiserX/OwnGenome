@@ -19,7 +19,7 @@
 # combination product too; a drug on the list is marked in the report.
 # CPIC_level: the pair's CPIC level, printed as provisional.
 # Note: what the label says.
-# Label_source: the FDA label (DailyMed) the note quotes.
+# Label_source: the FDA label (DailyMed) the note paraphrases.
 # Report_if: when a hit gives a WARNING. any: one variant does (POLG, where
 # one variant is a known valproate risk, and the X-linked OTC and HPRT1,
 # where a male has one copy and a female carrier can be affected).

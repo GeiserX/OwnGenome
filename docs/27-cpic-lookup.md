@@ -81,6 +81,8 @@ CYP2D6       *x/*y                          <phenotype>
 
 ### Affected Medications
 
+When this section prints a recommendation from PharmCAT, it credits PharmGKB and links to the CC BY-SA 4.0 license. The text report displays comparison symbols as plain text, such as `<`.
+
 Only genes with a non-normal phenotype (point 3 above) appear here, each with the drugs and the CPIC recommendation PharmCAT matched to your result. A called gene whose phenotype names no changed function (`n/a`, `no phenotype assigned`, the reference VKORC1 genotype `-1639 GG`, `Uncertain Susceptibility`) is `unclassified`: it gets no drug list and is listed under "Called Genes Without a Function Phenotype". A variant allele in such a gene can still matter, so check PharmCAT's HTML report for it. A gene whose result rests on positions PharmCAT never read is `incomplete` (point 4 above): it is listed under "Genes Called With Positions Not Read" with those positions, and gets no drug list here, because a normal call there is not proof of normal function. Genes that could not be called are listed separately at the end. Their absence from the medications section does NOT mean normal function.
 
 ### Calls From Other Tools
@@ -93,7 +95,7 @@ Only with a medication list. A drug can make you metabolize like a different phe
 
 ### Drug Contraindications From Disease Variants
 
-A pathogenic variant in some disease genes makes a drug dangerous, and PharmCAT does not call those genes. This section checks step 06's ClinVar hits against `assets/pgx_contraindications.tsv`. A `WARNING:` line names the drug, the variant and its genotype, what the drug label says, and where to read it. In a recessive gene one variant makes a carrier, not a patient: that gets a `NOTE:` line, not a warning. Whether a line applies to you depends on the disorder, so read it with your clinician. Without step 06 the section says these genes were not checked; that is not an all-clear.
+A pathogenic variant in some disease genes makes a drug dangerous, and PharmCAT does not call those genes. This section checks step 06's ClinVar hits against `assets/pgx_contraindications.tsv`. A `WARNING:` line names the drug, the variant and its genotype, a paraphrase of the drug label, and a link to the label. In a recessive gene one variant makes a carrier, not a patient: that gets a `NOTE:` line, not a warning. Whether a line applies to you depends on the disorder, so read it with your clinician. Without step 06 the section says these genes were not checked; that is not an all-clear.
 
 ### PharmCAT and pypgx
 
