@@ -19,7 +19,8 @@
 //! holds with the same two alleles. Every chromosome is painted in one
 //! model, whose parameters are fitted over the whole genome. A chromosome
 //! that cannot be read (its phased file, its panel or its map missing or
-//! broken, or no site shared with the panel) is named in `failed.txt`, with
+//! broken, a panel or a phased file of another chromosome, a map with no
+//! marker, or no site shared with the panel) is named in `failed.txt`, with
 //! the reason on stderr, and the others are still painted: `report` lists
 //! it as not painted. If the model cannot be fitted, every chromosome goes
 //! to `failed.txt`.
@@ -39,8 +40,10 @@
 //!   there is one.
 //!
 //! The files are written under temporary names and renamed into place once
-//! the painting is done. The same inputs give the same bytes for any
-//! `--threads`.
+//! the painting is done. Then any MSP, `params.tsv` or `failed.txt` an
+//! earlier painting left in `--out-dir` and this one did not write is
+//! removed, so the folder never mixes two paintings; other files stay. The
+//! same inputs give the same bytes for any `--threads`.
 
 use crate::report::{LevelRow, read_levels, read_matrix};
 use crate::{ArgError, Args, Fail, Pending, Result, Spec, repr};
@@ -264,6 +267,15 @@ fn read_chrom(
     }
     let panel_path = panel.join(format!("{c}.vcf.gz"));
     let refs = Haplotypes::read(&panel_path, people, Some(sites)).map_err(fail)?;
+    // The sites match on position and alleles only, so another
+    // chromosome's panel would paint this one at its own positions.
+    if !refs.chrom().is_empty() && refs.chrom() != c {
+        return Err(Fail(format!(
+            "{} holds {}, not {c}",
+            panel_path.display(),
+            refs.chrom()
+        )));
+    }
     let shared = refs.sites();
     if shared.is_empty() {
         return Err(Fail(format!(
@@ -272,7 +284,15 @@ fn read_chrom(
             panel_path.display()
         )));
     }
-    let map = GeneticMap::read(&maps.join(format!("{c}.map"))).map_err(fail)?;
+    let map_path = maps.join(format!("{c}.map"));
+    let map = GeneticMap::read(&map_path).map_err(fail)?;
+    // An empty map puts every site at 0 cM, where no switch can be placed.
+    if map.is_empty() {
+        return Err(Fail(format!(
+            "{} has no marker (chromosome, id, cM, position)",
+            map_path.display()
+        )));
+    }
     let (mut h1, mut h2) = (Bits::default(), Bits::default());
     let mut cm = Vec::with_capacity(shared.len());
     let mut pos = Vec::with_capacity(shared.len());
@@ -389,6 +409,38 @@ fn phased_chroms(dir: &Path) -> Result<Vec<String>> {
     Ok(out)
 }
 
+/// Whether `name` is an output of `paint`: an MSP, `params.tsv` or
+/// `failed.txt`.
+fn managed(name: &str) -> bool {
+    name.ends_with(".msp.tsv") || name == "params.tsv" || name == "failed.txt"
+}
+
+/// Removes each output of an earlier `paint` in `dir` that this one did
+/// not write, so the folder holds this painting only. Other files stay.
+fn remove_obsolete(dir: &Path, written: &HashSet<String>) -> Result<()> {
+    let entries = std::fs::read_dir(dir).map_err(|e| crate::cannot_read(dir, &e))?;
+    for e in entries {
+        let e = e.map_err(|e| crate::cannot_read(dir, &e))?;
+        let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+        let Some(name) = e.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if !is_dir && managed(&name) && !written.contains(&name) {
+            let p = e.path();
+            std::fs::remove_file(&p).map_err(|e| crate::cannot_write(&p, &e))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The start proportions and each group's reference haplotypes, as
+    /// they go to the engine: the tests read them.
+    static HANDOFF: std::cell::RefCell<Option<(Vec<f64>, Vec<usize>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn main(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
     let threads = a.int("--threads", 1).unwrap_or(1);
     if threads < 1 {
@@ -435,6 +487,7 @@ fn main(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
     let chroms = phased_chroms(phased)?;
     std::fs::create_dir_all(&out_dir).map_err(|e| crate::cannot_write(&out_dir, &e))?;
     if chroms.is_empty() {
+        remove_obsolete(&out_dir, &HashSet::new())?;
         let _ = writeln!(
             out,
             "Nothing to paint: no <chrom>.vcf.gz in {}",
@@ -456,10 +509,18 @@ fn main(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
     }
 
     let mut pending = Pending::new();
+    let mut written: HashSet<String> = HashSet::new();
+    let mut put = |pending: &mut Pending, name: String, data: &[u8]| {
+        let path = out_dir.join(&name);
+        written.insert(name);
+        pending.put(path, data)
+    };
     if !read.is_empty() {
         let inputs: Vec<ChromInput> = read.iter().map(|c| c.input.clone()).collect();
         let sizes = inputs[0].panel.sizes().to_vec();
         let start = Params::initial(mu, &sizes, DEFAULT_NE);
+        #[cfg(test)]
+        HANDOFF.with(|h| *h.borrow_mut() = Some((start.mu.clone(), sizes.clone())));
         let opts = Options {
             threads: threads as usize,
             rounds: DEFAULT_ROUNDS,
@@ -493,14 +554,15 @@ fn main(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
                         &ch.input.cm,
                         [&p.haplotypes[0].calls, &p.haplotypes[1].calls],
                     );
-                    pending.put(
-                        out_dir.join(format!("{}.msp.tsv", ch.input.name)),
+                    put(
+                        &mut pending,
+                        format!("{}.msp.tsv", ch.input.name),
                         text.as_bytes(),
                     )?;
                 }
                 let mut params = Vec::new();
                 write_params(&mut params, &painting, &codes).map_err(fail)?;
-                pending.put(out_dir.join("params.tsv"), &params)?;
+                put(&mut pending, "params.tsv".into(), &params)?;
             }
             Err(e) => {
                 let _ = writeln!(
@@ -514,9 +576,10 @@ fn main(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
     if !failed.is_empty() {
         failed.sort_by(|a, b| crate::chrom_key(a).cmp(&crate::chrom_key(b)).then(a.cmp(b)));
         let text: String = failed.iter().map(|c| format!("{c}\n")).collect();
-        pending.put(out_dir.join("failed.txt"), text.as_bytes())?;
+        put(&mut pending, "failed.txt".into(), text.as_bytes())?;
     }
-    pending.commit_all()
+    pending.commit_all()?;
+    remove_obsolete(&out_dir, &written)
 }
 
 #[cfg(test)]
@@ -525,6 +588,7 @@ mod tests {
     use crate::report::painting;
     use crate::testutil::{Dir, run};
     use og_admix::rng::Rng;
+    use std::io::Read;
 
     /// The sites of the fixed simulation, 1 kb apart from 1 kb on.
     const SITES: usize = 300;
@@ -805,5 +869,130 @@ mod tests {
             "{}",
             e.0
         );
+    }
+
+    /// Writes the gzipped VCF `from` under `d` again as `to`, its records
+    /// moved to chromosome `chrom`.
+    fn moved(d: &Dir, from: &str, to: &str, chrom: &str) {
+        let mut text = String::new();
+        flate2::read::MultiGzDecoder::new(std::fs::File::open(d.0.join(from)).unwrap())
+            .read_to_string(&mut text)
+            .unwrap();
+        let out: String = text
+            .lines()
+            .map(|l| match l.split_once('\t') {
+                Some((_, rest)) if !l.starts_with('#') => format!("{chrom}\t{rest}\n"),
+                _ => format!("{l}\n"),
+            })
+            .collect();
+        put_gz(d, to, &out);
+    }
+
+    /// The fixed world with a chr2 that can be painted: chr1's person and
+    /// panel moved to chr2, with a map.
+    fn two_chroms(d: &Dir) -> Vec<String> {
+        let args = world(d);
+        moved(d, "phase/chr1.vcf.gz", "phase/chr2.vcf.gz", "chr2");
+        moved(d, "panel/chr1.vcf.gz", "panel/chr2.vcf.gz", "chr2");
+        d.put(
+            "maps/chr2.map",
+            "chr2\t.\t0.0\t1000\nchr2\t.\t29.9\t300000\n",
+        );
+        args
+    }
+
+    /// chr1 is named in failed.txt with `why`, and chr2 is still painted.
+    fn only_chr1_fails(d: &Dir, args: &[String], why: &str) {
+        let (rc, out, err) = run_owned(args);
+        assert_eq!(rc, 0, "{out}{err}");
+        assert_eq!(d.read("paint/failed.txt"), "chr1\n");
+        assert!(err.contains("WARNING: chr1 not painted: "), "{err}");
+        assert!(err.contains(why), "{err}");
+        assert!(!d.0.join("paint/chr1.msp.tsv").exists());
+        assert!(d.read("paint/chr2.msp.tsv").contains("\nchr2\t1000\t"));
+        assert!(out.starts_with("Painted chr2 (300 SNVs)"), "{out}");
+    }
+
+    #[test]
+    fn a_panel_of_another_chromosome_fails_that_chromosome_only() {
+        let d = Dir::new("paint-other-chrom");
+        let args = two_chroms(&d);
+        // chr1's panel file holds chr2's records, at the same positions
+        // with the same alleles.
+        moved(&d, "panel/chr2.vcf.gz", "panel/chr1.vcf.gz", "chr2");
+        only_chr1_fails(&d, &args, "chr1.vcf.gz holds chr2, not chr1");
+    }
+
+    #[test]
+    fn an_empty_map_fails_that_chromosome_only() {
+        let d = Dir::new("paint-empty-map");
+        let args = two_chroms(&d);
+        d.put("maps/chr1.map", "");
+        only_chr1_fails(&d, &args, "chr1.map has no marker");
+    }
+
+    #[test]
+    fn each_painting_replaces_the_last_in_one_folder() {
+        let d = Dir::new("paint-again");
+        let args = world(&d);
+        d.put("paint/notes.txt", "kept\n");
+        let names = || -> Vec<String> {
+            let mut v: Vec<String> = std::fs::read_dir(d.0.join("paint"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect();
+            v.sort();
+            v
+        };
+        // Success: chr1 painted, chr2 (no panel) failed.
+        assert_eq!(run_owned(&args).0, 0);
+        assert_eq!(
+            names(),
+            ["chr1.msp.tsv", "failed.txt", "notes.txt", "params.tsv"]
+        );
+        // Failure: chr1's panel gone, nothing painted, and the last
+        // painting's MSP and parameters go with it.
+        let panel = std::fs::read(d.0.join("panel/chr1.vcf.gz")).unwrap();
+        std::fs::remove_file(d.0.join("panel/chr1.vcf.gz")).unwrap();
+        assert_eq!(run_owned(&args).0, 0);
+        assert_eq!(names(), ["failed.txt", "notes.txt"]);
+        assert_eq!(d.read("paint/failed.txt"), "chr1\nchr2\n");
+        // Recovery: the panel back and chr2 no longer phased: chr1 painted
+        // as before, and no failed.txt.
+        std::fs::write(d.0.join("panel/chr1.vcf.gz"), panel).unwrap();
+        std::fs::remove_file(d.0.join("phase/chr2.vcf.gz")).unwrap();
+        assert_eq!(run_owned(&args).0, 0);
+        assert_eq!(names(), ["chr1.msp.tsv", "notes.txt", "params.tsv"]);
+        assert_eq!(d.read("paint/chr1.msp.tsv"), GOLDEN);
+        // Nothing phased: no painting left.
+        std::fs::remove_file(d.0.join("phase/chr1.vcf.gz")).unwrap();
+        let (rc, out, _) = run_owned(&args);
+        assert!(rc == 0 && out.starts_with("Nothing to paint"), "{out}");
+        assert_eq!(names(), ["notes.txt"]);
+    }
+
+    #[test]
+    fn the_start_reaches_the_engine_in_the_model_group_order() {
+        let d = Dir::new("paint-handoff");
+        let args = world(&d);
+        // Ten AFR references and six EAS, so each group's size names it in
+        // the engine. The paint map lists AFR first, levels.tsv EAS first,
+        // and the fractions are asymmetric (EAS 0.7, WEA 0.05, AFR 0.25).
+        let map: String = (0..10)
+            .map(|i| format!("a{i}\tAFR\n"))
+            .chain((0..6).map(|i| format!("e{i}\tEAS\n")))
+            .collect();
+        d.put("model/paint_map.tsv", &map);
+        HANDOFF.with(|h| h.borrow_mut().take());
+        let (rc, out, err) = run_owned(&args);
+        assert_eq!(rc, 0, "{out}{err}");
+        let (mu, sizes) = HANDOFF
+            .with(|h| h.borrow_mut().take())
+            .expect("the engine was called");
+        let afr = sizes.iter().position(|&n| n == 20).expect("AFR's 20");
+        let eas = sizes.iter().position(|&n| n == 12).expect("EAS's 12");
+        assert_eq!(mu.len(), 2, "{mu:?}");
+        assert!((mu[afr] - 0.25 / 0.95).abs() < 1e-12, "{mu:?} {sizes:?}");
+        assert!((mu[eas] - 0.7 / 0.95).abs() < 1e-12, "{mu:?} {sizes:?}");
     }
 }
