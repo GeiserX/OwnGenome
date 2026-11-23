@@ -311,6 +311,9 @@ pub struct SvRow {
     pub caller: Option<String>,
     /// Callers supporting it in step 22's consensus; `None` without one.
     pub support: Option<i128>,
+    /// Read as common: `Common` is `yes`, unless `Benign_match` says the
+    /// benign record is much larger than the call (`contained`), whose
+    /// frequency is the larger SV's and not this call's.
     pub common: bool,
 }
 
@@ -389,7 +392,8 @@ pub fn read_annotsv(
                     .collect(),
                 caller: cell(r, "Caller").map(str::to_owned),
                 support,
-                common: cell(r, "Common") == Some("yes"),
+                common: cell(r, "Common") == Some("yes")
+                    && cell(r, "Benign_match") != Some("contained"),
             }
         })
         .filter(|x| matches!(x.class(), "4" | "5"))

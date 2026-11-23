@@ -361,7 +361,8 @@ fn benign_row(id: &str, start: i64, end: i64, t: &str, cells: [&str; 6]) -> Stri
 #[test]
 fn a_blank_benign_frequency_is_no_frequency_data_not_rare() {
     let d = scratch("no-frequency");
-    let loss = |src: &'static str, coord: &'static str, af: &'static str| ["", "", "", src, coord, af];
+    let loss =
+        |src: &'static str, coord: &'static str, af: &'static str| ["", "", "", src, coord, af];
     let (head, rows) = postfilter_table(
         &d,
         &[
@@ -370,7 +371,13 @@ fn a_blank_benign_frequency_is_no_frequency_data_not_rare() {
             &benign_row("BLANK", 1000, 5000, "DEL", loss("", "", "")),
             // A benign record without a frequency (a ClinVar benign SV).
             &benign_row("NOAF", 1000, 5000, "DEL", loss("CLN:1", "20:900-5100", "")),
-            &benign_row("AF", 1000, 5000, "DEL", loss("gnomAD-SV_v4", "20:900-5100", "0.05")),
+            &benign_row(
+                "AF",
+                1000,
+                5000,
+                "DEL",
+                loss("gnomAD-SV_v4", "20:900-5100", "0.05"),
+            ),
             // A breakend has no benign set.
             &benign_row("BND", 1000, 5000, "BND", loss("", "", "")),
         ]
@@ -426,7 +433,11 @@ fn a_contained_benign_match_is_told_from_a_same_size_one() {
         (r["Benign_match"].as_str(), r["Common"].as_str())
     };
     assert_eq!(at("SAME"), ("same", "yes"));
-    assert_eq!(at("NESTED"), ("contained", "yes"), "Common keeps its meaning");
+    assert_eq!(
+        at("NESTED"),
+        ("contained", "yes"),
+        "Common keeps its meaning"
+    );
     assert_eq!(at("HALF"), ("same", "yes"));
     assert_eq!(at("ONEOF"), ("same", "yes"));
     assert_eq!(at("DUP"), ("none", "no"));

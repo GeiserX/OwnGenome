@@ -15,7 +15,13 @@
 //!   lies within 5 bp of an exon's end and its end within 5 bp of a later
 //!   exon's start of one transcript of `--genes`;
 //! - `Population_AF`, `Population_source`, `Common`: AnnotSV's benign-set
-//!   frequency for the type; common at 1% or more;
+//!   frequency for the type and its source; common at 1% or more. AnnotSV
+//!   writes a frequency only when a benign record of 1% or more holds the
+//!   whole call, so a blank is no evidence that the call is rare:
+//!   `Population_source` then says `no frequency data` ([`NO_FREQUENCY`]);
+//! - `Benign_match`, after `Common`, only when AnnotSV's table has a
+//!   `B_*_coord` column: whether a benign record AnnotSV lists for the type
+//!   is about the call's size or much larger ([`benign_match`]);
 //! - `AnnotSV_class`: AnnotSV's own class; `ACMG_class` is the class after
 //!   these checks;
 //! - `Depth_support`: duphold's DHFFC (< 0.7 for a deletion) or DHBFC
@@ -101,9 +107,17 @@ pub const ADDED: [&str; 10] = [
 ];
 /// The columns `--consensus` adds.
 pub const SUPPORT: [&str; 2] = ["Support", "Support_callers"];
+/// The column the benign records' coordinates add, after `Common`.
+pub const BENIGN_MATCH: &str = "Benign_match";
+/// `Population_source` of a call AnnotSV gives no benign-set frequency.
+pub const NO_FREQUENCY: &str = "no frequency data";
 
 const EDGE_BP: i64 = 5;
 const COMMON_AF: f64 = 0.01;
+/// A benign record matches the call's size when each covers this share of
+/// the other, the rule of the couple screen's common deletions.
+const SAME_OVERLAP_PERCENT: i64 = 50;
+const BENIGN_TYPES: [&str; 4] = ["B_loss", "B_gain", "B_ins", "B_inv"];
 const DHFFC_MAX: f64 = 0.7;
 const DHBFC_MIN: f64 = 1.3;
 const REPEAT_SLACK_BP: i64 = 10;
@@ -386,14 +400,21 @@ fn exon_edge(chrom: &str, start: i64, end: i64, tx: &Transcripts) -> (&'static s
     ("no", String::new())
 }
 
-/// AnnotSV's benign-set frequency for the type, and its source.
-fn population(row: &Row) -> (Option<f64>, String) {
-    let col = match row.kind().as_str() {
+/// The prefix of AnnotSV's benign-set columns for the call's type.
+fn benign_columns(row: &Row) -> Option<&'static str> {
+    Some(match row.kind().as_str() {
         "DEL" => "B_loss",
         "DUP" => "B_gain",
         "INS" => "B_ins",
         "INV" => "B_inv",
-        _ => return (None, String::new()),
+        _ => return None,
+    })
+}
+
+/// AnnotSV's benign-set frequency for the type, and its source.
+fn population(row: &Row) -> (Option<f64>, String) {
+    let Some(col) = benign_columns(row) else {
+        return (None, String::new());
     };
     let raw = pycompat::num::py_strip(row.get(&format!("{col}_AFmax")));
     match pycompat::num::parse_float(raw) {
@@ -403,6 +424,60 @@ fn population(row: &Row) -> (Option<f64>, String) {
         ),
         Err(_) => (None, String::new()),
     }
+}
+
+/// How the benign records AnnotSV lists for the call's type
+/// (`B_loss_coord` for a deletion, and so on) relate to the call. AnnotSV
+/// lists only records that hold the whole call (bedtools `-f 1.0`), and
+/// `B_*_AFmax` is the highest frequency among them, so a small call inside
+/// a large common SV takes the large one's frequency.
+///
+/// - `same`: a listed record and the call each cover at least half of the
+///   other ([`SAME_OVERLAP_PERCENT`]);
+/// - `contained`: every listed record is more than twice as long as the
+///   call, so its frequency is the larger SV's, not this call's;
+/// - `none`: no record is listed;
+/// - `.`: a type with no benign set;
+/// - `not checked`: the table has no coordinates column for the type, or a
+///   position is not a number.
+fn benign_match(row: &Row) -> &'static str {
+    let Some(col) = benign_columns(row) else {
+        return ".";
+    };
+    let Some(cell) = row.cells.get(&format!("{col}_coord")) else {
+        return "not checked";
+    };
+    let coords = pycompat::num::py_strip(cell.unwrap_or(""));
+    if coords.is_empty() {
+        return "none";
+    }
+    let Some((a, b)) = row.start_end() else {
+        return "not checked";
+    };
+    // An insertion can span no base: give it one, so it can overlap.
+    let (s, e) = (a.min(b), a.max(b).max(a.min(b) + 1));
+    let chrom = chrom_key(row.get("SV_chrom"));
+    let mut read = false;
+    for c in coords.split(';') {
+        let Some((bc, span)) = c.trim().rsplit_once(':') else {
+            continue;
+        };
+        let Some((Some(bs), Some(be))) = span.split_once('-').map(|(x, y)| (int(x), int(y))) else {
+            continue;
+        };
+        if chrom_key(bc) != chrom {
+            continue;
+        }
+        read = true;
+        let ov = e.min(be) - s.max(bs);
+        if ov > 0
+            && ov * 100 >= SAME_OVERLAP_PERCENT * (e - s)
+            && ov * 100 >= SAME_OVERLAP_PERCENT * (be - bs)
+        {
+            return "same";
+        }
+    }
+    if read { "contained" } else { "not checked" }
 }
 
 /// `(yes|no|unknown|not checked|., detail)` of the read depth of a deletion or
@@ -824,6 +899,11 @@ pub fn run(o: &Opts) -> Result<String, Error> {
     let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
     let sample = sample_columns(&key_refs);
     let no_rules = HashMap::new();
+    // Benign_match needs the records' coordinates, which AnnotSV 3 writes;
+    // a table without them keeps the columns it had.
+    let coords = BENIGN_TYPES
+        .iter()
+        .any(|t| keys.iter().any(|k| *k == format!("{t}_coord")));
 
     let mut checked = Checked {
         cols: KEEP
@@ -833,6 +913,9 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             .collect(),
         rows: Vec::with_capacity(rows.len()),
     };
+    if coords && let Some(i) = checked.cols.iter().position(|c| c == "Common") {
+        checked.cols.insert(i + 1, BENIGN_MATCH.to_owned());
+    }
     for r in &rows {
         let mut o_row: HashMap<String, String> = KEEP
             .iter()
@@ -887,7 +970,18 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             "Population_AF",
             af.map_or(String::new(), |a| general(a, 6)),
         );
-        set(&mut o_row, "Population_source", src);
+        set(
+            &mut o_row,
+            "Population_source",
+            if af.is_some() {
+                src
+            } else {
+                NO_FREQUENCY.to_owned()
+            },
+        );
+        if coords {
+            set(&mut o_row, BENIGN_MATCH, benign_match(r).to_owned());
+        }
         set(
             &mut o_row,
             "Common",

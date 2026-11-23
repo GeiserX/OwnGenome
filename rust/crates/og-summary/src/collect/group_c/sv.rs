@@ -316,7 +316,15 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
                 "population_source",
                 s(&super::util::or(r, "Population_source", "")),
             )
-            .set("common", Value::Bool(at(r, "Common")? == Some("yes")))
+            .set("common", Value::Bool(at(r, "Common")? == Some("yes")));
+        // Step 05 writes Benign_match when AnnotSV gives the benign records'
+        // coordinates; a table without it gives no field.
+        let row = if t.has("Benign_match") {
+            row.set("benign_match", cellv("Benign_match")?)
+        } else {
+            row
+        };
+        let row = row
             .set(
                 "annotsv_class",
                 match r.get("AnnotSV_class").flatten().filter(|v| !v.is_empty()) {
