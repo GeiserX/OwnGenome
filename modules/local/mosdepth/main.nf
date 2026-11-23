@@ -87,8 +87,8 @@ process MOSDEPTH {
         gzip -dc callability/c.thresholds.bed.gz | awk -F'\\t' \\
             'NR == 1 {print > "callability/g"; print > "callability/e"; next}
              \$4 ~ /:exon[0-9]+\$/ {print > "callability/e"; next} {print > "callability/g"}'
-        gzip -c callability/g > ${prefix}_callability.bed.gz
-        gzip -c callability/e > ${prefix}_callability_exons.bed.gz
+        gzip -nc callability/g > ${prefix}_callability.bed.gz
+        gzip -nc callability/e > ${prefix}_callability_exons.bed.gz
     else
         mv callability/c.thresholds.bed.gz ${prefix}_callability.bed.gz
     fi

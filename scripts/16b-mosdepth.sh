@@ -101,8 +101,8 @@ callability_pass() {
     # The header goes to both tables.
     gzip -dc "$t" | awk -F'\t' -v g="${work}/g" -v e="${work}/e" \
       'NR == 1 {print > g; print > e; next} $4 ~ /:exon[0-9]+$/ {print > e; next} {print > g}'
-    gzip -c "${work}/g" > "${work}/g.gz"
-    gzip -c "${work}/e" > "${work}/e.gz"
+    gzip -nc "${work}/g" > "${work}/g.gz"
+    gzip -nc "${work}/e" > "${work}/e.gz"
     mv "${work}/e.gz" "$CALLABLE_EXONS"
     mv "${work}/g.gz" "$CALLABLE"
   else
