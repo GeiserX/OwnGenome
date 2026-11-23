@@ -4,6 +4,8 @@
   certified laboratory before acting on it.
   Sample: S
   Generated: 2026-01-02 03:04 UTC
+  Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
+  Runs of homozygosity: partial: covers 1 of 22 autosomes
 ================================================================================
 
 ################################################################################

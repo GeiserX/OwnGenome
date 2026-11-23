@@ -5,6 +5,12 @@
   Sample: S
   Generated: 2026-01-02 03:04 UTC
   Latest run-all.sh run: 2020-01-01 00:00 UTC
+  Gene callability (mosdepth): partial: covers 1 of 22 autosomes
+  Polygenic risk scores: partial: covers 1 of 22 autosomes
+  Fine-grained ancestry (ADMIXTURE, RFMix): partial: covers 1 of 22 autosomes
+  Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
+  Runs of homozygosity: partial: covers 1 of 22 autosomes
+  Archaic ancestry (IBDmix): partial: covers 1 of 22 autosomes
 ================================================================================
 
 ################################################################################

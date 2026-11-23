@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnGenome Report</title>
+<style>
+  :root { --bg: #15171c; --card: #1e2128; --fg: #e3e5ea; --muted: #a3a9b4; --line: #2e333c; --head: #262a32;
+          --accent: #8cbcf0; --hdr: linear-gradient(135deg, #12324d 0%, #1f5f8f 100%); --hdr-fg: #f2f6fa;
+          --green-bg: #1d3b2a; --green-fg: #8ee0ae; --yellow-bg: #3f3618; --yellow-fg: #f2d77c;
+          --red-bg: #4a2424; --red-fg: #f5a9a2; --gray-bg: #2d3139; --gray-fg: #b6bbc4;
+          --state-bg: #1f3550; --state-fg: #a9cdf5; --stale-bg: #3c2e16; --stale-fg: #f4ca8c;
+          --caveat-bg: #232a35; --disc-bg: #3a3214; --disc-line: #a8861c; color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); line-height: 1.6; }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; max-width: 1400px;
+            margin: 0 auto; padding: 20px; }
+  .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 8px 0;
+         font-size: 13px; }
+  .toc .toc-title { font-size: 15px; color: var(--accent); margin-bottom: 8px; }
+  .toc ol { list-style: none; }
+  .toc > ol > li { margin-bottom: 10px; }
+  .toc > ol > li > a { font-weight: 600; }
+  .toc ol ol { margin: 2px 0 0 4px; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot-ok { background: #5b9ee6; } .dot-stale, .dot-incomplete { background: #e0b94a; }
+  .dot-failed, .dot-part { background: #e2685d; } .dot-missing { background: #6b717c; }
+  .header { background: var(--hdr); color: var(--hdr-fg); padding: 26px 30px; border-radius: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 28px; margin-bottom: 8px; }
+  .header .meta { opacity: 0.9; font-size: 14px; }
+  .print-hint { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .chapter { margin-bottom: 32px; }
+  .chapter-title { font-size: 22px; color: var(--accent); }
+  .question { color: var(--muted); margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .sec { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 12px; }
+  .sec:target .card { outline: 2px solid var(--accent); }
+  .card { background: var(--card); border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .card h2 { font-size: 18px; color: var(--accent); margin-bottom: 8px;
+             padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  .card h3 { font-size: 15px; margin: 12px 0 6px; }
+  .sec-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .sec-meta .anchor { color: var(--muted); }
+  .caveat { font-size: 13px; background: var(--caveat-bg); border-left: 3px solid var(--accent);
+            padding: 6px 10px; margin-bottom: 10px; border-radius: 4px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .files { font-size: 13px; color: var(--muted); }
+  .offsite-note { font-size: 12px; color: var(--muted); font-weight: normal; }
+  .stat { display: flex; justify-content: space-between; padding: 8px 0;
+          border-bottom: 1px solid var(--line); gap: 12px; }
+  .stat:last-child { border-bottom: none; }
+  .stat .label { color: var(--muted); }
+  .stat .value { font-weight: 600; text-align: right; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+           font-size: 13px; font-weight: 600; }
+  .badge-green { background: var(--green-bg); color: var(--green-fg); }
+  .badge-yellow { background: var(--yellow-bg); color: var(--yellow-fg); }
+  .badge-red { background: var(--red-bg); color: var(--red-fg); }
+  .badge-gray { background: var(--gray-bg); color: var(--gray-fg); }
+  .badge-state { background: var(--state-bg); color: var(--state-fg); }
+  .stale { background: var(--stale-bg); color: var(--stale-fg); border-radius: 6px; padding: 6px 10px;
+           font-size: 13px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { background: var(--head); font-weight: 600; color: var(--muted); }
+  .full-width { grid-column: 1 / -1; }
+  figure.chart { margin: 4px 0 12px; } figure.chart svg { display: block; max-width: 760px; }
+  figure.chart a:focus, figure.chart a:hover { opacity: 0.8; }
+  ul.plain { margin-left: 18px; }
+  .disclaimer { background: var(--disc-bg); border: 1px solid var(--disc-line); border-radius: 8px;
+                padding: 16px; margin-top: 24px; font-size: 14px; }
+  .footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; padding: 16px; }
+  .footer table { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 900px) { .layout { display: block; } .toc { position: static; max-height: none; } }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  /* Print is light. With a section or a chapter in the address (#id, from
+     the contents), only it prints, with the header, the list of what is not
+     assessed (.always) and the disclaimer. A browser without :has() prints
+     everything. */
+  @media print {
+    :root { --bg: #fff; --card: #fff; --fg: #111; --muted: #444; --line: #ccc; --head: #f0f0f0; --accent: #1a5276;
+            --hdr: #fff; --hdr-fg: #111; --green-bg: #d5f5e3; --green-fg: #196f3d; --yellow-bg: #fef9e7;
+            --yellow-fg: #7d6608; --red-bg: #fadbd8; --red-fg: #922b21; --gray-bg: #eee; --gray-fg: #555;
+            --state-bg: #e3eefa; --state-fg: #1a4a7a; --stale-bg: #fdebd0; --stale-fg: #7e5109;
+            --caveat-bg: #f4f6f8; --disc-bg: #fff3cd; --disc-line: #c9a227; color-scheme: light; }
+    .toc, .print-hint, .sec-meta .anchor { display: none; }
+    .layout { display: block; padding: 0; max-width: none; }
+    .header { border: 1px solid #999; padding: 12px 16px; }
+    .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+    .sec:target .card { outline: none; }
+    .grid { display: block; } .sec { margin-bottom: 16px; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)):not(:has(.always)) { display: none; }
+    body:has(.sec:target) .sec:not(:target):not(.always) { display: none; }
+    body:has(.chapter:target) .chapter:not(:target) .sec:not(.always) { display: none; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
+  }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to results</a>
+<div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
+<nav class="toc" aria-label="Contents">
+  <h2 class="toc-title">Contents</h2>
+  <ol>
+    <li><a href="#ch-quality">Quality</a>
+      <ol>
+        <li><a href="#qc"><span class="dot dot-stale" title="Stale"></span>Quality control</a></li>
+        <li><a href="#callability"><span class="dot dot-stale" title="Stale"></span>Genes this genome could not read reliably</a></li>
+        <li><a href="#variants"><span class="dot dot-ok" title="Complete"></span>Variant calling</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-clinical">Clinical</a>
+      <ol>
+        <li><a href="#clinvar"><span class="dot dot-missing" title="Not run"></span>ClinVar screen and hits</a></li>
+        <li><a href="#clinical-filter"><span class="dot dot-missing" title="Not run"></span>Clinical filter and secondary findings</a></li>
+        <li><a href="#cpsr"><span class="dot dot-missing" title="Not run"></span>Cancer predisposition</a></li>
+        <li><a href="#slivar"><span class="dot dot-missing" title="Not run"></span>Variant prioritization</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-missing" title="Not run"></span>Structural variants</a></li>
+        <li><a href="#expansions"><span class="dot dot-missing" title="Not run"></span>Repeat expansions</a></li>
+        <li><a href="#mito"><span class="dot dot-missing" title="Not run"></span>Mitochondrial variants</a></li>
+        <li><a href="#mosaic"><span class="dot dot-stale" title="Stale"></span>Mosaic loss of chromosome Y or X</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-carrier">Carrier</a>
+      <ol>
+        <li><a href="#paralogs"><span class="dot dot-missing" title="Not run"></span>Paralog genes and SMN1</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-medicines">Medicines</a>
+      <ol>
+        <li><a href="#pharmcat"><span class="dot dot-missing" title="Not run"></span>PharmCAT</a></li>
+        <li><a href="#cpic"><span class="dot dot-missing" title="Not run"></span>CPIC recommendations</a></li>
+        <li><a href="#cyp2d6"><span class="dot dot-missing" title="Not run"></span>pypgx, Cyrius and CYP2D6</a></li>
+        <li><a href="#hla"><span class="dot dot-missing" title="Not run"></span>HLA typing</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-ancestry">Ancestry</a>
+      <ol>
+        <li><a href="#mt-haplogroup"><span class="dot dot-missing" title="Not run"></span>Mitochondrial haplogroup</a></li>
+        <li><a href="#roh"><span class="dot dot-missing" title="Not run"></span>Runs of homozygosity</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-traits">Traits and scores</a>
+      <ol>
+        <li><a href="#traits-panel"><span class="dot dot-missing" title="Not run"></span>Traits</a></li>
+        <li><a href="#telomere"><span class="dot dot-missing" title="Not run"></span>Telomere content</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-limits">What this report leaves out</a>
+      <ol>
+        <li><a href="#not-run">Steps not run</a></li>
+        <li><a href="#not-assessed">Not assessed</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
+  </ol>
+</nav>
+</details>
+<main id="main" tabindex="-1">
+<header class="header">
+  <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
+  <div class="meta">
+    Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC &nbsp;|&nbsp; Latest run: 2020-01-01 00:00 UTC
+  </div>
+  <div class="meta">
+    Pipeline commit: unknown &nbsp;|&nbsp; ClinVar file: unknown &nbsp;|&nbsp; ClinVar in CPSR's bundle: unknown &nbsp;|&nbsp; HLA database: unknown
+  </div>
+  <div class="meta">Gene callability (mosdepth): partial: not known, from an earlier run</div>
+</header>
+<p class="print-hint">To print one section, open it from the contents (or its "link to this section"), then print: the printout holds that section, this header, the list of what is not assessed and the disclaimer. A chapter prints the same way. In a browser without CSS :has() the whole report prints.</p>
+<section class="chapter" id="ch-quality">
+  <h2 class="chapter-title">Quality</h2>
+  <p class="question">Can I trust this data?</p>
+  <div class="grid">
+  <section class="sec" id="qc">
+  <div class="card">
+    <h2>Quality Control</h2>
+    <p class="sec-meta">Steps 16b, 16, 33, 02 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2020-01-01 00:00 UTC &middot; <a class="anchor" href="#qc">link to this section</a></p>
+    <p class="caveat">Mean depth is an average over the genome: some genes get far fewer reads, and the gene callability card lists those. The sex, identity and contamination checks catch a swapped or mixed sample, not every lab error.</p>
+    <div class="stale">Sex check (indexcov): STALE: from an earlier run (2019-06-01 12:30 UTC); step 16 was failed (exit 1) in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stale">Sample identity and contamination (somalier, VerifyBamID2): STALE: from an earlier run (2019-06-01 12:30 UTC); step 33 was not run in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">Mean depth</span><span class="value">29.9x</span></div>
+    <div class="stat"><span class="label">Reads kept by alignment</span><span class="value"><span class="badge badge-green">1000 reads in, 1000 primary records in the BAM</span></span></div>
+    <div class="stat"><span class="label">Inferred sex (indexcov)</span><span class="value">female</span></div>
+    <div class="stat"><span class="label">Declared sex</span><span class="value">not declared</span></div>
+    <div class="stat"><span class="label">Sex from the reads (somalier)</span><span class="value"><span class="badge badge-green">male</span></span></div>
+    <div class="stat"><span class="label">Contamination (FREEMIX)</span><span class="value"><span class="badge badge-gray">0.0010 (warning above )</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="callability">
+  <div class="card">
+    <h2>Genes This Genome Could Not Read Reliably</h2>
+    <p class="sec-meta">Step 16b &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#callability">link to this section</a></p>
+    <p class="caveat">A gene listed as not read could not be read reliably: too few of its reads were placed on it with confidence, so a &#x27;no finding&#x27; in it says nothing. A gene with a caller of its own is left to that caller&#x27;s section.</p>
+    <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 16b was skipped (opt-in) in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">Genes read</span><span class="value">217 of 1572</span></div>
+    <div class="stat"><span class="label">Not read, no other caller</span><span class="value"><span class="badge badge-red">1301</span></span></div>
+    <p class="note">217 of the 1572 hard-to-read genes of assets/callability_genes.tsv were read: 90% or more of their bases had 10 or more reads of mapping quality 20 or more.</p>
+    <p class="note">Not read, and no other step calls them (1301): OR4F5 (17%), OR4F29 (33%), OR4F16 (50%), AGRN (67%), ATAD3B (0%), MMP23B (0%), CDK11B (17%), SLC35E2B (33%), CDK11A (50%), TTC34 (67%), RPL22 (83%), MASP2 (0%), NPPA (17%), KIAA2013 (33%), PRAMEF1 (50%), PRAMEF11 (67%), HNRNPCL1 (83%), PRAMEF4 (0%), PRAMEF10 (17%), PRAMEF7 (33%), PRAMEF6 (50%), PRAMEF27 (67%), HNRNPCL3 (83%), HNRNPCL2 (0%), PRAMEF26 (17%), HNRNPCL4 (33%), PRAMEF9 (50%), PRAMEF13 (67%), PRAMEF18 (83%), PRAMEF8 (0%), PRAMEF33 (17%), PRAMEF15 (33%), PRAMEF14 (50%), PRAMEF19 (67%), PRAMEF17 (83%), CELA2B (0%), CLCNKA (17%), CLCNKB (33%), NBPF1 (50%), CROCC (67%), AKR7L (83%), NBPF3 (0%), CELA3B (17%), CELA3A (33%), HMGCL (50%), CNR2 (67%), RSRP1 (83%), PIGV (17%), XKR8 (33%), BMP8A (50%), BMP8B (67%), OXCT2 (83%), CYP4Z1 (0%), CYP4A22 (17%), GBP1 (33%), SETSIP (50%), AGL (67%), EXTL2 (83%), AMY2A (0%), NBPF4 (67%), NBPF6 (83%), LRIG2 (17%), VANGL1 (33%), IGSF3 (50%), SEC22B (83%), NBPF26 (0%), NOTCH2NLR (17%), PPIAL4A (33%), FAM72B (50%), SRGAP2C (67%), H3-7 (83%), PPIAL4E (0%), NBPF15 (17%), PPIAL4F (33%), SRGAP2B (50%), FAM72D (67%), PPIAL4D (83%), GPR89A (0%), RBM8A (17%), NBPF10 (33%), NOTCH2NLA (50%), PPIAL4H (67%), NBPF12 (83%), NBPF11 (0%), PPIAL4G (17%), NBPF14 (33%), NOTCH2NLB (50%), NUDT4B (67%), PDE4DIP (83%), NOTCH2NLC (0%), NBPF19 (17%), PPIAL4C (33%), H2BC18 (67%), H3C13 (83%), H3C14 (0%), H2AC18 (17%), H2AC19 (33%), H3C15 (50%), H4C15 (67%), HRNR (83%), LCE3E (0%), LCE3D (17%), S100A8 (33%), S100A7A (50%), S100A7 (67%), FLAD1 (83%), MTX1 (0%), HCN3 (33%), FCRL5 (50%), HSPA6 (83%), FCGR2B (33%), HSD17B7 (50%), CD247 (67%), XCL2 (83%), PRG4 (0%), PTPRC (50%), PPP1R12B (67%), KISS1 (83%), SRGAP2 (0%), CR1 (17%), CR1L (33%), ZC3H11B (50%), LBR (67%), LEFTY2 (83%), OR2T33 (0%), OR2T7 (17%), OR2T2 (33%), OR2T3 (50%), OR2T5 (67%), OR2G6 (83%), OR2T34 (0%), OR2T11 (17%), OR2T35 (33%), OR2T27 (50%), SNTG2 (67%), TPO (83%), KLF11 (0%), CCDC121 (17%), ABCG8 (33%), PCBP1 (50%), NAT8 (67%), C2orf78 (83%), CD8B (0%), RGPD1 (17%), PLGLB1 (33%), PLGLB2 (50%), RGPD2 (67%), RPIA (83%), TEKT4 (0%), FAHD2A (17%), TRIM43B (33%), TRIM43 (50%), ANKRD36C (67%), GPAT2 (83%), ANKRD36 (0%), ANKRD36B (17%), RGPD3 (33%), RGPD4 (50%), RANBP2 (67%), RGPD5 (83%), MALL (0%), MTLN (17%), LIMS4 (33%), RGPD6 (50%), ANAPC1 (67%), RGPD8 (83%), FOXD4L1 (0%), RABL2A (17%), RAB6C (33%), POTEF (50%), CCDC74B (67%), SMPD4 (83%), TUBA3E (0%), POTEI (17%), CFC1B (33%), CFC1 (50%), POTEJ (67%), PLEKHB2 (83%), RAB6D (0%), MZT2A (17%), TUBA3D (33%), CCDC74A (50%), ANKRD30BL (67%), NOSTRIN (83%), IFT70B (0%), CASP10 (17%), ALPP (33%), ALPG (50%), UGT1A6 (67%), UGT1A5 (83%), UGT1A3 (0%), MLPH (17%), OR6B2 (33%), AQP12B (50%), AQP12A (67%), ANO7 (83%), CHL1 (0%), EMC3 (17%), FANCD2 (33%), DAZL (50%), ZNF35 (67%), LZTFL1 (83%), MST1 (0%), MST1R (17%), HYAL1 (33%), FRG2C (50%), ZNF717 (67%), OR5H6 (0%), ROPN1 (17%), ROPN1B (33%), RPN1 (50%), ALG1L2 (67%), BFSP2 (83%), PRR23B (0%), SOX2 (17%), EIF2B5 (33%), KNG1 (50%), TM4SF19 (67%), ZNF595 (83%), PDE6B (0%), GAK (17%), FGFRL1 (33%), RNF212 (50%), UVSSA (67%), DOK7 (83%), HMX1 (0%), FAM90A26 (17%), USP17L10 (33%), USP17L11 (50%), USP17L12 (67%), USP17L13 (83%), USP17L17 (0%), USP17L18 (17%), USP17L19 (33%), USP17L20 (50%), USP17L21 (67%), USP17L22 (83%), USP17L24 (0%), USP17L25 (17%), USP17L26 (33%), USP17L5 (50%), USP17L27 (67%), USP17L28 (83%), USP17L30 (0%), DEFB131A (17%), DRD5 (33%), UGT2B10 (83%), UGT2B28 (0%), UGT2A1 (17%), UGT2A2 (33%), HTN3 (50%), HTN1 (67%), AFP (83%), PIGY (0%), PYURF (17%), CISD2 (33%), SLC9B1 (50%), KLHL2 (0%), GK3 (17%), HPF1 (33%), PDLIM3 (50%), FAT1 (67%), FRG1 (83%), FRG2 (0%), DUX4 (17%), SDHA (33%), PDCD6 (50%), ZDHHC11B (67%), ZDHHC11 (83%), TERT (0%), SLC6A3 (17%), TAF11L2 (33%), TAF11L3 (50%), TAF11L4 (67%), TAF11L5 (83%), TAF11L7 (0%), TAF11L8 (17%), TAF11L9 (33%), TAF11L10 (50%), TAF11L11 (67%), TAF11L12 (83%), TAF11L14 (0%), EMB (17%), MARVELD2 (33%), SERF1B (67%), NAIP (17%), SKIC3 (50%), LIX1 (67%), SAR1B (83%), DND1 (0%), PCDHA10 (17%), PCDHB7 (33%), PCDHB8 (50%), PCDHB11 (67%), PCDHB12 (83%), PPP1R2B (0%), NPM1 (17%), THOC3 (33%), SIMC1 (50%), FAM153A (67%), FAM153CP (83%), FLT4 (0%), OR4F3 (17%), DUSP22 (33%), TUBB2A (50%), H2AC13 (67%), H2AC14 (83%), OR2J1 (0%), OR2J2 (17%), HLA-G (33%), HLA-A (50%), MICA (67%), MICB (83%), ZBTB12 (17%), PBX2 (83%), HLA-DRB1 (0%), GSTA2 (17%), GSTA1 (33%), GSTA5 (50%), PRIM2 (67%), FKBP1C (83%), SLC17A5 (0%), SEC63 (17%), OR2A4 (33%), CTAGE9 (50%), PCMT1 (67%), RAET1G (83%), ULBP1 (0%), RAET1L (17%), ULBP3 (33%), SLC22A1 (50%), SMOC2 (83%), RBAK-RBAKDN (0%), RBAK (17%), SLC29A4 (33%), FSCN1 (50%), OCM (67%), CCZ1 (83%), RSPH10B2 (17%), CCZ1B (33%), NOD1 (50%), FKBP9 (67%), DPY19L1 (83%), SEPTIN7 (0%), SPDYE1 (17%), PPIA (33%), CDC14C (50%), PSPH (67%), CCT6A (83%), ZNF716 (0%), ZNF727 (17%), ZNF735 (33%), ZNF736 (50%), GUSB (67%), RABGEF1 (83%), TYW1 (0%), SPDYE21 (17%), TYW1B (33%), POM121 (50%), TRIM74 (67%), SPDYE8 (83%), SPDYE9 (0%), SPDYE10 (17%), NSUN5 (33%), TRIM50 (50%), CLIP2 (67%), GTF2IRD2 (0%), SPDYE12 (17%), CASTOR2 (33%), GTF2IRD2B (50%), SPDYE13 (67%), SPDYE14 (83%), TRIM73 (0%), POM121C (17%), SPDYE5 (33%), DTX2 (50%), UPK3B (67%), SPDYE16 (83%), SPDYE17 (0%), SPDYE18 (17%), STEAP1 (33%), ASNS (50%), OCM2 (67%), CYP3A7-CYP3A51P (83%), CYP3A4 (0%), STAG3 (17%), PVRIG (33%), SPDYE3 (50%), SAP25 (67%), ZAN (83%), MUC12 (0%), SPDYE6 (17%), POLR2J (33%), RASA4B (50%), POLR2J3 (67%), UPK3BL2 (83%), RASA4 (0%), UPK3BL1 (17%), POLR2J3-UPK3BL2 (33%), SPDYE2B (50%), POLR2J2 (67%), LAMB1 (83%), METTL2B (0%), KLF14 (17%), AKR1B10 (33%), AKR1B15 (50%), BRAF (67%), TRBV9 (83%), PRSS2 (0%), CTAGE15 (17%), TCAF2 (33%), TCAF2C (50%), CTAGE6 (67%), OR2F2 (83%), CTAGE4 (0%), OR2A42 (17%), OR2A7 (33%), CTAGE8 (50%), OR2A1 (67%), ARHGEF5 (83%), ACTR3C (0%), KMT2C (17%), ACTR3B (33%), OR4F21 (50%), FBXO25 (67%), ARHGEF10 (83%), FAM90A15 (17%), FAM90A3 (33%), FAM90A13 (50%), FAM90A5 (67%), FAM90A20 (83%), USP17L1 (0%), USP17L4 (17%), ZNF705G (33%), DEFB108C (50%), DEFB4B (67%), DEFB103B (83%), DEFB104B (0%), DEFB106B (17%), DEFB105B (33%), DEFB107B (50%), PRR23D1 (67%), FAM90A7 (83%), FAM90A23 (0%), FAM90A14 (17%), FAM90A18 (33%), FAM90A16 (50%), FAM90A8 (67%), FAM90A17 (83%), FAM90A9 (0%), FAM90A10 (17%), PRR23D2 (33%), DEFB107A (50%), DEFB105A (67%), DEFB106A (83%), SPAG11A (0%), DEFB103A (17%), DEFB4A (33%), ZNF705B (50%), USP17L8 (67%), USP17L3 (83%), FAM90A11 (0%), FAM90A24 (17%), FAM90A12 (33%), SLC35G5 (50%), DEFB130B (67%), ZNF705D (83%), USP17L2 (0%), DEFB109D (17%), FAM86B1 (33%), DEFB130A (50%), FAM86B2 (67%), RBPMS (83%), IMPA1 (0%), SLC10A5 (17%), CDH17 (33%), CYP11B1 (50%), CYP11B2 (67%), GPIHBP1 (83%), WASHC1 (0%), FOXD4 (17%), ZNG1A (33%), KCNV2 (50%), RLN2 (67%), RLN1 (83%), IFNA21 (0%), IFNA4 (17%), IFNA7 (33%), IFNA10 (50%), IFNA16 (67%), IFNA17 (83%), IFNA13 (0%), IFNA1 (17%), ANKRD18B (33%), PRSS3 (50%), GALT (67%), SPATA31F1 (83%), CNTNAP3 (0%), SPATA31A1 (17%), FOXD4L6 (33%), ZNG1F (50%), CNTNAP3B (67%), SPATA31A6 (83%), SPATA31A7 (0%), CNTNAP3C (17%), FOXD4L5 (33%), ZNG1E (50%), FOXD4L4 (67%), ZNF658 (83%), ANKRD20A1 (0%), ZNG1C (17%), FOXD4L3 (33%), PGM5 (50%), FXN (67%), TJP2 (83%), SPATA31D4 (0%), SPATA31D3 (17%), SPATA31D1 (33%), KIF27 (50%), SPATA31C1 (67%), SPATA31C2 (83%), SLC71A2 (0%), NUTM2G (17%), CTSV (33%), OR13C5 (50%), OR13C2 (67%), OR13C9 (83%), POLE3 (0%), ORM1 (17%), ORM2 (33%), SLC27A4 (50%), PKN3 (67%), ABO (0%), LCN1 (17%), OBP2A (33%), SOHLH1 (50%), INPP5E (67%), AJM1 (83%), GRIN1 (0%), TUBB8 (17%), AKR1C1 (33%), AKR1C2 (50%), DCLRE1C (67%), MRC1 (83%), ANKRD30A (0%), ZNF33A (17%), ZNF37A (33%), PLD5P1 (50%), ZNF33B (67%), BMS1 (83%), AGAP4 (0%), TIMM23 (17%), ANTXRL (33%), ANXA8L1 (50%), NPY4R (67%), GPRIN2 (83%), PTPN20 (0%), ANXA8 (17%), FAM25G (33%), AGAP9 (50%), SYT15B (67%), NPY4R2 (83%), PARG (0%), TIMM23B (17%), TIMM23B-AGAP6 (33%), AGAP6 (50%), WASHC2A (67%), ASAH2B (83%), EIF5AL1 (0%), NUTM2B (17%), NUTM2E (33%), TMEM254 (50%), PLAC9 (67%), ADIRF (83%), NUTM2A (0%), NUTM2D (17%), PAPSS2 (33%), PTEN (50%), LIPN (67%), BTRC (83%), SFR1 (0%), DHX32 (17%), FANK1 (33%), ECHS1 (50%), SPRN (67%), FRG2B (83%), SCGB1C1 (0%), IFITM3 (17%), DRD4 (33%), DEAF1 (50%), KRTAP5-2 (83%), KRTAP5-4 (0%), MRPL23 (17%), H19 (33%), SSU72L5 (50%), SSU72L2 (67%), SSU72L4 (83%), SSU72L1 (0%), OR51A4 (17%), OR51A2 (33%), HBG1 (50%), OR10A5 (67%), MRGPRX4 (83%), MDK (0%), SPI1 (17%), OR4C3 (33%), OR4C5 (50%), OR4A47 (67%), TRIM51G (83%), TRIM64C (0%), FOLH1 (17%), OR4C13 (33%), OR4C12 (50%), OR4C45 (67%), OR4C46 (83%), OR4A5 (0%), TRIM48 (17%), OR4A15 (33%), TRIM51 (50%), OR5F1 (67%), OR8H2 (83%), OR5M8 (0%), OR9G1 (17%), OR1S2 (33%), OR1S1 (50%), GLYATL1B (67%), PGA3 (83%), B3GAT3 (0%), ESRRA (17%), SLC22A12 (33%), RBM4B (50%), TPCN2 (67%), FGF3 (83%), KRTAP5-8 (0%), KRTAP5-10 (17%), KRTAP5-11 (33%), XNDC1N-ZNF705EP-ALG1L9P (50%), DEFB108B (67%), XNDC1N (83%), INTS4 (0%), NOX4 (17%), TRIM77 (33%), TRIM49 (50%), TRIM64B (67%), TRIM49D1 (83%), TRIM64 (0%), TRIM49C (17%), UBTFL1 (33%), CARD16 (50%), HSPA8 (67%), OR8B2 (83%), TMEM45B (0%), CD4 (17%), PEX5 (33%), APOBEC1 (50%), GDF3 (67%), NANOG (83%), FAM90A1 (0%), PRH1 (33%), PRR4 (50%), PRH2 (67%), TAS2R14 (83%), TAS2R31 (0%), TAS2R46 (17%), TAS2R43 (33%), TAS2R30 (50%), PRB4 (67%), PRB1 (83%), DDX11 (0%), H3-5 (17%), ALG10 (33%), ALG10B (50%), TUBA1B (67%), COX14 (83%), NACA (50%), DPY19L2 (67%), HNF1A (83%), HPD (0%), HCAR2 (17%), HCAR3 (33%), P2RX2 (50%), PGAM5 (67%), GOLGA3 (83%), C1QTNF9B (0%), C1QTNF9 (17%), PARP4 (33%), PABPC3 (50%), MRPS31 (67%), HNRNPA1L2 (83%), PRR20C (0%), PRR20B (17%), PRR20D (33%), PRR20E (50%), F7 (67%), PROZ (83%), POTEM (0%), POTEG (17%), OR11H2 (33%), OR4N2 (50%), OR4Q3 (67%), OR4M1 (83%), RNASE3 (0%), RNASE2 (17%), OR10G2 (33%), DHRS4 (50%), DHRS4L2 (67%), ARF6 (83%), ACOT2 (0%), NDUFB1 (17%), JAG2 (33%), BTBD6 (50%), IGHV3-21 (67%), GOLGA6L6 (83%), POTEB3 (0%), LINC02203 (17%), OR4M2B (33%), OR4N4C (50%), POTEB (67%), OR4M2-OT1 (83%), OR4N4 (0%), GOLGA6L22 (17%), GOLGA6L1 (33%), GOLGA6L26 (50%), GOLGA8S (67%), GOLGA6L2 (83%), HERC2 (0%), GOLGA6L24 (17%), GOLGA8F (33%), GOLGA8G (50%), GOLGA6L25 (67%), GOLGA8M (83%), GOLGA8J (0%), GOLGA8T (17%), GOLGA8R (50%), GOLGA8Q (67%), GOLGA8H (83%), GOLGA8O (0%), GOLGA8N (17%), GOLGA8A (33%), GOLGA8B (50%), NANOGP8 (67%), NDUFAF1 (83%), CKMT1B (0%), CATSPER2 (33%), CKMT1A (50%), TERB2 (67%), LDHAL6B (0%), GOLGA6B (17%), GOLGA6A (33%), ISLR2 (50%), GOLGA6C (67%), GOLGA6D (83%), ADAMTS7 (0%), EFL1 (17%), SAXO2 (33%), GOLGA6L10 (50%), GOLGA6L9 (67%), WHAMM (83%), OR4F4 (0%), MPG (17%), HBM (33%), AXIN1 (83%), SSTR5 (0%), TPSD1 (50%), GNPTG (67%), UNKL (83%), PKD1 (0%), PDPK1 (17%), EEF2KMT (33%), NPIPA3 (50%), NPIPA2 (67%), NOMO1 (83%), PDXDC1 (0%), RRN3 (17%), NPIPA5 (33%), MPV17L (50%), NOMO3 (67%), NPIPA6 (83%), NPIPA8 (0%), NPIPA9 (17%), NOMO2 (33%), SMG1 (50%), IQCK (67%), ACSM5 (83%), ACSM2B (0%), NPIPB3 (17%), NPIPB4 (50%), NPIPB5 (67%), NPIPB6 (83%), NPIPB7 (0%), SULT1A2 (17%), NPIPB8 (50%), EIF3C (67%), NPIPB9 (83%), NPIPB11 (0%), BOLA2-SMG1P6 (17%), BOLA2 (33%), SLX1B (50%), SULT1A4 (67%), NPIPB12 (83%), SLX1A (0%), SULT1A3 (17%), NPIPB13 (33%), PHKG2 (50%), VKORC1 (67%), KRABD5 (83%), TP53TG3 (0%), TP53TG3C (17%), TP53TG3E (33%), TP53TG3B (50%), TP53TG3F (67%), CCNYL1B (83%), CES1 (0%), MT1M (17%), MATCAP1 (33%), HSD11B2 (50%), CLEC18A (67%), PDPR (83%), EXOSC6 (0%), HPR (50%), NPIPB15 (67%), CLEC18B (83%), CA5A (0%), ZNF469 (17%), CDH15 (33%), ANKRD11 (50%), MC1R (67%), PRDM7 (83%), ABR (0%), SERPINF2 (17%), SRR (33%), OR1D5 (50%), P2RX5 (67%), ALOX15 (83%), ENO3 (0%), USP6 (17%), SLC35G6 (33%), ALOXE3 (50%), HES7 (67%), CDRT15 (83%), FBXW10B (0%), TRIM16 (17%), ZNF286A-TBC1D26 (33%), ZNF286A (50%), TBC1D26 (67%), UBB (83%), ATPAF2 (0%), EVPLL (17%), LGALS9C (33%), TBC1D28 (50%), FOXO3B (67%), FBXW10 (83%), GRAP (0%), GRAPL (17%), LGALS9B (33%), CDRT15L2 (50%), MEIS3P2 (67%), MAP2K3 (83%), KCNJ18 (0%), LGALS9 (17%), FOXN1 (33%), SUZ12 (50%), LRRC37B (67%), SLC35G3 (83%), CCL4 (0%), TBC1D3B (17%), CCL4L2 (50%), TBC1D3I (67%), TBC1D3G (83%), TBC1D3F (0%), TBC1D3K (17%), TBC1D3L (33%), TBC1D3D (50%), TBC1D3C (67%), TBC1D3E (83%), MRPL45 (0%), KRTAP1-1 (17%), KRTAP4-7 (33%), KRTAP4-8 (50%), KRTAP4-16 (67%), KRTAP4-9 (83%), KRTAP4-12 (0%), KRTAP9-7 (17%), KRT14 (33%), KRT16 (50%), KRT17 (67%), HSD17B1 (83%), G6PC3 (0%), ARHGAP27 (17%), PLEKHM1 (33%), ARL17B (50%), LRRC37A (67%), ARL17A (83%), NSF (0%), NPEPPS (17%), HOXB8 (33%), GIP (50%), DHX40 (67%), RPS6KB1 (83%), METTL2A (0%), TLK2 (17%), CSH2 (33%), GH2 (50%), CSH1 (67%), CSHL1 (83%), LRRC37A3 (0%), C17orf58 (17%), AMZ2 (33%), TMC6 (50%), CANT1 (67%), RNF213 (83%), ARL16 (0%), TUBB8B (17%), TYMS (33%), SLC35G4 (50%), POTEC (67%), ANKRD30B (83%), SLC25A52 (0%), KATNAL2 (17%), SERPINB4 (33%), SERPINB3 (50%), GALR1 (67%), CTDP1 (83%), BSG (0%), HCN2 (17%), KISS1R (33%), STK11 (50%), TCF3 (67%), ABHD17A (83%), GIPC3 (0%), TBXA2R (17%), CREB3L3 (33%), RFX2 (50%), C3 (67%), MBD3L2B (83%), MBD3L4 (0%), MBD3L2 (17%), STXBP2 (33%), TYK2 (50%), ZNF799 (67%), ZNF443 (83%), CYP4F3 (0%), CYP4F12 (17%), OR10H2 (33%), CALR3 (50%), MYO9B (67%), INSL3 (83%), ZNF738 (0%), ZNF100 (17%), ZNF208 (33%), ZNF676 (50%), ZNF729 (67%), ZNF492 (83%), ZNF728 (0%), RHPN2 (17%), GPI (33%), ZNF302 (50%), ZNF181 (67%), FFAR3 (83%), COX6B1 (0%), LGALS7 (17%), LGALS7B (33%), IFNL3 (50%), IFNL4 (67%), IFNL2 (83%), CYP2A7 (17%), CYP2G1P (33%), CYP2A13 (67%), CYP2F1 (83%), PSG8 (0%), PSG1 (17%), PSG6 (33%), PSG7 (50%), PSG11 (67%), PSG2 (83%), PSG4 (0%), PSG9 (17%), ETHE1 (50%), ZNF285 (67%), APOC1 (83%), APOC4 (0%), BLOC1S3 (17%), DMPK (33%), FUT1 (50%), BAX (67%), LHB (83%), CGB3 (0%), CGB2 (17%), CGB1 (33%), CGB5 (50%), CGB8 (67%), CGB7 (83%), PNKP (0%), SIGLEC16 (17%), KLK4 (33%), ETFB (50%), ZNF808 (67%), ZNF600 (83%), ZNF468 (0%), VN1R4 (17%), FAM90A27P (33%), ZNF765 (50%), ZNF761 (67%), ZNF813 (83%), PRKCG (0%), MBOAT7 (17%), LILRA6 (33%), LILRB2 (50%), LAIR1 (67%), LAIR2 (83%), LILRB1 (0%), KIR3DL3 (17%), KIR2DL3 (33%), KIR2DL1 (50%), KIR2DL4 (67%), KIR3DL1 (83%), KIR3DL2 (0%), NLRP7 (17%), NLRP2 (33%), GP6 (50%), TNNT1 (67%), TNNI3 (83%), RFPL4A (0%), RFPL4AL1 (17%), ZNF419 (33%), ZNF773 (50%), ZNF587B (67%), ZNF814 (83%), ZNF417 (0%), SLC27A5 (17%), SIRPB1 (33%), CST4 (50%), CST1 (67%), CST2 (83%), PLAGL2 (0%), SEMG1 (17%), PLTP (33%), CHRNA4 (50%), EEF1A2 (67%), PTK6 (83%), MYT1 (0%), PCMTD2 (17%), TPTE (33%), POTED (50%), KRTAP21-1 (67%), SMIM11 (83%), SMIM34 (0%), KCNE1 (17%), CBR3 (33%), NDUFV3 (50%), CBS (67%), U2AF1 (83%), SIK1 (0%), HSF2BP (17%), H2BC12L (33%), TRAPPC10 (50%), PWP2 (67%), GATD3 (83%), DNMT3L (0%), KRTAP10-1 (17%), KRTAP10-2 (33%), KRTAP10-4 (50%), KRTAP10-5 (67%), KRTAP10-6 (83%), KRTAP10-8 (0%), KRTAP10-9 (17%), KRTAP10-10 (33%), KRTAP12-2 (50%), KRTAP12-1 (67%), COL18A1 (83%), OR11H1 (0%), POTEH (17%), CCT8L2 (33%), USP18 (50%), GGTLC3 (67%), TMEM191B (83%), FAM246B (0%), DGCR6 (17%), PRODH (33%), FAM246C (50%), CCDC188 (67%), RTN4R (83%), TUBA3FP (0%), LRRC74B (17%), FAM246A (33%), RIMBP3B (50%), HIC2 (67%), TMEM191C (83%), GGTLC2 (0%), IGLL1 (17%), DRICH1 (33%), GSTT2B (50%), DDTL (67%), GSTT2 (83%), RFPL1 (0%), C22orf42 (17%), RFPL3 (33%), APOBEC3D (83%), APOBEC3H (0%), ATF4 (17%), NDUFA6 (33%), CYP2D7 (67%), RRP7A (83%), CYB5R3 (0%), A4GALT (17%), TTLL1 (33%), MLC1 (50%), TUBGCP6 (67%), ACR (83%), XG (0%), GYG2 (17%), ARSD (33%), MXRA5 (50%), PRKX (67%), VCX3A (83%), VCX2 (0%), VCX3B (17%), FAM9A (33%), FAM9C (50%), SUPT20HL2 (67%), SUPT20HL1 (83%), MAGEB6 (0%), DCAF8L1 (17%), FAM47B (33%), H2AL1Q (50%), FAM47C (67%), H2AL3 (83%), SPACA5B (0%), SSX5 (17%), SSX1 (33%), SSX3 (50%), SSX4 (67%), SSX4B (83%), GAGE12J (0%), GAGE13 (17%), GAGE2E (33%), GAGE12B (50%), GAGE12C (67%), GAGE12D (83%), GAGE12F (0%), GAGE12G (17%), GAGE12H (33%), GAGE2A (50%), GAGE1 (67%), CENPVL3 (83%), CENPVL1 (0%), MAGED4B (17%), MAGED4 (33%), XAGE1A (50%), XAGE1B (67%), SSX7 (83%), SSX2B (0%), SPANXN5 (17%), XAGE5 (33%), XAGE3 (50%), FAM156B (67%), FAM156A (83%), SPIN2B (0%), SPIN2A (17%), ZXDA (33%), CXorf49 (50%), CXorf49B (67%), DMRTC1B (83%), FAM236D (0%), DMRTC1 (17%), FAM236C (33%), FAM236A (50%), PABPC1L2B (67%), PABPC1L2A (83%), TGIF2LX (0%), PCDH11X (17%), TCEAL6 (33%), TCP11X1 (50%), NXF2 (67%), NXF2B (83%), RAB40AL (0%), TMSB15B (17%), H2BW1 (33%), H2BW2 (50%), TMSB15C (67%), PSMD10 (83%), CT47C1 (0%), RHOXF2B (17%), RHOXF2 (33%), CT47B1 (50%), CT47A12 (67%), CT47A11 (83%), CT47A9 (0%), CT47A8 (17%), CT47A7 (33%), CT47A6 (50%), CT47A5 (67%), CT47A4 (83%), CT47A2 (0%), CT47A1 (17%), RTL8B (33%), RTL8C (50%), RTL8A (67%), SMIM10L2B (83%), CT55 (0%), ETDA (17%), SMIM10L2A (33%), CT45A1 (50%), CT45A3 (67%), CT45A5 (83%), CT45A2 (0%), CT45A7 (17%), CT45A8 (33%), CT45A9 (50%), CT45A10 (67%), SAGE1 (83%), SPANXC (0%), SPANXA1 (17%), SPANXA2 (33%), SPANXD (50%), MAGEC1 (67%), SPANXN3 (83%), UBE2NL (0%), SPANXN1 (17%), CXorf51B (33%), CXorf51A (50%), EOLA1 (67%), HSFX3 (83%), HSFX2 (0%), HSFX1 (17%), MAGEA9 (33%), EOLA2 (50%), HSFX4 (67%), MAGEA3 (83%), MAGEA2B (0%), CSAG1 (17%), MAGEA12 (33%), MAGEA2 (50%), CSAG3 (67%), MAGEA6 (83%), PWWP4 (0%), SLC6A8 (17%), BCAP31 (33%), OPN1LW (50%), OPN1MW (67%), OPN1MW2 (83%), TEX28 (0%), CTAG1A (17%), CTAG1B (33%), CTAG2 (50%), H2AB1 (67%), F8A1 (83%), F8A2 (0%), F8A3 (17%), H2AB3 (33%), IL9R (50%), WASH6P (67%), TGIF2LY (not on this reference), PCDH11Y (not on this reference), TSPY2 (not on this reference), TSPY4 (not on this reference), TSPY8 (not on this reference), TSPY3 (not on this reference), TSPY1 (not on this reference), TSPY9 (not on this reference), TSPY10 (not on this reference), VCY (not on this reference), VCY1B (not on this reference), CDY2B (not on this reference), CDY2A (not on this reference), HSFY1 (not on this reference), HSFY2 (not on this reference), RBMY1B (not on this reference), RBMY1A1 (not on this reference), RBMY1D (not on this reference), RBMY1E (not on this reference), RBMY1F (not on this reference), RBMY1J (not on this reference), BPY2 (not on this reference), DAZ1 (not on this reference), DAZ2 (not on this reference), CDY1B (not on this reference), BPY2B (not on this reference), DAZ3 (not on this reference), DAZ4 (not on this reference), BPY2C (not on this reference), CDY1 (not on this reference), C4B_2 (not on this reference), GSTT1 (not on this reference), GSTTP2 (not on this reference), GTF2H2C_2 (not on this reference), HLA-DRB3 (not on this reference), HLA-DRB4 (not on this reference), KIR2DL2 (not on this reference), KIR2DL5A (not on this reference), KIR2DL5B (not on this reference), KIR2DS1 (not on this reference), KIR2DS2 (not on this reference), KIR2DS3 (not on this reference), KIR2DS5 (not on this reference), KIR3DS1 (not on this reference), LILRA3 (not on this reference), OR8U8 (not on this reference), OR8U9 (not on this reference), OR9G9 (not on this reference), TAS2R45 (not on this reference)</p>
+    <p class="note">Not read here, called by a step of their own (54): RHCE (0%) by parascopy, AMY1A (17%) by parascopy, AMY1B (33%) by parascopy, AMY1C (50%) by parascopy, GSTM1 (0%) by pypgx, NOTCH2 (67%) by parascopy, FCGR1A (50%) by parascopy, GBA1 (17%) by parascopy, FCGR2A (67%) by parascopy, FCGR2C (0%) by parascopy, FCGR3B (17%) by parascopy, CFHR3 (17%) by parascopy, CFHR1 (33%) by parascopy, PROS1 (83%) by parascopy, UGT2B17 (50%) by pypgx, UGT2B15 (67%) by pypgx, GYPE (67%) by parascopy, GYPB (83%) by parascopy, GTF2H2C (50%) by parascopy, SMN2 (83%) by parascopy, SMN1 (0%) by parascopy, GTF2H2 (33%) by parascopy, HSPA1B (0%) by parascopy, C4A (33%) by parascopy, C4B (50%) by parascopy, CYP21A2 (67%) by cn_loci:CYP21A2, LPA (67%) by cn_loci:LPA_KIV2, PMS2 (0%) by parascopy, GTF2I (83%) by parascopy, DEFA1B (0%) by parascopy, CEL (83%) by parascopy, MUC5B (67%) by parascopy, KLRC2 (17%) by parascopy, KRT6B (0%) by parascopy, KRT6C (17%) by parascopy, KRT6A (33%) by parascopy, CHRFAM7A (33%) by parascopy, STRC (17%) by parascopy, SORD (83%) by parascopy, HBA2 (50%) by cn_loci:HBA, HBA1 (67%) by cn_loci:HBA, TPSB2 (17%) by parascopy, TPSAB1 (33%) by parascopy, OTOA (33%) by parascopy, SULT1A1 (33%) by pypgx, HYDIN (17%) by parascopy, HP (33%) by cn_loci:HP, CCL3L3 (33%) by cn_loci:CCL3L1, CYP2A6 (0%) by pypgx, CYP2B6 (50%) by pypgx, CD177 (33%) by parascopy, APOBEC3A (50%) by parascopy, APOBEC3B (67%) by parascopy, CYP2D6 (50%) by pypgx</p>
+  </div>
+  </section>
+  <section class="sec" id="variants">
+  <div class="card">
+    <h2>Variant Calling</h2>
+    <p class="sec-meta">Step 03 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#variants">link to this section</a></p>
+    <p class="caveat">Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller&#x27;s filter; a count says nothing about health on its own.</p>
+    <div class="stat"><span class="label">Total variants</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">PASS variants</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">SNPs</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">Indels</span><span class="value">0</span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-clinical">
+  <h2 class="chapter-title">Clinical</h2>
+  <p class="question">Is there anything to take to a doctor?</p>
+  <div class="grid">
+  <section class="sec" id="clinvar">
+  <div class="card">
+    <h2>ClinVar Screening</h2>
+    <p class="sec-meta">Step 06 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinvar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="clinical-filter">
+  <div class="card">
+    <h2>Clinical Variant Filter</h2>
+    <p class="sec-meta">Step 23 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinical-filter">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpsr">
+  <div class="card">
+    <h2>Cancer Predisposition</h2>
+    <p class="sec-meta">Step 17 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpsr">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="slivar">
+  <div class="card">
+    <h2>Variant Prioritization (slivar)</h2>
+    <p class="sec-meta">Step 31 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#slivar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">N/A</span></div>
+  </div>
+  </section>
+  <section class="sec" id="expansions">
+  <div class="card">
+    <h2>Repeat Expansions</h2>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mito">
+  <div class="card">
+    <h2>Mitochondrial Analysis</h2>
+    <p class="sec-meta">Step 20 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mito">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
+    <p class="caveat">Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).</p>
+    <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 33 was not run in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">chrY or chrX</span><span class="value"><span class="badge badge-gray">not detected above 10%</span></span></div>
+    <div class="stat"><span class="label">Why</span><span class="value"><span style="font-weight:normal;font-size:13px"></span></span></div>
+    <p class="note">From depth: estimated share of the cells that lost one X 2.0% (95% range -1.0% to 5.0%); None to autosome depth ratio 0.980, 1.0 expected</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-carrier">
+  <h2 class="chapter-title">Carrier</h2>
+  <p class="question">What could I pass on to a child?</p>
+  <div class="grid">
+  <section class="sec" id="paralogs">
+  <div class="card">
+    <h2>Paralog Copy Number</h2>
+    <p class="sec-meta">Steps 35b, 35 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#paralogs">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not checked</span></span></div>
+    <p class="note">Paralog copy number: not checked (neither step 35 nor step 35b ran)</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-medicines">
+  <h2 class="chapter-title">Medicines</h2>
+  <p class="question">How might I respond to medicines?</p>
+  <div class="grid">
+  <section class="sec" id="pharmcat">
+  <div class="card">
+    <h2>Pharmacogenomics</h2>
+    <p class="sec-meta">Step 07 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#pharmcat">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpic">
+  <div class="card">
+    <h2>CPIC Drug Recommendations</h2>
+    <p class="sec-meta">Step 27 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpic">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cyp2d6">
+  <div class="card">
+    <h2>CYP2D6 Across Callers</h2>
+    <p class="sec-meta">Steps 32, 21 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cyp2d6">link to this section</a></p>
+    <p class="caveat">CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means the gene was not read reliably here; a clinical CYP2D6 test settles it.</p>
+    <div class="stat"><span class="label">PharmCAT (step 36&#x27;s call)</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">Cyrius</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx and Cyrius agree</span><span class="value"><span class="badge badge-gray">fewer than two usable calls</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="hla">
+  <div class="card">
+    <h2>HLA Typing</h2>
+    <p class="sec-meta">Step 08 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#hla">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-ancestry">
+  <h2 class="chapter-title">Ancestry</h2>
+  <p class="question">Where do my ancestors come from?</p>
+  <div class="grid">
+  <section class="sec" id="mt-haplogroup">
+  <div class="card">
+    <h2>Mitochondrial Haplogroup</h2>
+    <p class="sec-meta">Step 12 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mt-haplogroup">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="roh">
+  <div class="card">
+    <h2>Runs of Homozygosity</h2>
+    <p class="sec-meta">Step 11 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#roh">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-traits">
+  <h2 class="chapter-title">Traits and scores</h2>
+  <p class="question">What do studies say about my traits and risk scores?</p>
+  <div class="grid">
+  <section class="sec full-width" id="traits-panel">
+  <div class="card full-width">
+    <h2>Traits</h2>
+    <p class="sec-meta">Step 42 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="telomere">
+  <div class="card">
+    <h2>Telomere content (relative)</h2>
+    <p class="sec-meta">Step 10 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#telomere">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-limits">
+  <h2 class="chapter-title">What this report leaves out</h2>
+  <p class="question">Which steps did not run, and what does no step look at?</p>
+  <div class="grid">
+  <section class="sec" id="not-run">
+  <div class="card">
+    <h2>Steps Not Run</h2>
+    <ul class="plain">
+      <li>ClinVar screen</li>
+      <li>PharmCAT</li>
+      <li>CPIC drug-gene recommendations</li>
+      <li>pypgx</li>
+      <li>Cyrius (CYP2D6)</li>
+      <li>SMN1/SMN2 copy number (Parascopy, short reads)</li>
+      <li>Paralog genes (Paraphase, PacBio HiFi)</li>
+      <li>HLA typing (T1K)</li>
+      <li>Polygenic risk scores</li>
+      <li>Fine-grained ancestry (ADMIXTURE, RFMix)</li>
+      <li>Structural variants (Manta)</li>
+      <li>Structural variants (Delly)</li>
+      <li>Copy number (CNVpytor)</li>
+      <li>SV consensus merge</li>
+      <li>Structural variants, class 4 and 5 (AnnotSV)</li>
+      <li>Repeat expansions (ExpansionHunter)</li>
+      <li>Telomere content (TelomereHunter)</li>
+      <li>Runs of homozygosity</li>
+      <li>Mitochondrial haplogroup</li>
+      <li>Y-chromosome haplogroup (Yleaf)</li>
+      <li>Y placement on the current public tree</li>
+      <li>Y-STR markers (HipSTR)</li>
+      <li>Raw-data export (23andMe v5 layout)</li>
+      <li>Blood groups (predicted)</li>
+      <li>Lp(a): LPA KIV-2 repeat count</li>
+      <li>MUC1 VNTR frameshifts (VNtyper)</li>
+      <li>Locityper second opinion at hard loci</li>
+      <li>Mitochondrial variants</li>
+      <li>Traits panel</li>
+      <li>Archaic ancestry (IBDmix)</li>
+      <li>Ancient populations (AADR PCA)</li>
+      <li>Viral DNA in the unmapped reads</li>
+      <li>Symptom-driven ranking (Exomiser)</li>
+      <li>Clonal haematopoiesis (CHIP)</li>
+      <li>Mobile element insertions (MEGAnE)</li>
+      <li>Mosaic chromosomal alterations (MoChA)</li>
+      <li>Cancer predisposition (CPSR)</li>
+      <li>Clinical variant filter</li>
+      <li>Variant prioritization (slivar)</li>
+    </ul>
+  </div>
+  </section>
+  <section class="sec always" id="not-assessed">
+  <div class="card">
+    <h2>Not Assessed by This Pipeline</h2>
+    <ul class="plain">
+      <li>Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)</li>
+      <li>Methylation and imprinting</li>
+      <li>Repeat expansions outside the ExpansionHunter catalog</li>
+      <li>Phase: two variants in one gene are compound-het candidates, not confirmed</li>
+      <li>Variants of uncertain significance (not interpreted)</li>
+      <li>Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums</li>
+      <li>HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35&#x27;s read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call</li>
+      <li>Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)</li>
+      <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
+      <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <ul class="plain terms">
+      <li><strong>A4GALT</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ABCG8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ABHD17A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ABO</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ABR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACOT2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACSM2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACSM5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACTR3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ACTR3C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ADAMTS7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ADIRF</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AFP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AGAP4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AGAP6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AGAP9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AGL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AGRN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AJM1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AKR1B10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AKR1B15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AKR1C1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AKR1C2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AKR7L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALG10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALG10B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALG1L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALOX15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALOXE3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALPG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ALPP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AMY1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AMY1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AMY1C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AMY2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AMZ2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANAPC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD18B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD20A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD30A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD30B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD30BL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD36</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD36B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANKRD36C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANO7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANTXRL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANXA8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ANXA8L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOBEC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOBEC3A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOBEC3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOBEC3D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOBEC3H</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>APOC4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AQP12A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AQP12B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARF6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARHGAP27</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARHGEF10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARHGEF5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARL16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARL17A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARL17B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ARSD</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ASAH2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ASNS</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ATAD3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ATF4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ATPAF2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>AXIN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>B3GAT3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BAX</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BCAP31</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BFSP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BLOC1S3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BMP8A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BMP8B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BMS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BOLA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BOLA2-SMG1P6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BPY2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BPY2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BPY2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BRAF</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BSG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BTBD6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>BTRC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C17ORF58</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C1QTNF9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C1QTNF9B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C22ORF42</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C2ORF78</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C4A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>C4B_2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CA5A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CALR3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CANT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CARD16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CASP10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CASTOR2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CATSPER2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CBR3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CBS</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCDC121</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCDC188</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCDC74A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCDC74B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCL3L3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCL4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCL4L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCNYL1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCT6A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCT8L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCZ1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CCZ1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CD177</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CD247</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CD4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CD8B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDC14C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDH15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDH17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDK11A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDK11B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDRT15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDRT15L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDY1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDY1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDY2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CDY2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CEL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CELA2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CELA3A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CELA3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CENPVL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CENPVL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CES1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CFC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CFC1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CFHR1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CFHR3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CGB8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CHL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CHRFAM7A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CHRNA4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CISD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CKMT1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CKMT1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CLCNKA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CLCNKB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CLEC18A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CLEC18B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CLIP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CNR2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CNTNAP3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CNTNAP3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CNTNAP3C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>COL18A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>COX14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>COX6B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CR1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CR1L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CREB3L3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CROCC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CSAG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CSAG3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CSH1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CSH2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CSHL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CST1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CST2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CST4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT45A9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47A9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT47C1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CT55</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAG1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAG1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAGE15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAGE4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAGE6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAGE8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTAGE9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTDP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CTSV</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CXORF49</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CXORF49B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CXORF51A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CXORF51B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYB5R3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP11B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP11B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP21A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2A13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2A6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2B6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2D6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2D7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2F1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP2G1P</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP3A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP3A7-CYP3A51P</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP4A22</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP4F12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP4F3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>CYP4Z1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DAZ1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DAZ2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DAZ3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DAZ4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DAZL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DCAF8L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DCLRE1C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DDTL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DDX11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEAF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFA1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB103A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB103B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB104B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB105A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB105B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB106A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB106B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB107A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB107B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB108B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB108C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB109D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB130A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB130B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB131A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB4A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DEFB4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DGCR6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DHRS4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DHRS4L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DHX32</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DHX40</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DMPK</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DMRTC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DMRTC1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DND1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DNMT3L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DOK7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DPY19L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DPY19L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DRD4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DRD5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DRICH1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DTX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DUSP22</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>DUX4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ECHS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EEF1A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EEF2KMT</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EFL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EIF2B5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EIF3C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EIF5AL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EMB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EMC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ENO3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EOLA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EOLA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ESRRA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ETDA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ETFB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ETHE1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EVPLL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EXOSC6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>EXTL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>F7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>F8A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>F8A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>F8A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAHD2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM153A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM153CP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM156A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM156B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM236A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM236C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM236D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM246A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM246B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM246C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM25G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM47B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM47C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM72B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM72D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM86B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM86B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A20</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A23</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A24</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A27P</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM90A9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM9A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAM9C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FANCD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FANK1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FAT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FBXO25</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FBXW10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FBXW10B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCGR1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCGR2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCGR2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCGR2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCGR3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FCRL5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FFAR3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FGF3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FGFRL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FKBP1C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FKBP9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FLAD1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FLT4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOLH1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4L3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4L4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4L5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXD4L6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FOXO3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FRG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FRG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FRG2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FRG2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FSCN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FUT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>FXN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>G6PC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12H</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE12J</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAGE2E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GAK</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GALR1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GALT</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GATD3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GBA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GBP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GDF3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GGTLC2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GGTLC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GH2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GIP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GIPC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GK3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GLYATL1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GNPTG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L22</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L24</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L25</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA6L9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8H</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8J</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8M</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8N</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8O</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8Q</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8S</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GOLGA8T</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GP6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GPAT2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GPI</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GPIHBP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GPR89A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GPRIN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GRAP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GRAPL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GRIN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTA5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTM1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTT2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTT2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GSTTP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2H2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2H2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2H2C_2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2I</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2IRD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GTF2IRD2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GUSB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GYG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GYPB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>GYPE</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AC13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AC14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AC18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AC19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AL1Q</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2AL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2BC12L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2BC18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2BW1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H2BW2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H3-5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H3-7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H3C13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H3C14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H3C15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>H4C15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HBA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HBA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HBG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HBM</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HCAR2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HCAR3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HCN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HCN3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HERC2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HES7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HIC2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HLA-A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HLA-DRB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HLA-DRB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HLA-DRB4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HLA-G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HMGCL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HMX1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNF1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNRNPA1L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNRNPCL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNRNPCL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNRNPCL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HNRNPCL4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HOXB8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HPD</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HPF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HPR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HRNR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSD11B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSD17B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSD17B7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSF2BP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFX1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFX3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFX4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFY1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSFY2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSPA1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSPA6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HSPA8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HTN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HTN3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HYAL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>HYDIN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFITM3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA21</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNA7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFNL4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IFT70B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IGHV3-21</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IGLL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IGSF3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IL9R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IMPA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>INPP5E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>INSL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>INTS4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>IQCK</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ISLR2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>JAG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KATNAL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KCNE1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KCNJ18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KCNV2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIAA2013</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIF27</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL5A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DL5B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DS2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DS3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR2DS5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR3DL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR3DL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR3DL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KIR3DS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KISS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KISS1R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KLF11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KLF14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KLHL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KLK4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KLRC2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KMT2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KNG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRABD5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT6A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT6B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRT6C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP1-1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP10-9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP12-1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP12-2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP21-1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP4-12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP4-16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP4-7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP4-8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP4-9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP5-10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP5-11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP5-2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP5-4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP5-8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>KRTAP9-7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LAIR1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LAIR2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LAMB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LBR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LCE3D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LCE3E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LCN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LDHAL6B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LEFTY2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LGALS7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LGALS7B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LGALS9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LGALS9B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LGALS9C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LHB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LILRA3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LILRA6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LILRB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LILRB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LIMS4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LINC02203</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LIPN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LIX1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LPA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LRIG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LRRC37A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LRRC37A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LRRC37B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LRRC74B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>LZTFL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEA9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEB6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGEC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGED4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAGED4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MALL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MAP2K3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MARVELD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MASP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MATCAP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MBD3L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MBD3L2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MBD3L4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MBOAT7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MC1R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MDK</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MEIS3P2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>METTL2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>METTL2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MICA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MICB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MLC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MLPH</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MMP23B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MPG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MPV17L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MRC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MRGPRX4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MRPL23</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MRPL45</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MRPS31</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MST1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MST1R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MT1M</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MTLN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MTX1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MUC12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MUC5B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MXRA5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MYO9B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MYT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>MZT2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NACA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NAIP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NANOG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NANOGP8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NAT8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NBPF6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NDUFA6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NDUFAF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NDUFB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NDUFV3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NLRP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NLRP7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOD1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOMO1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOMO2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOMO3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOSTRIN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOTCH2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOTCH2NLA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOTCH2NLB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOTCH2NLC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOTCH2NLR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NOX4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPEPPS</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPA9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPIPB9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPM1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPPA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPY4R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NPY4R2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NSF</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NSUN5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUDT4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUTM2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUTM2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUTM2D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUTM2E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NUTM2G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NXF2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>NXF2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OBP2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OCM</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OCM2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OPN1LW</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OPN1MW</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OPN1MW2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR10A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR10G2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR10H2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR11H1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR11H2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR13C2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR13C5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR13C9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR1D5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR1S1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR1S2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2A42</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2F2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2G6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2J1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2J2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T27</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T33</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T34</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T35</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR2T7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4A15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4A47</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C45</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C46</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4C5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F21</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F29</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4F5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4M1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4M2-OT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4M2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4N2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4N4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4N4C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR4Q3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR51A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR51A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR5F1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR5H6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR5M8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR6B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR8B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR8H2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR8U8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR8U9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR9G1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OR9G9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ORM1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ORM2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OTOA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>OXCT2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>P2RX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>P2RX5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PABPC1L2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PABPC1L2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PABPC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PAPSS2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PARG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PARP4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PBX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCBP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDH11X</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDH11Y</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDHA10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDHB11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDHB12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDHB7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCDHB8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCMT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PCMTD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDCD6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDE4DIP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDE6B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDLIM3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDPK1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDPR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PDXDC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PEX5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PGA3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PGAM5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PGM5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PHKG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PIGV</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PIGY</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PKD1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PKN3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLAC9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLAGL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLD5P1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLEKHB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLEKHM1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLGLB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLGLB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PLTP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PMS2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PNKP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POLE3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POLR2J</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POLR2J2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POLR2J3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POLR2J3-UPK3BL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POM121</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POM121C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTED</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEF</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEH</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEI</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEJ</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>POTEM</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPIAL4H</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPP1R12B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PPP1R2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF27</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF33</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRAMEF9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRB4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRDM7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRG4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRH1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRH2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRIM2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRKCG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRKX</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRODH</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PROS1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PROZ</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR20B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR20C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR20D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR20E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR23B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR23D1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR23D2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRR4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRSS2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PRSS3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSG9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSMD10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PSPH</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PTEN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PTK6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PTPN20</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PTPRC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PVRIG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PWP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PWWP4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>PYURF</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RAB40AL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RAB6C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RAB6D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RABGEF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RABL2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RAET1G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RAET1L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RANBP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RASA4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RASA4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBAK</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBAK-RBAKDN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBM4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBM8A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBMY1J</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RBPMS</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RFPL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RFPL3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RFPL4A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RFPL4AL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RFX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RGPD8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RHCE</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RHOXF2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RHOXF2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RHPN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RIMBP3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RLN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RLN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RNASE2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RNASE3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RNF212</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RNF213</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ROPN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ROPN1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RPIA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RPL22</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RPN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RPS6KB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RRN3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RRP7A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RSPH10B2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RSRP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RTL8A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RTL8B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RTL8C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>RTN4R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>S100A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>S100A7A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>S100A8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SAGE1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SAP25</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SAR1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SAXO2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SCGB1C1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SDHA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SEC22B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SEC63</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SEMG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SEPTIN7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SERF1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SERPINB3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SERPINB4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SERPINF2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SETSIP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SFR1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SIGLEC16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SIK1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SIMC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SIRPB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SKIC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC10A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC17A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC22A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC22A12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC25A52</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC27A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC27A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC29A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC35E2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC35G3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC35G4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC35G5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC35G6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC6A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC6A8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC71A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLC9B1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLX1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SLX1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMG1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMIM10L2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMIM10L2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMIM11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMIM34</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMOC2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SMPD4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SNTG2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SOHLH1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SORD</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SOX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPACA5B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPAG11A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXA1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXA2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXD</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXN1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXN3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPANXN5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31A6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31A7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31C1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31C2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31D1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31D3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31D4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPATA31F1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE21</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPDYE9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPI1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPIN2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPIN2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SPRN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SRGAP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SRGAP2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SRGAP2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SRR</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSTR5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSU72L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSU72L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSU72L4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSU72L5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX2B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX4B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SSX7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>STAG3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>STEAP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>STK11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>STRC</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>STXBP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SULT1A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SULT1A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SULT1A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SULT1A4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SUPT20HL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SUPT20HL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SUZ12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>SYT15B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L7</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAF11L9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R14</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R30</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R31</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R43</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R45</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TAS2R46</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D28</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3I</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3K</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBC1D3L</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TBXA2R</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TCAF2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TCAF2C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TCEAL6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TCF3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TCP11X1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TEKT4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TERB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TERT</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TEX28</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TGIF2LX</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TGIF2LY</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>THOC3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TIMM23</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TIMM23B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TIMM23B-AGAP6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TJP2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TLK2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TM4SF19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMC6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMEM191B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMEM191C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMEM254</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMEM45B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMSB15B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TMSB15C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TNNI3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TNNT1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TP53TG3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TP53TG3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TP53TG3C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TP53TG3E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TP53TG3F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPCN2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPO</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPSAB1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPSB2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPSD1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TPTE</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRAPPC10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRBV9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM16</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM43</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM43B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM48</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM49</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM49C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM49D1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM50</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM51</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM51G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM64</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM64B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM64C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM73</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM74</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TRIM77</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TSPY9</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TTC34</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TTLL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBA1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBA3D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBA3E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBA3FP</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBB2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBB8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBB8B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TUBGCP6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TYK2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TYMS</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TYW1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>TYW1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>U2AF1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UBB</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UBE2NL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UBTFL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT1A3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT1A5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT1A6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2A1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2A2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2B10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2B15</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2B17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UGT2B28</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ULBP1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ULBP3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UNKL</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UPK3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UPK3BL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UPK3BL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L10</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L13</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L17</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L19</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L20</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L21</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L22</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L24</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L25</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L27</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L28</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L30</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP17L8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP18</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>USP6</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>UVSSA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VANGL1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VCX2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VCX3A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VCX3B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VCY</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VCY1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VKORC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>VN1R4</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>WASH6P</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>WASHC1</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>WASHC2A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>WHAMM</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XAGE1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XAGE1B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XAGE3</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XAGE5</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XCL2</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XG</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XKR8</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XNDC1N</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>XNDC1N-ZNF705EP-ALG1L9P</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZAN</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZBTB12</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZC3H11B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZDHHC11</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZDHHC11B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF100</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF181</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF208</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF285</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF286A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF286A-TBC1D26</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF302</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF33A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF33B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF35</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF37A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF417</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF419</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF443</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF468</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF469</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF492</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF587B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF595</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF600</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF658</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF676</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF705B</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF705D</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF705G</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF716</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF717</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF727</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF728</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF729</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF735</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF736</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF738</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF761</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF765</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF773</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF799</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF808</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF813</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNF814</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNG1A</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNG1C</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNG1E</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZNG1F</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+      <li><strong>ZXDA</strong>: <a href="#callability">Gene callability (mosdepth) (stale)</a></li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<div class="disclaimer">
+  <strong>Disclaimer:</strong> This report is for educational and research purposes only.
+  It is not a clinical diagnosis. Always discuss genomic findings with a qualified healthcare
+  professional before making any medical decisions. Variants of Uncertain Significance (VUS)
+  are not clinically actionable.
+</div>
+
+<div class="footer">
+  Generated by <span class="offsite"><a href="https://github.com/GeiserX/OwnGenome">OwnGenome</a> <span class="offsite-note">(opens a website)</span></span>
+  &mdash; 100% local analysis, no data uploaded
+  <p>No run_manifest.tsv in the sample folder.</p>
+</div>
+</main>
+</div>
+</body>
+</html>
