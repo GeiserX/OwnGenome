@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step 26b (fine-grained ancestry) against a reduced panel, read from gnomAD's
 # bucket by setup.sh --ancestry-fine-panel for the fixture's slices plus
-# chr22:20-35 Mb (the slices are too short to paint: RFMix needs 5 cM):
+# chr22:20-35 Mb (the slices are too short to paint: the painting needs 5 cM):
 #   - without the panel, step 26b says so in one line and exits 0;
 #   - the panel installs: both levels of the model, painting references, and
 #     neither person of the synthetic mix in it. Oceania, which has one
@@ -15,10 +15,7 @@
 #   - HG002T, HG002's GIAB v4.2.1 genotypes at the panel's SNVs inside GIAB's
 #     confident regions (0/0 where GIAB lists no variant): West Eurasia first
 #     with 70% or more, and the largest share of the painted chr22, half or more;
-#     RFMix's log of chr22 has no zero-size allocation. Red control: RFMix
-#     on the same input with one Oceanian added back to the painting map as
-#     its own group (the map before this rule) logs "requesting zero or
-#     negative size", so that check can fail;
+#     og painted chr22 with no failure and wrote its fitted parameters;
 #   - MIX, a planted person: chr22 below 27.5 Mb and the first half of each
 #     slice from a Yoruba (NA18486), the rest from a Han Chinese (NA18525),
 #     both left out of the panel: Africa and East Asia each 25% to 75%, the
@@ -32,9 +29,9 @@
 #     the group frequencies counted again: on it the HG002T fraction checks
 #     fail (sample HG002R, the same genotypes; the red copy loses the genetic
 #     map of chr22, so that run only estimates fractions);
-#   - the Nextflow module on HG002T (with html_report) writes the fractions of
-#     the bash step, and the HTML report has its card; on TWO's gVCF it stops
-#     the same way and publishes nothing.
+#   - the Nextflow module on HG002T (with html_report) writes the fractions and
+#     the painting of the bash step, and the HTML report has its card; on
+#     TWO's gVCF it stops the same way and publishes nothing.
 # The time and disk of the panel install go to the job summary.
 . "$(dirname "$0")/lib.sh"
 
@@ -143,25 +140,11 @@ for l in continent region; do
     awk -F'\t' '$1 == "replicates" {r = $2} $1 == "reference_resampling" {s = $2} END {exit !(r == 100 && s == "yes")}' \
     "${G}/HG002T/ancestry_fine/work/fractions/HG002T_${l}.fit.tsv"
 done
-T_LOG="${G}/HG002T/ancestry_fine/work/paint/${LONG_CHR}.log"
-check "HG002T: RFMix painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
-check "HG002T: RFMix's log of ${LONG_CHR} is there" test -s "$T_LOG"
-check "HG002T: and has no zero-size allocation" lacks 'requesting zero or negative size' "$(cat "$T_LOG" 2>/dev/null)"
-# Red control: the same RFMix run with one Oceanian added back to the painting
-# map as its own group, which is what the map held before the minimum.
-RED_RF="${G}/HG002T/rfmix-red"
-mkdir -p "$RED_RF"
-OCE_ONE=$(awk -F'\t' '$3 == "OCE" {print $1; exit}' "${PANEL}/samples.tsv")
-{ cat "${PANEL}/model/paint_map.tsv"; printf '%s\tOCE\n' "$OCE_ONE"; } > "${RED_RF}/paint_map.tsv"
-echo "+ rfmix on HG002T ${LONG_CHR} with one Oceanian (${OCE_ONE:-none}) as its own group"
-docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome" -w /genome "$RFMIX_IMAGE" \
-  rfmix -f "HG002T/ancestry_fine/work/phase/${LONG_CHR}.vcf.gz" -r "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/${LONG_CHR}.vcf.gz" \
-    -m HG002T/rfmix-red/paint_map.tsv -g "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/maps/${LONG_CHR}.rfmix.map" \
-    -o HG002T/rfmix-red/out --chromosome="$LONG_CHR" --n-threads=4 --random-seed=1 > "${RED_RF}/rfmix.log" 2>&1
-echo "+ exit $? (a segfault is 139; the zero-size request is logged either way)"
-grep -m 3 'requesting zero' "${RED_RF}/rfmix.log" || true
-check "red: with a one-person group RFMix logs the zero-size allocation" \
-  has 'requesting zero or negative size' "$(cat "${RED_RF}/rfmix.log" 2>/dev/null)"
+# og ancestry-fine paint painted every phased chromosome with our own model.
+check "HG002T: og painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
+check "HG002T: the painting wrote its fitted parameters" \
+  awk -F'\t' '$1 == "em_rounds" {r = 1} $1 == "mu" && $2 == "WEA" {w = 1} END {exit !(r && w)}' \
+  "${G}/HG002T/ancestry_fine/work/paint/params.tsv"
 
 # --- MIX: half a Yoruba, half a Han Chinese ---------------------------------------------
 # Their genotypes at the panel's SNVs, from the same bucket (the panel holds
@@ -287,6 +270,10 @@ check "its fractions are the bash step's (within 0.01 each)" awk -F'\t' '
     for (k in b) if (!(k in a)) {print "differs: " k " (only in the bash table)"; n++}
     print "differences: " n + 0; exit (n > 0)
   }' "$NF_TSV" "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
+# The painting is deterministic (fixed seeds, the same bytes for any thread
+# count), so the module's must be the bash step's, row for row.
+check "its painting is the bash step's" \
+  cmp "${NF_OUT}/HG002T/ancestry_fine/HG002T_painting.bed" "${G}/HG002T/ancestry_fine/HG002T_painting.bed"
 check "the HTML report has the fine-grained ancestry card with its painting" \
   bash -c 'grep -qF "Fine-Grained Ancestry" "$1" && grep -qF "data:image/png;base64," "$1"' _ "${NF_OUT}/HG002T/HG002T_report.html"
 
