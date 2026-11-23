@@ -20,6 +20,8 @@
 # naming TEST_GAP:exon2 and TEST_OK as read. Controls: without the exon table
 # (an exon table of other genes) step 16b writes no exon table and TEST_GAP
 # reads read; MOSDEPTH given the gene table alone writes the gene table alone.
+# A rerun of the gene pass with no exon of a catalog gene removes an exon table
+# left by an earlier pass.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
@@ -130,6 +132,19 @@ check "control: with no exon of a catalog gene, step 16b writes no exon table" \
   test ! -e "${CD}/mosdepth/${C}_callability_exons.bed.gz"
 R0=$(reading "$C" "$CD" 2>&1); echo "control, not read: ${R0}"
 check_eq "control: without the exon table TEST_GAP reads read" "$R0" "none"
+
+# --- a rerun drops an exon table left by an earlier pass --------------------------------
+# The control folder has its summary, so step 16b reruns only the gene pass
+# (its gene table is gone). The exon table names no catalog gene, so an exon
+# table from an earlier pass (step 16b's above) must not stay beside the new
+# gene table: the summary would read it as this pass's.
+cp "$E" "${CD}/mosdepth/${C}_callability_exons.bed.gz"
+rm -f "${CD}/mosdepth/${C}_callability.bed.gz"
+CALLABILITY_GENES="$CAT" CALLABILITY_EXONS="$OTHER_EXONS" THREADS=2 run_step 16b-mosdepth.sh "$C"
+check_step_exit "16b-mosdepth.sh (rerun)"
+check_eq "rerun: step 16b wrote the gene table again" "$(at10 "${CD}/mosdepth/${C}_callability.bed.gz" TEST_GAP)" 980
+check "rerun: the exon table of the earlier pass is gone" \
+  test ! -e "${CD}/mosdepth/${C}_callability_exons.bed.gz"
 
 # --- the MOSDEPTH module ----------------------------------------------------------------
 NP="${CASE_TMP}/project"

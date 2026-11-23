@@ -106,6 +106,9 @@ callability_pass() {
     mv "${work}/e.gz" "$CALLABLE_EXONS"
     mv "${work}/g.gz" "$CALLABLE"
   else
+    # No exon regions this time: an exon table left by an earlier pass would
+    # read as this pass's.
+    rm -f "$CALLABLE_EXONS"
     mv "$t" "$CALLABLE"
   fi
   rm -rf "$work"
