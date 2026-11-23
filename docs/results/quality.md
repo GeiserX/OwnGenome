@@ -13,7 +13,7 @@ These steps check that the data is good enough for everything else. Look at them
 
 ## What Part of the Genome a Run Covered
 
-Some results are a share, a sum or a placement over the whole genome: callability, the polygenic scores, fine-grained ancestry, telomere content, runs of homozygosity and archaic ancestry. A run on part of the genome (`--intervals`, or a VCF or BAM cut down to a few chromosomes) gives these results too, and they look the same as whole-genome results.
+Some results are a share, a sum or a placement over the whole genome: callability, the polygenic scores, fine-grained ancestry, telomere content, runs of homozygosity and archaic ancestry. A run on part of the genome (`--intervals`, or a VCF or BAM cut down to a few chromosomes) can also produce these results. The reports list each result's scope in the run header when the summary has a mark for it.
 
 So `summary.json` records the run's scope under `scope`. It comes from the chromosomes that the records of the sample VCF are on (`chr20` and `20` count alike):
 
@@ -24,7 +24,12 @@ So `summary.json` records the run's scope under `scope`. It comes from the chrom
 
 When the run is partial, each of those six sections that has a result of this run gets the same text in its `partial` field. A stale section holds a result from an earlier run, and that run's scope was not recorded: it gets `partial: not known, from an earlier run`, whatever this run covered. Without a sample VCF that can be read to its end, the scope is not known: `summary.json` has no `scope`, and no section is marked. The scope says which chromosomes have calls. It does not say how much of each chromosome was read well; callability does that.
 
+## Sample Identity and Contamination (Step 33)
+
+The Quality Control block in the text and HTML reports and the live QC card show when step 33 calls sample identity or the FREEMIX estimate uncertain. The reason appears when step 33 supplies one. A similarity signal under uncertain identity appears as a possible match.
+
 ## Reports (Steps 24 and 28)
 
 - **HTML report (step 24):** `${SAMPLE}/${SAMPLE}_report.html` collects the headline results of the other steps on one page, including the ClinVar hits table. It contains health findings: share it only as you would share a medical record.
+- **Selected steps with no result:** When the summary identifies one, the text and HTML report headers show the step and the reason recorded in the summary.
 - **MultiQC (step 28):** `${SAMPLE}/multiqc/multiqc_report.html` puts the QC of fastp, samtools, mosdepth and the other tools in one page. It is about data quality, not about your health.

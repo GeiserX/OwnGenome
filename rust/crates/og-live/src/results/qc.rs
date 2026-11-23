@@ -50,7 +50,8 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     format!("{}. {result}", text_or(val(d, "inferred_sex"), ".")),
                 );
                 let contam = string(d, "contamination");
-                let contamination = if contam == "ok" {
+                let contam_uncertain = qc::contamination_is_uncertain(&sample)?;
+                let contamination = if contam == "ok" && !contam_uncertain {
                     format!(
                         "Below the contamination flag (FREEMIX {}, flag above {})",
                         text(val(d, "freemix")),
@@ -60,11 +61,24 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     qc::freemix_text(&sample)?
                 };
                 out.fact("Contamination (VerifyBamID2)", contamination);
+                let identity = qc::identity_uncertainty(&sample)?;
+                if let Some(ref result) = identity {
+                    out.fact("Sample identity", result);
+                }
                 let same = val(d, "same_person_as");
                 if truthy(same) {
-                    out.fact("The same person as", cell(same));
+                    let label = if identity.is_some() {
+                        qc::POSSIBLE_MATCH
+                    } else {
+                        "The same person as"
+                    };
+                    out.fact(label, cell(same));
                 }
-                out.attention = sex_check == "mismatch" || contam == "warn" || truthy(same);
+                out.attention = sex_check == "mismatch"
+                    || contam == "warn"
+                    || contam_uncertain
+                    || identity.is_some()
+                    || truthy(same);
             }
             out.lines = qc::karyotype_lines(summary)?;
             out.attention |= !out.lines.is_empty();
@@ -150,15 +164,57 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
     }
     let same = val(d, "same_person_as");
     if truthy(same) {
-        found.push(
-            Finding::new(
-                Level::Trust,
-                "qc",
-                &["same-person"],
-                format!("The same person as {}", text(same)),
-                "Two runs of this server hold the same genome.",
-            )
-            .evidence("Matches", same),
+        add_row(found, "qc", Level::Trust, || {
+            let identity = qc::identity_uncertainty(&summary.section("sample_qc"))?;
+            let (label, detail) = match identity {
+                Some(detail) => (qc::POSSIBLE_MATCH, detail),
+                None => (
+                    "The same person as",
+                    "Two runs of this server hold the same genome.".to_owned(),
+                ),
+            };
+            Ok(Some(
+                Finding::new(
+                    Level::Trust,
+                    "qc",
+                    &["same-person"],
+                    format!("{label} {}", text(same)),
+                    detail,
+                )
+                .evidence("Matches", same),
+            ))
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_qc_facts_qualify_uncertain_evidence() {
+        let summary = Summary::parse(
+            r#"{"sections":{"sample_qc":{"state":"ok","data":{
+                "contamination":"ok","freemix":"0.0010",
+                "contamination_confidence":"uncertain",
+                "contamination_confidence_reason":"FREEMIX rests on 300 markers",
+                "identity":"uncertain","identity_reason":"only 300 shared sites",
+                "same_person_as":"S2 (0.99)"
+            }}}}"#,
+        )
+        .unwrap();
+        let shown = card("qc", &summary).unwrap();
+        assert_eq!(
+            shown.facts[2..],
+            [
+                strings([
+                    "Contamination (VerifyBamID2)",
+                    "uncertain (FREEMIX 0.0010): FREEMIX rests on 300 markers",
+                ]),
+                strings(["Sample identity", "uncertain (only 300 shared sites)"]),
+                strings(["Possible match to", "S2 (0.99)"]),
+            ]
         );
+        assert!(shown.attention);
     }
 }

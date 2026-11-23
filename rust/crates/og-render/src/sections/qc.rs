@@ -20,6 +20,25 @@ pub const KEYS: [&str; 4] = ["coverage", "sex_check", "sample_qc", "read_count"]
 /// What somalier says when the declared and the measured sex agree.
 pub const SEX_CHECK_AGREE: &str = "declared and measured sex agree";
 
+/// The label for a similarity signal that did not settle identity.
+pub const POSSIBLE_MATCH: &str = "Possible match to";
+
+/// The identity verdict and the producer's reason when identity is uncertain.
+pub fn identity_uncertainty(q: &Section<'_>) -> Result<Option<String>, Malformed> {
+    if !is_str(q.get("identity")?, "uncertain") {
+        return Ok(None);
+    }
+    Ok(Some(match q.get("identity_reason")? {
+        Some(Value::Str(reason)) if !reason.is_empty() => format!("uncertain ({reason})"),
+        _ => "uncertain".to_owned(),
+    }))
+}
+
+/// Whether VerifyBamID2's estimate relies on uncertain evidence.
+pub fn contamination_is_uncertain(q: &Section<'_>) -> Result<bool, Malformed> {
+    Ok(is_str(q.get("contamination_confidence")?, "uncertain"))
+}
+
 fn or_none(v: Option<&Value>) -> Result<String, Malformed> {
     v.map_or(Ok("None".to_owned()), py)
 }
@@ -57,6 +76,22 @@ pub fn read_count_text(d: &Section<'_>) -> Result<String, Malformed> {
 /// FREEMIX with its verdict, as both reports print it.
 pub fn freemix_text(q: &Section<'_>) -> Result<String, Malformed> {
     let freemix = q.get("freemix")?;
+    if contamination_is_uncertain(q)? {
+        let mut result = "uncertain".to_owned();
+        if let Some(value) = freemix.filter(|v| truthy(v)) {
+            result += &format!(" (FREEMIX {})", py(value)?);
+        }
+        if is_str(q.get("contamination")?, "warn") {
+            result += " (above the warning threshold)";
+        }
+        if let Some(Value::Str(reason)) = q.get("contamination_confidence_reason")?
+            && !reason.is_empty()
+        {
+            result += ": ";
+            result += reason;
+        }
+        return Ok(result);
+    }
     if is_str(q.get("contamination")?, "not_run") || !freemix.is_some_and(truthy) {
         return Ok("not run".to_owned());
     }
@@ -176,11 +211,19 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
             "  Contamination (VerifyBamID2 FREEMIX): {}",
             freemix_text(&sqc)?
         ));
+        let identity = identity_uncertainty(&sqc)?;
+        if let Some(ref result) = identity {
+            w.push(format!("  Sample identity: {result}"));
+        }
         if let Some(p) = sqc.get("same_person_as")?.filter(|v| truthy(v)) {
-            w.push(format!(
-                "  ** The same person as: {} (a duplicate or a sample swap) **",
-                py(p)?
-            ));
+            if identity.is_some() {
+                w.push(format!("  {POSSIBLE_MATCH}: {}", py(p)?));
+            } else {
+                w.push(format!(
+                    "  ** The same person as: {} (a duplicate or a sample swap) **",
+                    py(p)?
+                ));
+            }
         }
     }
     let kl = karyotype_lines(s)?;
@@ -260,10 +303,10 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
             body.push(stat("Not checked", Inline::Quiet(why)));
         }
         let contamination = sqc.get("contamination")?;
-        let colour = if is_str(contamination, "ok") {
-            Colour::Green
-        } else if is_str(contamination, "warn") {
+        let colour = if contamination_is_uncertain(&sqc)? || is_str(contamination, "warn") {
             Colour::Yellow
+        } else if is_str(contamination, "ok") {
+            Colour::Green
         } else {
             Colour::Gray
         };
@@ -271,8 +314,18 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
             "Contamination (FREEMIX)",
             badge(freemix_text(&sqc)?, colour),
         ));
+        let identity = identity_uncertainty(&sqc)?;
+        let uncertain = identity.is_some();
+        if let Some(result) = identity {
+            body.push(stat("Sample identity", badge(result, Colour::Yellow)));
+        }
         if let Some(p) = sqc.get("same_person_as")?.filter(|v| truthy(v)) {
-            body.push(stat("The same person as", badge(py(p)?, Colour::Red)));
+            let (label, colour) = if uncertain {
+                (POSSIBLE_MATCH, Colour::Yellow)
+            } else {
+                ("The same person as", Colour::Red)
+            };
+            body.push(stat(label, badge(py(p)?, colour)));
         }
     } else {
         body.push(stat(

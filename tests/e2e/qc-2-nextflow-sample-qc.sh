@@ -123,8 +123,13 @@ check "the summary has FREEMIX (${FREEMIX:-none})" test -n "$FREEMIX"
 grep -o '<div class="stat"><span class="label">\(Sex from the reads (somalier)\|Contamination (FREEMIX)\)</span>.*</div>' "$HTML" 2>/dev/null
 check "the QC card shows somalier's sex" \
   has 'Sex from the reads \(somalier\)</span><span class="value"><span class="badge badge-green">male<' "$(cat "$HTML" 2>/dev/null)"
-check "the QC card shows FREEMIX" \
-  has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-green\">${FREEMIX} \\(warning above 0.03" "$(cat "$HTML" 2>/dev/null)"
+if [ "$(jq -r '.sections.sample_qc.data.contamination_confidence' "$JSON" 2>/dev/null)" = uncertain ]; then
+  check "the QC card shows FREEMIX as uncertain" \
+    has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-yellow\">uncertain \\(FREEMIX $FREEMIX\\)" "$(cat "$HTML" 2>/dev/null)"
+else
+  check "the QC card shows FREEMIX" \
+    has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-green\">$FREEMIX \\(warning above 0.03" "$(cat "$HTML" 2>/dev/null)"
+fi
 check "the QC card shows mosdepth's depth" has 'Mean depth</span><span class="value">[0-9.]+x<' "$(cat "$HTML" 2>/dev/null)"
 check "the ROH card is filled" has '<h2>Runs of Homozygosity</h2>' "$(cat "$HTML" 2>/dev/null)"
 check "the haplogroup card is filled" has '<h2>Mitochondrial Haplogroup</h2>' "$(cat "$HTML" 2>/dev/null)"
