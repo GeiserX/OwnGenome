@@ -17,7 +17,6 @@ use crate::text;
 const ROWS: &str = "sections.traits.data.rows[]";
 const RULES: &str = "sections.traits.data.rules[]";
 pub const LOW_GQ_LABEL: &str = "Low-quality genotype calls";
-pub const LOW_GQ_READING: &str = "not read (low genotype quality)";
 
 /// A count to display when weak calls were included in the summary.
 pub fn low_gq_count(data: &Value) -> Option<i128> {
@@ -74,10 +73,11 @@ pub fn text_lines(d: &Section<'_>, sample: &str) -> Result<Vec<String>, Malforme
         }
         if is_str(Some(status), "low_gq") {
             out.push(format!(
-                "  {} ({} {}): {LOW_GQ_READING}.",
+                "  {} ({} {}): {}",
                 f("trait")?,
                 f("gene")?,
-                f("rsid")?
+                f("rsid")?,
+                f("reading")?
             ));
             continue;
         }
@@ -173,7 +173,7 @@ fn row(r: &Value) -> Result<Vec<Cell>, Malformed> {
             Cell::Text(trait_),
             gene,
             Cell::Text(".".to_owned()),
-            Cell::Sub(LOW_GQ_READING.to_owned(), f("note")?),
+            Cell::Sub(f("reading")?, f("note")?),
             Cell::Text(format!("PMID {}", f("pmids")?)),
         ]);
     }

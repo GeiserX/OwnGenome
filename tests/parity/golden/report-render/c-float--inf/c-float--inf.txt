@@ -336,7 +336,7 @@
   Lp(a) (LPA rs3798220): T|C. one copy (PMID 1)
   R117H (CFTR rs78655421): G/A. one copy (PMID 1)
   x (X rs2): C/C. other (PMID 1)
-  x (X rs3): not read (low genotype quality).
+  x (X rs3): A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.
   Not read (no genotype in the gVCF): rs1
   Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how. Notes per row: traits/S_traits.tsv
   Genotype rules (several sites read together; traits/S_genotype_rules.tsv):

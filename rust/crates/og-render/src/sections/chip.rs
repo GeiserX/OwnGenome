@@ -114,7 +114,7 @@ pub fn lines(d: &Section<'_>, sample: &str) -> Result<Vec<String>, Malformed> {
             if shares.is_empty() {
                 "Too shallow or not on the reference"
             } else {
-                "No gene-wide read-support limit"
+                "No read-support limit for the whole gene (too shallow or not on the reference)"
             },
             genes.join(", ")
         ));

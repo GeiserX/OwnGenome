@@ -415,7 +415,7 @@
     <p>DNMT3A R882H: VAF 0.05 (3 of 60 reads), .</p>
     <p>Read-support limit: at a VAF of about 10%, a clone in the median CHIP gene has enough reads with the change 8 times in 10, calculated from the depth at each coding base (median gene depth 33x). The caller and its filters can miss more. No call here does not rule out CHIP.</p>
     <p>Share of each gene&#x27;s coding bases assessable at the stated VAF: DNMT3A 60%, TET2 90%, ASXL1 0%, JAK2 55%, TP53 40%, SRSF2 65%.</p>
-    <p>No gene-wide read-support limit: ASXL1, SRSF2.</p>
+    <p>No read-support limit for the whole gene (too shallow or not on the reference): ASXL1, SRSF2.</p>
     <p>1 other protein changes listed, not counted: chip/S_chip.tsv.</p>
   </div>
   </section>
@@ -712,7 +712,7 @@
       <tr><td>R117H</td><td>CFTR<br><span style="font-size:12px;color:#666">rs78655421</span></td><td>G/A</td><td>one copy<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs1</span></td><td>.</td><td>no reads<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
       <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs2</span></td><td>C/C</td><td>other<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
-      <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>.</td><td>not read (low genotype quality)<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
+      <tr><td>x</td><td>X<br><span style="font-size:12px;color:#666">rs3</span></td><td>.</td><td>A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
     </table></div>
     <h3>Genotype rules (several sites read together)</h3>
     <div class="tscroll" role="region" aria-label="Traits: Genotype rules (several sites read together)" tabindex="0"><table>

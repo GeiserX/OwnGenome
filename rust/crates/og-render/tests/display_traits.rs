@@ -21,18 +21,40 @@ fn reports(section: &str, data: &str) -> [String; 2] {
     ]
 }
 
-#[test]
-fn traits_show_low_quality_rows_as_unread() {
-    let data = r#"{"called": 0, "not_covered": 0, "other_allele": 0, "low_gq": 1, "rows": [
-        {"rsid": "rs1", "trait": "Example trait", "gene": "GENE", "genotype": "A/G",
-         "status": "low_gq", "reading": "Do not show this interpretation", "note": "weak genotype call",
-         "ancestry": "yes", "pmids": "1234"}]}"#;
-    for report in reports("traits", data) {
+fn assert_unread_trait_reading(reading: &str) {
+    let data = format!(
+        r#"{{"called": 0, "not_covered": 0, "other_allele": 0, "low_gq": 1, "rows": [
+        {{"rsid": "rs1", "trait": "Example trait", "gene": "GENE", "genotype": "A/G",
+         "status": "low_gq", "reading": "{reading}", "note": "Study note",
+         "ancestry": "yes", "pmids": "1234"}}]}}"#
+    );
+    let [text, html] = reports("traits", &data);
+    for report in [&text, &html] {
         assert!(report.contains("Low-quality genotype calls"));
-        assert!(report.contains("Example trait") && report.contains("not read"));
-        assert!(!report.contains("Do not show this interpretation"));
         assert!(!report.contains("A/G"));
     }
+    assert_eq!(
+        [
+            text.contains(&format!("  Example trait (GENE rs1): {reading}\n")),
+            html.contains(&format!("</span></td><td>.</td><td>{reading}<br>")),
+        ],
+        [true, true],
+        "text and HTML should both show the producer's reading: {reading}"
+    );
+}
+
+#[test]
+fn traits_show_the_genotype_quality_reason() {
+    assert_unread_trait_reading(
+        "A low-quality call at this position (genotype quality 12, below 20): not read; check the reads.",
+    );
+}
+
+#[test]
+fn traits_show_the_caller_filter_reason() {
+    assert_unread_trait_reading(
+        "A low-quality call at this position (the caller filtered the call: LowQual): not read; check the reads.",
+    );
 }
 
 #[test]
@@ -69,8 +91,9 @@ fn chip_shows_the_assessable_share_and_preserves_the_call_note() {
         ]}"#;
     for report in reports("chip", data) {
         assert!(report.contains("GENE 80%") && report.contains("ZERO 0%"));
-        assert!(report.contains("also fit an inherited heterozygous variant"));
-        assert!(report.contains("not a diagnosis"));
+        assert!(report.contains(
+            "GENE p.X1Y: VAF 0.300 (9 of 30 reads), possible clonal haematopoiesis (not a diagnosis): 9 of 30 reads also fit an inherited heterozygous variant"
+        ));
         assert!(!report.contains("UNQUANTIFIED 0%"));
     }
 }
@@ -86,5 +109,36 @@ fn viral_reads_below_threshold_do_not_read_as_a_positive_or_a_negative() {
         assert!(report.contains("under the 10 a call needs"));
         assert!(report.contains("no integration detected"));
         assert!(!report.contains("No read on any"));
+    }
+}
+
+#[test]
+fn chip_explains_why_the_whole_gene_has_no_read_support_limit() {
+    let data = r#"{"median_depth": 60, "median_limit": 0.09,
+    "genes": [{"gene": "DNMT3A", "assessable_fraction": "0.985"}],
+    "not_covered": ["JAK2"]}"#;
+    for report in reports("chip", data) {
+        assert!(report.contains(
+            "No read-support limit for the whole gene (too shallow or not on the reference): JAK2."
+        ));
+    }
+}
+
+#[test]
+fn ebv_reads_below_threshold_preserve_the_hhv6_headline() {
+    let data = r#"{"hhv6": "no integrated HHV-6", "human_depth": "30.00", "genomes": 24, "found": [
+        {"virus": "EBV", "call": "below threshold", "reads": "4", "breadth": "0.0041",
+         "relative_depth": "0.000", "copies_per_cell": ".",
+         "note": "4 counted reads, under the 10 a call needs: too few to tell the virus from contamination at this depth."}]}"#;
+    let [text, html] = reports("viral", data);
+    assert_eq!(
+        [
+            text.contains("HHV-6: no integrated HHV-6"),
+            html.contains(r#"HHV-6</span><span class="value">no integrated HHV-6</span>"#),
+        ],
+        [true, true]
+    );
+    for report in [text, html] {
+        assert!(report.contains("EBV: 4 counted reads"));
     }
 }

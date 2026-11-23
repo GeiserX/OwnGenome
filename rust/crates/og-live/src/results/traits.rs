@@ -1,5 +1,5 @@
 use super::*;
-use og_render::sections::traits::{LOW_GQ_LABEL, LOW_GQ_READING, low_gq_count};
+use og_render::sections::traits::{LOW_GQ_LABEL, low_gq_count};
 use og_render::sections::{apoe, bloodtype, consumer, g2, prs, telomere, viral};
 
 pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
@@ -15,17 +15,11 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 })
                 .map(|r| {
                     if string(r, "status") == "low_gq" {
-                        let reason = string(r, "note");
-                        let reading = if matches!(reason.trim(), "" | ".") {
-                            LOW_GQ_READING.to_owned()
-                        } else {
-                            format!("{LOW_GQ_READING}. {reason}")
-                        };
                         return vec![
                             cell(val(r, "gene")),
                             cell(val(r, "trait")),
                             ".".to_owned(),
-                            reading,
+                            text_or(val(r, "reading"), "."),
                         ];
                     }
                     let genotype = text_or(val(r, "genotype"), ".");
@@ -184,4 +178,89 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
         _ => unreachable!(),
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GQ_READING: &str = "A low-quality call at this position (genotype quality 12, below 20): not read; check the reads.";
+    const FILTERED_READING: &str = "A low-quality call at this position (the caller filtered the call: LowQual): not read; check the reads.";
+    const THRESHOLD_NOTE: &str = "7 counted reads, under the 10 a call needs: too few to tell the virus from contamination at this depth.";
+
+    fn summary() -> Summary {
+        Summary::parse(&format!(
+            r#"{{"sections": {{
+                "traits": {{"data": {{"called": 0, "not_covered": 0, "low_gq": 2, "rows": [
+                    {{"gene": "GENE1", "trait": "Example GQ trait", "genotype": "A/G",
+                     "status": "low_gq", "reading": "{GQ_READING}", "note": "Study note"}},
+                    {{"gene": "GENE2", "trait": "Example filtered trait", "genotype": "C/T",
+                     "status": "low_gq", "reading": "{FILTERED_READING}", "note": "Study note"}}
+                ]}}}},
+                "bloodtype": {{"data": {{"systems": [
+                    {{"system": "ABO", "note": "Rare ABO alleles are outside this panel"}},
+                    {{"system": "RhD", "note": "RhD needs read depth"}},
+                    {{"system": "Duffy", "note": "Duffy phase was unknown"}},
+                    {{"system": "Kell", "note": "Kell study note"}}
+                ]}}}},
+                "viral": {{"data": {{"hhv6": "no integrated HHV-6", "genomes": 24, "found": [
+                    {{"virus": "HHV-6B", "call": "below threshold", "reads": "7",
+                     "breadth": "0.0041", "copies_per_cell": ".", "note": "{THRESHOLD_NOTE}"}}
+                ]}}}}
+            }}}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn counts_low_quality_trait_calls() {
+        let traits = card("traits-panel", &summary()).unwrap();
+        assert!(
+            traits
+                .facts
+                .contains(&strings(["Low-quality genotype calls", "2"]))
+        );
+    }
+
+    #[test]
+    fn shows_unread_trait_rows_with_the_producers_reasons() {
+        let traits = card("traits-panel", &summary()).unwrap();
+        let rows = val(traits.table.as_ref().unwrap(), "rows");
+        assert_eq!(
+            *rows,
+            Value::Array(vec![
+                strings(["GENE1", "Example GQ trait", ".", GQ_READING]),
+                strings(["GENE2", "Example filtered trait", ".", FILTERED_READING]),
+            ])
+        );
+    }
+
+    #[test]
+    fn shows_only_the_abo_rhd_and_duffy_notes() {
+        let bloodtype = card("bloodtype", &summary()).unwrap();
+        assert_eq!(
+            bloodtype.lines,
+            [
+                "ABO: Rare ABO alleles are outside this panel",
+                "RhD: RhD needs read depth",
+                "Duffy: Duffy phase was unknown",
+            ]
+        );
+    }
+
+    #[test]
+    fn uses_the_hhv6_reading_for_reads_below_threshold() {
+        let viral = card("viral", &summary()).unwrap();
+        assert!(
+            viral
+                .facts
+                .contains(&strings(["HHV-6", "no integration detected"]))
+        );
+    }
+
+    #[test]
+    fn explains_why_viral_reads_are_below_threshold() {
+        let viral = card("viral", &summary()).unwrap();
+        assert_eq!(viral.lines, [format!("HHV-6B: {THRESHOLD_NOTE}")]);
+    }
 }

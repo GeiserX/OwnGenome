@@ -37,9 +37,11 @@ const BELOW_THRESHOLD: &str = "below threshold";
 /// The integration result, scoped to the reads when threshold data is available.
 pub fn hhv6_reading<'a>(reading: &'a str, found: &[Value]) -> &'a str {
     if reading == "no integrated HHV-6"
-        && found.iter().any(
-            |row| matches!(row, Value::Object(fields) if is_str(fields.get("call"), BELOW_THRESHOLD)),
-        )
+        && found.iter().any(|row| {
+            matches!(row, Value::Object(fields)
+                if matches!(fields.get("virus"), Some(Value::Str(virus)) if virus.starts_with("HHV-6"))
+                    && is_str(fields.get("call"), BELOW_THRESHOLD))
+        })
     {
         "no integration detected"
     } else {
