@@ -270,6 +270,7 @@
 
 ## Fine-Grained Ancestry (ADMIXTURE, RFMix)
 ---
+  [partial: covers 1 of 22 autosomes]
   Left out of the model: Oceania. The panel has fewer than 10 unrelated reference people for it, so its ancestry is spread over the groups shown.
   Chromosome painting: none; not painted: RFMix failed on chr21
   Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.
@@ -309,6 +310,7 @@
 
 ## Archaic Ancestry (IBDmix, step 43)
 ---
+  [partial: covers 1 of 22 autosomes]
   Neanderthal: 2.00% (50.0 Mb in 120 segments)
   Denisovan: 0.01% (0.2 Mb in 3 segments)
   Analysed: 2500.0 Mb of the autosomes; modern frequencies: 1000 Genomes CEU
@@ -352,6 +354,7 @@
 
 ## Polygenic Risk Scores
 ---
+  [partial: covers 1 of 22 autosomes]
   CAD                                 0.5 (100/120 variants matched) PGS000018  percentile 75 (EUR)  effect HR 1.5 (EUR)
   T2D                                 0.1 (10/20 variants matched) PGS000014
   Short                               not available (not available/not available variants matched) PGS1
@@ -366,6 +369,7 @@
 
 ## Telomere content (relative, TelomereHunter)
 ---
+  [partial: covers 1 of 22 autosomes]
   Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
   Intratelomeric reads: 40; depth unknown (no total_reads or read_lengths in the summary): not checked
   Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).

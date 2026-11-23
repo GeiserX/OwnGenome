@@ -285,6 +285,7 @@
 
 ## Fine-Grained Ancestry (ADMIXTURE, RFMix)
 ---
+  [partial: covers 1 of 22 autosomes]
   Continental groups (fraction, bootstrap range):
     West Eurasia                                         95% (93% to 97%)
     Africa                                                5%
@@ -330,6 +331,7 @@
 
 ## Archaic Ancestry (IBDmix, step 43)
 ---
+  [partial: covers 1 of 22 autosomes]
   Neanderthal: 2.00% (50.0 Mb in 120 segments)
   Denisovan: 0.01% (0.2 Mb in 3 segments)
   Analysed: 2500.0 Mb of the autosomes; modern frequencies: 1000 Genomes CEU
@@ -348,6 +350,7 @@
 
 ## Runs of Homozygosity
 ---
+  [partial: covers 1 of 22 autosomes]
   Segments: 3  Total: 37.5 MB  Largest: 27.0 MB
   Autosomal ROH > 5MB: 2
     chr2:10000001-17000000  7.0MB
@@ -385,6 +388,7 @@
 
 ## Polygenic Risk Scores
 ---
+  [partial: covers 1 of 22 autosomes]
   CAD                                 0.5 (100/120 variants matched) PGS000018  percentile 75 (EUR)  effect HR 1.5 (EUR)
   T2D                                 0.1 (10/20 variants matched) PGS000014
   Percentile: where the score falls among the EUR samples of the HGDP+1kGP reference panel, the group whose genetic ancestry is most similar to this sample's (pgsc_calc). The ancestry match is low-confidence: read the percentile with care. A percentile is not a risk. Effect: the odds ratio (OR) or hazard ratio (HR) a published evaluation of the score measured in people of the same reference group, in that evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that group, not your own risk, and is shown only for a group the score was evaluated in. Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.
@@ -398,6 +402,7 @@
 
 ## Telomere content (relative, TelomereHunter)
 ---
+  [partial: covers 1 of 22 autosomes]
   Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
   Intratelomeric reads: 40 (floor 2,000 at 30.0x)
   WARNING: too few telomeric reads for a stable estimate; do not compare this value.
