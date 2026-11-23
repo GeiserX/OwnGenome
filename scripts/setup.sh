@@ -1236,7 +1236,7 @@ install_ancestry_fine_panel() {
   local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
-  echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
+  echo "  Step 26b finds the fractions and paints the chromosomes with og. The RFMix image is still pulled; RFMix is free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
