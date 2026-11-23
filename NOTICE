@@ -33,6 +33,10 @@ assets/callability_genes.tsv
     subject to US copyright (assets/licences/NIST-GIAB-NOTICE.txt);
     GENCODE 50, open access.
 
+assets/callability_exons.tsv
+    The MANE Select coding exons of GENCODE 50 (MANE from NCBI and
+    EMBL-EBI), open access.
+
 assets/carrier_genes.tsv
     Gene spans from GENCODE release 50, open access. Gene lists from Gregg et
     al., Genet Med 2021, ACOG Committee Opinions 690 and 691, and Orphadata
