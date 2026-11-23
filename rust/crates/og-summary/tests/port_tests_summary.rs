@@ -264,6 +264,7 @@ fn indexed_vep_maps_frequencies_and_rsids_to_the_hit_allele() {
     fs::remove_dir_all(d.path("vep")).unwrap();
     let no_vep = d.collect();
     for cv in [cv, data(&no_vep, "clinvar")] {
+        assert_eq!(array(cv, "hits").len(), 4);
         for i in 0..4 {
             expect(cv, &format!("hits.{i}.af"), "null");
             expect(cv, &format!("hits.{i}.rsids"), "[]");
@@ -2062,7 +2063,7 @@ fn prs_format_copies_the_legacy_score_evaluations_and_applies_to() {
     d.gzip("results/sample/score/sample_pgs.txt.gz", "sampleset\tFID\tIID\tPGS\tSUM\tpercentile_MostSimilarPop\nsample\tHG\tHG\tPGS000018\t0.5\t81.2\n");
     d.gzip("results/sample/score/sample_popsimilarity.txt.gz", "sampleset\tFID\tIID\tPC1\tMostSimilarPop\tMostSimilarPop_LowConfidence\tREFERENCE\nsample\tHG\tHG\t0.1\tEAS\tFalse\tFalse\n");
     let shipped = std::path::Path::new(REPO).join("assets/pgs_scores.tsv");
-    for (label, applies_to, evaluations) in [
+    for (i, (label, applies_to, evaluations)) in [
         (
             shipped,
             "",
@@ -2074,8 +2075,11 @@ fn prs_format_copies_the_legacy_score_evaluations_and_applies_to() {
             "female",
             "PGS000018\tPPM000591\tEUR\tHR 1.53\n",
         ),
-    ] {
-        let out = d.path("formatted");
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let out = d.path(&format!("formatted-{i}"));
         prs::run(
             &Args {
                 scores: d.path("scores"),
@@ -2125,7 +2129,7 @@ fn prs_format_copies_the_legacy_score_evaluations_and_applies_to() {
             ];
             for (flag, path) in [
                 ("--results", "results"),
-                ("--scores", "formatted"),
+                ("--scores", format!("formatted-{i}").as_str()),
                 ("--out", PRS),
             ] {
                 args.extend([flag.into(), d.path(path).display().to_string()]);

@@ -445,12 +445,13 @@ fn both_reports_explain_construct_reads_and_always_report_calls() {
                 report,
                 &[
                     "one copy, other copy not called ref (1/.)",
-                    "known lab-construct site (APP Swedish K670N/M671L): clear",
-                    "0 of 12 alt reads and 0 of 10 ref reads",
                     "chr21:25880551-25891785",
                 ],
             );
         }
+        let site = "known lab-construct site (APP Swedish K670N/M671L): clear (0 of 12 alt reads and 0 of 10 ref reads clipped at an exon edge)";
+        has(txt, &[&format!("reads: {site}")]);
+        has(html, &[&format!("<td>{site}</td>")]);
     });
     d.put(
         CONSTRUCT_SCAN,
