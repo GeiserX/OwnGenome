@@ -33,7 +33,7 @@
 #   16, six KIV-2 units plus the KIV-1/KIV-3 pair) against single-copy kringle exons 19 to 33.
 #   scale 14 = seven reference exon pairs on two chromosomes; offset 2 = one single-copy pair each.
 #   interval cv:0.035: measured against the KIV-2 repeats of 96 assembled genomes (HG002 Q100 and 95
-#   HPRC 1000 Genomes samples, their 30x reads): the smallest SYS, in steps of 0.005, at which the
+#   HPRC 1000 Genomes samples, their 30x PCR-free BWA-MEM reads): the smallest SYS, in steps of 0.005, at which the
 #   interval holds the assembled count in 95% of them or more (93 of 96). docs/46-lpa.md has the table.
 # RHD: Ensembl ENST00000328664; flanks outside the common RHD deletion (RHD*01N.01).
 # HP, LCE3BC, CCL3L1: gene-dosage rows, total copies only, run by step 35 (DOSAGE_LOCI) into

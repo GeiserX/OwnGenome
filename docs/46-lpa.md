@@ -68,7 +68,7 @@ GRCh38's own six units on each chromosome give M = D and N = 12.
 The 95% interval has two parts, added in quadrature and applied to N + 2 on the log scale:
 
 - read sampling, from how much the depth varies between exons: sqrt(cv_KIV2² / 14 + cv_single² / 15), where cv is each group's coefficient of variation of the per-exon depth;
-- a systematic error of 0.035 (3.5% of N + 2), the `cv:0.035` in the `interval` column of the LPA_KIV2 row, measured against the KIV-2 repeats of 96 assembled genomes ([below](#how-the-interval-was-measured)). Read sampling alone treats the exons as independent and leaves out any bias of an aligner or a library, which moves every exon of the block together.
+- a systematic error of 0.035 (3.5% of N + 2), the `cv:0.035` in the `interval` column of the LPA_KIV2 row, measured against the KIV-2 repeats of 96 assembled genomes ([below](#how-the-interval-was-measured)), on BWA-MEM alignments of 30x PCR-free reads. On this pipeline's own minimap2 alignments, and on other libraries, the coverage has not been measured. Read sampling alone treats the exons as independent and leaves out any bias of an aligner or a library, which moves every exon of the block together.
 
 The table's `message` says so: `about N KIV-2 repeats in total over both copies (95% interval LOW to HIGH, read sampling plus the error measured against assembled genomes)`, then the class reading. The `ci95_low` and `ci95_high` columns keep their names.
 
@@ -101,10 +101,10 @@ We checked the count against genomes whose KIV-2 repeats can be counted directly
 
 - The estimate is above the assembled count in all 96 genomes: by a factor of 1.114 on N + 2 on average (4.6 repeats), with a spread of 0.038 on the log scale.
 - With read sampling alone, the interval held the assembled count in 88 of 96 genomes (91.7%), under the 95% it claims.
-- With a systematic term of 0.035, the smallest in steps of 0.005 that reaches 95%, it holds it in 93 of 96 (96.9%). The interval gets 7% wider on average (0.381 to 0.406 of N + 2), and no class changes. The three it misses are HG00097, HG00146 and NA18982, each with the estimate high.
+- With a systematic term of 0.035, the smallest in steps of 0.005 that reaches 95%, it holds it in 93 of 96 (96.9%). The interval gets 7% wider on average (0.381 to 0.406 of N + 2), and no class changes. The three it misses are HG00097, HG00146 and NA18982, each with the estimate high. SYS was picked on these same genomes. With each genome left out of the choice in turn, the interval held its count in 91 of 96 (94.8%).
 - We widen the interval and leave the estimate as it is. The bias is the same sign in every genome, so a later change can correct the scale; that needs reads from this pipeline's own aligner (minimap2), not BWA-MEM.
 
-`og dev evidence lpa-truth` prints the assembled counts below, and `og dev evidence lpa-bench CALLS.tsv OUT.tsv MIN` compares a list of calls with them and fails under MIN. The `lpa-benchmark` job of the public-evidence workflow repeats the whole comparison on fresh slices of the 1000 Genomes reads, gates at 95%, and checks that the gate fails when each genome is given another genome's estimate.
+`og dev evidence lpa-truth` prints the assembled counts below, and `og dev evidence lpa-bench CALLS.tsv OUT.tsv MIN` compares a list of calls with them and fails under MIN. The `lpa-benchmark` job of the public-evidence workflow repeats the whole comparison by reading the same genomes' reads from 1000 Genomes again, gates at 95%, and checks that the gate fails when each genome is given another genome's estimate.
 
 **Sources.** HPRC release 2 assemblies and their GRCh38 alignments: https://github.com/human-pangenomics/hprc_intermediate_assembly (`data_tables/assemblies_release2_v1.0.index.csv` and `annotation/alignments_to_ref/alignments_to_ref_grch38_winnowmap_hprc_r2_v1.1.index.csv`). HG002 Q100: `s3://human-pangenomics/working/HPRC_PLUS/HG002/assemblies/Q100/pansn/` (hg002v1.1). 1000 Genomes 30x reads: https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/1000G_2504_high_coverage.sequence.index, which lists each CRAM's md5. Reference: GRCh38_full_analysis_set_plus_decoy_hla, chr6 MD5 5691468a67c7e7a7b5f2a3a683792c29.
 
