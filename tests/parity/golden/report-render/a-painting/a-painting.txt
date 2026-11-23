@@ -278,7 +278,7 @@
 #  5. ANCESTRY: Where do my ancestors come from?
 ################################################################################
 
-## Fine-Grained Ancestry (ADMIXTURE, RFMix)
+## Fine-Grained Ancestry
 ---
   Continental groups (fraction, bootstrap range):
     West Eurasia                                         95% (93% to 97%)

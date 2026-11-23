@@ -38,11 +38,7 @@ pub const GROUP_C: [Spec; 32] = [
     spec("paralogs", "Paralog genes (Paraphase, PacBio HiFi)", "35b"),
     spec("hla", "HLA typing (T1K)", "08"),
     spec("prs", "Polygenic risk scores", "25"),
-    spec(
-        "ancestry_fine",
-        "Fine-grained ancestry (ADMIXTURE, RFMix)",
-        "26b",
-    ),
+    spec("ancestry_fine", "Fine-grained ancestry", "26b"),
     spec("manta", "Structural variants (Manta)", "04"),
     spec("delly", "Structural variants (Delly)", "19"),
     spec("cnvpytor", "Copy number (CNVpytor)", "18"),

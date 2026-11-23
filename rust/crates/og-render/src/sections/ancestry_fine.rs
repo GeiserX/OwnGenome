@@ -147,19 +147,14 @@ pub fn painted(d: &Value) -> Result<String, Malformed> {
         "none".to_owned()
     };
     if !failed.is_empty() {
-        text += &format!("; not painted: RFMix failed on {failed}");
+        text += &format!("; not painted: the painting failed on {failed}");
     }
     Ok(text)
 }
 
 /// The text report's block.
 pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
-    let Some(head) = text::head(
-        s,
-        "ancestry_fine",
-        Some("Fine-Grained Ancestry (ADMIXTURE, RFMix)"),
-    )?
-    else {
+    let Some(head) = text::head(s, "ancestry_fine", Some("Fine-Grained Ancestry"))? else {
         return Ok(Vec::new());
     };
     let mut w = head.lines;
