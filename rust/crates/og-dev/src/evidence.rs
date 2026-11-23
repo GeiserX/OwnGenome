@@ -26,6 +26,17 @@
 //!   to stdout. It exits 1 when a tool puts fewer than MIN of its men on
 //!   the published branch or below it (MIN is a share from 0 to 1): the
 //!   gate of the workflow's y-benchmark job.
+//! - `og dev evidence lpa-truth`: the KIV-2 repeats of each haplotype of
+//!   the public assemblies the LPA benchmark compares with ([`LPA_TRUTH`]),
+//!   one row per genome: `sample`, `hap1`, `hap2`, `total`.
+//! - `og dev evidence lpa-bench CALLS.tsv OUT.tsv MIN`: the LPA benchmark.
+//!   CALLS has the columns `sample`, `kiv2_copies`, `ci95_low` and
+//!   `ci95_high`, from step 46's table of each genome's short reads. OUT has
+//!   one row per genome: the assembled count, the estimate, its interval,
+//!   whether the interval holds the count and ln((estimate + 2) / (count +
+//!   2)). The table and the summary (bias, spread, share held) go to stdout.
+//!   It exits 1 when the interval holds the count in fewer than MIN of the
+//!   genomes: the gate of the workflow's lpa-benchmark job.
 //!
 //! The first two stream their VCFs. hg002-gvcf keeps, per chromosome, the merged
 //! spans the GIAB records cover instead of every covered position, and
@@ -42,7 +53,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const USAGE: &str = "usage: og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv\n       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf\n       og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN\n";
+const USAGE: &str = "usage: og dev evidence clashes RAW.vcf.gz SPLIT.vcf.gz DATA_DIR OUT.tsv\n       og dev evidence hg002-gvcf TRUTH.vcf.gz TRUTH.bed REF.fasta SITES.tsv OUT.vcf\n       og dev evidence y-bench TREE.json CALLS.tsv OUT.tsv MIN\n       og dev evidence lpa-truth\n       og dev evidence lpa-bench CALLS.tsv OUT.tsv MIN\n";
 
 /// Runs `og dev evidence ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -62,7 +73,12 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             })
         }
         Some("y-bench") if rest.len() == 4 => y_bench(&rest[0], &rest[1], &rest[2], &rest[3], out),
-        Some("clashes" | "hg002-gvcf" | "y-bench") => {
+        Some("lpa-truth") if rest.is_empty() => {
+            lpa_truth(out);
+            Ok(())
+        }
+        Some("lpa-bench") if rest.len() == 3 => lpa_bench(&rest[0], &rest[1], &rest[2], out),
+        Some("clashes" | "hg002-gvcf" | "y-bench" | "lpa-truth" | "lpa-bench") => {
             return usage(err, "wrong number of arguments");
         }
         Some("-h" | "--help") => {
@@ -902,6 +918,244 @@ fn y_bench(tree: &str, calls: &str, out: &str, min: &str, w: &mut dyn Write) -> 
     }
 }
 
+/// The KIV-2 repeats of each haplotype, counted on public assemblies:
+/// `(sample, first haplotype, second haplotype)`. HG002 is the GIAB Q100
+/// assembly hg002v1.1 (paternal, maternal); every other genome is a 1000
+/// Genomes sample of the HPRC release 2 (`<sample>_hap1` or `_pat`, then
+/// `_hap2` or `_mat`, `_hprc_r2_v1.0.1`). On each haplotype the window
+/// around LPA was taken from the assembly, and the copies of a 182 bp and
+/// of a 160 bp KIV-2 exon (exons 5 and 6 of ENST00000316300.10) at 97%
+/// identity or more were counted between two single-copy anchors (GRCh38
+/// chr6:160,555,001-160,565,000 and 160,660,001-160,670,000). Both counts
+/// agree on every haplotype kept, and so does the anchor-to-anchor length
+/// at 5.5 kb a unit. GRCh38 gives 7 of each, its six KIV-2 units plus the
+/// last exon of KIV-1 (182 bp) and the first exon of KIV-3 (160 bp), so a
+/// haplotype's KIV-2 repeats are its count less one: the N of step 46's
+/// `N = 14 x M / D - 2`. docs/46-lpa.md has the method and the sources.
+pub const LPA_TRUTH: &[(&str, u32, u32)] = &[
+    ("HG00097", 10, 18),
+    ("HG00099", 10, 10),
+    ("HG00126", 14, 11),
+    ("HG00128", 23, 23),
+    ("HG00133", 27, 30),
+    ("HG00140", 20, 16),
+    ("HG00146", 21, 20),
+    ("HG002", 24, 14),
+    ("HG00232", 18, 22),
+    ("HG00235", 18, 12),
+    ("HG00253", 19, 22),
+    ("HG00290", 11, 18),
+    ("HG00320", 18, 21),
+    ("HG00321", 15, 13),
+    ("HG00323", 8, 19),
+    ("HG00329", 15, 22),
+    ("HG00344", 22, 14),
+    ("HG00350", 23, 19),
+    ("HG01167", 29, 24),
+    ("HG01530", 19, 12),
+    ("HG01784", 20, 18),
+    ("HG02040", 15, 9),
+    ("HG02155", 22, 27),
+    ("HG02165", 11, 20),
+    ("HG02178", 19, 23),
+    ("HG02391", 28, 23),
+    ("HG02392", 21, 25),
+    ("HG02583", 17, 13),
+    ("HG02976", 14, 18),
+    ("HG03130", 16, 21),
+    ("HG03139", 18, 15),
+    ("HG03195", 17, 20),
+    ("HG03209", 19, 17),
+    ("HG03225", 15, 21),
+    ("HG03270", 19, 15),
+    ("HG03369", 20, 22),
+    ("HG03470", 20, 18),
+    ("HG03521", 20, 18),
+    ("HG03583", 9, 19),
+    ("HG03742", 20, 19),
+    ("HG03784", 22, 12),
+    ("HG03874", 21, 22),
+    ("NA18505", 27, 18),
+    ("NA18508", 20, 32),
+    ("NA18522", 26, 10),
+    ("NA18565", 24, 16),
+    ("NA18570", 22, 13),
+    ("NA18608", 19, 12),
+    ("NA18620", 15, 15),
+    ("NA18747", 21, 23),
+    ("NA18879", 22, 15),
+    ("NA18940", 20, 19),
+    ("NA18943", 20, 27),
+    ("NA18944", 22, 26),
+    ("NA18945", 18, 24),
+    ("NA18948", 9, 19),
+    ("NA18952", 25, 30),
+    ("NA18959", 25, 24),
+    ("NA18960", 19, 22),
+    ("NA18967", 26, 25),
+    ("NA18970", 14, 23),
+    ("NA18971", 25, 23),
+    ("NA18974", 17, 14),
+    ("NA18976", 14, 21),
+    ("NA18982", 22, 13),
+    ("NA18983", 23, 24),
+    ("NA19036", 14, 22),
+    ("NA19043", 1, 15),
+    ("NA19087", 20, 25),
+    ("NA19159", 22, 13),
+    ("NA19185", 22, 14),
+    ("NA19338", 20, 19),
+    ("NA19391", 9, 15),
+    ("NA19443", 20, 7),
+    ("NA19468", 22, 10),
+    ("NA19700", 17, 27),
+    ("NA19776", 7, 25),
+    ("NA19835", 19, 24),
+    ("NA19909", 20, 13),
+    ("NA20282", 21, 20),
+    ("NA20346", 22, 22),
+    ("NA20503", 22, 19),
+    ("NA20752", 14, 19),
+    ("NA20762", 32, 21),
+    ("NA20799", 20, 11),
+    ("NA20805", 14, 20),
+    ("NA20806", 23, 27),
+    ("NA20809", 16, 19),
+    ("NA20827", 22, 19),
+    ("NA20870", 28, 11),
+    ("NA20905", 16, 23),
+    ("NA21093", 17, 14),
+    ("NA21102", 24, 19),
+    ("NA21106", 11, 16),
+    ("NA21110", 19, 24),
+    ("NA21144", 17, 20),
+];
+
+/// `og dev evidence lpa-truth`: [`LPA_TRUTH`] as a table.
+fn lpa_truth(w: &mut dyn Write) {
+    let _ = writeln!(w, "sample\thap1\thap2\ttotal");
+    for (s, a, b) in LPA_TRUTH {
+        let _ = writeln!(w, "{s}\t{a}\t{b}\t{}", a + b);
+    }
+}
+
+/// A number of a step 46 table: `.` (no count) gives `None`.
+fn lpa_num(v: &str, what: &str, sample: &str, calls: &str) -> Result<Option<f64>, String> {
+    if v == "." {
+        return Ok(None);
+    }
+    v.parse::<f64>()
+        .ok()
+        .filter(|x| x.is_finite())
+        .map(Some)
+        .ok_or_else(|| format!("{calls}: {sample}: {what} '{v}' is not a number or '.'"))
+}
+
+/// `og dev evidence lpa-bench CALLS.tsv OUT.tsv MIN`: each genome's
+/// estimate and interval against its assembled count ([`LPA_TRUTH`]); one
+/// row per genome to OUT, the table and the summary to `w`, and the gate:
+/// the interval must hold the count in at least MIN of the genomes (a
+/// genome with no count is not held).
+fn lpa_bench(calls: &str, out: &str, min: &str, w: &mut dyn Write) -> Result<(), String> {
+    let min: f64 = min
+        .parse()
+        .ok()
+        .filter(|m: &f64| (0.0..=1.0).contains(m))
+        .ok_or_else(|| format!("MIN '{min}' is not a share from 0 to 1"))?;
+    let mut rows: Vec<[String; 4]> = Vec::new();
+    let mut first = true;
+    lines(calls, |line| {
+        let line = std::str::from_utf8(line).map_err(|e| format!("{calls}: {e}"))?;
+        let f: Vec<&str> = line.split('\t').collect();
+        if std::mem::take(&mut first) {
+            return if f == ["sample", "kiv2_copies", "ci95_low", "ci95_high"] {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{calls}: the header is not sample, kiv2_copies, ci95_low, ci95_high"
+                ))
+            };
+        }
+        let [s, e, lo, hi] = f[..] else {
+            return Err(format!("{calls}: a row has {} columns, not 4", f.len()));
+        };
+        rows.push([s, e, lo, hi].map(str::to_owned));
+        Ok(())
+    })?;
+    if rows.is_empty() {
+        return Err(format!("{calls}: no calls"));
+    }
+    let mut seen = BTreeSet::new();
+    let mut text = String::from(
+        "sample\thap1\thap2\tassembled\tkiv2_copies\tci95_low\tci95_high\tholds\tlog_ratio\n",
+    );
+    let _ = writeln!(
+        w,
+        "| Genome | Assembled (haplotypes) | Estimate | Interval | Holds |\n|---|---|---|---|---|"
+    );
+    let (mut held, mut ratios) = (0usize, Vec::new());
+    for [s, e, lo, hi] in &rows {
+        if !seen.insert(s.clone()) {
+            return Err(format!("{calls}: {s} is there twice"));
+        }
+        let &(_, a, b) = LPA_TRUTH.iter().find(|t| t.0 == s).ok_or_else(|| {
+            format!("{calls}: {s} has no assembled count (og dev evidence lpa-truth)")
+        })?;
+        let t = f64::from(a + b);
+        let (est, l, h) = (
+            lpa_num(e, "kiv2_copies", s, calls)?,
+            lpa_num(lo, "ci95_low", s, calls)?,
+            lpa_num(hi, "ci95_high", s, calls)?,
+        );
+        let (holds, ratio) = match (est, l, h) {
+            (Some(est), Some(l), Some(h)) => {
+                let r = ((est + 2.0) / (t + 2.0)).ln();
+                ratios.push(r);
+                (
+                    if l <= t && t <= h { "yes" } else { "no" },
+                    format!("{r:.4}"),
+                )
+            }
+            _ => ("no_count", ".".to_owned()),
+        };
+        held += usize::from(holds == "yes");
+        text += &format!(
+            "{s}\t{a}\t{b}\t{}\t{e}\t{lo}\t{hi}\t{holds}\t{ratio}\n",
+            a + b
+        );
+        let _ = writeln!(
+            w,
+            "| {s} | {} ({a} + {b}) | {e} | {lo} to {hi} | {holds} |",
+            a + b
+        );
+    }
+    publish(Path::new(out), text.as_bytes())?;
+    let n = rows.len();
+    let share = held as f64 / n as f64;
+    let _ = writeln!(
+        w,
+        "\nThe interval holds the assembled count in {held} of {n} genomes ({:.1}%).",
+        share * 100.0
+    );
+    if ratios.len() > 1 {
+        let k = ratios.len() as f64;
+        let mean = ratios.iter().sum::<f64>() / k;
+        let sd = (ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (k - 1.0)).sqrt();
+        let _ = writeln!(
+            w,
+            "N + 2 against the assembled count: mean log ratio {mean:.4} (x{:.3}), standard deviation {sd:.4}, over {} genomes with a count.",
+            mean.exp(),
+            ratios.len()
+        );
+    }
+    if share < min {
+        return Err(format!(
+            "lpa-bench gate: the interval holds the assembled count in {held} of {n} genomes ({share:.3}), under {min}"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1618,5 +1872,173 @@ mod tests {
         }
         let (mut out, mut err) = (Vec::new(), Vec::new());
         assert_eq!(cli(&["y-bench".into(), "x".into()], &mut out, &mut err), 2);
+    }
+
+    /// A scratch folder with CALLS for `lpa-bench`.
+    struct LpaCase(PathBuf);
+    impl LpaCase {
+        fn new(name: &str, calls: &str) -> Self {
+            let d = std::env::temp_dir().join(format!("og-lpabench-{}-{name}", std::process::id()));
+            let _ = fs::remove_dir_all(&d);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("calls.tsv"), calls).unwrap();
+            LpaCase(d)
+        }
+        fn run(&self, min: &str) -> (u8, String, String) {
+            let p = |n: &str| self.0.join(n).to_str().unwrap().to_owned();
+            let args: Vec<String> =
+                vec!["lpa-bench".into(), p("calls.tsv"), p("out.tsv"), min.into()];
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let code = cli(&args, &mut out, &mut err);
+            (
+                code,
+                String::from_utf8(out).unwrap(),
+                String::from_utf8(err).unwrap(),
+            )
+        }
+        fn out(&self) -> String {
+            fs::read_to_string(self.0.join("out.tsv")).unwrap_or_default()
+        }
+    }
+    impl Drop for LpaCase {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    const LHEAD: &str = "sample\tkiv2_copies\tci95_low\tci95_high\n";
+
+    #[test]
+    fn lpa_truth_lists_each_genome_once_with_hg002_from_its_q100_assembly() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&["lpa-truth".into()], &mut out, &mut err), 0);
+        let out = String::from_utf8(out).unwrap();
+        let mut rows = out.lines();
+        assert_eq!(rows.next(), Some("sample\thap1\thap2\ttotal"));
+        assert_eq!(rows.count(), LPA_TRUTH.len());
+        assert!(
+            LPA_TRUTH.len() >= 20,
+            "the benchmark needs 20 genomes or more"
+        );
+        assert!(out.contains("\nHG002\t24\t14\t38\n"), "{out}");
+        let names: BTreeSet<&str> = LPA_TRUTH.iter().map(|t| t.0).collect();
+        assert_eq!(names.len(), LPA_TRUTH.len(), "a genome is listed twice");
+        assert!(
+            LPA_TRUTH
+                .iter()
+                .all(|t| t.1 >= 1 && t.2 >= 1 && t.1 <= 60 && t.2 <= 60)
+        );
+        assert_eq!(
+            cli(
+                &["lpa-truth".into(), "x".into()],
+                &mut Vec::new(),
+                &mut Vec::new()
+            ),
+            2
+        );
+    }
+
+    #[test]
+    fn lpa_bench_gate_and_its_red_control() {
+        // HG002 38, HG00097 28 (10 + 18), HG00099 20 (10 + 10).
+        let calls = [("HG002", 40.1), ("HG00097", 30.4), ("HG00099", 21.9)];
+        let table = |rotate: usize| {
+            let mut t = LHEAD.to_owned();
+            for (i, (s, _)) in calls.iter().enumerate() {
+                let e = calls[(i + rotate) % calls.len()].1;
+                t += &format!("{s}\t{e:.1}\t{:.1}\t{:.1}\n", e * 0.9, e * 1.1);
+            }
+            t
+        };
+        let c = LpaCase::new("gate", &table(0));
+        let (code, out, err) = c.run("1");
+        assert_eq!(code, 0, "{err}{out}");
+        assert!(
+            out.contains("| HG002 | 38 (24 + 14) | 40.1 | 36.1 to 44.1 | yes |"),
+            "{out}"
+        );
+        assert!(
+            out.contains("holds the assembled count in 3 of 3 genomes (100.0%)"),
+            "{out}"
+        );
+        assert!(out.contains("over 3 genomes with a count"), "{out}");
+        assert!(c.out().starts_with(
+            "sample\thap1\thap2\tassembled\tkiv2_copies\tci95_low\tci95_high\tholds\tlog_ratio\nHG002\t24\t14\t38\t40.1\t36.1\t44.1\tyes\t0.0512\n"
+        ), "{}", c.out());
+        // Red control: each genome gets another genome's estimate.
+        let c = LpaCase::new("rotated", &table(1));
+        let (code, _, err) = c.run("0.5");
+        assert_eq!(code, 1);
+        assert!(
+            err.contains("lpa-bench gate: the interval holds the assembled count in 0 of 3 genomes (0.000), under 0.5"),
+            "{err}"
+        );
+        assert_eq!(
+            c.out().matches("\tno\t").count(),
+            3,
+            "the rows are written before the gate fails"
+        );
+        // A genome with no count is not held.
+        let c = LpaCase::new(
+            "nocount",
+            &format!("{LHEAD}HG002\t.\t.\t.\nHG00097\t30.4\t27.4\t33.4\n"),
+        );
+        let (code, out, err) = c.run("0.6");
+        assert_eq!(code, 1, "{out}");
+        assert!(err.contains("in 1 of 2 genomes"), "{err}");
+        assert!(
+            c.out()
+                .contains("HG002\t24\t14\t38\t.\t.\t.\tno_count\t.\n"),
+            "{}",
+            c.out()
+        );
+    }
+
+    #[test]
+    fn lpa_bench_refuses_bad_input() {
+        for (name, calls, min, want) in [
+            ("header", "sample\tkiv2_copies\n", "0", "the header"),
+            (
+                "columns",
+                &*format!("{LHEAD}HG002\t40\t36\n"),
+                "0",
+                "columns, not 4",
+            ),
+            (
+                "twice",
+                &*format!("{LHEAD}HG002\t40\t36\t44\nHG002\t40\t36\t44\n"),
+                "0",
+                "HG002 is there twice",
+            ),
+            (
+                "unknown",
+                &*format!("{LHEAD}NA00000\t40\t36\t44\n"),
+                "0",
+                "no assembled count",
+            ),
+            (
+                "number",
+                &*format!("{LHEAD}HG002\tforty\t36\t44\n"),
+                "0",
+                "kiv2_copies 'forty'",
+            ),
+            ("empty", LHEAD, "0", "no calls"),
+            (
+                "min",
+                &*format!("{LHEAD}HG002\t40\t36\t44\n"),
+                "1.5",
+                "not a share",
+            ),
+        ] {
+            let c = LpaCase::new(name, calls);
+            let (code, _, err) = c.run(min);
+            assert_eq!(code, 1, "{name}");
+            assert!(err.contains(want), "{name}: {err}");
+        }
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(
+            cli(&["lpa-bench".into(), "x".into()], &mut out, &mut err),
+            2
+        );
     }
 }

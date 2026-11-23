@@ -211,13 +211,13 @@ pub const LPA_TABLE: &str = concat!(
     "metric\tvalue\n",
     "status\testimated\n",
     "kiv2_copies\t37.0\n",
-    "ci95_low\t36.3\n",
-    "ci95_high\t37.8\n",
+    "ci95_low\t34.3\n",
+    "ci95_high\t39.9\n",
     "class\ttypical\n",
     "kiv2_depth\t86.61\n",
     "flank_depth\t31.09\n",
     "mapq0_share\t0.500\n",
-    "message\tabout 37 KIV-2 repeats in total over both copies (95% interval for read sampling, 36.3 to 37.8; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)\n",
+    "message\tabout 37 KIV-2 repeats in total over both copies (95% interval 34.3 to 39.9, read sampling plus the error measured against assembled genomes): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)\n",
     "advice\tA research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.\n",
 );
 
