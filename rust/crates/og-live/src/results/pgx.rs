@@ -34,6 +34,12 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 ] {
                     out.fact(label, get(d, key).map_or_else(|| "0".into(), cell));
                 }
+                if let Some(incomplete) =
+                    get(d, "incomplete").filter(|v| matches!(v, Value::Int(n) if *n > 0))
+                {
+                    out.fact(pgx::CPIC_INCOMPLETE_LABEL, cell(incomplete));
+                    out.attention = true;
+                }
                 let rows = array(d, "genes")?
                     .iter()
                     .map(|g| {
@@ -95,6 +101,10 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 out.lines = pgx::pypgx_lines(&pypgx)?;
             }
             out.attention = *agree == Value::Bool(false);
+            if let Some(warning) = pgx::cyp2d6_weak_evidence(&pypgx)? {
+                out.lines.push(warning);
+                out.attention = true;
+            }
         }
         "hla" => {
             let d = summary.section("hla").data;
@@ -157,5 +167,37 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                 .gene(gene).detail(format!("{name} {diplotype}"))
                 .evidence_fields(g, &[("Diplotype", "diplotype"), ("Phenotype", "phenotype"), ("Status", "status")])))
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incomplete_cpic_calls_set_attention_and_are_counted_and_named() {
+        let summary = Summary::parse(
+            r#"{"sections":{"cpic":{"state":"ok","data":{"incomplete":1,"warnings":[],
+            "genes":[{"gene":"CYP2C19","diplotype":"*1/*1","status":"incomplete",
+            "phenotype":"Normal Metabolizer [incomplete: positions not read: rs4244285]"}]}}}}"#,
+        )
+        .expect("summary");
+        let out = card("cpic", &summary).expect("CPIC card");
+        assert!(out.attention);
+        assert!(out.facts.contains(&strings([
+            "Genes called with positions PharmCAT never read (no drug guidance)",
+            "1",
+        ])));
+        let table = out.table.expect("CPIC rows");
+        let rows = array(&table, "rows").expect("CPIC rows");
+        assert_eq!(
+            rows,
+            &[strings([
+                "CYP2C19",
+                "*1/*1",
+                "\"Normal Metabolizer [incomplete: positions not read: rs4244285]\"",
+                "incomplete",
+            ])]
+        );
     }
 }
