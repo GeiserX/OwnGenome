@@ -190,11 +190,11 @@ workflow BAM_ANALYSIS {
 
     //
     // MODULE 4: mosdepth (coverage statistics, and the callability of the
-    // genes of assets/callability_genes.tsv)
+    // genes of assets/callability_genes.tsv and of their coding exons)
     // Gates on: params.tools contains 'mosdepth'
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mosdepth')) {
-        MOSDEPTH(ch_bam, Channel.value(file("${projectDir}/assets/callability_genes.tsv", checkIfExists: true)))
+        MOSDEPTH(ch_bam, Channel.value(["callability_genes.tsv", "callability_exons.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }))
         ch_callability    = MOSDEPTH.out.callability
         ch_coverage       = MOSDEPTH.out.summary
         ch_mosdepth_depth = MOSDEPTH.out.summary.join(MOSDEPTH.out.global_dist)
