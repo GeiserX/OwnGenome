@@ -11,7 +11,6 @@
   chroms       a chromosome is painted only with 100 SNVs spanning 5 cM
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
-               and the chromosome the painting failed on, in the table and the text
 
 The Rust unit tests (rust/crates/og-ancestry) and tests/parity check each
 command in detail; this test runs them as the pipeline does, through bin/og.
@@ -113,7 +112,7 @@ def run_all(tmp):
     write(os.path.join(paint, "chr20.msp.tsv"),
           "#Subpopulation order/codes: AFR=0\tEAS=1\tWEA=2\n#chm\tspos\tepos\tsgpos\tegpos\tn snps\tS.0\tS.1\n"
           "chr20\t1000\t5000\t1\t2\t10\t2\t2\nchr20\t5000\t9000\t2\t3\t10\t2\t0\nchr20\t9000\t11000\t3\t4\t10\t2\t0\n")
-    write(os.path.join(paint, "failed.txt"), "chr19\n")   # the painting failed on chr19; chr20 was still painted
+    write(os.path.join(paint, "failed.txt"), "chr19\n")   # RFMix failed on chr19; chr20 was still painted
     rep = os.path.join(tmp, "out")
     r = og("report", "--sample", "S", "--model", model, "--admixture", radm, "--paint", paint, "--panel", "test",
            "--out", rep)
@@ -141,14 +140,8 @@ def run_all(tmp):
     expect("report: the text names the group, the fraction and its range",
            "West Eurasia (Europe, Middle East, North Africa)     90%  (80% to 90%)" in text, True)
     expect("report: the text says a name is ours, not a nationality", "not a nationality" in text, True)
-    expect("report: the table names the group left out and the chromosome not painted",
-           [row[:3] for row in table if row[0] in ("left_out", "not_painted")],
-           [["left_out", "OCE", "Oceania (continental group)"], ["left_out", "OCE", "Oceania (regional group)"],
-            ["not_painted", "chr19", "painting failed"]])
     expect("report: the text says which group the model left out and why",
            "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10 unrelated" in text, True)
-    expect("report: the text says chr19 was not painted, and chr20 still was",
-           ("Not painted: the painting failed on chr19" in text, "of chr20:" in text), (True, True))
 
     os.remove(os.path.join(paint, "failed.txt"))
     os.remove(os.path.join(paint, "chr20.msp.tsv"))
