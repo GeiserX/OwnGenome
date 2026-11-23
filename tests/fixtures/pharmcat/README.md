@@ -5,11 +5,13 @@ Real PharmCAT output for `rust/crates/og-pgx/tests/port_tests_pgx_cpic.rs` (one 
 its listed diplotypes and `relatedDrugs`; up to 4 matched annotations per drug
 guideline).
 
-| File | Source |
-|---|---|
-| `report-3.2.0.json` | PharmCAT 3.2.0 (`pgkb/pharmcat:3.2.0`) on the public GIAB HG002 slice of the e2e fixture (`fixture-v4`), written by step 7 in E2E run 37054440069 of pull request 72 (the `e2e-logs` artifact, `HG002.pharmcat-report.json`, 40 MB, sha256 `562bab215132c9da8a700c810b1a11f56b73aad5815d3e8c6609057b359ebcd2`). The slice covers few pharmacogenes: most are `Unknown/Unknown`, and CYP2C19 (528 possible diplotypes) and CYP2B6 (4) are ambiguous. |
-| `report-3.4.0.json` | PharmCAT 3.4.0 (`pgkb/pharmcat:3.4.0`) on the same e2e fixture (`fixture-v4`), written by step 7 in E2E run 37156576994 of pull request 83 (`e2e-logs`, `HG002.pharmcat-report.json`, 40 MB, sha256 `48a2f35f8fa81d28ea06e09dd2ef2c9caf01d0ddb474af0fad975feee54a421d`). Every gene has the same possible diplotypes and phenotypes as in the 3.2.0 report: CYP2C19 528, CYP2B6 4, the rest `Unknown/Unknown`. |
-| `pharmcat-docs-example.json` | `docs/examples/pharmcat.example.report.json` of the PharmCAT repository at tag `v3.2.0` (sha256 `23d58e7b2bf815159bb6136beec919d9c6eced0fe71cac7c38cebff6b4febf05`), PharmCAT's own example sample: 23 genes with one diplotype each: 3 with a non-normal phenotype (CYP2D6, HLA-B, NAT2) and 7 called with a phenotype that names no changed function (`unclassified`). |
+The reports include guidance from [PharmGKB](https://www.pharmgkb.org/) via PharmCAT.
+
+| File | Source | Attribution |
+|---|---|---|
+| `report-3.2.0.json` | PharmCAT 3.2.0 (`pgkb/pharmcat:3.2.0`) on the public GIAB HG002 slice of the e2e fixture (`fixture-v4`), written by step 7 in E2E run 37054440069 of pull request 72 (the `e2e-logs` artifact, `HG002.pharmcat-report.json`, 40 MB, sha256 `562bab215132c9da8a700c810b1a11f56b73aad5815d3e8c6609057b359ebcd2`). The slice covers few pharmacogenes: most are `Unknown/Unknown`, and CYP2C19 (528 possible diplotypes) and CYP2B6 (4) are ambiguous. | PharmGKB ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)) |
+| `report-3.4.0.json` | PharmCAT 3.4.0 (`pgkb/pharmcat:3.4.0`) on the same e2e fixture (`fixture-v4`), written by step 7 in E2E run 37156576994 of pull request 83 (`e2e-logs`, `HG002.pharmcat-report.json`, 40 MB, sha256 `48a2f35f8fa81d28ea06e09dd2ef2c9caf01d0ddb474af0fad975feee54a421d`). Every gene has the same possible diplotypes and phenotypes as in the 3.2.0 report: CYP2C19 528, CYP2B6 4, the rest `Unknown/Unknown`. | PharmGKB ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)) |
+| `pharmcat-docs-example.json` | `docs/examples/pharmcat.example.report.json` of the PharmCAT repository at tag `v3.2.0` (sha256 `23d58e7b2bf815159bb6136beec919d9c6eced0fe71cac7c38cebff6b4febf05`), PharmCAT's own example sample: 23 genes with one diplotype each: 3 with a non-normal phenotype (CYP2D6, HLA-B, NAT2) and 7 called with a phenotype that names no changed function (`unclassified`). | PharmGKB ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)) |
 
 To refresh one or add a release: take the new `report.json`, then run this
 with `VERSION` replaced by the PharmCAT release (for example `3.4.0`), and add
@@ -17,6 +19,12 @@ the release to `REAL_REPORTS` in `rust/crates/og-pgx/tests/port_tests_pgx_cpic.r
 
 ```bash
 bin/og dev fixture trim-pharmcat report.json tests/fixtures/pharmcat/report-VERSION.json
+```
+
+Add the same attribution to each new report row. Run the notice check from the repository root.
+
+```bash
+bin/og dev fixture check-pharmcat tests/fixtures/pharmcat
 ```
 
 ## Positions PharmCAT never read
