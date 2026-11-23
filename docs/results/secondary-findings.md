@@ -38,6 +38,8 @@ Without a readable clinical VCF from step 23 (no VEP cache, step 23 skipped or f
 
 The TTN rule (truncating variants only) and the LMNA rule (missense only with cardiac evidence) are printed beside the finding, not applied. It is still a list to review with a clinician.
 
+**The disease ClinVar names can differ from the ACMG one.** A gene can cause more than one disease, and the card finds a ClinVar hit by its gene. RET causes MEN2, the disease ACMG lists it for, and also Hirschsprung disease. So each ClinVar finding in `summary.json` keeps the condition ClinVar names for the variant (`clinvar_condition`, with its database ids in `clinvar_condition_ids`) beside the disease ACMG lists (`acmg_phenotype`). When every condition named is another disease, such as a RET variant reported only for Hirschsprung disease, the finding has `condition_not_acmg: true`. It stays on the card: check which disease the variant was reported for before you read it as a MEN2 finding. Generic names such as "not provided" or "Hereditary cancer-predisposing syndrome" never set the mark. The carrier list keeps ClinVar's condition on each row the same way. The reports do not show these fields yet.
+
 ---
 
 ## CPSR Report (Step 17)
