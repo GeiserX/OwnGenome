@@ -313,7 +313,7 @@ Key observations:
 
 ## Practical Example: chr22-Only Benchmark
 
-Each caller takes hours on the full genome: DeepVariant 8 h 50 min to 13 h 30 min in the end test, and in one historical run FreeBayes 9.3 h single-threaded, GATK 8.6 h and Strelka2 72 min ([Runtime](#runtime-full-genome-30x-wgs)). For a quick script validation, you can restrict GATK and FreeBayes to chromosome 22 only (~1-2% of the genome; the time per caller has not been measured here), but **full-genome runs are strongly recommended for meaningful benchmarking**.
+Each caller takes hours on the full genome: DeepVariant 8 h 50 min to 13 h 30 min in the end test ([runtime](hardware-requirements.md#runtime-per-step)), and in one historical run FreeBayes 9.3 h single-threaded, GATK 8.6 h and Strelka2 72 min. For a quick script validation, you can restrict GATK and FreeBayes to chromosome 22 only (~1-2% of the genome; the time per caller has not been measured here), but **full-genome runs are strongly recommended for meaningful benchmarking**.
 
 ### Step 1: Run Callers on chr22 (GATK + FreeBayes)
 
@@ -466,50 +466,4 @@ benchmark/
 - **chr22 is representative but not definitive.** It is a good proxy for genome-wide performance on autosomes, but does not test difficult regions (centromeres, segmental duplications, sex chromosomes).
 - **Runtime scales with region size.** hap.py on chr22 alone is far quicker than on the full genome; neither has been timed here.
 
----
-
-## Real-World Full-Genome Benchmark Results
-
-These are actual results from a 30X WGS sample (Intel i5-14500, 64GB RAM). They are a historical measurement: the run used DeepVariant 1.6.0 and GATK 4.6.1, the pins of that time, not the versions pinned today, and has not been repeated since.
-
-### Variant Counts (Full Genome)
-
-| Caller | Total | SNPs | Indels | MNPs/Other |
-|---|---|---|---|---|
-| DeepVariant 1.6.0 | 5,558,877 | — | — | — |
-| GATK HC 4.6.1 | 4,662,941 | 3,829,614 | 836,747 | 0 |
-| FreeBayes 1.3.6 | 20,059,293 | 18,825,881 | 867,375 | 625,201 |
-| Strelka2 2.9.10 | 5,565,634 | — | — | — |
-| TIDDIT 3.9.5 | 5,346 SVs | 2,299 DEL | 639 DUP | 204 INV |
-
-FreeBayes calls **4x more variants** than DeepVariant. The ~16M FreeBayes-unique calls are overwhelmingly false positives. GATK is the most conservative. Strelka2 and DeepVariant are very close in total count.
-
-### Pairwise Concordance (Full Genome, All Variants, Pre-Normalization)
-
-**Note:** These numbers were computed on raw (unfiltered, unnormalized) VCFs. The `benchmark-variants.sh` script now applies PASS filtering and `bcftools norm -m-both` normalization before comparison, which will produce higher Jaccard values (especially for DV vs GATK, expected >0.95 for PASS SNPs).
-
-| Caller A | Caller B | Shared | A Unique | B Unique | Jaccard |
-|---|---|---|---|---|---|
-| DeepVariant | GATK | 4,492,079 | 1,072,475 | 170,862 | **0.783** |
-| DeepVariant | FreeBayes | 3,772,065 | 1,792,489 | 16,287,228 | 0.173 |
-| GATK | FreeBayes | 3,495,334 | 1,167,607 | 16,563,959 | 0.165 |
-
-Key observations:
-- **DeepVariant vs GATK** share 4.5M variants (Jaccard 0.783). GATK has very few unique calls (171K) while DeepVariant has 1.07M unique. Without truth set labeling, these unique counts reflect disagreement, not necessarily true/false positives — some DeepVariant-unique calls may be real variants GATK missed, and some may be DeepVariant-specific artifacts.
-- **FreeBayes vs everything** has low concordance (~17%) because it calls 16.3M extra variants. These need aggressive quality filtering before use.
-- **GATK is the most conservative** — nearly all GATK calls (96%) are also found by DeepVariant, making it a high-confidence subset.
-- Filtering to **PASS SNPs only** would significantly increase concordance (expected Jaccard >0.95 for DV vs GATK).
-
-### Runtime (Full Genome, 30X WGS)
-
-| Caller | Runtime | Threads | Peak Memory |
-|---|---|---|---|
-| DeepVariant 1.6.0 | not recorded (no log in the repo) | 8 | 32 GB container limit, peak not recorded |
-| GATK HC 4.6.1 | 8.6 hours (518 min) | 8 | 4.3 GB |
-| FreeBayes 1.3.6 | 9.3 hours | 1 (single-threaded) | 12.8 GB |
-| Strelka2 2.9.10 | 72 min | 8 | 1 GB |
-| TIDDIT 3.9.5 | 7 min | 4 | <1 GB |
-
-For the pinned DeepVariant 1.10: 8 h 50 min to 13 h 30 min with 8 shards in three measured 30-40x runs, and 1 h 9 min on 96 vCPUs upstream ([runtime](hardware-requirements.md#runtime-per-step)).
-
-FreeBayes is the bottleneck — single-threaded with no parallelism flag. It also requires **32 GB memory** for full-genome runs (peaked at 12.8 GB but grows unpredictably through complex regions). Plan accordingly when running all callers.
+Whole-genome accuracy on the public HG002 sample is published with 1.0.0.

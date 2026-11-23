@@ -56,6 +56,20 @@
     }
    }
   },
+  "clinvar_condition": {
+   "description": "The conditions ClinVar names for the allele (CLNDN), joined by ' / ', without 'not provided' and 'not specified'; null when no other name is left. Present only when step 06's hits carry CLNDN or CLNDISDB.",
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "clinvar_condition_ids": {
+   "description": "The database ids of those conditions (CLNDISDB), such as OMIM:171400, and of a condition CLNDISDB gives with no CLNDN name; not those of 'not provided' and 'not specified'.",
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
   "carrier_row": {
    "type": "object",
    "required": [
@@ -121,6 +135,12 @@
     },
     "condition": {
      "type": "string"
+    },
+    "clinvar_condition": {
+     "$ref": "#/definitions/clinvar_condition"
+    },
+    "clinvar_condition_ids": {
+     "$ref": "#/definitions/clinvar_condition_ids"
     },
     "combined_allele": {
      "type": "string"
@@ -407,6 +427,12 @@
              },
              "common": {
               "type": "boolean"
+             },
+             "clinvar_condition": {
+              "$ref": "#/definitions/clinvar_condition"
+             },
+             "clinvar_condition_ids": {
+              "$ref": "#/definitions/clinvar_condition_ids"
              }
             }
            }
@@ -1471,7 +1497,21 @@
              "gene",
              "variant",
              "genotype"
-            ]
+            ],
+            "properties": {
+             "clinvar_condition": {
+              "$ref": "#/definitions/clinvar_condition"
+             },
+             "clinvar_condition_ids": {
+              "$ref": "#/definitions/clinvar_condition_ids"
+             },
+             "acmg_phenotype": {
+              "type": "string"
+             },
+             "condition_not_acmg": {
+              "type": "boolean"
+             }
+            }
            }
           },
           "clinvar_checked": {

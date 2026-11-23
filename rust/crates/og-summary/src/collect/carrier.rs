@@ -5,7 +5,9 @@
 //! called deletion and a hit both reach are listed as two hits, and a hit
 //! called homozygous inside a deletion is shown as hemizygous. A hit that
 //! is part of step 06's combined allele, or the combined allele itself,
-//! carries the note the ClinVar table prints for it.
+//! carries the note the ClinVar table prints for it. Each row also keeps
+//! the condition ClinVar names for the allele (`clinvar_condition`), beside
+//! the list's condition for the gene, when step 06's hits carry it.
 //!
 //! Each row keeps its zygosity and step 06's call quality: GQ, DP and the
 //! low-confidence mark against the hits file's own call floor. A carrier
@@ -20,7 +22,8 @@
 
 use super::assets::carrier_genes;
 use super::clinvar::{
-    Floor, Hit, HitRecords, VarKey, allele_copies, carrier_genotype, obj, opt_int, zygosity_word,
+    Floor, Hit, HitRecords, VarKey, allele_copies, carrier_genotype, condition_fields, obj,
+    opt_int, zygosity_word,
 };
 use super::text::{self, gt_field};
 use super::two_hits::{DeletionInputs, Spans, Variant, gene_deletions, phase_haps, two_hits_with};
@@ -274,6 +277,13 @@ impl Carrier {
                 item.insert("low_confidence".into(), Value::Bool(row.low_confidence));
                 item.insert("inheritance".into(), Value::Str(x.inheritance.clone()));
                 item.insert("condition".into(), Value::Str(x.condition.clone()));
+                // The list's condition is the gene's; ClinVar's is the
+                // allele's, which can be another disease of the same gene.
+                if let Some(c) = &row.conditions {
+                    for (k, v) in condition_fields(c) {
+                        item.insert(k.into(), v);
+                    }
+                }
                 if row.combined_allele != "." {
                     item.insert(
                         "combined_allele".into(),

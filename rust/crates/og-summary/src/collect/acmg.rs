@@ -22,10 +22,19 @@
 //! with no alt copy called counts nothing, and a combined allele of step 06
 //! counts once with its parts, unless it is unphased and two of its parts
 //! are candidates on their own (they may sit on different copies).
+//!
+//! A ClinVar hit is mapped to its gene's rule through GENEINFO, which names
+//! the gene, not the disease. So each ClinVar row keeps the condition
+//! ClinVar names for the allele (step 06 copies `CLNDN` and `CLNDISDB`) and
+//! the disease ACMG lists the gene for (`phenotype`). When every condition
+//! named is another disease (a RET variant asserted for Hirschsprung
+//! disease only, not for MEN2), the row carries `condition_not_acmg: true`.
+//! It is still reported: the mark is for the reader, never a filter.
 
-use super::assets::{ACMG_SF_VERSION, Key, Rule, acmg_sf_rules, carrier_genes};
+use super::assets::{ACMG_SF_VERSION, Key, Rule, acmg_sf_rules, asset_rows, carrier_genes};
 use super::clinvar::{
-    COMMON_AF, Floor, Hit, HitRecords, allele_copies, floor_values, obj, opt_int, opt_s,
+    COMMON_AF, Condition, Floor, Hit, HitRecords, allele_copies, condition_fields, floor_values,
+    obj, opt_int, opt_s,
 };
 use super::text::{self, digits, format_map, gt_field, info_map};
 use super::two_hits::{
@@ -845,6 +854,135 @@ fn sf_structural(
     (out, true, None)
 }
 
+/// The disease ACMG lists a gene for: its name (the `phenotype` column of
+/// `assets/acmg_sf.tsv`) and the keys a ClinVar condition is matched by
+/// (`phenotype_keys`): database ids such as `OMIM:171400`, Table 1's MIM
+/// disorder numbers, and phrases looked for in ClinVar's condition names.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Phenotype {
+    pub name: String,
+    pub ids: Vec<String>,
+    pub phrases: Vec<String>,
+}
+
+/// Database prefixes a key of `phenotype_keys` can be an id of.
+const ID_PREFIXES: [&str; 4] = ["OMIM:", "MedGen:", "MONDO:", "Orphanet:"];
+
+/// Condition names that ClinVar gives a whole panel of genes, not one
+/// disease (normalized as [`words`] writes them). They say nothing for or
+/// against the ACMG disease, so they never set the mark.
+const PANEL_TERMS: [&str; 7] = [
+    "not provided",
+    "not specified",
+    "see cases",
+    "inborn genetic diseases",
+    "hereditary cancer predisposing syndrome",
+    "cardiovascular phenotype",
+    "cardiac arrhythmia",
+];
+
+/// What follows the gene in ClinVar's name for every disease of one gene,
+/// such as "RYR1-related disorder" (normalized as [`words`] writes them).
+const UMBRELLA_TAILS: [&str; 5] = [
+    "related disorder",
+    "related disorders",
+    "related condition",
+    "related conditions",
+    "related cancer predisposition",
+];
+
+/// Whether `name` only names `gene`, as "RYR1-related disorder" does on a
+/// RYR1 hit. Like a panel term it says nothing for or against the ACMG
+/// disease. Another gene's such name ("FBXO11-related disorders" on an
+/// MSH6 hit) is not this.
+fn umbrella(gene: &str, name: &str) -> bool {
+    let (g, n) = (words(gene), words(name));
+    !g.is_empty()
+        && n.strip_prefix(g.as_str())
+            .and_then(|tail| tail.strip_prefix(' '))
+            .is_some_and(|tail| UMBRELLA_TAILS.contains(&tail))
+}
+
+/// A name as the matching reads it: lower case, and every run of
+/// characters other than letters and digits one space.
+pub fn words(s: &str) -> String {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+impl Phenotype {
+    /// Reads one row's two cells; `None` when the row has no keys (an
+    /// `acmg_sf.tsv` without the columns, or a `.` cell).
+    fn of(name: Option<&str>, keys: Option<&str>) -> Option<Phenotype> {
+        let mut p = Phenotype {
+            name: name
+                .filter(|n| !matches!(*n, "" | "."))
+                .unwrap_or("")
+                .to_owned(),
+            ..Phenotype::default()
+        };
+        for k in keys.unwrap_or("").split(';').map(str::trim) {
+            if k.is_empty() || k == "." {
+                continue;
+            }
+            if ID_PREFIXES.iter().any(|p| k.starts_with(p)) {
+                p.ids.push(k.to_owned());
+            } else {
+                p.phrases.push(words(k));
+            }
+        }
+        (!p.ids.is_empty() || !p.phrases.is_empty()).then_some(p)
+    }
+
+    /// Whether ClinVar's condition is this disease: one of its ids is a key,
+    /// or a key phrase starts a word of its name ("multiple endocrine
+    /// neoplasia type 2" is in "multiple endocrine neoplasia type 2a").
+    pub fn matches(&self, c: &Condition) -> bool {
+        if c.ids.iter().any(|id| self.ids.contains(id)) {
+            return true;
+        }
+        let name = words(&c.name);
+        self.phrases.iter().any(|p| {
+            name.match_indices(p.as_str())
+                .any(|(i, _)| i == 0 || name.as_bytes()[i - 1] == b' ')
+        })
+    }
+
+    /// The mark on a hit of `gene`: every condition ClinVar names for the
+    /// allele is another disease. A placeholder, a panel term or a name
+    /// that only names `gene` counts neither way, so a hit whose only
+    /// condition is "not provided", "Hereditary cancer-predisposing
+    /// syndrome" or "RYR1-related disorder" (on RYR1) is not marked. A
+    /// condition with ids and no name never sets the mark, but its ids can
+    /// still be the ACMG disease.
+    pub fn other_disease(&self, gene: &str, conditions: &[Condition]) -> bool {
+        let other = conditions.iter().any(|c| {
+            !c.placeholder()
+                && !PANEL_TERMS.contains(&words(&c.name).as_str())
+                && !umbrella(gene, &c.name)
+        });
+        other && !conditions.iter().any(|c| self.matches(c))
+    }
+}
+
+/// `{gene: phenotype}` of `acmg_sf.tsv`: the genes whose row has keys.
+pub fn phenotypes(assets: &str) -> Result<HashMap<String, Phenotype>, String> {
+    let mut out = HashMap::new();
+    for r in asset_rows(assets, "acmg_sf.tsv")? {
+        let cell = |k: &str| r.get(k).flatten();
+        if let (Some(g), Some(p)) = (
+            cell("gene"),
+            Phenotype::of(cell("phenotype"), cell("phenotype_keys")),
+        ) {
+            out.insert(g.to_owned(), p);
+        }
+    }
+    Ok(out)
+}
+
 fn zyg_map(gt: &str) -> String {
     match gt {
         "0/1" | "1/0" | "0|1" | "1|0" => "het".into(),
@@ -888,6 +1026,8 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         Ok(r) => r,
         Err(e) => return Ok(Err(e)),
     };
+    // The list was read just above, so its phenotypes read too.
+    let pheno = phenotypes(i.assets).unwrap_or_default();
     let mut clinvar: Vec<Cand> = Vec::new();
     if let Some(h) = i.hits {
         let (floor, recs) = match h {
@@ -920,6 +1060,22 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                         "combined_allele".into(),
                         Value::Str(row.combined_allele.clone()),
                     );
+                }
+                // The condition ClinVar names, and whether it is another
+                // disease than the one ACMG lists the gene for: GENEINFO
+                // alone puts a RET Hirschsprung hit in the MEN2 slot. The
+                // hit stays a finding either way; the mark only says so.
+                if let Some(c) = &row.conditions {
+                    for (k, v) in condition_fields(c) {
+                        f.insert(k.into(), v);
+                    }
+                    if let Some(p) = pheno.get(g) {
+                        f.insert("acmg_phenotype".into(), Value::Str(p.name.clone()));
+                        f.insert(
+                            "condition_not_acmg".into(),
+                            Value::Bool(p.other_disease(g, c)),
+                        );
+                    }
                 }
                 clinvar.push(Cand {
                     kind: Kind::ClinVar,
@@ -1296,6 +1452,63 @@ mod tests {
         assert_eq!(why, ["alt reads 0.75 of the depth on a homozygous call"]);
         let (weak, ..) = call_check("GT:GQ:DP:AD", "0/1:40:30:15,15", &f);
         assert!(!weak);
+    }
+
+    #[test]
+    fn a_condition_matches_by_id_or_by_a_phrase_at_a_word_start() {
+        let p = Phenotype::of(
+            Some("MEN2"),
+            Some("OMIM:171400; multiple endocrine neoplasia type 2; men2"),
+        )
+        .unwrap();
+        let c = |name: &str, ids: &[&str]| Condition {
+            name: name.into(),
+            ids: ids.iter().map(|s| (*s).to_owned()).collect(),
+        };
+        assert!(p.matches(&c("Multiple endocrine neoplasia, type 2a", &[])));
+        assert!(p.matches(&c("MEN2B", &[])));
+        assert!(p.matches(&c("Something else", &["OMIM:171400"])));
+        assert!(!p.matches(&c("Hirschsprung disease 1", &["OMIM:142623"])));
+        // A phrase inside a word is no match.
+        assert!(!p.matches(&c("xmen2", &[])));
+        let hd = [c(
+            "Hirschsprung disease, susceptibility to, 1",
+            &["OMIM:142623"],
+        )];
+        assert!(p.other_disease("RET", &hd));
+        // A placeholder or a panel term counts neither way.
+        assert!(!p.other_disease("RET", &[c("not provided", &[])]));
+        assert!(!p.other_disease("RET", &[c("Hereditary cancer-predisposing syndrome", &[])]));
+        assert!(!p.other_disease("RET", &[c("Cardiac arrhythmia", &[])]));
+        assert!(p.other_disease("RET", &[hd[0].clone(), c("not provided", &[])]));
+        // One condition of the ACMG disease is enough.
+        assert!(!p.other_disease("RET", &[hd[0].clone(), c("MEN2A", &[])]));
+        assert!(!p.other_disease("RET", &[]));
+        // A name that only names the hit's own gene counts neither way;
+        // another gene's such name, or a disease named after it, does.
+        for own in [
+            "RET-related disorder",
+            "RET-related disorders",
+            "RET related condition",
+            "RET-related conditions",
+            "RET-related cancer predisposition",
+        ] {
+            assert!(!p.other_disease("RET", &[c(own, &[])]), "{own}");
+        }
+        assert!(p.other_disease("RET", &[c("GLA-related disorder", &[])]));
+        assert!(p.other_disease("RET", &[c("RET-related myopathy", &[])]));
+        assert!(p.other_disease("RET", &[c("RET-related disorder", &[]), hd[0].clone()]));
+        assert!(!umbrella("", "related disorder"));
+        // A condition with ids and no name never sets the mark, and its ids
+        // can still be the ACMG disease.
+        assert!(!p.other_disease("RET", &[c("", &["OMIM:142623"])]));
+        assert!(!p.other_disease("RET", &[hd[0].clone(), c("", &["OMIM:171400"])]));
+        assert!(p.other_disease("RET", &[hd[0].clone(), c("", &["OMIM:1"])]));
+        assert_eq!(Phenotype::of(Some("x"), Some(".")), None);
+        assert_eq!(
+            words("Ehlers-Danlos syndrome, type IV"),
+            "ehlers danlos syndrome type iv"
+        );
     }
 
     #[test]
