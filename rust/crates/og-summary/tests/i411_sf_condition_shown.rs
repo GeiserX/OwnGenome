@@ -347,3 +347,93 @@ fn the_clinvar_section_hit_keeps_clinvar_condition() {
     // The ACMG judgement is the card's, not the ClinVar table's.
     assert!(!at(43_100_000).contains_key("condition_not_acmg"));
 }
+
+/// The mark of the one reported ClinVar row of a hit of `gene` on `chrom`.
+fn mark_of(chrom: &str, gene: &str, info: &str) -> Option<Value> {
+    let v = tier(ASSETS, vec![hit(chrom, 1_000_000, gene, info)]);
+    let m = sf_row(&v, 1_000_000);
+    assert_eq!(s(m, "gene"), gene);
+    mark(m).cloned()
+}
+
+#[test]
+fn a_name_that_only_names_the_own_gene_never_marks() {
+    let f = Some(Value::Bool(false));
+    let t = Some(Value::Bool(true));
+    assert_eq!(mark_of("chrX", "GLA", ";CLNDN=GLA-related_disorder"), f);
+    assert_eq!(mark_of("chr19", "RYR1", ";CLNDN=RYR1-related_disorder"), f);
+    assert_eq!(
+        mark_of(
+            "chr13",
+            "BRCA2",
+            ";CLNDN=BRCA2-related_cancer_predisposition"
+        ),
+        f
+    );
+    // Another gene's such name is another disease.
+    assert_eq!(mark_of("chr10", "RET", ";CLNDN=GLA-related_disorder"), t);
+    assert_eq!(
+        mark_of("chr2", "MSH6", ";CLNDN=FBXO11-related_disorders"),
+        t
+    );
+    // Beside a real other disease it does not hide that disease.
+    assert_eq!(
+        mark_of(
+            "chr10",
+            "RET",
+            ";CLNDN=RET-related_disorder|Hirschsprung_disease_1"
+        ),
+        t
+    );
+}
+
+#[test]
+fn common_spellings_of_the_acmg_disease_never_mark() {
+    let f = Some(Value::Bool(false));
+    // Lynch syndrome (MMR genes), familial adenomatous polyposis (APC),
+    // hereditary breast and ovarian cancer (BRCA1/2, PALB2), Li-Fraumeni
+    // syndrome (TP53) and long QT syndrome (KCNQ1, KCNH2, SCN5A).
+    for (chrom, gene, info) in [
+        ("chr3", "MLH1", ";CLNDN=Lynch-like_syndrome"),
+        ("chr2", "MSH6", ";CLNDN=Endometrial_carcinoma"),
+        ("chr7", "PMS2", ";CLNDN=Carcinoma_of_colon"),
+        ("chr5", "APC", ";CLNDN=Familial_multiple_polyposis_syndrome"),
+        ("chr5", "APC", ";CLNDN=Colorectal_cancer"),
+        ("chr17", "BRCA1", ";CLNDN=Malignant_tumor_of_breast"),
+        ("chr13", "BRCA2", ";CLNDN=Ovarian_neoplasm"),
+        ("chr16", "PALB2", ";CLNDN=Breast_carcinoma"),
+        (
+            "chr17",
+            "TP53",
+            ";CLNDN=Adrenocortical_carcinoma,_hereditary",
+        ),
+        ("chr11", "KCNQ1", ";CLNDN=Cardiac_arrhythmia"),
+        ("chr7", "KCNH2", ";CLNDN=Cardiac_arrhythmia|not_provided"),
+    ] {
+        assert_eq!(mark_of(chrom, gene, info), f, "{gene} {info}");
+    }
+    // The RET pair is unchanged.
+    assert_eq!(
+        mark_of("chr10", "RET", HIRSCHSPRUNG),
+        Some(Value::Bool(true))
+    );
+    assert_eq!(mark_of("chr10", "RET", MEN2), f);
+}
+
+#[test]
+fn ids_without_a_name_are_kept_and_never_mark() {
+    // CLNDISDB alone, as in a hand-built file: no name is made up, the ids
+    // stay, and a condition with no name does not set the mark.
+    let v = tier(
+        ASSETS,
+        vec![hit("chr10", 43_100_000, "RET", ";CLNDISDB=OMIM:142623")],
+    );
+    let m = sf_row(&v, 43_100_000);
+    assert_eq!(m.get("clinvar_condition"), Some(&Value::Null), "{m:?}");
+    assert_eq!(
+        m.get("clinvar_condition_ids"),
+        Some(&Value::Array(vec![Value::Str("OMIM:142623".into())]))
+    );
+    assert!(m.contains_key("acmg_phenotype"), "{m:?}");
+    assert_eq!(mark(m), Some(&Value::Bool(false)), "{m:?}");
+}
