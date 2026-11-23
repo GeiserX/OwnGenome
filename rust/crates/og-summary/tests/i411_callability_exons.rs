@@ -345,3 +345,120 @@ fn exon_rows_of_genes_outside_the_catalog_are_left_out() {
     assert!(unread(&v, "not_read").is_empty());
     assert_eq!(num(at(data(&v), "exons_checked")), 0.0);
 }
+
+/// Writes step 16b's exon table under `layout` with `rows` in their order,
+/// each exon with `ok(exon, bases)` of its bases at 10x.
+fn put_exons(
+    d: &Dir,
+    layout: &str,
+    rows: &[(String, String, String, i64, i64)],
+    ok: &dyn Fn(&str, i64) -> i64,
+) {
+    let mut bed = String::from(HEAD);
+    for (x, _, chrom, s, e) in rows {
+        bed.push_str(&format!("{chrom}\t{s}\t{e}\t{x}\t{}\n", ok(x, e - s)));
+    }
+    d.put_gz(&format!("{layout}/S_callability_exons.bed.gz"), &bed);
+}
+
+/// The number N of an exon named `GENE:exonN`.
+fn exon_number(x: &str) -> u64 {
+    x.rsplit_once(":exon").unwrap().1.parse().unwrap()
+}
+
+#[test]
+fn an_exon_just_under_90_percent_reads_exon_not_read() {
+    // The first catalog gene with no owner and a coding exon of 100 or more
+    // bases: at 100 bases or more, ceil(0.89 n) of n is at least 0.89 and
+    // under 0.9, rounded to four decimals as the summary does.
+    let ex = exons();
+    let (bad, n) = genes()
+        .into_iter()
+        .filter(|g| g.4 == ".")
+        .find_map(|g| {
+            ex.iter()
+                .find(|e| e.1 == g.0 && e.4 - e.3 >= 100)
+                .map(|e| (e.0.clone(), e.4 - e.3))
+        })
+        .expect("a catalog gene with a coding exon of 100 bases");
+    let gene = bad.rsplit_once(":exon").unwrap().0.to_owned();
+    let under = (89 * n + 99) / 100;
+    let plan = Plan {
+        body: &|g| if g == gene { 0.95 } else { 1.0 },
+        exon: &|_| 1.0,
+    };
+    let d = folder("exon-89", "mosdepth", &plan, false);
+    put_exons(&d, "mosdepth", &ex, &|x, n| {
+        if x == bad { under } else { n }
+    });
+    let v = collect(&d);
+    let g = entry(&v, "not_read", &gene)
+        .unwrap_or_else(|| panic!("{gene} is not listed as not read: {:?}", data(&v)));
+    assert_eq!(st(at(g, "status")), "exon not read");
+    let w = at(g, "worst_exon");
+    assert_eq!(st(at(w, "exon")), bad);
+    let s = num(at(w, "share"));
+    assert!(
+        (0.89..0.9).contains(&s),
+        "the exon share is just under 0.9: {s}"
+    );
+    assert_eq!(unread(&v, "not_read").len(), 1, "every other gene was read");
+}
+
+#[test]
+fn of_two_exons_tied_at_0_the_lower_exon_number_is_named() {
+    // A gene with no owner and three or more coding exons: its second and
+    // third exons by number read 0%, the rest 100%. The rows are written in
+    // the table's order and reversed, so neither the first nor the last
+    // tied row wins by its place.
+    let ex = exons();
+    let gene = genes()
+        .into_iter()
+        .find(|g| g.4 == "." && ex.iter().filter(|e| e.1 == g.0).count() >= 3)
+        .expect("a catalog gene with three coding exons")
+        .0;
+    let mut own: Vec<&str> = ex
+        .iter()
+        .filter(|e| e.1 == gene)
+        .map(|e| e.0.as_str())
+        .collect();
+    own.sort_by_key(|x| exon_number(x));
+    let (second, third) = (own[1].to_owned(), own[2].to_owned());
+    let plan = Plan {
+        body: &|g| if g == gene { 0.95 } else { 1.0 },
+        exon: &|_| 1.0,
+    };
+    let mut reversed = ex.clone();
+    reversed.reverse();
+    for (tag, rows) in [("tie", &ex), ("tie-reversed", &reversed)] {
+        let d = folder(tag, "mosdepth", &plan, false);
+        put_exons(&d, "mosdepth", rows, &|x, n| {
+            if x == second || x == third { 0 } else { n }
+        });
+        let v = collect(&d);
+        let g = entry(&v, "not_read", &gene)
+            .unwrap_or_else(|| panic!("{tag}: {gene} is not listed as not read: {:?}", data(&v)));
+        assert_eq!(st(at(g, "status")), "exon not read");
+        assert_eq!(
+            st(at(at(g, "worst_exon"), "exon")),
+            second,
+            "{tag}: of {second} and {third}, both at 0%, the lower number is named"
+        );
+    }
+}
+
+#[test]
+fn a_gene_not_read_on_its_body_with_every_exon_read_names_no_exon() {
+    let gene = pick(false);
+    let plan = Plan {
+        body: &|g| if g == gene { 0.5 } else { 1.0 },
+        exon: &|_| 1.0,
+    };
+    let v = collect(&folder("body-only", "mosdepth", &plan, true));
+    let g = entry(&v, "not_read", &gene).unwrap();
+    assert_eq!(st(at(g, "status")), "not read");
+    assert!(
+        get(g, "worst_exon").is_none(),
+        "an exon is named only when it was not read: {g:?}"
+    );
+}

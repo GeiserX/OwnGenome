@@ -675,13 +675,14 @@ mod tests {
             "##format: gtf\n".to_owned(),
             gene("chr1", 101, 200, "G1", "protein_coding", "A", "HGNC:1"),
             "chr1\tX\texon\t101\t150\t.\t+\t.\tgene_id \"G1\";\n".to_owned(),
-            // A's MANE Select CDS, exon 3 before exon 2 (as on the minus
-            // strand), exon_number unquoted as GENCODE writes it; a second
-            // MANE-tagged transcript and a plain CDS are not read.
+            // A plain CDS first, then A's MANE Select CDS, exon 3 before
+            // exon 2 (as on the minus strand), exon_number unquoted as
+            // GENCODE writes it; the plain CDS and a second MANE-tagged
+            // transcript are not read.
+            cds("chr1", 101, 110, "G1", "T2", "1", "HGNC:1", false),
             cds("chr1", 181, 190, "G1", "T1", "3", "HGNC:1", true),
             cds("chr1", 121, 140, "G1", "T1", "2", "HGNC:1", true),
             cds("chr1", 151, 160, "G1", "T9", "4", "HGNC:1", true),
-            cds("chr1", 101, 110, "G1", "T2", "1", "HGNC:1", false),
             // C's CDS starts at the first base: the margin stops at 0.
             cds("chr2", 1, 50, "G3", "T3", "\"1\"", "HGNC:3", true),
             // P's _PAR_Y copy is not read; its chrX copy is.
