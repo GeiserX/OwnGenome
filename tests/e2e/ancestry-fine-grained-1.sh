@@ -142,6 +142,7 @@ for l in continent region; do
 done
 # og ancestry-fine paint painted every phased chromosome with our own model.
 check "HG002T: og painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
+# shellcheck disable=SC2016 # $1 and $2 are awk's fields
 check "HG002T: the painting wrote its fitted parameters" \
   awk -F'\t' '$1 == "em_rounds" {r = 1} $1 == "mu" && $2 == "WEA" {w = 1} END {exit !(r && w)}' \
   "${G}/HG002T/ancestry_fine/work/paint/params.tsv"
