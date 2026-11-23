@@ -27,7 +27,7 @@
 //!
 //! Each check was red on main before this change, or on an earlier head of
 //! it for the neighbours' check (the PR says where).
-//! Without Chrome, python3 or a built og the test says SKIP, and fails in CI.
+//! Without Chrome or a built og the test says SKIP, and fails in CI.
 
 use og_browser::{Browser, Scratch, StaticServer, Value, chrome_or_skip, js_str, repo_root};
 use pycompat::json;
@@ -84,8 +84,6 @@ fn find_og() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
-/// python3 when it is 3.10 or newer, read from `python3 --version`
-/// ("Python 3.12.1"; a Python 2 writes it to stderr).
 /// The page's size, as a reader's window; on a phone with touch.
 fn viewport(b: &mut Browser, width: u32, height: u32, mobile: bool) {
     let p = json::loads(&format!(

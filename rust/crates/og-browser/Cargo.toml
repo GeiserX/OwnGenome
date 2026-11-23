@@ -29,3 +29,7 @@ path = "../../../tests/browser/live_results_veil.rs"
 [[test]]
 name = "live_demo"
 path = "../../../tests/browser/live_demo.rs"
+
+[[test]]
+name = "live_gate"
+path = "tests/live_gate.rs"

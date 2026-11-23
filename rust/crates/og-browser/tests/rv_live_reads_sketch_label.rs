@@ -14,7 +14,7 @@
 //! 3. Red control: the same demo with a map.js that does not scroll to the
 //!    panel leaves it out of view, so check 2 can fail.
 //!
-//! Without Chrome, python3 or a built og the test says SKIP, and fails in CI.
+//! Without Chrome or a built og the test says SKIP, and fails in CI.
 
 use og_browser::{Browser, Scratch, StaticServer, Value, chrome_or_skip, repo_root};
 use pycompat::json;
@@ -77,7 +77,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// A term of the demo's search index with a mention at a place: its hit
-/// offers the reads (the first in sorted order, in sorted order).
+/// offers the reads (the first term in sorted order).
 fn located_term(demo: &Path) -> Option<String> {
     let path = demo
         .join("runs")

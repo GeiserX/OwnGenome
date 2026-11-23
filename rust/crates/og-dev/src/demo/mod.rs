@@ -59,6 +59,8 @@ pub mod qc;
 pub mod sv;
 pub mod traits;
 
+pub use clinical_clinvar::INVENTED_GENES;
+
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::fs;

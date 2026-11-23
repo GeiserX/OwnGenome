@@ -28,6 +28,7 @@ Without a Chrome a check prints `[SKIP] no Chrome or Chromium to ...` and passes
 | `rust/crates/og-live/tests/port_live_server_browser.rs` (`cargo test -p og-live`) | the live run page, served by `og live serve` on the synthetic DEMO-001 run: the step map, a box that repaints after a stored message, a stream refused with 503 and opened again, a box's detail with its tasks and its report anchors, and no policy violation or page error |
 | `rust/crates/og-live/tests/port_live_auth_ingest_browser.rs` (`cargo test -p og-live`) | the live site's login form, served by `og live serve` with a password: a run page opened without a session goes to the form, and the form leads back to that page, which loads |
 | `tests/browser/live_demo.rs` | the public site at a subpath, replay, search, report links, family, phone layout, and map views |
+| `rust/crates/og-browser/tests/live_gate.rs` | report gate isolation, transparent renders and slow release on the demo, plus cross-family partners and family read failures on `og live serve` |
 | `rust/crates/og-live/tests/demo.rs` | the live charts after sign-in, the ClinVar tick and its viewer link, and the missing-plugin control |
 
 The other browser checks still run in the Python tests that start the live site's Python server (`test_live_viewer.py`, `test_owngenome_live_family.py`). They drive Chrome with the helpers of `tests/browser/cdp.py`. Each moves here when its server is ported to Rust.

@@ -2,7 +2,8 @@
 
 use flate2::read::GzDecoder;
 use og_browser::{Scratch, asset_problems, repo_root};
-use og_live::{csp, static_files};
+use og_dev::demo::INVENTED_GENES;
+use og_live::{csp, plugins::STATE_HOOK_NAMES, static_files};
 use pycompat::json::{Value, loads};
 use pycompat::value::truthy;
 use regex::Regex;
@@ -94,7 +95,7 @@ fn plugins(frame: &Value) -> &Value {
 
 fn missing_hooks(last: &Value, family: &Value) -> Vec<&'static str> {
     let last = plugins(last);
-    ["charts", "ops", "recheck", "search", "family"]
+    STATE_HOOK_NAMES
         .into_iter()
         .filter(|name| {
             let value = field(last, name);
@@ -142,9 +143,6 @@ fn follow_problems(frames: &[Value], planned: &BTreeSet<String>) -> Vec<String> 
 }
 
 fn inside_site(root: &Path, base: &Path, link: &str) -> bool {
-    if link.starts_with("https://") {
-        return true;
-    }
     if link.starts_with('/') {
         return false;
     }
@@ -178,7 +176,7 @@ fn links<'a>(value: &'a Value, output: &mut Vec<&'a str>) {
     }
 }
 
-fn problems(root: &Path, base: &Path, doc: &Value) -> Vec<String> {
+fn problems(root: &Path, base: &Path, doc: &Value, file: &str) -> Vec<String> {
     let mut urls = Vec::new();
     links(doc, &mut urls);
     for chapter in list(field(doc, "chapters")) {
@@ -186,8 +184,13 @@ fn problems(root: &Path, base: &Path, doc: &Value) -> Vec<String> {
             urls.extend(list(field(section, "links")).iter().filter_map(text));
         }
     }
+    if urls.is_empty() && file != "frames.json" {
+        return vec![format!("{file} contains no links")];
+    }
     urls.into_iter()
-        .filter(|u| !inside_site(root, base, u))
+        .filter(|u| {
+            !(inside_site(root, base, u) || (file == "results.json" && u.starts_with("https://")))
+        })
         .map(str::to_owned)
         .collect()
 }
@@ -580,6 +583,14 @@ fn the_built_site_keeps_the_demo_contract() {
         follow_problems(&premature, &planned)
             .contains(&"frame 0 shows charts at the wrong step".to_owned())
     );
+    let registered: BTreeSet<_> = STATE_HOOK_NAMES.into_iter().collect();
+    let Value::Object(actual) = plugins(last) else {
+        panic!("the demo has no plugins")
+    };
+    assert_eq!(
+        actual.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        registered
+    );
     assert_eq!(missing_hooks(last, &family_frames[0]), Vec::<&str>::new());
     let mut dropped = last.clone();
     let Value::Object(last_frame) = &mut dropped else {
@@ -648,10 +659,10 @@ fn the_built_site_keeps_the_demo_contract() {
             let bad = if doc == "frames.json" {
                 list(field(&content, "frames"))
                     .iter()
-                    .flat_map(|frame| problems(&site, &path, plugins(frame)))
+                    .flat_map(|frame| problems(&site, &path, plugins(frame), doc))
                     .collect()
             } else {
-                problems(&site, &path, &content)
+                problems(&site, &path, &content, doc)
             };
             for link in bad {
                 broken.push(format!("{name}/{doc}: {link}"));
@@ -673,29 +684,64 @@ fn the_built_site_keeps_the_demo_contract() {
         fs::rename(cpsr.with_extension("held"), &cpsr).unwrap();
     }
     let mut index = json(&site.join("runs.json"));
-    assert!(problems(&site, &site, &index).is_empty());
+    assert!(problems(&site, &site, &index, "runs.json").is_empty());
     let Value::Object(o) = &mut index else {
         unreachable!()
     };
     o.insert("url".into(), Value::Str("/runs/DEMO-001/".into()));
-    assert_eq!(problems(&site, &site, &index), ["/runs/DEMO-001/"]);
+    assert_eq!(
+        problems(&site, &site, &index, "runs.json"),
+        ["/runs/DEMO-001/"]
+    );
+    let empty = loads("{}").unwrap();
+    for file in ["runs.json", "results.json", "family.json"] {
+        assert_eq!(
+            problems(&site, &site, &empty, file),
+            [format!("{file} contains no links")]
+        );
+    }
+    let outside = loads(r#"{"url":"https://example.invalid/plant"}"#).unwrap();
+    for file in ["runs.json", "family.json", "frames.json"] {
+        assert_eq!(
+            problems(&site, &site, &outside, file),
+            ["https://example.invalid/plant"]
+        );
+    }
+    assert!(problems(&site, &site, &outside, "results.json").is_empty());
     let family_json = json(&family.join("family.json"));
-    assert!(problems(&site, &family, &family_json).is_empty());
+    assert!(problems(&site, &family, &family_json, "family.json").is_empty());
+    for frame in &family_frames {
+        let unresolved = problems(&site, &family, plugins(frame), "frames.json");
+        assert!(
+            unresolved.is_empty(),
+            "unresolved family frame links: {unresolved:?}"
+        );
+    }
     let lead = fs::read_to_string(family.join("frames.json")).unwrap();
     let planted = loads(&lead.replace("../../family/", "/family/")).unwrap();
-    assert!(!problems(&site, &family, plugins(&list(field(&planted, "frames"))[0])).is_empty());
-
-    let mut genes = String::new();
-    GzDecoder::new(fs::File::open(site.join("map/genes/chr16.json")).unwrap())
-        .read_to_string(&mut genes)
-        .unwrap();
-    let map = loads(&genes).unwrap();
     assert!(
-        list(field(field(&map, "g"), "name"))
-            .iter()
-            .any(|v| text(v) == Some("DEMOC")),
-        "chr16 slice has no DEMOC"
+        !problems(
+            &site,
+            &family,
+            plugins(&list(field(&planted, "frames"))[0]),
+            "frames.json"
+        )
+        .is_empty()
     );
+
+    for (gene, chrom) in INVENTED_GENES {
+        let mut genes = String::new();
+        GzDecoder::new(fs::File::open(site.join(format!("map/genes/{chrom}.json"))).unwrap())
+            .read_to_string(&mut genes)
+            .unwrap();
+        let map = loads(&genes).unwrap();
+        assert!(
+            list(field(field(&map, "g"), "name"))
+                .iter()
+                .any(|v| text(v) == Some(gene)),
+            "{chrom} slice has no {gene}"
+        );
+    }
 
     let mut files = Vec::new();
     collect_files(&site, &mut files);

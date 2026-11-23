@@ -9,7 +9,7 @@ use crate::state::{Live, dumps_compact, get, obj, s};
 use crate::static_files as pages;
 use crate::{csp, ingest, plugins, results, state};
 use jiff::Timestamp;
-use og_dev::demo::{RUN_STARTED, Scratch, find_repo, put, read, utc};
+use og_dev::demo::{INVENTED_GENES, RUN_STARTED, Scratch, find_repo, put, read, utc};
 use og_dev::versions_env;
 use og_runlog::host::{FsStat, Host};
 use og_runlog::steps::read_steps;
@@ -379,7 +379,7 @@ impl Demo<'_> {
                 .find_map(|v| v.strip_prefix("GENEINFO="))
                 .and_then(|v| v.split_once(':'))
                 .map(|(g, _)| g)
-                .filter(|g| matches!(*g, "DEMOA" | "DEMOB" | "DEMOC"))
+                .filter(|g| INVENTED_GENES.contains(&(*g, *chrom)))
             else {
                 continue;
             };
@@ -515,13 +515,9 @@ impl Demo<'_> {
                 ));
                 put(&status, &plan)?;
             }
-            let mut snapshot = self
+            let snapshot = self
                 .live
                 .replay_state(&run, time.as_second() as f64, &DemoHost);
-            if frames.is_empty() && fault("host-path") {
-                fields(&mut snapshot)?
-                    .insert("planted_path".into(), s(path_text(&self.live.root)?));
-            }
             let key = frame_key(&snapshot);
             if last.as_ref() != Some(&key) {
                 last = Some(key);
@@ -645,10 +641,6 @@ fn copy_run_file(src: &Path, dst: &Path, name: &str) -> Result<(), String> {
     }
 }
 
-fn fault(name: &str) -> bool {
-    cfg!(feature = "fault-inject") && std::env::var("OG_LIVE_DEMO_FAULT").as_deref() == Ok(name)
-}
-
 fn frame_document(frames: Vec<Value>) -> Value {
     obj([
         ("interval_ms", Value::Int(INTERVAL_MS)),
@@ -699,9 +691,7 @@ impl Demo<'_> {
             let path = src.join(rel);
             if path.is_file() && inside(&path, &src) {
                 copy_run_file(&path, &dst.join(rel), name)?;
-            } else if !fault("omit-folder")
-                && let Some(html) = runs::sole_html(run, &self.live.root, rel, &files)
-            {
+            } else if let Some(html) = runs::sole_html(run, &self.live.root, rel, &files) {
                 copy_run_file(&path.join(html), &dst.join(rel).join("index.html"), name)?;
             }
         }

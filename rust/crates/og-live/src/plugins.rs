@@ -86,14 +86,24 @@ pub fn state_hooks(
     state_hooks_with(live, d, || ops_hook(live, d, st, events))
 }
 
+/// The plugin keys written to run state, in order of plugin name.
+pub const STATE_HOOK_NAMES: [&str; 5] = ["charts", "family", "ops", "recheck", "search"];
+
 pub(crate) fn state_hooks_with(live: &Live, d: &Path, ops: impl FnOnce() -> Value) -> Value {
-    let mut o = IndexMap::new();
-    o.insert("charts".into(), crate::charts::state(d));
-    o.insert("family".into(), family_hook(live, d));
-    o.insert("ops".into(), ops());
-    o.insert("recheck".into(), crate::recheck::state(d));
-    o.insert("search".into(), crate::search::state(d));
-    Value::Object(o)
+    let values: [_; STATE_HOOK_NAMES.len()] = [
+        crate::charts::state(d),
+        family_hook(live, d),
+        ops(),
+        crate::recheck::state(d),
+        crate::search::state(d),
+    ];
+    Value::Object(
+        STATE_HOOK_NAMES
+            .into_iter()
+            .map(str::to_owned)
+            .zip(values)
+            .collect(),
+    )
 }
 
 /// `plugins.ops`: the run health card, or the line it shows instead.
