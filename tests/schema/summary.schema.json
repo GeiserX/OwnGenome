@@ -64,7 +64,7 @@
    ]
   },
   "clinvar_condition_ids": {
-   "description": "The database ids of those conditions (CLNDISDB), such as OMIM:171400.",
+   "description": "The database ids of those conditions (CLNDISDB), such as OMIM:171400, and of a condition CLNDISDB gives with no CLNDN name; not those of 'not provided' and 'not specified'.",
    "type": "array",
    "items": {
     "type": "string"

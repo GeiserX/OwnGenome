@@ -178,11 +178,13 @@ pub fn conditions(info: &HashMap<&str, &str>) -> Option<Vec<Condition>> {
 /// The two summary fields of a hit's conditions: `clinvar_condition`, the
 /// names ClinVar gives joined by " / " (its placeholders "not provided" and
 /// "not specified" left out; null when no name is left), and
-/// `clinvar_condition_ids`, the database ids of those named conditions.
+/// `clinvar_condition_ids`, the database ids of those conditions and of a
+/// condition `CLNDISDB` gives ids for and `CLNDN` no name.
 pub fn condition_fields(c: &[Condition]) -> [(&'static str, Value); 2] {
     let named: Vec<&Condition> = c.iter().filter(|x| !x.placeholder()).collect();
     let mut ids: Vec<Value> = Vec::new();
-    for id in named.iter().flat_map(|x| &x.ids) {
+    let kept = c.iter().filter(|x| x.name.is_empty() || !x.placeholder());
+    for id in kept.flat_map(|x| &x.ids) {
         let v = Value::Str(id.clone());
         if !ids.contains(&v) {
             ids.push(v);
@@ -907,6 +909,19 @@ mod tests {
         // Only placeholders: the field is there, with no name.
         let only = conditions(&info_map("CLNDN=not_provided;CLNDISDB=MedGen:CN517202")).unwrap();
         assert_eq!(condition_fields(&only)[0].1, Value::Null);
+        assert_eq!(condition_fields(&only)[1].1, Value::Array(vec![]));
+        // CLNDISDB without CLNDN: no name is made up, the ids are kept.
+        let ids = conditions(&info_map("CLNDISDB=OMIM:142623")).unwrap();
+        assert_eq!(
+            condition_fields(&ids),
+            [
+                ("clinvar_condition", Value::Null),
+                (
+                    "clinvar_condition_ids",
+                    Value::Array(vec![Value::Str("OMIM:142623".into())])
+                ),
+            ]
+        );
         // Neither field: no conditions at all, so no new summary field.
         assert_eq!(conditions(&info_map("GENEINFO=RET:5979")), None);
         // CLNDN without CLNDISDB, as in a hand-built file.
