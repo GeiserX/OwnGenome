@@ -983,24 +983,35 @@ jobs:
           done
           # one NAME: the genome's reads over LPA (chr6:160,530,000-160,670,000, the
           # region lpa-1 reads) from its 30x CRAM (HG002: DeepVariant's 35x
-          # BAM), step 46 on them, and his row of the calls. EBI fails a read
-          # now and then: 4 tries, 1, 2 and 4 minutes apart, each starting
-          # clean (samtools keeps the .crai it fetched and would read a bad
-          # copy again). A retry reads the same file again and nothing else.
+          # BAM), step 46 on them, and his row of the calls. The index comes
+          # first, by curl, and must be whole (a .crai is one gzip stream):
+          # samtools then reads it from disk and never fetches it itself, since
+          # from the runner EBI sends it slowly and cuts it now and then. The
+          # slice must be a whole BAM (samtools quickcheck). EBI fails a read
+          # now and then: 4 tries, 1, 2 and 4 minutes apart; a bad index is
+          # deleted and fetched again. A retry reads the same file again and
+          # nothing else.
           one() {
-            local s=$1 url n bam="${G}/$1/aligned/$1_sorted.bam"
-            if [ "$s" = HG002 ]; then url=$LPA_HG002_BAM; else
+            local s=$1 url ix n bam="${G}/$1/aligned/$1_sorted.bam"
+            if [ "$s" = HG002 ]; then url=$LPA_HG002_BAM; ix=bai; else
               url=$(awk -F'\t' -v s="$s" '$10 == s {print $1}' "${D}/hc.index" | sed 's#^ftp://#https://#')
+              ix=crai
             fi
             [ -n "$url" ] || { echo "${s}: no 30x reads in the index"; return 1; }
             mkdir -p "${G}/${s}/aligned"
             for n in 1 2 3 4; do
-              rm -f "${G}/${s}/"*.crai "${G}/${s}/"*.bai "$bam" "${bam}.bai"
-              if docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w "/g/${s}" "$SAMTOOLS_IMAGE" \
-                sh -c 'samtools view -b -T /g/reference/chr6.fa -o "aligned/$2_sorted.bam" "$1" chr6:160530000-160670000 && samtools index "aligned/$2_sorted.bam"' \
-                _ "$url" "$s"; then
+              rm -f "$bam" "${bam}.bai"
+              if { [ -s "${G}/${s}/reads.${ix}" ] ||
+                   curl -fsS --retry 5 --retry-all-errors --connect-timeout 30 --max-time 600 -o "${G}/${s}/reads.${ix}" "${url}.${ix}"; } &&
+                 { [ "$ix" = bai ] || gzip -t "${G}/${s}/reads.${ix}"; } &&
+                 docker run --rm -u "$(id -u):$(id -g)" -v /etc/ssl/certs:/etc/ssl/certs:ro -v "${G}:/g" -w "/g/${s}" "$SAMTOOLS_IMAGE" \
+                   sh -c 'samtools view -b -T /g/reference/chr6.fa -o "aligned/$2_sorted.bam" -X "$1" "reads.$3" chr6:160530000-160670000 &&
+                     samtools quickcheck "aligned/$2_sorted.bam" && samtools index "aligned/$2_sorted.bam"' \
+                   _ "$url" "$s" "$ix"; then
                 break
               fi
+              # A whole .crai is kept for the next try; anything else is fetched again.
+              if [ "$ix" = bai ] || ! gzip -t "${G}/${s}/reads.${ix}" 2> /dev/null; then rm -f "${G}/${s}/reads.${ix}"; fi
               [ "$n" -lt 4 ] || { echo "::error::${s}: reading LPA from ${url} failed 4 times"; return 1; }
               echo "::warning::${s}: reading LPA from ${url} failed (try $n of 4); next try in $((60 << (n - 1))) s"
               sleep $((60 << (n - 1)))
@@ -1012,9 +1023,10 @@ jobs:
           }
           export -f one
           export D G LPA_HG002_BAM SAMTOOLS_IMAGE
-          # Six genomes at a time: the reads are a few MB each, the wait is EBI's.
+          # Three genomes at a time: the reads are a few MB each, the wait is
+          # EBI's, and six streams at once got indexes cut short.
           # shellcheck disable=SC2016  # $1 belongs to the inner bash
-          printf '%s\n' "${want[@]}" | xargs -P 6 -I{} bash -c 'one "$1"' _ {}
+          printf '%s\n' "${want[@]}" | xargs -P 3 -I{} bash -c 'one "$1"' _ {}
           printf 'sample\tkiv2_copies\tci95_low\tci95_high\n' > "${D}/calls.tsv"
           for s in "${want[@]}"; do cat "${D}/rows/${s}.tsv"; done >> "${D}/calls.tsv"
           cat "${D}/calls.tsv"
