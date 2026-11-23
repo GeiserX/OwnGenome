@@ -35,7 +35,7 @@ Affected Medications:
     Diplotype: *1/*3
     Drugs with guidance in this PharmCAT report:
       - warfarin [CPIC, Optional]: Increase the dose by 5-10%.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
       also named by DPWG, FDA label: Acenocoumarol
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 

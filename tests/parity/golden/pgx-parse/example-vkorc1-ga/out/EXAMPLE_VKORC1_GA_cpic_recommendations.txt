@@ -56,7 +56,7 @@ Affected Medications:
       - tropisetron [CPIC, No recommendation]: Insufficient evidence demonstrating clinical impact based on CYP2D6 genotype. Initiate therapy with recommended starting dose.
       - venlafaxine [CPIC, No recommendation]: No action recommended based on genotype for venlafaxine because of minimal evidence regarding the impact on efficacy or side effects.
       - vortioxetine [CPIC, Moderate]: Initiate therapy with recommended starting dose.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
       also named by DPWG, FDA label, FDA association: amoxapine, aripiprazole, brexpiprazole, eliglustat, flecainide, haloperidol, meclizine, pimozide, propafenone, risperidone, tetrabenazine, thioridazine, zuclopenthixol
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 
@@ -69,7 +69,7 @@ Affected Medications:
       - fosphenytoin [CPIC, Strong]: If patient is phenytoin-naive, do not use phenytoin/fosphenytoin. Avoid carbamazepine and oxcarbazepine.
       - oxcarbazepine [CPIC, Strong]: If patient is oxcarbazepine-naïve, do not use oxcarbazepine.
       - phenytoin [CPIC, Strong]: If patient is phenytoin-naive, do not use phenytoin/fosphenytoin. Avoid carbamazepine and oxcarbazepine.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
       also named by DPWG, FDA label, FDA association: flucloxacillin, lamotrigine, pazopanib
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 
@@ -77,7 +77,7 @@ Affected Medications:
     Diplotype: *1/*1
     Drugs with guidance in this PharmCAT report:
       - hydralazine [CPIC, Moderate]: Consider a starting total daily dose of at least 75 mg. Titrate up to 300 mg total daily hydralazine dose as tolerated. NAT2 rapid metabolizers typically require a 50-100% higher maintenance dose compared to poor metabolizers.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 
   VKORC1 -- -1639 GA:

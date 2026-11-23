@@ -16,7 +16,7 @@ Affected Medications:
     Diplotype: *1/*80 (1 of 2 possible)
     Drugs with guidance in this PharmCAT report:
       - atazanavir [CPIC, Strong]: Guidance for Intermediate Metabolizer.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 
 Uncallable Genes:

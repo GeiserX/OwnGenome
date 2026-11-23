@@ -16,7 +16,7 @@ Affected Medications:
     Diplotype: *1/*2
     Drugs with guidance in this PharmCAT report:
       - clopidogrel [CPIC, Strong]: Use an alternative antiplatelet.
-      Recommendation text via PharmCAT includes PharmGKB content (https://www.pharmgkb.org/) under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
     Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
 
 Uncallable Genes:

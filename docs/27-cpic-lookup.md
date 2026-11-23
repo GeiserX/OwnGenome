@@ -81,7 +81,7 @@ CYP2D6       *x/*y                          <phenotype>
 
 ### Affected Medications
 
-When this section prints a recommendation from PharmCAT, it credits PharmGKB and links to the CC BY-SA 4.0 license. The text report displays comparison symbols as plain text, such as `<`.
+When this section prints a recommendation from PharmCAT, it credits CPIC as the source of the text. CPIC content is available under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). PharmCAT also carries PharmGKB (ClinPGx) content under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The text report displays comparison symbols as plain text, such as `<`.
 
 Only genes with a non-normal phenotype (point 3 above) appear here, each with the drugs and the CPIC recommendation PharmCAT matched to your result. A called gene whose phenotype names no changed function (`n/a`, `no phenotype assigned`, the reference VKORC1 genotype `-1639 GG`, `Uncertain Susceptibility`) is `unclassified`: it gets no drug list and is listed under "Called Genes Without a Function Phenotype". A variant allele in such a gene can still matter, so check PharmCAT's HTML report for it. A gene whose result rests on positions PharmCAT never read is `incomplete` (point 4 above): it is listed under "Genes Called With Positions Not Read" with those positions, and gets no drug list here, because a normal call there is not proof of normal function. Genes that could not be called are listed separately at the end. Their absence from the medications section does NOT mean normal function.
 

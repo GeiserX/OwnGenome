@@ -313,8 +313,8 @@ fn decode_entities(s: &str) -> String {
     out
 }
 
-const PHARMGKB_CREDIT: &str = "      Recommendation text via PharmCAT includes PharmGKB content \
-    (https://www.pharmgkb.org/) under CC BY-SA 4.0 \
+const RECOMMENDATION_CREDIT: &str = "      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. \
+    PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 \
     (https://creativecommons.org/licenses/by-sa/4.0/).";
 
 /// The drugs of a gene: PharmCAT's links, else the fallback table, else
@@ -376,7 +376,7 @@ pub fn drug_lines(
             lines.push(head);
         }
         if has_recommendation {
-            lines.push(PHARMGKB_CREDIT.to_owned());
+            lines.push(RECOMMENDATION_CREDIT.to_owned());
         }
         let others: BTreeSet<&str> = entries
             .iter()

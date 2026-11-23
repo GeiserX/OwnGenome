@@ -5,7 +5,8 @@ use std::path::Path;
 
 const EXAMPLE: &str =
     include_str!("../../../../tests/fixtures/pharmcat/pharmcat-docs-example.json");
-const CREDIT: &str = "Recommendation text via PharmCAT includes PharmGKB content";
+const CREDIT: &str = "Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. \
+    PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0";
 const CREDIT_LICENSE: &str = "https://creativecommons.org/licenses/by-sa/4.0/";
 
 fn cpic_report(case: &str, json: &str) -> String {
@@ -27,7 +28,7 @@ fn cpic_report(case: &str, json: &str) -> String {
 }
 
 #[test]
-fn credits_pharmgkb_when_recommendation_text_is_used() {
+fn credits_recommendation_sources_when_text_is_used() {
     let text = cpic_report("credit", EXAMPLE);
     assert!(
         text.lines()
@@ -48,6 +49,35 @@ fn a_report_with_no_recommendation_text_has_no_pharmgkb_credit() {
 }
 
 #[test]
+fn cpic_drugs_without_recommendation_text_have_no_credit() {
+    fn clear_recommendations(value: &mut Value) {
+        match value {
+            Value::Object(fields) => {
+                for (key, field) in fields {
+                    if key == "drugRecommendation" {
+                        *field = Value::Null;
+                    } else {
+                        clear_recommendations(field);
+                    }
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(clear_recommendations),
+            _ => {}
+        }
+    }
+
+    let mut data = loads(EXAMPLE).unwrap();
+    clear_recommendations(&mut data);
+    let json = dumps(&data, &Dump::default()).unwrap();
+    let text = cpic_report("null-recommendations", &json);
+    assert!(
+        text.lines()
+            .any(|line| line == "      - atomoxetine [CPIC, Moderate]")
+    );
+    assert!(!text.contains("PharmGKB"));
+}
+
+#[test]
 fn text_report_decodes_the_pharmcat_threshold() {
     let text = cpic_report("plain-text", EXAMPLE);
     assert!(text.contains("If <200 ng/mL"));
@@ -55,7 +85,7 @@ fn text_report_decodes_the_pharmcat_threshold() {
 }
 
 #[test]
-fn html_escapes_the_decoded_pharmcat_threshold() {
+fn text_report_survives_one_html_escape_layer() {
     let text = cpic_report("html-escaped", EXAMPLE);
     let html = html_escape(&text);
     assert!(html.contains("If &lt;200 ng/mL"));
