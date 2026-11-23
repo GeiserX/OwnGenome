@@ -402,6 +402,18 @@ fn common_spellings_of_the_acmg_disease_never_mark() {
         ("chr17", "BRCA1", ";CLNDN=Malignant_tumor_of_breast"),
         ("chr13", "BRCA2", ";CLNDN=Ovarian_neoplasm"),
         ("chr16", "PALB2", ";CLNDN=Breast_carcinoma"),
+        ("chr17", "BRCA1", ";CLNDN=Breast_neoplasm"),
+        (
+            "chr13",
+            "BRCA2",
+            ";CLNDN=Infiltrating_duct_carcinoma_of_breast",
+        ),
+        (
+            "chr2",
+            "COL3A1",
+            ";CLNDN=Familial_thoracic_aortic_aneurysm_and_aortic_dissection",
+        ),
+        ("chr2", "COL3A1", ";CLNDN=Familial_aortopathy"),
         (
             "chr17",
             "TP53",

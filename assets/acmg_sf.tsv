@@ -53,9 +53,9 @@
 gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note	phenotype	phenotype_keys
 APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.	familial adenomatous polyposis	OMIM:175100; familial adenomatous polyposis; adenomatous polyposis coli; gardner syndrome; familial multiple polyposis; carcinoma of colon; colorectal cancer; colon cancer
 RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.	familial medullary thyroid cancer, multiple endocrine neoplasia type 2	OMIM:155240; OMIM:171400; OMIM:162300; multiple endocrine neoplasia type 2; multiple endocrine neoplasia 2; men2; medullary thyroid; pheochromocytoma
-BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:604370; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
-BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:612555; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
-PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:114480; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary
+BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:604370; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
+BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:612555; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
+PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:114480; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
 SDHD	HGNC:10683	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:168000; paraganglioma; pheochromocytoma
 SDHAF2	HGNC:26034	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:601650; paraganglioma; pheochromocytoma
 SDHC	HGNC:10682	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:605373; paraganglioma; pheochromocytoma
@@ -79,12 +79,12 @@ TSC1	HGNC:12362	AD	any	.	no	.	.	1.0	All P and LP	.	tuberous sclerosis complex	OM
 TSC2	HGNC:12363	AD	any	.	no	.	.	1.0	All P and LP	.	tuberous sclerosis complex	OMIM:613254; tuberous sclerosis
 VHL	HGNC:12687	AD	any	.	no	.	.	1.0	All P and LP	.	von Hippel-Lindau syndrome	OMIM:193300; von hippel lindau
 WT1	HGNC:12796	AD	any	.	no	.	.	1.0	All P and LP	.	WT1-related Wilms tumor	OMIM:194070; wilms; nephroblastoma
-FBN1	HGNC:3603	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Marfan syndrome)	OMIM:154700; marfan; aortic aneurysm; thoracic aortic; aortic dissection; loeys dietz
-TGFBR1	HGNC:11772	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:609192; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection
-TGFBR2	HGNC:11773	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:610168; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection
-SMAD3	HGNC:6769	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:613795; loeys dietz; aortic aneurysm; thoracic aortic; aortic dissection
-ACTA2	HGNC:130	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:611788; aortic aneurysm; thoracic aortic; aortic dissection
-MYH11	HGNC:7569	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:132900; aortic aneurysm; thoracic aortic; aortic dissection
+FBN1	HGNC:3603	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Marfan syndrome)	OMIM:154700; marfan; aortic aneurysm; thoracic aortic; aortic dissection; loeys dietz; aortopathy
+TGFBR1	HGNC:11772	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:609192; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+TGFBR2	HGNC:11773	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:610168; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+SMAD3	HGNC:6769	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:613795; loeys dietz; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+ACTA2	HGNC:130	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:611788; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+MYH11	HGNC:7569	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:132900; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
 PKP2	HGNC:9024	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:609040; arrhythmogenic; cardiomyopathy
 DSP	HGNC:3052	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:607450; arrhythmogenic; cardiomyopathy
 DSC2	HGNC:3036	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610476; arrhythmogenic; cardiomyopathy
@@ -102,7 +102,7 @@ DES	HGNC:2770	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopat
 RBM20	HGNC:27424	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613172; cardiomyopathy
 TNNC1	HGNC:11943	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:611879; cardiomyopathy
 PLN	HGNC:9080	AD	any	.	no	.	.	3.3	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:609909; cardiomyopathy
-COL3A1	HGNC:2201	AD	any	.	no	.	.	1.0	All P and LP	.	Ehlers-Danlos syndrome, vascular type	OMIM:130050; ehlers danlos
+COL3A1	HGNC:2201	AD	any	.	no	.	.	1.0	All P and LP	.	Ehlers-Danlos syndrome, vascular type	OMIM:130050; ehlers danlos; thoracic aortic; aortic aneurysm; aortic dissection; aortopathy
 LDLR	HGNC:6547	SD	any	.	yes	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:143890; hypercholesterolemia; hypercholesterolaemia
 APOB	HGNC:603	AD	any	.	no	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:144010; hypercholesterolemia; hypercholesterolaemia
 PCSK9	HGNC:20001	AD	any	.	no	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:603776; hypercholesterolemia; hypercholesterolaemia
