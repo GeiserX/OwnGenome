@@ -2297,20 +2297,22 @@ install_alphamissense() (
 )
 
 annotation_score_disk_ok() {
-  local dir=$1 files=$2 rows file kind pin index dest bytes part remaining=0 free retry
+  local dir=$1 files=$2 rows file pin index dest bytes size part remaining=0 free retry
   rows=$(setup_pin_rows "$files") || return 1
-  while read -r file kind pin && read -r index _; do
+  while read -r file _ pin && read -r index _; do
     dest="${dir}/${file}"
-    # A complete pair can be reused. A lone score file must match its pin
-    # before the installer can reuse it with a downloaded index.
-    if [ -s "$dest" ] && { [ -s "${dir}/${index}" ] || _fetch_check "$kind" "$pin" "$dest" "$dest" "$file" >/dev/null; }; then
-      continue
-    fi
+    if [ -s "$dest" ] && [ -s "${dir}/${index}" ]; then continue; fi
     case "$file" in
       whole_genome_SNVs.tsv.gz) bytes=$CADD_SNV_BYTES ;;
       gnomad.genomes.r4.0.indel.tsv.gz) bytes=$CADD_INDEL_BYTES ;;
       *) bytes=${pin%%:*} ;;  # SpliceAI pins start with the byte count.
     esac
+    # Credit a size-matching file on an index retry. The installer verifies
+    # its content before reusing it.
+    if [ -s "$dest" ]; then
+      size=$(stat -L -c %s "$dest" 2>/dev/null || stat -L -f %z "$dest") || return 1
+      if [ "$size" = "$bytes" ]; then continue; fi
+    fi
     if [ -s "${dest}.part" ]; then
       part=$(stat -L -c %s "${dest}.part" 2>/dev/null || stat -L -f %z "${dest}.part") || return 1
       bytes=$((bytes - part))

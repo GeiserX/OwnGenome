@@ -200,7 +200,8 @@ DF
 chmod +x "${CASE_WORK}/test-bin/df"
 export PATH="${CASE_WORK}/test-bin:$PATH"
 : > "$FAKE_DOCKER_LOG"
-space_with_margin=$((5 * 1048576 + 1))
+space_margin=$((5 * 1048576))
+space_with_margin=$((space_margin + 1))
 FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 1 low-space "$SETUP" --annotation-scores "$G"
 output_has low-space '^\[WARN\] Skipping annotation scores: needs 2048 more bytes for CADD and SpliceAI plus a 5 GiB margin\.$'
 output_has low-space '^  Install later: .*setup\.sh --annotation-scores '
@@ -210,14 +211,42 @@ FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 0 resume-with-space "$SETUP" -
 [ -s "$cadd" ] && [ -s "${cadd}.tbi" ] || fail 'resumed download did not publish the CADD pair'
 [ ! -e "${cadd}.part" ] || fail 'resumed download left a .part'
 
-# The outer gzip members each span more than one MiB. Corrupt the middle
-# member's CRC to keep the pinned ends and size intact. Drop that member
-# entirely to retain valid gzip and both pinned ends with the wrong size.
+# With room for the margin alone, a size-matching score needs only its index.
+# Log calls to the real MD5 tool so a duplicate content check fails the case.
+rm -f "${cadd}.tbi"
+printf 'CADD_SNV_BYTES="%s"\n' "$(stat -c %s "$cadd")" >> "${COPY}/versions.env"
+export NORMAL_MD5SUM
+NORMAL_MD5SUM=$(command -v md5sum)
+cat > "${CASE_WORK}/test-bin/md5sum" <<'MD5SUM'
+#!/usr/bin/env bash
+printf 'md5sum %s\n' "$@" >> "$FAKE_DOCKER_LOG"
+exec "$NORMAL_MD5SUM" "$@"
+MD5SUM
+chmod +x "${CASE_WORK}/test-bin/md5sum"
+: > "$FAKE_DOCKER_LOG"
+FAKE_SCORE_FREE_KIB=$space_margin run_expect 0 retry-index-only "$SETUP" --annotation-scores "$G"
+[ -s "${cadd}.tbi" ] || fail 'index retry did not publish the CADD index'
+docker_log_has '^wget .*/whole_genome_SNVs\.tsv\.gz\.tbi ' 'index retry did not fetch the CADD index'
+[ "$(grep -c '^wget ' "$FAKE_DOCKER_LOG")" -eq 1 ] || fail 'index retry fetched more than the CADD index'
+cadd_checks=$(awk -v path="$cadd" '$0 == "md5sum " path { count++ } END { print count + 0 }' "$FAKE_DOCKER_LOG")
+[ "$cadd_checks" -eq 1 ] || fail "index retry checked CADD data $cadd_checks times, expected 1"
+rm -f "${CASE_WORK}/test-bin/md5sum"
+
+# The outer gzip members each span more than one MiB. Recompress each with
+# one input byte flipped so it can replace just one end of the stream.
 fixture="${CASE_WORK}/spliceai-gzip"
 mkdir "$fixture"
 for member in first last; do
-  head -c 1048576 /dev/urandom | gzip -n > "${fixture}/${member}.gz"
-  [ "$(wc -c < "${fixture}/${member}.gz")" -gt 1048576 ] || fail 'gzip member must span more than one MiB'
+  input="${fixture}/${member}.raw"
+  head -c 1048576 /dev/urandom > "$input"
+  gzip -n < "$input" > "${fixture}/${member}.gz"
+  member_size=$(stat -c %s "${fixture}/${member}.gz")
+  [ "$member_size" -gt 1048576 ] || fail 'gzip member must span more than one MiB'
+  byte=$(od -An -tu1 -j 524288 -N 1 "$input")
+  printf '%b' "\\$(printf '%03o' "$((byte ^ 1))")" |
+    dd of="$input" bs=1 seek=524288 conv=notrunc status=none
+  gzip -n < "$input" > "${fixture}/${member}-alt.gz"
+  [ "$(stat -c %s "${fixture}/${member}-alt.gz")" -eq "$member_size" ] || fail "$member gzip variant changed size"
 done
 printf 'SpliceAI test payload\n' | gzip -n > "${fixture}/middle.gz"
 cat "${fixture}/first.gz" "${fixture}/middle.gz" "${fixture}/last.gz" > "${fixture}/good.gz"
@@ -227,6 +256,11 @@ last=$(tail -c 1048576 "${fixture}/good.gz" | sha256sum | awk '{print $1}')
 read -r snv _ <<< "$SPLICEAI_MASKED_SNV_PIN"
 printf 'SPLICEAI_MASKED_SNV_PIN="%s gzip-ends %s:%s:%s"\n' "$snv" "$size" "$first" "$last" >> "${COPY}/versions.env"
 
+cat "${fixture}/first-alt.gz" "${fixture}/middle.gz" "${fixture}/last.gz" > "${fixture}/first-end.gz"
+cat "${fixture}/first.gz" "${fixture}/middle.gz" "${fixture}/last-alt.gz" > "${fixture}/last-end.gz"
+gzip -t "${fixture}/first-end.gz" "${fixture}/last-end.gz" || fail 'gzip end variants must be valid'
+
+# Corrupt the middle CRC or drop its member to isolate the gzip and size checks.
 cp "${fixture}/good.gz" "${fixture}/bad-crc.gz"
 crc_offset=$(( $(stat -c %s "${fixture}/first.gz") + $(stat -c %s "${fixture}/middle.gz") - 8 ))
 crc_byte=$(od -An -tu1 -j "$crc_offset" -N 1 "${fixture}/good.gz")
@@ -236,7 +270,7 @@ cat "${fixture}/first.gz" "${fixture}/last.gz" > "${fixture}/missing-member.gz"
 head -c "$((size - 1))" "${fixture}/good.gz" > "${fixture}/truncated.gz"
 
 masked="${G}/annotations/${snv}"
-for body in bad-crc missing-member truncated good; do
+for body in bad-crc missing-member truncated first-end last-end good; do
   rm -f "$masked" "${masked}.tbi"
   cp "${fixture}/${body}.gz" "${FAKE_DOWNLOAD_DIR}/${snv}"
   if [ "$body" = good ]; then
