@@ -2218,11 +2218,19 @@ install_clinical_data() {
   return "$missing"
 }
 
+# Expand the pin names listed in versions.env to file, digest type and value.
+setup_pin_rows() {
+  local key keys=()
+  read -r -a keys <<< "$1"
+  for key in "${keys[@]}"; do printf '%s\n' "${!key}"; done
+}
+
 # Install a published data/index pair. Keep existing pairs (including manual
 # installs). Before adding an index to a lone data file, verify that the data
 # is the matching release. A failed index fetch leaves the data for a retry.
 install_indexed_downloads() (
-  local dir=$1 base=$2 files=$3 file kind pin index index_kind index_pin dest rc=0
+  local dir=$1 base=$2 files=$3 rows file kind pin index index_kind index_pin dest rc=0
+  rows=$(setup_pin_rows "$files") || exit 1
   mkdir -p "$dir" || exit 1
   lock_acquire "${dir}/.setup-indexed.lock" || exit 1
   trap 'lock_release "${dir}/.setup-indexed.lock"' EXIT
@@ -2238,7 +2246,7 @@ install_indexed_downloads() (
       continue
     fi
     fetch "${base}/${index}" "${dir}/${index}" "$index_kind" "$index_pin" || rc=1
-  done <<< "$files"
+  done <<< "$rows"
   exit "$rc"
 )
 
@@ -2336,14 +2344,15 @@ install_bwa_index() (
 )
 
 install_cnvpytor_data() (
-  local dir="${GENOME_DIR}/reference/cnvpytor" file kind pin rc=0
+  local dir="${GENOME_DIR}/reference/cnvpytor" rows file kind pin rc=0
+  rows=$(setup_pin_rows "$CNVPYTOR_DATA_FILES") || exit 1
   mkdir -p "$dir" || exit 1
   lock_acquire "${dir}/.setup.lock" || exit 1
   trap 'lock_release "${dir}/.setup.lock"' EXIT
   while read -r file kind pin; do
     [ -s "${dir}/${file}" ] && continue
     fetch "${CNVPYTOR_DATA_BASE_URL}/${file}" "${dir}/${file}" "$kind" "$pin" || rc=1
-  done <<< "$CNVPYTOR_DATA_FILES"
+  done <<< "$rows"
   exit "$rc"
 )
 

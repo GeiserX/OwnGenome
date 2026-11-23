@@ -43,8 +43,10 @@ export FAKE_DOWNLOAD_DIR="${CASE_WORK}/downloads"
 export FETCH_TRIES=1 FETCH_WAIT=0
 mkdir -p "$FAKE_DOWNLOAD_DIR"
 seed_pins() {
-  local base=$1 file kind pin dest
-  while read -r file kind _; do
+  local base=$1 key file kind pin dest keys=()
+  read -r -a keys <<< "$2"
+  for key in "${keys[@]}"; do
+    read -r file kind _ <<< "${!key}"
     dest="${FAKE_DOWNLOAD_DIR}/${file}"
     fake_body "${base}/${file}" > "${dest}.seed"
     mv "${dest}.seed" "$dest"
@@ -56,12 +58,12 @@ seed_pins() {
         pin="$(wc -c < "$dest"):${pin}:${pin}" ;;
       *) fail "unknown fixture pin kind $kind" ;;
     esac
-    printf '%s %s %s\n' "$file" "$kind" "$pin"
+    printf '%s="%s %s %s"\n' "$key" "$file" "$kind" "$pin"
   done
 }
 for spec in CADD SPLICEAI_MASKED SOMATIC_DATA CNVPYTOR_DATA; do
   base_var="${spec}_BASE_URL" files_var="${spec}_FILES"
-  printf '%s="%s"\n' "$files_var" "$(seed_pins "${!base_var}" <<< "${!files_var}")" >> "${COPY}/versions.env"
+  seed_pins "${!base_var}" "${!files_var}" >> "${COPY}/versions.env"
 done
 for spec in REVEL ALPHAMISSENSE; do
   url_var="${spec}_URL"
