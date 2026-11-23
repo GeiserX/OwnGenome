@@ -507,6 +507,54 @@ mod tests {
     }
 
     #[test]
+    fn the_benign_match_reaches_the_summary_only_when_step_05_wrote_it() {
+        use crate::collect::{Group, Input, collect};
+        use crate::testutil::Dir;
+
+        let dir = Dir::new("annotsv-benign-match");
+        let rows = |table: String| {
+            dir.put("S/annotsv/S_sv_class4_5_checked.tsv", table);
+            let summary = collect(&Input {
+                sample: "S".into(),
+                sample_dir: dir.path("S"),
+                declared_sex: None,
+                assets: dir.path("assets"),
+                group: Group::C,
+                tables: dir.path("bin"),
+            })
+            .unwrap()
+            .to_json();
+            let section = report_field(report_field(&summary, "sections"), "annotsv");
+            report_rows(report_field(section, "data"), "rows").to_vec()
+        };
+        let head = REPORT_HEADER.replace("Common\t", "Common\tBenign_match\t");
+        let with = rows(format!(
+            "{head}{}{}",
+            "NESTED\t20\t3000\t3500\tDEL\t4\tmanta\tG1\tno\t\t0.05\tgnomAD-SV_v4\tyes\tcontained\t4\t\t\n",
+            "BLANK\t20\t9000\t9500\tDEL\t4\tmanta\tG2\tno\t\t\tno frequency data\tno\tnone\t4\t\t\n",
+        ));
+        let field = |r: &Value, k: &str| report_field(r, k).clone();
+        assert_eq!(
+            (field(&with[0], "benign_match"), field(&with[0], "common")),
+            (s("contained"), Value::Bool(true)),
+            "Common keeps its meaning beside the match"
+        );
+        assert_eq!(
+            (
+                field(&with[1], "population_af"),
+                field(&with[1], "population_source"),
+                field(&with[1], "benign_match")
+            ),
+            (Value::Null, s("no frequency data"), s("none"))
+        );
+        let without = rows(format!("{REPORT_HEADER}{REPORT_LAST}"));
+        let Value::Object(m) = &without[0] else {
+            panic!("a row is an object")
+        };
+        assert!(!m.contains_key("benign_match"), "{m:?}");
+    }
+
+    #[test]
     fn reports_and_two_hit_rules_use_the_original_member_id() {
         let d = std::env::temp_dir().join(format!("og-summary-sv-support-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();

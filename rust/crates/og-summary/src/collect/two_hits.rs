@@ -966,4 +966,60 @@ mod tests {
         assert_eq!(found.entries["G"].verdict, Verdict::Biallelic);
         assert!(found.pairs[&("G".to_owned(), v.key)].starts_with("biallelic with DEL: in trans"));
     }
+
+    /// Step 05's checked table with `body`, read as the rules read it.
+    fn annotsv(name: &str, body: &str) -> Vec<SvRow> {
+        let d = std::env::temp_dir().join(format!("og-two-hits-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("checked.tsv").to_string_lossy().into_owned();
+        std::fs::write(&p, body).unwrap();
+        let rows = read_annotsv(Some((p, "checked.tsv".into())), None)
+            .unwrap()
+            .unwrap();
+        std::fs::remove_dir_all(d).unwrap();
+        rows
+    }
+
+    #[test]
+    fn a_call_inside_a_much_larger_common_sv_is_not_read_as_common() {
+        let head = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\tBenign_match\tFORMAT\tS1\n";
+        let rows = annotsv(
+            "benign-match",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tGT\t0/1\n",
+                "NODATA\t1\t120\t180\tDEL\t4\tmanta\tno\t\tno\tnone\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let common: Vec<bool> = rows.iter().map(|r| r.common).collect();
+        assert_eq!(common, [true, false, false], "same, contained, no data");
+        // A table written before Benign_match: Common alone decides.
+        let rows = annotsv(
+            "no-benign-match",
+            "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n\
+             OLD\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\n",
+        );
+        assert!(rows[0].common);
+        // The two-hit rule: the nested deletion is a second hit, the same-size
+        // common one is not.
+        let rows = annotsv(
+            "benign-match-hits",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let inp = DeletionInputs {
+            annotsv: Ok(Some(rows)),
+            step35: Ok(None),
+        };
+        let spans: Spans = IndexMap::from([("G".to_owned(), ("chr1".to_owned(), 1, 1000))]);
+        let (found, _, _) = gene_deletions(&inp, &spans);
+        let texts: Vec<&str> = found["G"].iter().map(|x| x.text.as_str()).collect();
+        assert_eq!(texts, ["DEL chr1:120-180 (AnnotSV class 4, manta)"]);
+    }
 }

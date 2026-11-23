@@ -307,7 +307,17 @@ fn postfilter_rows(
     body: &str,
     consensus: Option<String>,
 ) -> Vec<std::collections::HashMap<String, String>> {
-    let c45 = put(d, "c45.tsv", &format!("{C45_HEAD}{body}"));
+    postfilter_table(d, &format!("{C45_HEAD}{body}"), consensus).1
+}
+
+/// `og sv postfilter` on a whole class 4 and 5 table: the written header
+/// and rows.
+fn postfilter_table(
+    d: &std::path::Path,
+    table: &str,
+    consensus: Option<String>,
+) -> (Vec<String>, Vec<std::collections::HashMap<String, String>>) {
+    let c45 = put(d, "c45.tsv", table);
     let out = d.join("checked.tsv").to_string_lossy().into_owned();
     let o = postfilter::Opts {
         class45: c45,
@@ -320,7 +330,7 @@ fn postfilter_rows(
     };
     postfilter::run(&o).unwrap();
     let head = postfilter::header_of(&out);
-    std::fs::read_to_string(&out)
+    let rows = std::fs::read_to_string(&out)
         .unwrap()
         .lines()
         .skip(1)
@@ -330,7 +340,125 @@ fn postfilter_rows(
                 .zip(l.split('\t').map(str::to_owned))
                 .collect()
         })
-        .collect()
+        .collect();
+    (head, rows)
+}
+
+/// AnnotSV's benign-set columns for a deletion and a duplication, as it
+/// writes them: the sources, the records that hold the whole call
+/// (`chrom:start-end`, `;` between them) and the highest frequency.
+const BENIGN_HEAD: &str = "AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tINFO\tAnnotation_mode\tGene_name\tB_gain_source\tB_gain_coord\tB_gain_AFmax\tB_loss_source\tB_loss_coord\tB_loss_AFmax\tACMG_class\tAnnotSV_ranking_score\n";
+
+/// A row of [`BENIGN_HEAD`] with `cells` as its six benign-set cells.
+fn benign_row(id: &str, start: i64, end: i64, t: &str, cells: [&str; 6]) -> String {
+    format!(
+        "a\t20\t{start}\t{end}\t{}\t{t}\t{id}\tSVTYPE={t};SVCALLER=manta\tfull\tG\t{}\t4\t0.9\n",
+        start - end,
+        cells.join("\t")
+    )
+}
+
+#[test]
+fn a_blank_benign_frequency_is_no_frequency_data_not_rare() {
+    let d = scratch("no-frequency");
+    let loss = |src: &'static str, coord: &'static str, af: &'static str| ["", "", "", src, coord, af];
+    let (head, rows) = postfilter_table(
+        &d,
+        &[
+            BENIGN_HEAD,
+            // No benign record holds the call: AnnotSV leaves all three blank.
+            &benign_row("BLANK", 1000, 5000, "DEL", loss("", "", "")),
+            // A benign record without a frequency (a ClinVar benign SV).
+            &benign_row("NOAF", 1000, 5000, "DEL", loss("CLN:1", "20:900-5100", "")),
+            &benign_row("AF", 1000, 5000, "DEL", loss("gnomAD-SV_v4", "20:900-5100", "0.05")),
+            // A breakend has no benign set.
+            &benign_row("BND", 1000, 5000, "BND", loss("", "", "")),
+        ]
+        .concat(),
+        None,
+    );
+    let at = |id: &str| rows.iter().find(|r| r["ID"] == id).unwrap();
+    let freq = |id: &str| {
+        let r = at(id);
+        (
+            r["Population_AF"].as_str(),
+            r["Population_source"].as_str(),
+            r["Common"].as_str(),
+        )
+    };
+    assert_eq!(freq("BLANK"), ("", "no frequency data", "no"));
+    assert_eq!(freq("NOAF"), ("", "no frequency data", "no"));
+    assert_eq!(freq("BND"), ("", "no frequency data", "no"));
+    // Common keeps its meaning: a benign-set AF of 1% or more.
+    assert_eq!(freq("AF"), ("0.05", "gnomAD-SV_v4", "yes"));
+    let at_common = head.iter().position(|c| c == "Common").unwrap();
+    assert_eq!(head[at_common + 1], "Benign_match", "{head:?}");
+    assert_eq!(at("BLANK")["Benign_match"], "none");
+    assert_eq!(at("BND")["Benign_match"], ".");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn a_contained_benign_match_is_told_from_a_same_size_one() {
+    let d = scratch("benign-match");
+    let loss = |coord: &'static str| ["", "", "", "gnomAD-SV_v4", coord, "0.05"];
+    let (_, rows) = postfilter_table(
+        &d,
+        &[
+            BENIGN_HEAD,
+            // 4,000 bp inside a 4,200 bp common deletion: the same event.
+            &benign_row("SAME", 1000, 5000, "DEL", loss("20:900-5100")),
+            // 500 bp inside the same 4,200 bp record: a small call in a big one.
+            &benign_row("NESTED", 2000, 2500, "DEL", loss("20:900-5100")),
+            // Exactly half of a 1,000 bp record still counts as the same.
+            &benign_row("HALF", 2000, 2500, "DEL", loss("20:2000-3000")),
+            // One of several records is about the call's size.
+            &benign_row("ONEOF", 2000, 2500, "DEL", loss("1:0-900000;20:1950-2600")),
+            // A duplication reads the gain columns, which here are blank.
+            &benign_row("DUP", 2000, 2500, "DUP", loss("20:900-5100")),
+            &benign_row("BADPOS", 2000, 2500, "DEL", loss("20:x-y")),
+        ]
+        .concat(),
+        None,
+    );
+    let at = |id: &str| {
+        let r = rows.iter().find(|r| r["ID"] == id).unwrap();
+        (r["Benign_match"].as_str(), r["Common"].as_str())
+    };
+    assert_eq!(at("SAME"), ("same", "yes"));
+    assert_eq!(at("NESTED"), ("contained", "yes"), "Common keeps its meaning");
+    assert_eq!(at("HALF"), ("same", "yes"));
+    assert_eq!(at("ONEOF"), ("same", "yes"));
+    assert_eq!(at("DUP"), ("none", "no"));
+    assert_eq!(at("BADPOS"), ("not checked", "yes"));
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn without_benign_coordinates_the_match_column_is_left_out() {
+    let d = scratch("no-coords");
+    // The table of the other tests has B_loss_AFmax but no B_*_coord.
+    let (head, rows) = postfilter_table(
+        &d,
+        &format!(
+            "{C45_HEAD}{}",
+            c45_row("OLD", 1000, 5000, "DEL", "manta", "GT", "0/1")
+        ),
+        None,
+    );
+    assert!(!head.iter().any(|c| c == "Benign_match"), "{head:?}");
+    assert_eq!(rows[0]["Population_source"], "no frequency data");
+    // A coordinates column for deletions only: a duplication is not checked.
+    let (_, rows) = postfilter_table(
+        &d,
+        concat!(
+            "SV_chrom\tSV_start\tSV_end\tSV_type\tID\tACMG_class\tB_loss_coord\tB_loss_AFmax\n",
+            "20\t1000\t5000\tDUP\tD1\t4\t\t\n",
+        ),
+        None,
+    );
+    assert_eq!(rows[0]["Benign_match"], "not checked");
+    std::fs::remove_dir_all(d).unwrap();
 }
 
 #[test]
