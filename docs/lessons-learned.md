@@ -246,8 +246,8 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 - **Fix:** Use `broadinstitute/gatk:4.6.1.0` which has both at `/usr/bin/bgzip` and `/usr/bin/tabix`. Or use `bcftools view -Oz` as a bgzip alternative.
 
 ### FreeBayes chr22 variant count (3x more than DeepVariant)
-- **Observed:** FreeBayes calls ~247K variants on chr22 vs DeepVariant ~91K and GATK ~69K
-- **Interpretation:** The ~200K FreeBayes-unique variants are mostly false positives. FreeBayes maximizes sensitivity at the cost of precision.
+- **Observed:** on chr22 FreeBayes calls about 3x as many variants as DeepVariant, and more than that against GATK
+- **Interpretation:** The FreeBayes-only variants are mostly false positives. FreeBayes maximizes sensitivity at the cost of precision.
 - **Recommendation:** Always quality-filter FreeBayes output with `bcftools filter` or `vcffilter` before use.
 
 ## Chip Data Conversion (Genotyping Arrays → VCF)
@@ -255,7 +255,7 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 ### plink silently corrupts single-sample homozygous ALT genotypes
 - **What failed:** `plink --23file` (1.9) to import + `plink2 --ref-from-fa force` to fix REF/ALT
 - **Why:** For single-sample data, ALL homozygous positions are monomorphic. The single-sample import sees only one allele there and leaves the second allele missing in the `.bim` (the format has two allele columns; the import does not fill the second). `--ref-from-fa` does not fill in a missing allele, so it cannot create a proper ALT. Homozygous ALT genotypes silently become homozygous REF. A `.bim` that declares both alleles is fixed correctly by `--ref-from-fa`.
-- **Verified:** on one homozygous-alternate chip position (chip genotype AA where the reference base is T): plink wrote `REF=A, ALT=., GT=0/0` (WRONG); bcftools wrote `REF=T, ALT=A, GT=1/1` (CORRECT). ~66K positions (11%) corrupted.
+- **Verified:** on one homozygous-alternate chip position (chip genotype AA where the reference base is T): plink wrote `REF=A, ALT=., GT=0/0` (WRONG); bcftools wrote `REF=T, ALT=A, GT=1/1` (CORRECT). Every homozygous-ALT position of a chip is hit.
 - **Fix:** Use `bcftools convert --tsv2vcf -f <reference.fa>`. Single command, no intermediate binary format.
 
 ### plink 1.9 --23file quirks
@@ -274,14 +274,14 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 ### PharmCAT chip vs WGS results (MyHeritage GSA, verified 2026-03-31)
 - **Correct:** CYP2B6, CYP4F2, DPYD and NUDT15 matched the WGS diplotypes
 - **Missed:** CYP2C19 (25 missing), VKORC1 (1 missing)
-- **Wrong:** CYP3A5 came out as the reference diplotype because 4 of its defining positions are not on the chip; WGS called a different diplotype
+- **Wrong:** CYP3A5 can come out as the reference diplotype because 4 of its defining positions are not on the chip, whatever the genotype there
 - **Fix:** treat a chip-only call as unresolved when any of its defining positions are missing from the chip, and confirm it from WGS before relying on it
 - Total: 888 missing PGx positions from the GSA chip
 
 ### ROH and PRS need special flags for chip data
 - ROH: `-G30` required (no FORMAT/PL in chip VCF)
 - PRS: `no-mean-imputation` required (single sample lacks allele frequencies)
-- PRS matching: chip ~12% of large scoring files vs WGS ~28%
+- PRS matching: a chip matches a much smaller share of a large scoring file than WGS does
 
 ## v0.3.0 Tool Additions (Apr 2026)
 
@@ -388,14 +388,14 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 
 ### CNVpytor chokes on GRCh38 ALT/HLA/decoy contigs — restrict `-rd` to canonical chromosomes
 - **Failed:** On a real full-reference GRCh38 BAM (hundreds of ALT/HLA/decoy contigs), `cnvpytor -rd` (no `-chrom`) crashes/stalls during read-depth import and produces **no calls** (only a tiny stub `.pytor`). The bundled GC-correction data covers only the main chromosomes. A chr20-only validation did **not** surface this.
-- **Fix:** Pass `-chrom chr1 … chr22 chrX chrY` to the `-rd` step (`scripts/18-cnvpytor.sh` + `modules/local/cnvpytor`). Validated on two real 30× genomes (≈2200 and ≈2400 canonical CNV calls, ~99% concordant with the prior CNVnator counts). Lesson: validate depth-based callers on a **full** BAM, not a single chromosome.
+- **Fix:** Pass `-chrom chr1 … chr22 chrX chrY` to the `-rd` step (`scripts/18-cnvpytor.sh` + `modules/local/cnvpytor`). Validated on two real 30× genomes. Lesson: validate depth-based callers on a **full** BAM, not a single chromosome.
 
 ### pypgx image must match the bundle version — 0.27.0 mismatched 0.26.0 and shipped pandas 3.0.3
 - **Failed:** `pypgx:0.27.0--pyh106432d_0` failed **all** genes at runtime with `pandas.errors.LossySetitemError` / `TypeError: Invalid value` — pypgx assigns floats into int columns, which pandas ≥2.1 (the 0.27.0 image bundles **3.0.3**) rejects. It was also mismatched against the pipeline's **0.26.0** `pypgx-bundle`. The smoke test only runs `pypgx --version`, so CI could not catch it.
 - **Fix (v0.8.2):** pin the image to **`pypgx:0.26.0--pyh7e72e81_0`** to match the bundle (pandas 2.3.3, no error). Verified end-to-end on a real 30× genome: **23/23 genes succeed**. Lesson: the pypgx image version MUST track the `pypgx-bundle` branch, and bumping one without the other (and without a real gene-call test) silently breaks step 32.
 
 ### Stranger over-flags RFC1 (CANVAS) from short reads — do not read it as a diagnosis
-- **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion (e.g. 51/73 of the degenerate `AARRG` motif). CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
+- **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion of the degenerate `AARRG` motif. CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
 - **Interpretation:** Treat an RFC1 flag as **uninterpretable from short-read WGS** — confirm with motif-aware/flanking-PCR testing only if clinically indicated. (Documented in `docs/09b-stranger.md`.)
 - **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`og str motif`, a port of the first `bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
 

@@ -177,7 +177,7 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **hg19 VCF needs chr prefix** before liftover — use `bcftools annotate --rename-chrs`.
 - **PharmCAT on chip data**: Misses CYP2C19 (25 positions), VKORC1 (1 position), miscalls CYP3A5.
 - **ROH on chip data** requires `-G30` flag (no FORMAT/PL tags).
-- **PRS on chip data** requires `no-mean-imputation` flag. Matches ~12% of large scoring files vs ~28% from WGS.
+- **PRS on chip data** requires `no-mean-imputation` flag. Matches a much smaller share of large scoring files than WGS.
 
 ### Alternative Callers & Benchmarking
 - **Output isolation**: Alternative tools write to separate directories to never overwrite defaults.

@@ -66,7 +66,7 @@ The alignment is the second longest step from FASTQ, after DeepVariant. How much
 Strelka2 (`scripts/03c-strelka2-germline.sh`, output to `vcf_strelka2/`) is a fourth option for SNV and indel calling. Despite sometimes being grouped with SV tools because it ships alongside Manta, Strelka2's germline mode is a **small variant caller** — it calls SNVs and indels up to ~49 bp, not structural variants. See [Kim et al. 2018](https://doi.org/10.1038/s41592-018-0051-x).
 
 Key characteristics:
-- **Fast:** 72 min on 30X WGS with 8 threads in one historical run ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)), the fastest of the four callers
+- **Fast:** 72 min on 30X WGS with 8 threads in one historical run, the fastest of the four callers
 - **Good accuracy:** Comparable to GATK for SNPs and indels
 - **BWA-MEM2 recommended:** Strelka2's scoring model relies on XS (suboptimal alignment score) tags. minimap2 does not produce these, causing reduced SNP precision. Use BWA-MEM2 alignments for best results.
 - **Complements Manta:** In Illumina's intended workflow, Manta detects SVs and Strelka2 detects small variants — they are complementary, not alternatives to each other
@@ -79,7 +79,7 @@ DeepVariant is the default because:
 2. **Low false positive rate.** Its deep learning model was trained on real sequencing data and recognizes systematic artifacts (strand bias, mapping artifacts) that rule-based callers miss.
 3. **No extra reference files.** Only needs the FASTA and FAI -- no sequence dictionary (.dict) required.
 
-The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min in three measured 30-40x runs, most of a default run ([runtime](hardware-requirements.md#runtime-per-step)). The GATK and FreeBayes figures in the table come from one historical run on other versions and hardware ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)), so they do not compare directly.
+The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min in three measured 30-40x runs, most of a default run ([runtime](hardware-requirements.md#runtime-per-step)). The GATK and FreeBayes figures in the table come from one historical run on other versions and hardware, so they do not compare directly.
 
 ### GATK HaplotypeCaller: when to use it
 
@@ -185,7 +185,7 @@ Run all available callers and compare. This gives you the broadest view of your 
 - SNP/indel: DeepVariant + GATK HaplotypeCaller + FreeBayes
 - SV: Manta + Delly + CNVpytor with consensus merge (step 22)
 
-**Time estimate:** longer than a default run, which took about 20-21 hours from FASTQ on a 16-thread server (measured) and more on 8 CPUs; each extra caller adds its own time ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)).
+**Time estimate:** longer than a default run, which took about 20-21 hours from FASTQ on a 16-thread server (measured) and more on 8 CPUs; each extra caller adds its own time ([runtime](hardware-requirements.md#runtime-per-step)).
 
 ### High-confidence analysis
 
