@@ -125,6 +125,10 @@ pub struct Depth {
     pub max_ratio: Option<f64>,
     /// A 95% interval from the per-segment spread (`interval cv`).
     pub ci_cv: bool,
+    /// A relative systematic error added to that spread in quadrature
+    /// (`interval cv:SYS`, measured against assembled genomes); 0 for
+    /// plain `cv`.
+    pub ci_sys: f64,
 }
 
 /// One catalog row.
@@ -586,15 +590,29 @@ fn depth(cells: &[&str], controls: &[Segment], call: &CallRule) -> Result<Depth,
         )));
     }
     let interval = cell(cells, "interval");
-    if matches!(call, CallRule::Class { .. }) && interval != "cv" {
+    let is_cv = interval == "cv" || interval.starts_with("cv:");
+    if matches!(call, CallRule::Class { .. }) && !is_cv {
         return Err(Error(format!("{loc}: call class needs interval cv")));
     }
-    if interval != "cv" && interval != "." {
-        return Err(Error(format!(
-            "{loc}: interval {} (cv or '.')",
-            py_repr(interval)
-        )));
-    }
+    // cv:SYS: a finite relative error from 0 to 1, written as a number.
+    let ci_sys = match interval.strip_prefix("cv:") {
+        Some(s) => match py_float(s) {
+            Ok(v) if v.is_finite() && (0.0..=1.0).contains(&v) => v,
+            _ => {
+                return Err(Error(format!(
+                    "{loc}: interval {} (cv, cv:SYS with SYS from 0 to 1, or '.')",
+                    py_repr(interval)
+                )));
+            }
+        },
+        None if interval == "cv" || interval == "." => 0.0,
+        None => {
+            return Err(Error(format!(
+                "{loc}: interval {} (cv, cv:SYS with SYS from 0 to 1, or '.')",
+                py_repr(interval)
+            )));
+        }
+    };
     Ok(Depth {
         target_mode,
         control_mode,
@@ -605,7 +623,8 @@ fn depth(cells: &[&str], controls: &[Segment], call: &CallRule) -> Result<Depth,
         mapq0_max,
         min_control,
         max_ratio,
-        ci_cv: interval == "cv",
+        ci_cv: is_cv,
+        ci_sys,
     })
 }
 
@@ -721,6 +740,32 @@ mod tests {
         assert_eq!(l.reading_count(5), "5 copies");
         assert_eq!(l.reading_count(2), "two");
         assert_eq!(l.reading_count(1), "");
+    }
+
+    #[test]
+    fn interval_cv_takes_a_measured_systematic_term() {
+        let class = [("call", "class:30,45")];
+        let l = parse(&[class[0], ("interval", "cv")]).unwrap();
+        assert!(l.depth().ci_cv);
+        assert_eq!(l.depth().ci_sys, 0.0);
+        let l = parse(&[class[0], ("interval", "cv:0.075")]).unwrap();
+        assert!(l.depth().ci_cv);
+        assert_eq!(l.depth().ci_sys, 0.075);
+        let l = parse(&[("interval", ".")]).unwrap();
+        assert!(!l.depth().ci_cv);
+        for bad in [
+            "cv:", "cv:x", "cv:-0.1", "cv:1.5", "cv:nan", "cv:inf", "sd:0.1",
+        ] {
+            assert_eq!(
+                parse(&[("interval", bad)]).unwrap_err().0,
+                format!("G: interval '{bad}' (cv, cv:SYS with SYS from 0 to 1, or '.')"),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            parse(&[class[0], ("interval", ".")]).unwrap_err().0,
+            "G: call class needs interval cv"
+        );
     }
 
     #[test]
