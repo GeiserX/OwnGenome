@@ -369,3 +369,149 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
         files: Vec::new(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    //! From step 33's own table to both reports: a same-person relatedness
+    //! on too few shared sites reads as a possible match, in yellow, even
+    //! when another pair of the run makes identity `checked`; a pair
+    //! compared on enough sites stays the same person, in red.
+    use crate::model::Summary;
+    use crate::{html, text};
+    use og_summary::qc::{FREEMIX_WARN, Inputs, table};
+
+    const SAMPLES: &str = "#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\t\
+original_pedigree_sex\tgt_depth_mean\tn_hom_ref\tn_het\tn_hom_alt\tp_middling_ab\t\
+X_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n\
+S\tS\t-9\t-9\t1\t-9\t-9\t30.0\t5000\t6000\t4000\t0.010\t15.0\t39\t0\t0\t39\t14.0\t5\n";
+
+    /// The keys of the table the QC card reads for identity.
+    const KEYS: [&str; 4] = [
+        "identity",
+        "identity_reason",
+        "same_person_as",
+        "possible_same_person_as",
+    ];
+
+    /// Step 33's table for S with these pairs, as summary.json's
+    /// `sample_qc` data, and both reports of that summary.
+    fn reports(tag: &str, pairs: &str) -> [String; 2] {
+        let d = std::env::temp_dir().join(format!("og-render-thin-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let (sp, pp) = (d.join("s.samples.tsv"), d.join("s.pairs.tsv"));
+        std::fs::write(&sp, SAMPLES).unwrap();
+        std::fs::write(&pp, pairs).unwrap();
+        let rows = table(&Inputs {
+            sample: "S",
+            samples_tsv: sp.to_str().unwrap(),
+            pairs_tsv: pp.to_str(),
+            freemix_warn: FREEMIX_WARN,
+            ..Inputs::default()
+        })
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        let data = rows
+            .iter()
+            .filter(|(k, _)| KEYS.contains(k))
+            .map(|(k, v)| format!("\"{k}\": \"{v}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let summary = Summary::parse(&format!(
+            r#"{{"sample": "S", "generated_utc": "2026-01-02 03:04 UTC",
+                "run": {{"started_utc": null, "declared_sex": "male"}},
+                "databases": {{"clinvar_release": null, "cpsr_clinvar_release": null, "hla_database": null}},
+                "cyp2d6": null, "manifest": [], "not_run": [], "not_assessed": [],
+                "sections": {{"sample_qc": {{"state": "ok", "data": {{{data}}}}}}}}}"#
+        ))
+        .unwrap();
+        [
+            text::report(&summary).unwrap(),
+            html::report(&summary).unwrap(),
+        ]
+    }
+
+    fn stat(label: &str, colour: &str, value: &str) -> String {
+        format!(
+            r#"<span class="label">{label}</span><span class="value"><span class="badge badge-{colour}">{value}<"#
+        )
+    }
+
+    #[test]
+    fn a_thin_pair_is_a_possible_match_beside_a_well_compared_one() {
+        // T: the same person on 12,000 shared sites; U: 0.97 on 300; V:
+        // unrelated on 15,000. T and V make identity `checked`.
+        let [txt, page] = reports(
+            "mixed",
+            "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n\
+             S\tT\t0.99\t0\t300\t12000\nU\tS\t0.97\t0\t300\t300\nS\tV\t0.1\t9\t300\t15000\n",
+        );
+        assert!(
+            txt.contains("  ** The same person as: T (0.99) (a duplicate or a sample swap) **\n"),
+            "{txt}"
+        );
+        assert!(
+            txt.contains("  Possible match to: U (0.97) (on fewer than 1,000 shared sites)\n"),
+            "{txt}"
+        );
+        assert!(!txt.contains("Sample identity"), "{txt}");
+        assert!(
+            page.contains(&stat("The same person as", "red", "T (0.99)")),
+            "{page}"
+        );
+        assert!(
+            page.contains(&stat(
+                "Possible match to",
+                "yellow",
+                "U (0.97) (on fewer than 1,000 shared sites)"
+            )),
+            "{page}"
+        );
+        for report in [&txt, &page] {
+            assert!(!report.contains("U (0.97), "), "U is never firm: {report}");
+            assert!(!report.contains("T (0.99), U"), "U is never firm: {report}");
+        }
+    }
+
+    #[test]
+    fn well_compared_pairs_stay_the_same_person_in_red() {
+        let [txt, page] = reports(
+            "firm",
+            "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n\
+             S\tT\t0.99\t0\t300\t12000\nU\tS\t0.95\t0\t300\t1000\n",
+        );
+        assert!(
+            txt.contains(
+                "  ** The same person as: T (0.99), U (0.95) (a duplicate or a sample swap) **\n"
+            ),
+            "{txt}"
+        );
+        assert!(!txt.contains("Possible match to"), "{txt}");
+        assert!(
+            page.contains(&stat("The same person as", "red", "T (0.99), U (0.95)")),
+            "{page}"
+        );
+        assert!(!page.contains("Possible match to"), "{page}");
+    }
+
+    #[test]
+    fn thin_pairs_alone_are_possible_matches_with_identity_uncertain() {
+        // No pair shares enough: identity is uncertain and its line says
+        // why, so the match carries no second reason.
+        let [txt, page] = reports(
+            "uncertain",
+            "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\nU\tS\t0.97\t0\t300\t300\n",
+        );
+        assert!(txt.contains("  Sample identity: uncertain ("), "{txt}");
+        assert!(txt.contains("  Possible match to: U (0.97)\n"), "{txt}");
+        let identity = stat("Sample identity", "yellow", "uncertain (");
+        assert!(page.contains(identity.trim_end_matches('<')), "{page}");
+        assert!(
+            page.contains(&stat("Possible match to", "yellow", "U (0.97)")),
+            "{page}"
+        );
+        for report in [&txt, &page] {
+            assert!(!report.contains("The same person as"), "{report}");
+        }
+    }
+}
