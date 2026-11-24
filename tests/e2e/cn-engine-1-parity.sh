@@ -6,7 +6,9 @@
 # GRCh38 no-ALT BAM of DeepVariant's case study, written again under the
 # fixture's header, at full depth and at an eighth of it. For each BAM:
 #   - step 46 of this tree and of the old tree write the same lpa table, byte
-#     for byte, once the old message is put in today's wording;
+#     for byte, once the interval's bounds are left out of both and the old
+#     message is put in today's wording; this tree's interval holds the old
+#     one (it adds a measured systematic term);
 #   - step 41 of this tree and of the old tree write the same RhD row (its
 #     phenotype, genotype and confidence; step 41's notes are not the
 #     engine's) and the same RhD evidence rows (other systems may change
@@ -117,12 +119,24 @@ for V in full thin; do
     done
     check_ge "${V}: RhD rows in this tree's ${f} table" "$(($(wc -l < "${NEW}/${f}.rhd.tsv") - 1))" 1
   done
-  # Step 46's message names what its interval covers since the old tree
-  # (CHANGELOG, LPA KIV-2 message); the numbers and every other row stay the
-  # old tree's. Write the old message in today's words, then compare bytes.
-  sed -E '/^message\t/s/ in total \(95% interval ([0-9.]+) to ([0-9.]+)\)/ in total over both copies (95% interval for read sampling, \1 to \2; aligner or library bias not included)/' \
+  # Step 46's message names what its interval covers since the old tree, and
+  # the interval adds the error measured against assembled genomes (bin/cn_loci.tsv
+  # interval cv:SYS, CHANGELOG). The count, the class and every other row
+  # stay the old tree's: both tables lose the interval's bounds (the rows
+  # and the message's), are compared byte for byte, and this tree's interval
+  # must hold the old one (the term only widens it).
+  sed -E -e '/^ci95_(low|high)\t/d' \
+    -e '/^message\t/s/ in total \(95% interval [0-9.]+ to [0-9.]+\)/ in total over both copies (95% interval)/' \
     "${OLDO}/lpa.tsv" > "${OLDO}/lpa.now.tsv"
-  cp "${NEW}/lpa.tsv" "${NEW}/lpa.now.tsv"
+  sed -E -e '/^ci95_(low|high)\t/d' \
+    -e '/^message\t/s/ \(95% interval [0-9.]+ to [0-9.]+, read sampling plus the error measured against assembled genomes\)/ (95% interval)/' \
+    "${NEW}/lpa.tsv" > "${NEW}/lpa.now.tsv"
+  lpa_ci() { awk -F'\t' '$1 == "ci95_low" {l = $2} $1 == "ci95_high" {h = $2} END {print l, h}' "$1"; }
+  read -r ol oh <<< "$(lpa_ci "${OLDO}/lpa.tsv")"
+  read -r nl nh <<< "$(lpa_ci "${NEW}/lpa.tsv")"
+  check "${V}: this tree's interval (${nl} to ${nh}) holds the old tree's (${ol} to ${oh})" \
+    awk -v ol="$ol" -v oh="$oh" -v nl="$nl" -v nh="$nh" \
+    'BEGIN {if (ol == "." || nl == ".") exit !(ol == nl && oh == nh); exit !(nl + 0 <= ol + 0 && nh + 0 >= oh + 0)}'
   for f in lpa.now bloodtype.rhd evidence.rhd hba; do
     check "${V}: the ${f} table is the old tree's, byte for byte" cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv"
     cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv" || diff "${OLDO}/${f}.tsv" "${NEW}/${f}.tsv" | head -20

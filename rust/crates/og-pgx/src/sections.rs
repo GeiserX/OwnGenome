@@ -682,8 +682,8 @@ fn both_copies(genotype: &str) -> bool {
 /// A recessive gene warns when a genotype shows both copies changed or
 /// when it holds two distinct variants; their phase is not known here, so
 /// two variants on one copy still warn. A drug whose names hold a name of
-/// the medication list is marked as on it. Only `WARNING:` lines reach the
-/// summary.
+/// the medication list is marked as on it. The note paraphrases the linked
+/// drug label. Only `WARNING:` lines reach the summary.
 pub fn contraindication_lines(
     hits: &[ClinvarHit],
     table: &[Contraindication],

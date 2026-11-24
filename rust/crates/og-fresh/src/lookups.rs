@@ -825,7 +825,7 @@ fn table_row(
 }
 
 /// `assets/pgx_contraindications.tsv` against the CPIC API (the pair, its
-/// level, still provisional) and DailyMed (the label the note quotes is
+/// level, still provisional) and DailyMed (the label the note paraphrases is
 /// still published).
 pub fn pgx_contraindications(c: &Ctx<'_>) -> Lookup<Found> {
     let rows = curated(

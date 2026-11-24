@@ -23,7 +23,7 @@ use crate::model::{
     py,
 };
 use crate::notes::{NOTES, VIEWER_NOTE, stale_note};
-use crate::sections::run;
+use crate::sections::{coverage, run};
 
 /// The Content-Security-Policy: nothing is fetched, images only inline,
 /// styles only from the page.
@@ -650,7 +650,7 @@ pub fn report_using(
         ));
         toc.push("      <ol>".to_owned());
         chapter_open(&mut body, chapter.id, chapter.title, chapter.question);
-        for (sec, part, failed) in shown {
+        for (sec, mut part, failed) in shown {
             let state = if failed {
                 FrameState::Failed
             } else {
@@ -670,6 +670,14 @@ pub fn report_using(
                 None
             };
             let m = meta(s, sec.id, sec.keys, state, since.as_deref())?;
+            if !failed {
+                part.cards[0].stale.extend(
+                    sec.keys
+                        .iter()
+                        .filter_map(|key| coverage::partial_mark(s, &s.section(key)))
+                        .map(str::to_owned),
+                );
+            }
             let mut lines = frame(sec.id, &part, Some(m), false);
             for sp in &specs {
                 if section_of(sp.section).is_some_and(|x| x.id == sec.id)

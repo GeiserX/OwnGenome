@@ -7,9 +7,12 @@
 #   - HG002's Illumina reads over LPA (chr6:160.53-160.67 Mb) from the 35x
 #     BWA-MEM GRCh38 no-ALT BAM of DeepVariant's case study, carried onto the
 #     fixture's header and added to case 20's BAM: a count with its interval, most of the KIV-2 depth
-#     from reads of MAPQ 0, and an interval that holds the count. No count for
-#     HG002 is published that this case could compare with, so the value goes
-#     to the notes and the checks are on its arithmetic:
+#     from reads of MAPQ 0, an interval that holds the count, and an interval
+#     that holds HG002's true count: its Q100 assembly (hg002v1.1) carries 24
+#     KIV-2 repeats on the paternal chromosome 6 and 14 on the maternal one,
+#     38 in all (docs/46-lpa.md, "How the interval was measured"). The
+#     estimate itself runs high, as on most assembled genomes, so the check
+#     is on the interval; the value goes to the notes;
 #   - the same reads with half of those over the KIV-2 block: N + 2 halves
 #     (og cn call --locus LPA_KIV2: N = 14 x M / D - 2);
 #   - the same reads at an eighth of the depth: "too little depth";
@@ -79,11 +82,14 @@ check_eq "HG002: a count" "$(metric "$H" status)" estimated
 check "HG002: the count (${N}) lies between 10 and 80" awk -v n="$N" 'BEGIN {exit !(n >= 10 && n <= 80)}'
 check "HG002: the interval (${LO} to ${HI}) holds the count and is under 20 copies wide" \
   awk -v n="$N" -v l="$LO" -v h="$HI" 'BEGIN {exit !(l < n && n < h && h - l < 20)}'
+HG002_KIV2=38
+check "HG002: the interval (${LO} to ${HI}) holds the ${HG002_KIV2} KIV-2 repeats of HG002's assembly" \
+  awk -v t="$HG002_KIV2" -v l="$LO" -v h="$HI" 'BEGIN {exit !((l ~ /^[0-9]/) && (h ~ /^[0-9]/) && l + 0 <= t && t <= h + 0)}'
 check "HG002: most of the KIV-2 depth is from reads of MAPQ 0 ($(metric "$H" mapq0_share))" \
   awk -v s="$(metric "$H" mapq0_share)" 'BEGIN {exit !(s >= 0.5)}'
 check "HG002: at least 20x over the single-copy exons ($(metric "$H" flank_depth))" \
   awk -v d="$(metric "$H" flank_depth)" 'BEGIN {exit !(d >= 20)}'
-echo "lpa: HG002 (35x BWA-MEM) KIV-2 ${N} (95% ${LO} to ${HI}), class $(metric "$H" class);" \
+echo "lpa: HG002 (35x BWA-MEM) KIV-2 ${N} (95% ${LO} to ${HI}; assembly ${HG002_KIV2}), class $(metric "$H" class);" \
   "KIV-2 exons $(metric "$H" kiv2_depth)x, single-copy exons $(metric "$H" flank_depth)x, MAPQ 0 share $(metric "$H" mapq0_share)" >> "$E2E_NOTES"
 
 # --- half the KIV-2 reads: N + 2 halves ------------------------------------------------

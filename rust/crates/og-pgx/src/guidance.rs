@@ -125,7 +125,7 @@ pub struct Guidance {
     pub drug: String,
     pub source: Source,
     pub class: String,
-    /// The recommendation, its whitespace collapsed.
+    /// The recommendation as plain text, its whitespace collapsed.
     pub rec: String,
     /// The gene's diplotype labels the annotation names.
     pub labels: BTreeSet<String>,
@@ -202,11 +202,11 @@ fn add_annotation(out: &mut GuidanceMap, ann: &Value, drug: &str, source: &Sourc
             }
         }
     }
-    let rec = collapse(
-        &truthy_field(ann, "drugRecommendation")
-            .map(text)
-            .unwrap_or_default(),
-    );
+    // Strip literal tags before decoding so comparisons stay in the text.
+    let rec = truthy_field(ann, "drugRecommendation")
+        .map(text)
+        .map(|s| collapse(&decode_entities(&strip_tags(&s))))
+        .unwrap_or_default();
     let class = truthy_field(ann, "classification")
         .map(text)
         .unwrap_or_default();
@@ -290,6 +290,33 @@ fn strip_tags(s: &str) -> String {
     out
 }
 
+/// Decode one layer of the five entities PharmCAT uses in recommendations.
+fn decode_entities(s: &str) -> String {
+    const ENTITIES: [(&str, char); 5] = [
+        ("lt;", '<'),
+        ("gt;", '>'),
+        ("amp;", '&'),
+        ("quot;", '"'),
+        ("#39;", '\''),
+    ];
+    let mut parts = s.split('&');
+    let mut out = String::with_capacity(s.len());
+    out.push_str(parts.next().unwrap_or_default());
+    for part in parts {
+        let entity = ENTITIES
+            .iter()
+            .find_map(|(name, decoded)| part.strip_prefix(name).map(|rest| (*decoded, rest)));
+        let (decoded, rest) = entity.unwrap_or(('&', part));
+        out.push(decoded);
+        out.push_str(rest);
+    }
+    out
+}
+
+const RECOMMENDATION_CREDIT: &str = "      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. \
+    PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 \
+    (https://creativecommons.org/licenses/by-sa/4.0/).";
+
 /// The drugs of a gene: PharmCAT's links, else the fallback table, else
 /// those its guidance names; each once.
 pub fn gene_drugs(
@@ -328,24 +355,28 @@ pub fn drug_lines(
     if !entries.is_empty() {
         let mut lines = vec!["    Drugs with guidance in this PharmCAT report:".to_owned()];
         let mut shown: Vec<&str> = Vec::new();
+        let mut has_recommendation = false;
         for e in &entries {
             if e.source != Source::Cpic || shown.contains(&e.drug.as_str()) {
                 continue;
             }
             shown.push(&e.drug);
-            let rec = collapse(&strip_tags(&e.rec));
             let class = if !e.class.is_empty() && e.class != "Unspecified" {
                 format!(", {}", e.class)
             } else {
                 String::new()
             };
             let mut head = format!("      - {} [CPIC{class}]", e.drug);
-            if !rec.is_empty() {
+            if !e.rec.is_empty() {
                 // whole: a cut loses dose qualifiers at the end
                 head.push_str(": ");
-                head.push_str(&rec);
+                head.push_str(&e.rec);
+                has_recommendation = true;
             }
             lines.push(head);
+        }
+        if has_recommendation {
+            lines.push(RECOMMENDATION_CREDIT.to_owned());
         }
         let others: BTreeSet<&str> = entries
             .iter()

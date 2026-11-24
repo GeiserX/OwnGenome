@@ -237,6 +237,9 @@ pub const CALLABLE_SHARE: f64 = 0.9;
 pub enum Reading {
     Read(f64),
     NotRead(f64),
+    /// The body reached the share, a coding exon did not (step 16b's exon
+    /// table): the gene is not read.
+    ExonNotRead(f64),
     NotOnReference,
 }
 
@@ -245,16 +248,25 @@ impl Reading {
         match self {
             Reading::Read(_) => "read",
             Reading::NotRead(_) => "not read",
+            Reading::ExonNotRead(_) => "exon not read",
             Reading::NotOnReference => "not on this reference",
         }
     }
 
     fn share(&self) -> Value {
         match self {
-            Reading::Read(s) | Reading::NotRead(s) => Value::Float(*s),
+            Reading::Read(s) | Reading::NotRead(s) | Reading::ExonNotRead(s) => Value::Float(*s),
             Reading::NotOnReference => Value::Null,
         }
     }
+}
+
+/// A gene's coding exon with the lowest share at the depth.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorstExon {
+    /// `GENE:exonN`, as `assets/callability_exons.tsv` names it.
+    pub exon: String,
+    pub share: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -266,6 +278,9 @@ pub struct Gene {
     /// The owner's step and whether it ran, for an owner [`owner_step`] knows.
     pub owner_run: Option<OwnerRun>,
     pub reading: Reading,
+    /// Its worst coding exon, when step 16b measured exons and one was
+    /// under the share.
+    pub worst_exon: Option<WorstExon>,
 }
 
 /// The step that calls an owned gene, and what it left for this sample.
@@ -360,6 +375,109 @@ fn owner_status(
 pub struct Callability {
     pub min_depth: i128,
     pub genes: Vec<Gene>,
+    /// The coding exons of catalog genes step 16b's exon table measured;
+    /// `None` when there was no exon table (a folder from before it).
+    pub exons_checked: Option<usize>,
+}
+
+/// The data rows of a mosdepth thresholds table of one depth: the depth,
+/// and (chrom, region, bases, bases at the depth) of each row.
+type Thresholds = (i128, Vec<(String, String, i128, i128)>);
+
+fn thresholds(table: &str) -> Result<Thresholds, String> {
+    let name = basename(table);
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut lines = text_lines(table).map_err(|e| os_note(&e))?;
+    let mut line = String::new();
+    while lines
+        .read_line(&mut line)
+        .map_err(|e| py_error("OSError", &e.to_string()))?
+    {
+        if pycompat::num::py_strip(&line).is_empty() {
+            continue;
+        }
+        let body = line.trim_end_matches('\n');
+        rows.push(body.split('\t').map(str::to_owned).collect());
+    }
+    let depth_col = rows.first().filter(|h| {
+        h[0].starts_with('#')
+            && h.len() == 5
+            && h[4]
+                .strip_suffix('X')
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
+    });
+    let Some(head) = depth_col else {
+        return Err(format!(
+            "{name} is not mosdepth's thresholds table of one depth"
+        ));
+    };
+    let min_depth = int(&head[4][..head[4].len() - 1]).map_err(|e| py_error("ValueError", &e))?;
+    let mut out = Vec::with_capacity(rows.len() - 1);
+    for c in &rows[1..] {
+        if c.len() != 5 {
+            return Err(format!("{name}: a row has {} columns, not 5", c.len()));
+        }
+        let v = |s: &str| int(s).map_err(|e| py_error("ValueError", &e));
+        let (start, end, ok) = (v(&c[1])?, v(&c[2])?, v(&c[4])?);
+        out.push((c[0].clone(), c[3].clone(), end - start, ok));
+    }
+    Ok((min_depth, out))
+}
+
+/// The share of `n` bases that `ok` are, to four decimals; 0 for no bases.
+fn share(n: i128, ok: i128) -> Result<f64, String> {
+    if n == 0 {
+        return Ok(0.0);
+    }
+    pycompat::fmt::round(ok as f64 / n as f64, 4)
+        .map_err(|e| py_error(e.exception(), &e.to_string()))
+}
+
+/// Step 16b's exon table (`<s>_callability_exons.bed.gz`, rows named
+/// `GENE:exonN`) read against the catalog: the worst coding exon of each
+/// catalog gene it has rows for (the lower exon number on a tie), and how
+/// many exon rows of catalog genes it holds. Rows of other genes are left
+/// out: the table follows the catalog it was measured with.
+fn worst_exons(
+    catalog: &[CatalogRow],
+    table: &str,
+) -> Result<(std::collections::HashMap<String, WorstExon>, usize), String> {
+    let name = basename(table);
+    let (_, rows) = thresholds(table)?;
+    let genes: std::collections::HashSet<&str> = catalog.iter().map(|r| r.gene.as_str()).collect();
+    let number = |exon: &str| {
+        exon.rsplit_once(":exon")
+            .and_then(|(_, n)| n.parse::<u64>().ok())
+    };
+    let mut worst: std::collections::HashMap<String, WorstExon> = std::collections::HashMap::new();
+    let mut checked = 0;
+    for (_, region, n, ok) in rows {
+        let Some((gene, _)) = region
+            .rsplit_once(":exon")
+            .filter(|_| number(&region).is_some())
+        else {
+            return Err(format!("{name}: {region:?} is not named GENE:exonN"));
+        };
+        if !genes.contains(gene) {
+            continue;
+        }
+        checked += 1;
+        let s = share(n, ok)?;
+        let gene = gene.to_owned();
+        let better = worst
+            .get(&gene)
+            .is_none_or(|w| (s, number(&region)) < (w.share, number(&w.exon)));
+        if better {
+            worst.insert(
+                gene,
+                WorstExon {
+                    exon: region,
+                    share: s,
+                },
+            );
+        }
+    }
+    Ok((worst, checked))
 }
 
 /// One row of `assets/callability_genes.tsv`.
@@ -434,42 +552,11 @@ impl Callability {
     /// read against the catalog.
     pub fn read(catalog: &[CatalogRow], table: &str) -> Result<Callability, String> {
         let name = basename(table);
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        let mut lines = text_lines(table).map_err(|e| os_note(&e))?;
-        let mut line = String::new();
-        while lines
-            .read_line(&mut line)
-            .map_err(|e| py_error("OSError", &e.to_string()))?
-        {
-            if pycompat::num::py_strip(&line).is_empty() {
-                continue;
-            }
-            let body = line.trim_end_matches('\n');
-            rows.push(body.split('\t').map(str::to_owned).collect());
-        }
-        let depth_col = rows.first().filter(|h| {
-            h[0].starts_with('#')
-                && h.len() == 5
-                && h[4]
-                    .strip_suffix('X')
-                    .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
-        });
-        let Some(head) = depth_col else {
-            return Err(format!(
-                "{name} is not mosdepth's thresholds table of one depth"
-            ));
-        };
-        let min_depth =
-            int(&head[4][..head[4].len() - 1]).map_err(|e| py_error("ValueError", &e))?;
+        let (min_depth, rows) = thresholds(table)?;
         let mut bases: std::collections::HashMap<&str, (i128, i128)> =
             std::collections::HashMap::new();
-        for c in &rows[1..] {
-            if c.len() != 5 {
-                return Err(format!("{name}: a row has {} columns, not 5", c.len()));
-            }
-            let v = |s: &str| int(s).map_err(|e| py_error("ValueError", &e));
-            let (start, end, ok) = (v(&c[1])?, v(&c[2])?, v(&c[4])?);
-            bases.insert(&c[3], (end - start, ok));
+        for (_, region, n, ok) in &rows {
+            bases.insert(region, (*n, *ok));
         }
         if bases.is_empty() {
             return Err(format!("{name} has no gene rows"));
@@ -477,8 +564,7 @@ impl Callability {
         // mosdepth writes no row on a contig the BAM lacks: a chromosome with
         // no row at all is not on the sample's reference; a gene missing from
         // a chromosome that has rows means another catalog wrote the table.
-        let contigs: std::collections::HashSet<&str> =
-            rows[1..].iter().map(|c| c[0].as_str()).collect();
+        let contigs: std::collections::HashSet<&str> = rows.iter().map(|c| c.0.as_str()).collect();
         // The table is <sample folder>/mosdepth/ (bash) or coverage/ (Nextflow)
         // <s>_callability.bed.gz: the owner steps write into the same folder.
         let folder = std::path::Path::new(table)
@@ -491,6 +577,20 @@ impl Callability {
         let run = folder
             .and_then(|d| std::fs::read_to_string(d.join("logs").join("run_status.tsv")).ok())
             .map(|t| RunStatus::parse(&t));
+        // Step 16b's exon table beside it, when that step measured exons:
+        // the worst coding exon of each catalog gene.
+        let exon_table = sample.and_then(|s| {
+            let p =
+                std::path::Path::new(table).with_file_name(format!("{s}_callability_exons.bed.gz"));
+            p.is_file().then(|| p.to_string_lossy().into_owned())
+        });
+        let (worst, exons_checked) = match &exon_table {
+            Some(p) => {
+                let (w, n) = worst_exons(catalog, p)?;
+                (w, Some(n))
+            }
+            None => (std::collections::HashMap::new(), None),
+        };
         let mut genes = Vec::with_capacity(catalog.len());
         for r in catalog {
             let reading = if r.start == "." || !contigs.contains(r.chrom.as_str()) {
@@ -502,18 +602,23 @@ impl Callability {
                         r.gene
                     ));
                 };
-                let share = if n == 0 {
-                    0.0
-                } else {
-                    pycompat::fmt::round(ok as f64 / n as f64, 4)
-                        .map_err(|e| py_error(e.exception(), &e.to_string()))?
-                };
-                if share >= CALLABLE_SHARE {
-                    Reading::Read(share)
-                } else {
+                let share = share(n, ok)?;
+                if share < CALLABLE_SHARE {
                     Reading::NotRead(share)
+                } else if worst
+                    .get(r.gene.as_str())
+                    .is_some_and(|w| w.share < CALLABLE_SHARE)
+                {
+                    Reading::ExonNotRead(share)
+                } else {
+                    Reading::Read(share)
                 }
             };
+            // The worst coding exon, named only when it was not read.
+            let worst_exon = worst
+                .get(r.gene.as_str())
+                .filter(|w| w.share < CALLABLE_SHARE && reading != Reading::NotOnReference)
+                .cloned();
             let owner = (r.owner != ".").then(|| r.owner.clone());
             let owner_run = match (folder, sample) {
                 (Some(dir), Some(s)) => owner_file(r, dir, s).map(|(step, file)| OwnerRun {
@@ -529,9 +634,14 @@ impl Callability {
                 owner,
                 owner_run,
                 reading,
+                worst_exon,
             });
         }
-        Ok(Callability { min_depth, genes })
+        Ok(Callability {
+            min_depth,
+            genes,
+            exons_checked,
+        })
     }
 
     fn to_json(&self) -> Value {
@@ -564,6 +674,15 @@ impl Callability {
                         }
                         m.push(("share", g.reading.share()));
                         m.push(("status", Value::Str(g.reading.word().into())));
+                        if let Some(w) = &g.worst_exon {
+                            m.push((
+                                "worst_exon",
+                                obj([
+                                    ("exon", Value::Str(w.exon.clone())),
+                                    ("share", Value::Float(w.share)),
+                                ]),
+                            ));
+                        }
                         obj(m)
                     })
                     .collect(),
@@ -574,7 +693,7 @@ impl Callability {
             .iter()
             .filter(|g| matches!(g.reading, Reading::Read(_)))
             .count();
-        obj([
+        let mut m = vec![
             ("min_depth", Value::Int(self.min_depth)),
             ("min_mapq", Value::Int(20)),
             ("min_share", Value::Float(CALLABLE_SHARE)),
@@ -592,7 +711,12 @@ impl Callability {
                         .collect(),
                 ),
             ),
-        ])
+        ];
+        // Only when step 16b measured exons, so a folder from before keeps its summary.
+        if let Some(n) = self.exons_checked {
+            m.push(("exons_checked", Value::Int(n as i128)));
+        }
+        obj(m)
     }
 }
 

@@ -106,11 +106,17 @@ check_eq "MOSDEPTH's table is step 16b's" "$(gzip -dc "$N_CAL" 2>/dev/null | md5
 
 # --- 2. the reports, with the real catalog -------------------------------------------
 REAL="${REPO}/assets/callability_genes.tsv"
-# expected TABLE: the genes with no owner that are ALT-only, have no row (a contig the BAM
-# lacks) or are under 90% at 10x, by awk
+# expected TABLE [EXON_TABLE]: the genes with no owner that are ALT-only, have no row (a
+# contig the BAM lacks), are under 90% at 10x, or, when step 16b's exon table is given,
+# have a coding exon (a GENE:exonN row) under 90% at 10x, by awk
 expected() {
-  gzip -dc "$1" | awk -F'\t' 'NR == FNR {if (!/^#/) share[$4] = ($3 > $2 ? $5 / ($3 - $2) : 0); next}
-    !/^#/ && $1 != "gene" && $7 == "." && ($4 == "." || share[$1] < 0.9) {n++} END {print n + 0}' - "$REAL"
+  local exons=${2:-}
+  awk -F'\t' 'function sh(ok, n) {return n > 0 ? ok / n : 0}
+    FILENAME == ARGV[1] {if (!/^#/) share[$4] = sh($5, $3 - $2); next}
+    FILENAME == ARGV[2] {if (!/^#/) {split($4, p, ":exon"); s = sh($5, $3 - $2)
+      if (!(p[1] in worst) || s < worst[p[1]]) worst[p[1]] = s}; next}
+    !/^#/ && $1 != "gene" && $7 == "." && ($4 == "." || share[$1] < 0.9 || (($1 in worst) && worst[$1] < 0.9)) {n++}
+    END {print n + 0}' <(gzip -dc "$1") <(if [ -n "$exons" ] && [ -s "$exons" ]; then gzip -dc "$exons"; fi) "$REAL"
 }
 # listed SUMMARY_JSON: the section's state and its count of genes not read with no owner
 listed() {
@@ -125,7 +131,7 @@ check_eq "bash: its rows are the catalog genes with a position on the BAM's cont
   "$(gzip -dc "$B_T" 2>/dev/null | grep -vc '^#')" \
   "$(awk -F'\t' -v c="$CONTIGS" 'BEGIN {n = split(c, a, " "); for (i = 1; i <= n; i++) on[a[i]] = 1}
      !/^#/ && $4 ~ /^[0-9]+$/ && ($3 in on)' "$REAL" | wc -l | tr -d ' ')"
-B_N=$(expected "$B_T")
+B_N=$(expected "$B_T" "${GENOME_DIR}/${SAMPLE}/mosdepth/${SAMPLE}_callability_exons.bed.gz")
 check_eq "bash: step 24's summary lists the genes the catalog query gives" \
   "$(listed "${GENOME_DIR}/${SAMPLE}/summary.json")" "ok ${B_N}"
 check "bash: step 24's HTML report has the section with that count" grep -qF \

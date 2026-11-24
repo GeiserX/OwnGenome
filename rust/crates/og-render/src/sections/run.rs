@@ -6,7 +6,9 @@
 use pycompat::json::Value;
 
 use crate::escape::e;
-use crate::model::{Malformed, Summary, get, is_str, py, truthy};
+use crate::model::{Malformed, State, Summary, get, is_str, py, truthy};
+
+use super::coverage;
 
 /// The value of the manifest's `run KEY` row, if it has one.
 fn run_row<'a>(rows: &[[&'a Value; 3]], key: &str) -> Option<&'a Value> {
@@ -68,6 +70,32 @@ fn started(s: &Summary) -> Result<Option<&Value>, Malformed> {
     Ok(Some(s.need2("run", "started_utc")?).filter(|v| truthy(v)))
 }
 
+/// Steps the summary records as selected with no result, with their notes.
+fn selected_lines(s: &Summary) -> Vec<String> {
+    let Some(Value::Array(keys)) = s.get("selected_no_result") else {
+        return Vec::new();
+    };
+    keys.iter()
+        .filter_map(|key| {
+            let Value::Str(key) = key else {
+                return None;
+            };
+            let section = s.section(key);
+            let Value::Str(title) = section.title else {
+                return None;
+            };
+            if section.state != State::Missing || title.is_empty() {
+                return None;
+            }
+            let note = match section.note {
+                Value::Str(note) if !note.is_empty() => note,
+                _ => "selected, no result",
+            };
+            Some(format!("{title}: {note}"))
+        })
+        .collect()
+}
+
 /// The text report's opening lines, up to the blank line after the rule.
 pub fn text_head(s: &Summary) -> Result<Vec<String>, Malformed> {
     let rule = "=".repeat(80);
@@ -83,6 +111,12 @@ pub fn text_head(s: &Summary) -> Result<Vec<String>, Malformed> {
     if let Some(line) = recheck(s)? {
         w.push(format!("  {line}"));
     }
+    w.extend(
+        coverage::partial_lines(s)
+            .into_iter()
+            .chain(selected_lines(s))
+            .map(|line| format!("  {line}")),
+    );
     w.push(rule);
     w.push(String::new());
     Ok(w)
@@ -150,6 +184,12 @@ pub fn html_header(s: &Summary) -> Result<Vec<String>, Malformed> {
         "  </div>".to_owned(),
     ];
     if let Some(line) = recheck(s)? {
+        out.push(format!("  <div class=\"meta\">{}</div>", e(&line)));
+    }
+    for line in coverage::partial_lines(s)
+        .into_iter()
+        .chain(selected_lines(s))
+    {
         out.push(format!("  <div class=\"meta\">{}</div>", e(&line)));
     }
     out.push("</header>".to_owned());
