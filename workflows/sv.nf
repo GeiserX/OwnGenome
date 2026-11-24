@@ -128,7 +128,8 @@ workflow SV {
 
     //
     // SURVIVOR_PREP -> SURVIVOR_MERGE -> SURVIVOR_SORT: the calls 2+ callers
-    // agree on (breakpoints within 1 kb, same type and strands)
+    // agree on (breakpoints within 1 kb, same type and strands), each merged
+    // record then checked to be one event (og sv consensus-check)
     //
     ch_merged_sv = Channel.empty()
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('survivor_merge')) {

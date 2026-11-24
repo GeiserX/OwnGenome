@@ -1,0 +1,3 @@
+##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	cnvpytor
+chr20	7000900	discarded-bnd	N	[chr21:7005000[N	90	PASS	SVTYPE=BND;CT=5to5;pytorP1=1e-8;pytorQ0=0	GT	0/1

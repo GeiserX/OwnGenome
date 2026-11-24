@@ -1,0 +1,4 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	cnvpytor
+chr20	11000000	CNVpytor_del0	N	<DEL>	60	PASS	END=11000999;IMPRECISE;SVLEN=1000;SVTYPE=DEL;pytorRD=0.5;pytorP1=1e-8;pytorP2=1e-8;pytorP3=1e-8;pytorP4=1e-8;pytorQ0=0;pytorPN=0;pytorDG=0;pytorCL=1000	GT	0/1
