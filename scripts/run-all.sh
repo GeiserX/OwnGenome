@@ -444,7 +444,8 @@ if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
   # The ingest listener (og live serve) speaks plain HTTP and takes /<token>/ingest/<run> only, with the token of its
   # STATE_DIR/ingest-token as the first part of the path (Nextflow's weblog cannot send a header): https or another path
   # would lose every post. A URL without the token gets the one in the state folder, when this account can read it.
-  [[ "$OWNGENOME_LIVE_URL" =~ ^http://[A-Za-z0-9.:_-]+(/[A-Za-z0-9_-]{43})?/?$ ]] \
+  LIVE_HOST='[A-Za-z0-9.:_-]+' LIVE_TOKEN='(/[A-Za-z0-9_-]{43})?'
+  [[ "$OWNGENOME_LIVE_URL" =~ ^http://${LIVE_HOST}${LIVE_TOKEN}/?$ ]] \
     || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token>, got '${OWNGENOME_LIVE_URL}'" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
   LIVE_SHOWN=${OWNGENOME_LIVE_URL%/}
   if [ -n "${BASH_REMATCH[1]}" ]; then
