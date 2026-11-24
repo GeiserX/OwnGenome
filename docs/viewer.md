@@ -127,7 +127,7 @@ The browser checks also measure the contrast of the igv.js search input and vari
 
 `tests/test_viewer.py` checks that every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table.
 
-`tests/test_live_viewer.py` checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
+`rust/crates/og-browser/tests/live_map.rs` (`live_site_genome_viewer`) checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
 
 ## Notes
 
