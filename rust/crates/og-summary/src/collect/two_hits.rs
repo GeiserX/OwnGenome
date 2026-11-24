@@ -26,7 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
-use og_steps::sv::postfilter::{CLINICAL_COMMON, ConsensusSupport, Membership};
+use og_steps::sv::postfilter::{BENIGN_MATCH, CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -367,6 +367,12 @@ pub fn read_annotsv(
         .iter()
         .zip(support)
         .map(|(r, support)| {
+            // A sample name after FORMAT can also name an evidence column.
+            let evidence = |name| {
+                r.iter()
+                    .take_while(|(key, _)| *key != "FORMAT")
+                    .find_map(|(key, value)| (key == name).then_some(value))
+            };
             let fmt = sample_format(r);
             let some = |k: &str| {
                 fmt.get(k)
@@ -391,10 +397,9 @@ pub fn read_annotsv(
                     .collect(),
                 caller: cell(r, "Caller").map(str::to_owned),
                 support,
-                common: if r.get(CLINICAL_COMMON).is_some() || r.get("Benign_match").is_some() {
-                    cell(r, CLINICAL_COMMON) == Some("yes")
-                } else {
-                    cell(r, "Common") == Some("yes")
+                common: match evidence(CLINICAL_COMMON) {
+                    Some(value) => value == Some("yes"),
+                    None => evidence(BENIGN_MATCH).is_none() && cell(r, "Common") == Some("yes"),
                 },
             }
         })
