@@ -446,7 +446,7 @@ if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
   # would lose every post. A URL without the token gets the one in the state folder, when this account can read it.
   LIVE_HOST='[A-Za-z0-9.:_-]+' LIVE_TOKEN='(/[A-Za-z0-9_-]{43})?'
   [[ "$OWNGENOME_LIVE_URL" =~ ^http://${LIVE_HOST}${LIVE_TOKEN}/?$ ]] \
-    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token>, got '${OWNGENOME_LIVE_URL}'" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
+    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token> (the value is not printed: it may hold the token)" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
   LIVE_SHOWN=${OWNGENOME_LIVE_URL%/}
   if [ -n "${BASH_REMATCH[1]}" ]; then
     LIVE_SHOWN="${LIVE_SHOWN%/*}/<token>"

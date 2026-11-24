@@ -128,6 +128,17 @@ fn each_check_fails_on_its_planted_mistake() {
             code.clone(),
         ),
         (
+            // An earlier row that also names step 33's section: a later
+            // right row must not hide it.
+            "every summary section belongs to the row of its step",
+            edit(&|r| {
+                if r.step == "11" {
+                    r.sections.push("mosaic_sex_loss".into());
+                }
+            }),
+            code.clone(),
+        ),
+        (
             "every summary section belongs to the row of its step",
             edit(&|r| {
                 if r.step == "11" {

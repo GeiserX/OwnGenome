@@ -323,10 +323,12 @@ pub fn checks(rows: &[Row], code: &Code) -> Vec<Outcome> {
         },
     ));
 
-    let mut owner: BTreeMap<&str, &str> = BTreeMap::new();
+    // Every row that names a section, so a wrong row is seen even when the
+    // right row names it too.
+    let mut owner: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for r in rows {
         for k in &r.sections {
-            owner.insert(k.as_str(), r.step.as_str());
+            owner.entry(k.as_str()).or_default().push(r.step.as_str());
         }
     }
     let keys: BTreeMap<&str, &str> = code
@@ -336,7 +338,7 @@ pub fn checks(rows: &[Row], code: &Code) -> Vec<Outcome> {
         .collect();
     let wrong: Vec<String> = keys
         .iter()
-        .filter(|(k, s)| owner.get(*k) != Some(*s))
+        .filter(|(k, s)| owner.get(*k).map(Vec::as_slice) != Some(&[**s][..]))
         .map(|(k, s)| format!("{k} is step {s}'s, the catalogue says {:?}", owner.get(k)))
         .collect();
     let unknown: Vec<&str> = owner

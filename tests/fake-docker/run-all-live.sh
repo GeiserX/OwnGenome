@@ -108,6 +108,7 @@ run_expect 2 pathurl env PATH="$P" OWNGENOME_LIVE_URL="http://127.0.0.1:8788/liv
 output_has pathurl 'OWNGENOME_LIVE_URL must be a plain'
 run_expect 2 shorttoken env PATH="$P" OWNGENOME_LIVE_URL="${URL}/${TOK%?}" "${SCRIPTS}/run-all.sh" sample1 male
 output_has shorttoken 'OWNGENOME_LIVE_URL must be a plain'
+output_lacks shorttoken "${TOK%?}"
 
 # --- 3. the site refuses every post -------------------------------------------------------------
 # The token in the URL itself, as when the site runs as another account: the warning names the site without it.
