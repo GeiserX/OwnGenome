@@ -6,7 +6,7 @@
 use super::roh::masked_overlap;
 use super::util::{Obj, at, base, cells, count, int, lines, number, s, strs, table, vcf_lines};
 use super::{Ctx, Found, Out};
-use og_steps::sv::postfilter::{ConsensusSupport, Membership};
+use og_steps::sv::postfilter::{CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use std::collections::HashMap;
@@ -324,6 +324,11 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
         } else {
             row
         };
+        let row = if t.has(CLINICAL_COMMON) {
+            row.set("clinical_common", cellv(CLINICAL_COMMON)?)
+        } else {
+            row
+        };
         let row = row
             .set(
                 "annotsv_class",
@@ -560,6 +565,53 @@ mod tests {
             panic!("a row is an object")
         };
         assert!(!m.contains_key("benign_match"), "{m:?}");
+    }
+
+    #[test]
+    fn summary_keeps_mixed_frequency_evidence_in_the_acmg_structural_list() {
+        use crate::collect::{Group, Input, post};
+        use crate::testutil::Dir;
+
+        let d = Dir::new("annotsv-clinical-common");
+        d.put(
+            "S/annotsv/S_sv_class4_5_checked.tsv",
+            concat!(
+                "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tGene_name\tExon_edge\tPopulation_AF\tPopulation_source\tCommon\tBenign_match\tClinical_common\tFORMAT\tS\n",
+                "MIXED\t20\t1000\t9000\tDEL\t4\tmanta\tLDLR\tno\t0.05\tfixture\tyes\tsame\tunknown\tGT\t0/1\n",
+                "SHIFTED\t20\t41000\t49000\tDEL\t4\tmanta\tLDLR\tno\t\tno frequency data\tno\tnone\tyes\tGT\t0/1\n",
+            ),
+        );
+        d.put(
+            "assets/acmg_sf.tsv",
+            "gene\tinheritance\treport_if\tsv_cn\tsv_regions\tvariants\tseverity\ttable_text\tnote\nLDLR\tSD\tany\tyes\t.\t.\t.\tAll P and LP\t.\n",
+        );
+        d.put(
+            "S/clinvar/S_clinvar_hits.vcf",
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+        );
+        let summary = post::collect(&Input {
+            sample: "S".into(),
+            sample_dir: d.path("S"),
+            declared_sex: None,
+            assets: d.path("assets"),
+            group: Group::All,
+            tables: d.path("bin"),
+        })
+        .unwrap();
+        let sections = report_field(&summary, "sections");
+        let sf = report_field(report_field(sections, "acmg_sf"), "data");
+        let variants: Vec<_> = report_rows(sf, "structural")
+            .iter()
+            .map(|row| report_field(row, "variant"))
+            .collect();
+        assert_eq!(variants, [&s("DEL chr20:1000-9000")]);
+        let annotsv = report_field(report_field(sections, "annotsv"), "data");
+        let rows = report_rows(annotsv, "rows");
+        assert_eq!(report_field(annotsv, "common"), &int(1));
+        assert_eq!(report_field(&rows[0], "population_af"), &Value::Float(0.05));
+        assert_eq!(report_field(&rows[0], "common"), &Value::Bool(true));
+        assert_eq!(report_field(&rows[0], "clinical_common"), &s("unknown"));
+        assert_eq!(report_field(&rows[1], "clinical_common"), &s("yes"));
     }
 
     #[test]

@@ -12,7 +12,8 @@
 #   *_sv_class4_5.tsv (its class 4 and 5 rows), *_sv_class4_5_checked.tsv
 #   (each of those with its caller, an exon-edge flag for a deletion, its
 #   benign-set frequency or "no frequency data", whether the benign record
-#   is about its size or much larger, its read-depth support and the class after the
+#   is about its size or much larger, its clinical common status, its read-depth
+#   support and the class after the
 #   rule table assets/sv_rule_regions.tsv, og sv postfilter) and
 #   *_annotsv_input.vcf
 #   (what AnnotSV read, each record with its caller in INFO SVCALLER)
@@ -69,7 +70,8 @@ fi
 # gnomAD-SV's common SVs in its benign set. Without them the ACMG classes are
 # wrong for the reasons in docs/05-annotsv.md, so the step stops.
 MANE_TX="${ANNOTATIONS_DIR}/mane_select_refseq.txt"
-GNOMAD_SV_STAMP="${ANNOTATIONS_DIR}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed"
+BENIGN_DIR="${ANNOTATIONS_DIR}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38"
+GNOMAD_SV_STAMP="${BENIGN_DIR}/gnomad-sv.installed"
 for f in "$MANE_TX" "$GNOMAD_SV_STAMP"; do
   if [ ! -s "$f" ]; then
     echo "ERROR: ${f} not found: AnnotSV's data lacks the MANE Select list or gnomAD-SV's common SVs." >&2
@@ -176,7 +178,8 @@ fi
 # AnnotSV's genes file (a processed transcript aligned across an intron), the
 # benign-set frequency of its type ("no frequency data" when AnnotSV gives
 # none, which is not "rare"), whether that benign record is about the call's
-# size or much larger (Benign_match), and whether its read depth shows the
+# size or much larger (Benign_match), common status from the benign BEDs
+# (Clinical_common), and whether its read depth shows the
 # change (a Delly RDCN against the same sex- and PAR-aware normal copies as
 # above). The rule table moves to class 3 a call inside a coding tandem
 # repeat, the IG and TR loci or the MHC, one the depth contradicts, and one
@@ -194,7 +197,8 @@ run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
   -v "${RULES_TSV}:/pgp/sv_rule_regions.tsv:ro" \
   -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro" "${ANNOTSV_IMAGE}" \
   /pgp-bin/og sv postfilter --class45 "$(cpath "$CLASS45")" ${GENES_ARGS[@]+"${GENES_ARGS[@]}"} \
-    --rules /pgp/sv_rule_regions.tsv --sex "$SEX" --par-bed /pgp/par_grch38.bed --out "$(cpath "$CHECKED")"
+    --benign-dir "$(cpath "$BENIGN_DIR")" --rules /pgp/sv_rule_regions.tsv \
+    --sex "$SEX" --par-bed /pgp/par_grch38.bed --out "$(cpath "$CHECKED")"
 
 echo "=== AnnotSV complete ==="
 echo "Input: ${INPUT_VCF}"

@@ -27,7 +27,8 @@
     deletion sits on the exon edges of one transcript of AnnotSV's genes
     file, its benign-set frequency ("no frequency data" when AnnotSV gives
     none), whether that benign record is about the call's size or much
-    larger (Benign_match), its read-depth support (a Delly RDCN
+    larger (Benign_match), its clinical common status from the benign BEDs,
+    its read-depth support (a Delly RDCN
     against the same sex- and PAR-aware normal copies) and the class
     after the rule table assets/sv_rule_regions.tsv, which moves to class 3
     a call inside a coding tandem repeat, the IG and TR loci or the MHC,
@@ -98,12 +99,13 @@ process ANNOTSV {
 
     # Each class 4 or 5 SV with its caller, an exon-edge flag for a deletion,
     # its benign-set frequency or "no frequency data", its benign match, its
-    # depth support and the class after the rule table. The support count is step 22's, which the reports join
-    # when they are written.
+    # clinical common status, its depth support and the class after the rule
+    # table. The reports join the step 22 support count.
     genes=${annotations_dir}/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed
     genes_arg=()
     if [ -s "\$genes" ]; then genes_arg=(--genes "\$genes"); fi
     og sv postfilter --class45 ${meta.id}_sv_class4_5.tsv \${genes_arg[@]+"\${genes_arg[@]}"} \\
+        --benign-dir "${annotations_dir}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38" \\
         --rules ${sv_rules} --sex '${meta.sex ?: ''}' --par-bed ${par_bed} --out ${meta.id}_sv_class4_5_checked.tsv
 
     cat <<-END_VERSIONS > versions.yml

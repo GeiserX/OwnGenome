@@ -402,6 +402,7 @@ fn a_blank_benign_frequency_is_no_frequency_data_not_rare() {
     assert_eq!(head[at_common + 1], "Benign_match", "{head:?}");
     assert_eq!(at("BLANK")["Benign_match"], "none");
     assert_eq!(at("BND")["Benign_match"], ".");
+    assert_eq!(at("AF")["Clinical_common"], "unknown");
     std::fs::remove_dir_all(d).unwrap();
 }
 
@@ -417,8 +418,9 @@ fn a_contained_benign_match_is_told_from_a_same_size_one() {
             &benign_row("SAME", 1000, 5000, "DEL", loss("20:900-5100")),
             // 500 bp inside the same 4,200 bp record: a small call in a big one.
             &benign_row("NESTED", 2000, 2500, "DEL", loss("20:900-5100")),
-            // Exactly half of a 1,000 bp record still counts as the same.
-            &benign_row("HALF", 2000, 2500, "DEL", loss("20:2000-3000")),
+            // Full row from AnnotSV 3.5.10, projected onto BENIGN_HEAD.
+            // The BED call is [1000999,1009000), exactly half the benign record.
+            "20_1001000_1009000_DEL_1\t20\t1001000\t1009000\t-8000\tDEL\tHALF\tSVTYPE=DEL;END=1009000;SVLEN=-8000;SVCALLER=manta\tfull\tFIXG1\t\t\t\tfixture_half\t20:1001000-1017001\t0.0500\t4\t0.9\n",
             // One of several records is about the call's size.
             &benign_row("ONEOF", 2000, 2500, "DEL", loss("1:0-900000;20:1950-2600")),
             // A duplication reads the gain columns, which here are blank.
@@ -446,6 +448,127 @@ fn a_contained_benign_match_is_told_from_a_same_size_one() {
 }
 
 #[test]
+fn disjoint_and_malformed_benign_coordinates_are_not_containment() {
+    let d = scratch("benign-invalid-coordinates");
+    let loss = |coord: &'static str| ["", "", "", "fixture", coord, "0.05"];
+    let (_, rows) = postfilter_table(
+        &d,
+        &[
+            BENIGN_HEAD,
+            &benign_row("DISJOINT", 2000, 2500, "DEL", loss("20:6000-8000")),
+            &benign_row("MALFORMED", 2000, 2500, "DEL", loss("20:900-5100;bad")),
+            &benign_row("REVERSED", 2000, 2500, "DEL", loss("20:3000-1000")),
+        ]
+        .concat(),
+        None,
+    );
+    let statuses: Vec<_> = rows.iter().map(|r| r["Benign_match"].as_str()).collect();
+    assert_eq!(statuses, ["not checked"; 3]);
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn clinical_common_uses_frequency_and_overlap_from_one_bed_record() {
+    let d = scratch("clinical-common-bed");
+    put(
+        &d,
+        "benign_Loss_SV_GRCh38.sorted.bed",
+        concat!(
+            "20\t0\t30000\tlarge\t20:0-30000\t0.05\n",
+            "20\t999\t9000\tclinvar\t20:999-9000\t.\n",
+            "20\t30000\t70000\tlarge\t20:30000-70000\t0.05\n",
+            "chr20\t41001\t49002\tshifted\t20:41001-49002\t0.03\n",
+            "20\t80999\t97001\tboundary\t20:80999-97001\t0.01\n",
+            "20\t120999\t129000\tlow\t20:120999-129000\t0.009\n",
+        ),
+    );
+    let class45 = put(
+        &d,
+        "c45.tsv",
+        &[
+            BENIGN_HEAD,
+            &benign_row(
+                "MIXED",
+                1000,
+                9000,
+                "DEL",
+                [
+                    "",
+                    "",
+                    "",
+                    "clinvar;large",
+                    "20:1-30000;20:1000-9000",
+                    "0.05",
+                ],
+            ),
+            &benign_row(
+                "SHIFTED",
+                41000,
+                49000,
+                "DEL",
+                ["", "", "", "large", "20:30001-70000", "0.05"],
+            ),
+            &benign_row(
+                "BOUNDARY",
+                81000,
+                89000,
+                "DEL",
+                ["", "", "", "boundary", "20:81000-97001", "0.01"],
+            ),
+            &benign_row("LOW", 121000, 129000, "DEL", ["", "", "", "", "", ""]),
+            &benign_row(
+                "MISSING_BED",
+                1000,
+                9000,
+                "DUP",
+                ["fixture", "20:1000-9000", "0.05", "", "", ""],
+            ),
+        ]
+        .concat(),
+    );
+    let out = d.join("checked.tsv").to_string_lossy().into_owned();
+    let args = [
+        "--class45",
+        &class45,
+        "--benign-dir",
+        d.to_str().unwrap(),
+        "--out",
+        &out,
+    ]
+    .map(str::to_owned);
+    assert_eq!(postfilter::cli(&args), 0);
+    let head = postfilter::header_of(&out);
+    let at = |name| head.iter().position(|h| h == name).unwrap();
+    let values: Vec<_> = std::fs::read_to_string(&out)
+        .unwrap()
+        .lines()
+        .skip(1)
+        .map(|line| {
+            let cells = line.split('\t').collect::<Vec<_>>();
+            [
+                "ID",
+                "Population_AF",
+                "Common",
+                "Benign_match",
+                "Clinical_common",
+            ]
+            .map(|name| cells[at(name)].to_owned())
+        })
+        .collect();
+    assert_eq!(
+        values,
+        [
+            ["MIXED", "0.05", "yes", "same", "unknown"],
+            ["SHIFTED", "0.05", "yes", "contained", "yes"],
+            ["BOUNDARY", "0.01", "yes", "same", "yes"],
+            ["LOW", "", "no", "none", "no"],
+            ["MISSING_BED", "0.05", "yes", "same", "unknown"],
+        ]
+    );
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
 fn without_benign_coordinates_the_match_column_is_left_out() {
     let d = scratch("no-coords");
     // The table of the other tests has B_loss_AFmax but no B_*_coord.
@@ -457,7 +580,12 @@ fn without_benign_coordinates_the_match_column_is_left_out() {
         ),
         None,
     );
-    assert!(!head.iter().any(|c| c == "Benign_match"), "{head:?}");
+    assert!(
+        !head
+            .iter()
+            .any(|c| c == "Benign_match" || c == "Clinical_common"),
+        "{head:?}"
+    );
     assert_eq!(rows[0]["Population_source"], "no frequency data");
     // A coordinates column for deletions only: a duplication is not checked.
     let (_, rows) = postfilter_table(

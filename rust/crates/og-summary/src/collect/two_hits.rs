@@ -26,7 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
-use og_steps::sv::postfilter::{ConsensusSupport, Membership};
+use og_steps::sv::postfilter::{CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -311,9 +311,8 @@ pub struct SvRow {
     pub caller: Option<String>,
     /// Callers supporting it in step 22's consensus; `None` without one.
     pub support: Option<i128>,
-    /// Read as common: `Common` is `yes`, unless `Benign_match` says the
-    /// benign record is much larger than the call (`contained`), whose
-    /// frequency is the larger SV's and not this call's.
+    /// The clinical rules set aside SVs with a common reciprocal BED match.
+    /// Legacy checked tables without either evidence column use `Common`.
     pub common: bool,
 }
 
@@ -392,8 +391,11 @@ pub fn read_annotsv(
                     .collect(),
                 caller: cell(r, "Caller").map(str::to_owned),
                 support,
-                common: cell(r, "Common") == Some("yes")
-                    && cell(r, "Benign_match") != Some("contained"),
+                common: if r.get(CLINICAL_COMMON).is_some() || r.get("Benign_match").is_some() {
+                    cell(r, CLINICAL_COMMON) == Some("yes")
+                } else {
+                    cell(r, "Common") == Some("yes")
+                },
             }
         })
         .filter(|x| matches!(x.class(), "4" | "5"))
@@ -986,14 +988,14 @@ mod tests {
 
     #[test]
     fn a_call_inside_a_much_larger_common_sv_is_not_read_as_common() {
-        let head = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\tBenign_match\tFORMAT\tS1\n";
+        let head = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\tBenign_match\tClinical_common\tFORMAT\tS1\n";
         let rows = annotsv(
             "benign-match",
             &[
                 head,
-                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tGT\t0/1\n",
-                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tGT\t0/1\n",
-                "NODATA\t1\t120\t180\tDEL\t4\tmanta\tno\t\tno\tnone\tGT\t0/1\n",
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
+                "NODATA\t1\t120\t180\tDEL\t4\tmanta\tno\t\tno\tnone\tunknown\tGT\t0/1\n",
             ]
             .concat(),
         );
@@ -1012,8 +1014,8 @@ mod tests {
             "benign-match-hits",
             &[
                 head,
-                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tGT\t0/1\n",
-                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tGT\t0/1\n",
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
             ]
             .concat(),
         );

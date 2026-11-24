@@ -22,6 +22,9 @@
 //! - `Benign_match`, after `Common`, only when AnnotSV's table has a
 //!   `B_*_coord` column: whether a benign record AnnotSV lists for the type
 //!   is about the call's size or much larger ([`benign_match`]);
+//! - `Clinical_common`: `yes` when a single benign BED record has AF at
+//!   least 1% and at least 50% reciprocal overlap with the call. A check
+//!   with insufficient evidence reads `unknown`;
 //! - `AnnotSV_class`: AnnotSV's own class; `ACMG_class` is the class after
 //!   these checks;
 //! - `Depth_support`: duphold's DHFFC (< 0.7 for a deletion) or DHBFC
@@ -48,9 +51,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 use std::rc::Rc;
 
 use og_filters::args::{self, ArgError, Spec};
+use og_intervals::sets::{Index, reciprocal};
 use og_io::{Lines, Utf8};
 use og_pedigree::Par;
 use pycompat::csv::{DictReader, DictRow, Quoting, Writer};
@@ -59,7 +64,7 @@ use pycompat::fmt::{general, percent};
 use super::{DEPTH_MIN_SIZE, Rdcn, Sex, SvKind, chrom_key, depth_contradicts, info_value};
 
 const USAGE: &str = "usage: og sv postfilter --class45 CLASS45.tsv [--genes GENES.bed]
-       [--rules RULES.tsv] [--consensus CONSENSUS.vcf.gz]
+       [--rules RULES.tsv] [--consensus CONSENSUS.vcf.gz] [--benign-dir GRCh38_DIR]
        [--sex male|female] [--par-bed PAR.bed] --out CHECKED.tsv
 ";
 
@@ -71,6 +76,7 @@ const SPEC: Spec = Spec {
         "--genes",
         "--rules",
         "--consensus",
+        "--benign-dir",
         "--sex",
         "--par-bed",
         "--out",
@@ -109,6 +115,8 @@ pub const ADDED: [&str; 10] = [
 pub const SUPPORT: [&str; 2] = ["Support", "Support_callers"];
 /// The column the benign records' coordinates add, after `Common`.
 pub const BENIGN_MATCH: &str = "Benign_match";
+/// Per-record common evidence used by the clinical rules.
+pub const CLINICAL_COMMON: &str = "Clinical_common";
 /// `Population_source` of a call AnnotSV gives no benign-set frequency.
 pub const NO_FREQUENCY: &str = "no frequency data";
 
@@ -116,8 +124,13 @@ const EDGE_BP: i64 = 5;
 const COMMON_AF: f64 = 0.01;
 /// A benign record matches the call's size when each covers this share of
 /// the other, the rule of the couple screen's common deletions.
-const SAME_OVERLAP_PERCENT: i64 = 50;
-const BENIGN_TYPES: [&str; 4] = ["B_loss", "B_gain", "B_ins", "B_inv"];
+const BENIGN_OVERLAP: f64 = 0.5;
+const BENIGN_TYPES: [(&str, &str); 4] = [
+    ("B_loss", "Loss"),
+    ("B_gain", "Gain"),
+    ("B_ins", "Ins"),
+    ("B_inv", "Inv"),
+];
 const DHFFC_MAX: f64 = 0.7;
 const DHBFC_MIN: f64 = 1.3;
 const REPEAT_SLACK_BP: i64 = 10;
@@ -426,58 +439,166 @@ fn population(row: &Row) -> (Option<f64>, String) {
     }
 }
 
-/// How the benign records AnnotSV lists for the call's type
-/// (`B_loss_coord` for a deletion, and so on) relate to the call. AnnotSV
-/// lists only records that hold the whole call (bedtools `-f 1.0`), and
-/// `B_*_AFmax` is the highest frequency among them, so a small call inside
-/// a large common SV takes the large one's frequency.
-///
-/// - `same`: a listed record and the call each cover at least half of the
-///   other ([`SAME_OVERLAP_PERCENT`]);
-/// - `contained`: every listed record is more than twice as long as the
-///   call, so its frequency is the larger SV's, not this call's;
-/// - `none`: no record is listed;
-/// - `.`: a type with no benign set;
-/// - `not checked`: the table has no coordinates column for the type, or a
-///   position is not a number.
+#[derive(Clone, Copy)]
+struct BedSpan {
+    start: u64,
+    end: u64,
+}
+
+impl BedSpan {
+    /// AnnotSV writes 1-based inclusive intervals. BED uses 0-based starts
+    /// and exclusive ends. An equal start and end in AnnotSV spans one base.
+    fn from_annotsv(start: &str, end: &str) -> Option<Self> {
+        let start = start.parse::<u64>().ok()?.checked_sub(1)?;
+        let end = end.parse().ok()?;
+        (start < end).then_some(Self { start, end })
+    }
+
+    fn matches(self, other: Self) -> bool {
+        let shared = self
+            .end
+            .min(other.end)
+            .saturating_sub(self.start.max(other.start));
+        reciprocal(
+            shared,
+            self.end - self.start,
+            other.end - other.start,
+            BENIGN_OVERLAP,
+        )
+    }
+
+    fn longer_enclosure_of(self, call: Self) -> bool {
+        self.start <= call.start
+            && self.end >= call.end
+            && self.end - self.start > call.end - call.start
+    }
+}
+
+fn call_span(row: &Row) -> Option<BedSpan> {
+    BedSpan::from_annotsv(row.get("SV_start"), row.get("SV_end"))
+}
+
+/// The geometry of the records AnnotSV lists. Its annotation uses a
+/// full enclosure, so this list can omit reciprocally overlapping records.
 fn benign_match(row: &Row) -> &'static str {
     let Some(col) = benign_columns(row) else {
         return ".";
     };
-    let Some(cell) = row.cells.get(&format!("{col}_coord")) else {
+    let Some(Some(coords)) = row.cells.get(&format!("{col}_coord")) else {
         return "not checked";
     };
-    let coords = pycompat::num::py_strip(cell.unwrap_or(""));
+    let coords = coords.trim();
     if coords.is_empty() {
         return "none";
     }
-    let Some((a, b)) = row.start_end() else {
+    let Some(call) = call_span(row) else {
         return "not checked";
     };
-    // An insertion can span no base: give it one, so it can overlap.
-    let (s, e) = (a.min(b), a.max(b).max(a.min(b) + 1));
     let chrom = chrom_key(row.get("SV_chrom"));
-    let mut read = false;
-    for c in coords.split(';') {
-        let Some((bc, span)) = c.trim().rsplit_once(':') else {
-            continue;
-        };
-        let Some((Some(bs), Some(be))) = span.split_once('-').map(|(x, y)| (int(x), int(y))) else {
-            continue;
-        };
-        if chrom_key(bc) != chrom {
-            continue;
-        }
-        read = true;
-        let ov = e.min(be) - s.max(bs);
-        if ov > 0
-            && ov * 100 >= SAME_OVERLAP_PERCENT * (e - s)
-            && ov * 100 >= SAME_OVERLAP_PERCENT * (be - bs)
-        {
+    let mut contained = true;
+    for coord in coords.split(';') {
+        let record = coord
+            .trim()
+            .rsplit_once(':')
+            .filter(|(c, _)| !c.is_empty() && chrom_key(c) == chrom)
+            .and_then(|(_, span)| span.split_once('-'))
+            .and_then(|(start, end)| BedSpan::from_annotsv(start, end));
+        if record.is_some_and(|record| call.matches(record)) {
             return "same";
         }
+        contained &= record.is_some_and(|record| record.longer_enclosure_of(call));
     }
-    if read { "contained" } else { "not checked" }
+    if contained {
+        "contained"
+    } else {
+        "not checked"
+    }
+}
+
+/// One benign-type BED. A BED row names one record and carries its own
+/// AF in column six. Keep unknown AFs so a matching row can report uncertainty.
+struct BenignBed {
+    by_chrom: HashMap<String, Index<Option<bool>>>,
+    incomplete: bool,
+}
+
+impl BenignBed {
+    fn read(path: &Path, chroms: &HashSet<String>) -> Result<Self, Error> {
+        let mut by_chrom: HashMap<String, Vec<_>> = HashMap::new();
+        let mut incomplete = false;
+        for_each_line(&path.to_string_lossy(), |_, line| {
+            let line = line.trim_end_matches(['\r', '\n']);
+            if line.is_empty()
+                || line.starts_with('#')
+                || line.starts_with("track ")
+                || line.starts_with("browser ")
+            {
+                return Ok(());
+            }
+            let mut cells = line.split('\t');
+            let chrom = chrom_key(cells.next().unwrap_or_default());
+            if chrom.is_empty() {
+                incomplete = true;
+            }
+            if !chroms.contains(chrom) {
+                return Ok(());
+            }
+            let start = cells.next().and_then(|v| v.parse::<u64>().ok());
+            let end = cells.next().and_then(|v| v.parse::<u64>().ok());
+            let (Some(start), Some(end)) = (start, end) else {
+                incomplete = true;
+                return Ok(());
+            };
+            if end <= start {
+                incomplete = true;
+                return Ok(());
+            }
+            let common = cells
+                .nth(2)
+                .and_then(|af| pycompat::num::parse_float(af).ok())
+                .filter(|af| af.is_finite())
+                .map(|af| af >= COMMON_AF);
+            if common != Some(false) {
+                by_chrom
+                    .entry(chrom.to_owned())
+                    .or_default()
+                    .push((start, end, common));
+            }
+            Ok(())
+        })?;
+        let by_chrom = by_chrom
+            .into_iter()
+            .map(|(chrom, rows)| (chrom, Index::new(rows)))
+            .collect();
+        Ok(Self {
+            by_chrom,
+            incomplete,
+        })
+    }
+
+    fn common(&self, chrom: &str, call: BedSpan) -> &'static str {
+        let mut unknown = self.incomplete;
+        if let Some(index) = self.by_chrom.get(chrom) {
+            for &(start, end, common) in index.overlapping(call.start, call.end) {
+                if call.matches(BedSpan { start, end }) {
+                    if common == Some(true) {
+                        return "yes";
+                    }
+                    unknown = true;
+                }
+            }
+        }
+        if unknown { "unknown" } else { "no" }
+    }
+}
+
+fn clinical_common(row: &Row, beds: &HashMap<&str, BenignBed>) -> &'static str {
+    let bed = benign_columns(row).and_then(|kind| beds.get(kind));
+    let chrom = chrom_key(row.get("SV_chrom"));
+    match (bed, call_span(row)) {
+        (Some(bed), Some(call)) if !chrom.is_empty() => bed.common(chrom, call),
+        _ => "unknown",
+    }
 }
 
 /// `(yes|no|unknown|not checked|., detail)` of the read depth of a deletion or
@@ -842,6 +963,10 @@ struct Checked {
 
 /// Runs the step; returns the summary line.
 pub fn run(o: &Opts) -> Result<String, Error> {
+    run_with_benign(o, None)
+}
+
+fn run_with_benign(o: &Opts, benign_dir: Option<&str>) -> Result<String, Error> {
     let par = match o.par_bed.as_deref() {
         Some(p) if !std::path::Path::new(p).is_file() => {
             return Err(Error(format!("no PAR file {p}")));
@@ -903,7 +1028,26 @@ pub fn run(o: &Opts) -> Result<String, Error> {
     // a table without them keeps the columns it had.
     let coords = BENIGN_TYPES
         .iter()
-        .any(|t| keys.iter().any(|k| *k == format!("{t}_coord")));
+        .any(|(t, _)| keys.iter().any(|k| *k == format!("{t}_coord")));
+    let clinical = coords || (benign_dir.is_some() && !rows.is_empty());
+    let mut beds = HashMap::new();
+    if let Some(dir) = benign_dir {
+        let types: HashSet<_> = rows.iter().filter_map(benign_columns).collect();
+        for (key, file_type) in BENIGN_TYPES {
+            if !types.contains(key) {
+                continue;
+            }
+            let path = Path::new(dir).join(format!("benign_{file_type}_SV_GRCh38.sorted.bed"));
+            if path.is_file() {
+                match BenignBed::read(&path, &chroms) {
+                    Ok(bed) => {
+                        beds.insert(key, bed);
+                    }
+                    Err(e) => eprintln!("WARNING: {e}. Clinical common status is unknown."),
+                }
+            }
+        }
+    }
 
     let mut checked = Checked {
         cols: KEEP
@@ -913,8 +1057,13 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             .collect(),
         rows: Vec::with_capacity(rows.len()),
     };
-    if coords && let Some(i) = checked.cols.iter().position(|c| c == "Common") {
-        checked.cols.insert(i + 1, BENIGN_MATCH.to_owned());
+    if let Some(i) = checked.cols.iter().position(|c| c == "Common") {
+        if clinical {
+            checked.cols.insert(i + 1, CLINICAL_COMMON.to_owned());
+        }
+        if coords {
+            checked.cols.insert(i + 1, BENIGN_MATCH.to_owned());
+        }
     }
     for r in &rows {
         let mut o_row: HashMap<String, String> = KEEP
@@ -981,6 +1130,13 @@ pub fn run(o: &Opts) -> Result<String, Error> {
         );
         if coords {
             set(&mut o_row, BENIGN_MATCH, benign_match(r).to_owned());
+        }
+        if clinical {
+            set(
+                &mut o_row,
+                CLINICAL_COMMON,
+                clinical_common(r, &beds).to_owned(),
+            );
         }
         set(
             &mut o_row,
@@ -1100,7 +1256,7 @@ fn write(path: &str, t: &Checked) -> Result<(), Error> {
     f.commit().map_err(err)
 }
 
-fn opts(argv: &[String]) -> Result<Opts, u8> {
+fn opts(argv: &[String]) -> Result<(Opts, Option<String>), u8> {
     let p = args::parse(&SPEC, argv).map_err(|e| args::report(&SPEC, &e))?;
     let sex = p.get("--sex").unwrap_or("");
     let Some(sex) = Sex::parse(sex) else {
@@ -1112,7 +1268,7 @@ fn opts(argv: &[String]) -> Result<Opts, u8> {
     };
     // An empty path is "not given", as the Python's `if a.genes:` reads it.
     let given = |name| p.get(name).filter(|v| !v.is_empty()).map(str::to_owned);
-    Ok(Opts {
+    let opts = Opts {
         class45: p.get("--class45").unwrap_or("").to_owned(),
         genes: given("--genes"),
         rules: given("--rules"),
@@ -1120,17 +1276,18 @@ fn opts(argv: &[String]) -> Result<Opts, u8> {
         sex,
         par_bed: given("--par-bed"),
         out: p.get("--out").unwrap_or("").to_owned(),
-    })
+    };
+    Ok((opts, given("--benign-dir")))
 }
 
 /// `og sv postfilter ARGS`: exit 0, 1 for an input or output problem, 2
 /// for a usage error.
 pub fn cli(argv: &[String]) -> u8 {
-    let o = match opts(argv) {
+    let (o, benign_dir) = match opts(argv) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    match run(&o) {
+    match run_with_benign(&o, benign_dir.as_deref()) {
         Ok(summary) => {
             eprintln!("{summary}");
             0
