@@ -920,6 +920,12 @@ impl Guards<'_> {
                 // static server sends no no-store, so Chrome may keep the
                 // page in that cache.
                 self.opened(b);
+                // A page restored from that cache keeps its script state and
+                // gets pageshow with persisted true; a reloaded one has neither.
+                eval(
+                    b,
+                    "window.gateRestored = false; window.addEventListener('pageshow', function (e) { window.gateRestored = e.persisted; }); true",
+                );
                 b.go(&format!("{}/", self.base)).unwrap();
                 wait(
                     b,
@@ -938,7 +944,7 @@ impl Guards<'_> {
                         Duration::from_secs(10),
                     )
                     .unwrap_or_else(|| {
-                        b.eval("[performance.getEntriesByType('navigation')[0].type, location.pathname, document.documentElement.dataset.pgpGated || '']")
+                        b.eval("[performance.getEntriesByType('navigation')[0].type, location.pathname, document.documentElement.dataset.pgpGated || '', window.gateRestored === true]")
                             .unwrap_or(Value::Null)
                     });
                 (got == s("reload"), got)
@@ -970,9 +976,10 @@ fn broke(guard: Guard, seen: &Value) -> bool {
         // Report attributes are left on the page.
         Guard::CloseAttrs | Guard::Pagehide => !items(seen).is_empty(),
         // Back reaches the child's page, which comes back from the
-        // back-forward cache open, not reloaded and closed.
+        // back-forward cache (pageshow persisted) open, not reloaded and
+        // closed.
         Guard::Back => {
-            matches!(&seen, Value::Array(a) if a.len() == 3 && a[0] != s("reload") && a[1] == s(CHILD_URL) && a[2] != s("true"))
+            matches!(&seen, Value::Array(a) if a.len() == 4 && a[0] != s("reload") && a[1] == s(CHILD_URL) && a[2] != s("true") && a[3] == Value::Bool(true))
         }
     }
 }
