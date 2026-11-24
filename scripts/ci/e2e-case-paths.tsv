@@ -116,6 +116,7 @@ i411-callability-overlap-1-mates	modules/local/mosdepth/* scripts/16b-mosdepth.s
 i411-chrm-shifted-ref-1-step20	bin/og scripts/20-mtoolbox.sh
 i411-chrm-shifted-ref-2-nextflow	bin/og modules/local/mito_variants/* scripts/20-mtoolbox.sh
 i411-nf-vcfanno-ops-1-score-tiers	bin/og modules/local/clinical_filter/* modules/local/vcfanno/* scripts/30-vcfanno.sh
+i411-sf-mechanism-1-acmg-lof	assets/acmg_lof_overrides.tsv assets/acmg_sf.tsv bin/og scripts/ci/build-acmg-lof.sh scripts/ci/lib/fetch-pinned.sh
 ibd-segments-1	assets/families.example.tsv assets/par_grch38.bed assets/pedigree.example.tsv assets/stub/pedigree.tsv bin/og rust/crates/og-dev/src/fixture.rs scripts/38-family.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh
 live-server-1-weblog	assets/live/* assets/viewer/index.html bin/og bin/owngenome_live.py bin/owngenome_live_results.py bin/render_report.py bin/run_state.py modules/local/roh/* modules/local/vcf_precheck/* rust/crates/og-dev/src/fixture.rs rust/crates/og-live/src/results/* rust/crates/og-live/src/veil.rs scripts/11-roh-analysis.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
 lpa-1	assets/acmg_sf.tsv assets/callability_genes.tsv assets/carrier_genes.tsv assets/mito_confirmed.tsv assets/par_grch38.bed assets/stub/sample.vcf.gz bin/cn_loci.tsv bin/collect_summary.py bin/og bin/render_report.py bin/results_index.py modules/local/deepvariant/* modules/local/html_report/* modules/local/lpa/* modules/local/vcf_precheck/* scripts/24-html-report.sh scripts/46-lpa.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh

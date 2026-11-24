@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # fetch-pinned.sh: the one download rule of the asset builders in
-# scripts/ci/ (build-callability.sh, build-cn-intervals.sh,
+# scripts/ci/ (build-acmg-lof.sh, build-callability.sh, build-cn-intervals.sh,
 # build-sv-rule-regions.sh). Source it; it defines two functions.
 #
 #   fetch_pinned DIR NAME URL SHA256

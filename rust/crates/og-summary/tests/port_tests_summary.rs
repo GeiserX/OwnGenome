@@ -733,8 +733,8 @@ fn clinical_mane_and_call_quality_keep_weak_and_unknown_rows_out_of_the_rare_cou
     expect(find("BRCA2").unwrap(), "weak_call", "true");
     expect(find("LDLR").unwrap(), "weak_call", "true");
     expect(find("MYBPC3").unwrap(), "weak_call", "false");
-    expect(find("MYH7").unwrap(), "frequency", r#""unknown""#);
-    expect(find("MYH7").unwrap(), "frequency_unknown", "true");
+    expect(find("DSP").unwrap(), "frequency", r#""unknown""#);
+    expect(find("DSP").unwrap(), "frequency_unknown", "true");
     assert!(string(find("BRCA2").unwrap(), "call_note").contains("GQ 12 < 30"));
     let ldlr = string(find("LDLR").unwrap(), "call_note");
     assert!(ldlr.contains("GQ 11") && ldlr.contains("0.29 of the depth on a homozygous call"));

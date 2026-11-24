@@ -67,6 +67,7 @@ fn tier(
     let c: Result<ClinicalVcf, String> = Ok(ClinicalVcf {
         records: high.len(),
         high: Ok(high),
+        held: Default::default(),
     });
     let d = no_deletions();
     acmg_sf(&Inputs {

@@ -147,7 +147,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev helpers [args]
   og dev build cn-intervals|callability|sv-rule-regions [args]
   og dev build roh-af [args]
-  og dev build acmg-lof [args]
+  og dev build acmg-lof --clingen FILE --overrides FILE --ttn-exons FILE --table FILE [--check]
   og dev demo-sample [args]
   og dev demo-events [args]
   og dev params-doc [args]

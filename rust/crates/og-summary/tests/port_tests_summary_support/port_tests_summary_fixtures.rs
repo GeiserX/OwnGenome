@@ -373,17 +373,17 @@ pub fn put_clinical_mane(d: &Sample, zero_floor: bool) {
         chr13\t200\t.\tA\tAT\t50\tPASS\tCSQ=AT|frameshift_variant|HIGH|BRCA2|ENST3|YES|NM_2|0.0001\tGT:GQ:DP:AD\t0/1:12:.:3,2\n\
         chr19\t300\t.\tG\tA\t50\tPASS\tCSQ=A|stop_gained|HIGH|LDLR|ENST4|YES|NM_3|0.0001\tGT:GQ:DP:AD\t1/1:11:17:12,5\n\
         chr11\t400\t.\tG\tA\t50\tPASS\tCSQ=A|stop_gained|HIGH|MYBPC3|ENST5|YES|NM_4|0.0001\tGT:GQ:DP:AD\t1/1:50:30:0,30\n\
-        chr14\t500\t.\tCTTT\tC\t50\tPASS\tCSQ=-|frameshift_variant|HIGH|MYH7|ENST6|YES|NM_5|\tGT:GQ:DP:AD\t0/1:50:30:15,15\n\
+        chr14\t500\t.\tCTTT\tC\t50\tPASS\tCSQ=-|frameshift_variant|HIGH|DSP|ENST6|YES|NM_5|\tGT:GQ:DP:AD\t0/1:50:30:15,15\n\
         chr11\t600\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|KCNQ1|ENST7|YES|NM_6|0.3\tGT:GQ:DP:AD\t0/1:50:30:15,15\n\
         chr3\t700\t.\tC\tT\t50\tPASS\tCSQ=T|missense_variant|MODERATE|SCN5A|ENST8|||0.0001,T|stop_gained|HIGH|SCN5A|ENST9|YES||0.0001\tGT:GQ:DP:AD\t0/1:50:30:15,15\n"
     ));
     d.put("clinical/S_clinical_summary.tsv",
         "CHROM\tPOS\tREF\tALT\tGT\tIMPACT\tGENE\tConsequence\tMAX_AF\tCADD_PHRED\tREVEL\tAM_CLASS\tTRANSCRIPT\tWORST_IMPACT\tWORST_Consequence\tFREQ_TIER\tGQ\tDP\tAD\tCALL_CHECK\tCALL_WHY\n\
         chr13\t200\tA\tAT\t0/1\tHIGH\tBRCA2\tframeshift_variant\t0.0001\t.\t.\t.\tMANE\tHIGH\tframeshift_variant\trare\t12\t.\t3,2\tweak\tGQ12\n\
-        chr14\t500\tCTTT\tC\t0/1\tHIGH\tMYH7\tframeshift_variant\t.\t.\t.\t.\tMANE\tHIGH\tframeshift_variant\tunknown\t50\t30\t15,15\tok\t.\n");
+        chr14\t500\tCTTT\tC\t0/1\tHIGH\tDSP\tframeshift_variant\t.\t.\t.\t.\tMANE\tHIGH\tframeshift_variant\tunknown\t50\t30\t15,15\tok\t.\n");
     d.put(SLIVAR,
         "CHROM\tPOS\tREF\tALT\tIMPACT\tSYMBOL\tConsequence\tExisting_variation\tGT\tMAX_AF\tgnomADe_AF\tgnomADg_AF\tFREQ_TIER\tTRANSCRIPT\tMANE_Consequence\n\
-        chr14\t500\tCTTT\tC\tHIGH\tMYH7\tframeshift_variant\t.\t0/1\t.\t.\t.\tunknown\tMANE\tframeshift_variant\n\
+        chr14\t500\tCTTT\tC\tHIGH\tDSP\tframeshift_variant\t.\t0/1\t.\t.\t.\tunknown\tMANE\tframeshift_variant\n\
         chr13\t200\tA\tAT\tHIGH\tBRCA2\tframeshift_variant\t.\t0/1\t0.0001\t0.0001\t.\trare\tMANE\tframeshift_variant\n");
 }
 
@@ -937,7 +937,7 @@ pub fn put_acmg_secondary_findings(d: &Sample) {
     d.put(CLINVAR, format!("{VCF}chr13\t32340300\t1\tG\tA\t50\tPASS\tGENEINFO=BRCA2:675;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\tGT\t0/1\n\
         chr1\t10\t2\tC\tT\t50\tPASS\tGENEINFO=GENEA:11;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter\tGT\t0/1\n"));
     let header = VCF.replacen("#CHROM", "##INFO=<ID=CSQ,Number=.,Type=String,Description=\"Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL\">\n#CHROM", 1);
-    d.gzip(CLINICAL_VCF, &format!("{header}chr2\t178500000\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|TTN,T|intron_variant|MODIFIER|TTN-AS1\tGT\t0/1\n\
+    d.gzip(CLINICAL_VCF, &format!("{header}chr2\t178600000\t.\tC\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|TTN,T|intron_variant|MODIFIER|TTN-AS1\tGT:GQ:DP:AD\t0/1:50:30:15,15\n\
         chr3\t100\t.\tA\tG\t50\tPASS\tCSQ=G|frameshift_variant|HIGH|GENEX\tGT\t1/1\n\
         chr14\t23400000\t.\tG\tA\t50\tPASS\tCSQ=A|missense_variant|MODERATE|MYH7\tGT\t0/1\n"));
 }
