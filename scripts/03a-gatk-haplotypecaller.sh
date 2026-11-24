@@ -3,10 +3,16 @@
 # Alternative to step 03 (DeepVariant). Outputs to vcf_gatk/ to avoid conflicts.
 # Input: sorted BAM + GRCh38 reference (with .dict and .fai)
 # Output: VCF.gz in $GENOME_DIR/<sample>/vcf_gatk/
-# Ploidy: every contig is called diploid, chrX and chrY of a male sample too,
-# so a male sample can get heterozygous calls there that cannot be real.
-# Step 03 with `male` calls them haploid. Reads flagged as duplicates by
-# step 02 are skipped (GATK's default read filter).
+# Usage: ./scripts/03a-gatk-haplotypecaller.sh <sample_name> [male|female]
+# Sex: with `male`, chrX and chrY are called with ploidy 1 (--sample-ploidy 1)
+# outside the pseudoautosomal regions (assets/par_grch38.bed), as step 03
+# does, so a male sample gets no impossible heterozygous call there: their
+# units are cut at the PARs and the parts outside are called on their own.
+# `female` calls every contig diploid. With no sex, the sex run-all.sh
+# recorded for the sample in logs/run_status.tsv counts; with none there
+# either, every contig is called diploid and a note says so.
+# Reads flagged as duplicates by step 02 are skipped (GATK's default read
+# filter).
 #
 # Scatter: HaplotypeCaller multithreads only its PairHMM, so the genome is
 # split into units (chr1-22, X, Y and M one each, the other contigs together;
@@ -14,19 +20,21 @@
 # THREADS/2, fewer when their 8 GB each do not fit in the container engine's
 # memory) run at once, 2 CPUs and 8 GB each, then bcftools concat joins
 # them in reference order. SCATTER=false runs one process over everything,
-# with the same calls. A region off its contig, or two regions that overlap,
+# with the same calls (for a male sample, two in turn: the haploid parts of
+# chrX and chrY, and the rest). A region off its contig, or two regions that overlap,
 # stop the step before GATK starts.
 #
-# Rerun: a finished VCF called with the same INTERVALS, SCATTER, BAM (the
-# same file content), reference and image is kept (run-all.sh runs this step
+# Rerun: a finished VCF called with the same INTERVALS, SCATTER, sex (male,
+# or not), BAM (the same file content), reference and image is kept (run-all.sh runs this step
 # on every invocation with EXTRA_CALLERS=gatk); delete it to call again.
 set -euo pipefail
 
-SAMPLE=${1:?Usage: $0 <sample_name>}
+SAMPLE=${1:?Usage: $0 <sample_name> [male|female]}
 GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
+SEX=$(sample_sex "${2:-}")
 INTERVALS=${INTERVALS:-""}
 
 SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
@@ -43,10 +51,11 @@ echo "Threads: ${THREADS}"
 if [ -n "$INTERVALS" ]; then
   echo "Intervals: ${INTERVALS}"
 fi
+ploidy_line "$SEX"
 echo "Output: ${OUTPUT_DIR}/${SAMPLE}.vcf.gz"
 
 # Validate inputs
-for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai" "$REF_DICT"; do
+for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai" "$REF_DICT" "$PAR_BED"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: File not found: ${f}" >&2
     exit 1
@@ -56,15 +65,16 @@ done
 mkdir -p "$OUTPUT_DIR"
 
 # A finished VCF is reused only when it was called the way this run would
-# call it: RUN_FILE, written last, holds INTERVALS, SCATTER, the BAM's path,
-# the reference and the image on its first line, then the BAM's input_stamp
+# call it: RUN_FILE, written last, holds INTERVALS, SCATTER, sex=male for a
+# male sample, the BAM's path, the reference and the image on its first line, then the BAM's input_stamp
 # (size, modification time and the sha256 of its first and last MiB), so a
 # realigned or replaced BAM is called again even under the same name, size
 # and time. A subset VCF never stands in for a whole-genome request, and
-# SCATTER=false after a scattered run calls again in one process.
+# SCATTER=false after a scattered run calls again in one process. A female
+# sample and one of no sex are called the same way, so they share a record.
 OUT="${OUTPUT_DIR}/${SAMPLE}.vcf.gz"
 RUN_FILE="${OUTPUT_DIR}/${SAMPLE}.run"
-RUN_DESC="INTERVALS=${INTERVALS} scatter=${SCATTER:-true} bam=${BAM} reference=${REF_FASTA} image=${GATK_IMAGE}"
+RUN_DESC="INTERVALS=${INTERVALS} scatter=${SCATTER:-true}$([ "$SEX" != male ] || echo ' sex=male') bam=${BAM} reference=${REF_FASTA} image=${GATK_IMAGE}"
 BAM_STAMP=$(input_stamp "$BAM")
 RUN_KEY="${RUN_DESC}
 ${BAM_STAMP}"
@@ -81,13 +91,25 @@ rm -f "$RUN_FILE"
 UNITS_DIR="${OUTPUT_DIR}/scatter"
 mapfile -t UNITS < <(scatter_beds "$UNITS_DIR" "$INTERVALS")
 [ "${#UNITS[@]}" -gt 0 ] || { echo "ERROR: no calling units (INTERVALS='${INTERVALS}')" >&2; exit 1; }
+# One unit (SCATTER=false, or one region) runs as one process with every CPU,
+# also when a male sample's ploidy split makes it two: they run in turn.
+ONE=false
+[ "${#UNITS[@]}" -gt 1 ] || ONE=true
+# The cut is kept only when it succeeds: one that fails part way must not
+# leave the units before the failure to be called and cached as the result.
+SPLIT=$(ploidy_units "$SEX" "${UNITS[@]}") || { echo "ERROR: could not cut the calling units at ${PAR_BED}." >&2; exit 1; }
+[ -n "$SPLIT" ] || { echo "ERROR: no calling units after the ploidy split" >&2; exit 1; }
+mapfile -t UNITS <<< "$SPLIT"
 SCATTER_JOBS=$(scatter_jobs 8)
-[ "${#UNITS[@]}" -gt 1 ] || SCATTER_JOBS=1
+[ "$ONE" = false ] || SCATTER_JOBS=1
 
-# call_unit BED: HaplotypeCaller over one unit, into scatter/<unit>.vcf.gz.
+# call_unit BED: HaplotypeCaller over one unit, into scatter/<unit>.vcf.gz;
+# a haploid unit (*.hap.bed, see ploidy_units) with --sample-ploidy 1.
 call_unit() {
   local bed=$1 cpus=2 mem=8g
-  [ "${#UNITS[@]}" -gt 1 ] || { cpus=$THREADS mem=32g; }
+  local -a ploidy=()
+  [ "$ONE" = false ] || { cpus=$THREADS mem=32g; }
+  [[ "$bed" != *.hap.bed ]] || ploidy=(--sample-ploidy 1)
   run_in --cpus "$cpus" --memory "$mem" \
     "$GATK_IMAGE" \
     gatk HaplotypeCaller \
@@ -96,6 +118,7 @@ call_unit() {
       -L "$(cpath "$bed")" \
       -O "$(cpath "${bed%.bed}.vcf.gz")" \
       --native-pair-hmm-threads "$cpus" \
+      ${ploidy[@]+"${ploidy[@]}"} \
       -ERC NONE > "${bed%.bed}.log" 2>&1 \
     || { echo "ERROR: HaplotypeCaller failed on ${bed##*/}; its log:" >&2; tail -n 20 "${bed%.bed}.log" >&2; return 1; }
 }
