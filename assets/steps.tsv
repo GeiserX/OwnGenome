@@ -25,7 +25,7 @@ step	label	tool	recorded	processes	sections	upstream	hours	hours_from	hours_low	
 04a	TIDDIT		yes			02				
 04b	GRIDSS		yes			02	8	estimate		
 05	AnnotSV	annotsv	yes	ANNOTSV	annotsv	15,19,18	0.03	measured	0.0166	
-06	ClinVar screen	clinvar	yes	CLINVAR_SCREEN,CLINVAR_CDNA_CHECK	clinvar,carrier,acmg_sf	03	0.02	measured	0.0083	clinvar_file_date
+06	ClinVar screen	clinvar	yes	CLINVAR_SCREEN,CLINVAR_CDNA_CHECK	clinvar,carrier,acmg_sf	03	0.02	measured	0.0083	clinvar_file_date,clinvar_conflicting@self
 07	PharmCAT	pharmcat	yes	PHARMCAT_PREPROCESS,PHARMCAT	pharmcat	03	0.02	measured	0.0083	PHARMCAT_IMAGE
 08	HLA typing (T1K)	hla_typing	yes	T1K_BUILD,HLA_TYPING,KIR_BUILD,KIR_TYPING,HLA_QC_READS,HLA_QC	hla	02	1.09	measured	0.5833	hla_database
 09	ExpansionHunter	expansion_hunter	yes	EXPANSION_HUNTER	expansions	02	0.01	measured	0.0005	

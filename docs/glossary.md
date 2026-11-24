@@ -26,6 +26,8 @@ Terms used throughout this pipeline's documentation, explained for people who ar
 
 **ClinVar** — NCBI's public database of clinically significant genetic variants. Each entry includes a significance classification (pathogenic, benign, VUS, etc.) and supporting evidence.
 
+**Conflicting classifications (ClinVar)** — ClinVar's label for a variant that labs classify differently, for example two labs calling it pathogenic and one uncertain. Such a record is not a hit of step 06. When at least one lab calls it pathogenic or likely pathogenic, step 06 lists it apart in `<sample>_clinvar_conflicting.tsv`, to review with a clinician.
+
 **CNV** — Copy Number Variant. A region of the genome that is deleted or duplicated relative to the reference. Detected by CNVpytor (depth-based) and Manta/Delly (read-pair based).
 
 **Compound Heterozygous** — Having two different pathogenic variants in the same gene, one from each parent. Can cause autosomal recessive disease even though neither variant is homozygous.

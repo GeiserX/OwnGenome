@@ -280,7 +280,8 @@ echo "[Steps] ${SAMPLE} (${SEX})"
 for p in "07 PharmCAT:pharmcat" "27 CPIC lookup:cpic" "11 ROH:roh" "12 Mito haplogroup:mito_haplogroup" "16b mosdepth:mosdepth" \
          "10 TelomereHunter:telomere_hunter" "20 Mito variants (Mutect2):mito_variants" "04 Manta:manta" \
          "19 Delly:delly" "15 duphold:duphold" "22 SV consensus merge:survivor_merge" "28 MultiQC:multiqc"; do plan "${p%:*}" "${p##*:}" || true; done
-plan "06 ClinVar screen" clinvar "$(need "$CV" "${CV}.tbi")" && NF+=(--clinvar "$CV" --clinvar_index "${CV}.tbi")
+plan "06 ClinVar screen" clinvar "$(need "$CV" "${CV}.tbi")" && NF+=(--clinvar "$CV" --clinvar_index "${CV}.tbi") \
+  && { CC="${G}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"; [ ! -s "${CC}.tbi" ] || arg --clinvar_conflicting "$CC"; }
 H=$(data_file hla_dat || true) GT=$(data_file gencode_genes || true)
 plan "08 HLA typing (T1K)" hla_typing "$(need "$H" "$GT")" && NF+=(--hla_dat "$H" --hla_genes "$GT") \
   && if on KIR; then K="${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"; if [ -s "$K" ]; then NF+=(--kir true --kir_dat "$K")

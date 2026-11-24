@@ -111,7 +111,7 @@ process HTML_REPORT {
         if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
         case "\$n" in
             sample.vcf.gz) ;;
-            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv) place clinvar "\$f" ;;
+            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv|${id}_clinvar_conflicting.tsv) place clinvar "\$f" ;;
             ${id}.report.json|${id}.report.html)          place pharmcat "\$f" ;;
             ${id}_phenotypes.tsv|${id}_cpic_recommendations.txt) place cpic "\$f" ;;
             ${id}_vep.vcf.gz|${id}_vep.vcf.gz.tbi)        place vep "\$f" ;;
