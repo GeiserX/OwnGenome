@@ -81,7 +81,7 @@ validate_sample "$SAMPLE"
 EXOME="" EXOME_TOOLS="" prev=""
 for a in "$@"; do case "${prev}:${a}" in --model_type:WES|*:--model_type=WES) EXOME=1 ;; esac; prev=$a; done
 if [ -n "$EXOME" ]; then
-  EXOME_TOOLS=$(sed -n '/^def exome_skipped_tools()/,/^}/p' "${PGP_ROOT}/workflows/exome.nf" | grep -o "'[a-z0-9_]*'" | tr -d "'" | tr '\n' ' ')
+  EXOME_TOOLS=$(sed -n '/^def exome_skipped_tools()/,/^}/p' "${PGP_ROOT}/workflows/exome.nf" | { grep -o "'[a-z0-9_]*'" || true; } | tr -d "'" | tr '\n' ' ')
   [ -n "$EXOME_TOOLS" ] || { echo "ERROR: --model_type WES: no step list in exome_skipped_tools() of ${PGP_ROOT}/workflows/exome.nf" >&2; exit 2; }
 fi
 # EVERYTHING=true: every tool row of assets/everything.tsv goes into TOOLS (html_report aside: this script writes
