@@ -4,8 +4,8 @@
 //! continental and regional group (`-` when in none), whether the person
 //! is a reference (unrelated, in a group, and the regional group has
 //! [`MIN_REFERENCES`] unrelated people), and whether it is one of the
-//! painting references (at most N per continental group, taken in turn from
-//! each population).
+//! painting references (at most N per continental group, `--paint-per-group`,
+//! 200 by default, taken in turn from each population).
 
 use crate::{Args, Fail, Level, MIN_REFERENCES, Pending, Result, Spec, groups_of, label};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
