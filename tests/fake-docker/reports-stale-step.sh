@@ -110,8 +110,8 @@ TXT="${S}/sample1_report.txt"
 HTML="${S}/sample1_report.html"
 [ -s "$TXT" ] || fail "no text report"
 [ -s "$HTML" ] || fail "no HTML report"
-# The schema check needs og: Guard's og-musl job runs this case with og built
-# and requires the line below; the fake-docker job has no og and says so.
+# The schema check needs bin/og. Guard's og-musl job requires the case to
+# report that summary.json passed the schema check.
 if "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
   "${REPO_ROOT}/bin/og" dev schema "${REPO_ROOT}/tests/schema/summary.schema.json" "${S}/summary.json" \
     || fail "summary.json does not validate"

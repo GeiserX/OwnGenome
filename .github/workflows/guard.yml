@@ -991,8 +991,7 @@ jobs:
           git checkout -- og/src/main.rs
           ./og.sh check --required
 
-      # The fake-docker job has no og, so this case skips its schema check
-      # there; here og is built and the check must run.
+      # Require the schema check to run with the musl build of og.
       - name: Validate summary.json with og dev schema
         working-directory: .
         run: |
@@ -1017,7 +1016,7 @@ jobs:
       # Every test that carries the line `# og-leg: OG_REQUIRED` runs here,
       # with bin/og and OG_REQUIRED=1 (the tests that run og clinvar, the
       # og filters, setup and step report tools, and the step 05 tests, which
-      # run the real step with bin/og). unit-tests has no og, so there they
+      # run the real step with bin/og). unit-tests has no bin/og, so there they
       # skip with a note; here OG_REQUIRED turns a skip into a failure. A new
       # test that needs og adds the marker line; there is no list to edit.
       - name: The og-leg tests (every tests/test_* with the og-leg marker), with og
@@ -1056,8 +1055,7 @@ jobs:
           echo "${#tests[@]} tests carry the og-leg marker"
           og_leg "${tests[@]}"
 
-      # The fake-docker job builds no og, so its cn-engine-calls case says it
-      # is skipped there; here bin/og is built and the case must run.
+      # Require this case to run with the musl build of og.
       - name: The fake-docker case cn-engine-calls (steps 35, 41 and 46 through og cn) with og
         working-directory: .
         run: |
