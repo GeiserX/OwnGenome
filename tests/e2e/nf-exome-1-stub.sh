@@ -75,9 +75,17 @@ check "WES: SAMPLE_QC gets no mosdepth regions (capture regions are not sex-loss
   test -n "$QC_SH" -a ! -e "$(dirname "${QC_SH:-/x}")/ex1.regions.bed.gz"
 L=$(exome_line)
 check "WES: the log says which steps are not run: exome" test -n "$L"
+# run-all.sh reads the names it records as 'not run: exome' from exome_skipped_tools() of workflows/exome.nf
+# (tests/fake-docker/i411-nf-exome-mode-run-all.sh): the names this run left out must be exactly that list, so
+# a step main.nf drops some other way, or one the list names that main.nf keeps, shows here.
+EXOME_LIST=$(awk '/^def exome_skipped_tools\(\)/ {f = 1; next} f && /^}/ {exit} f' "${REPO}/workflows/exome.nf" \
+  | grep -oE "'[a-z0-9_]+'" | tr -d "'" | sort | tr '\n' ' ')
 for t in cnvpytor roh telomere_hunter archaic mocha viral cyrius parascopy locityper mei; do
   check "WES: the not-run line names ${t}" has "[ ,]${t}([,.]|\$)" "$L"
+  check "WES: exome_skipped_tools() lists ${t}" has "(^| )${t} " "$EXOME_LIST"
 done
+DROPPED=$(sed -e 's/.*not run: exome: //' -e 's/\. These steps.*//' <<< "$L" | tr -d ' ' | tr ',' '\n' | sort | tr '\n' ' ')
+check_eq "WES: the steps left out are exactly exome_skipped_tools() of workflows/exome.nf" "$DROPPED" "$EXOME_LIST"
 check "WES: survivor_merge keeps Manta and Delly, so it is not named" lacks 'survivor_merge' "$L"
 for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS INDEXCOV \
          CYRIUS PARASCOPY LOCITYPER MEI_DEPTH; do
