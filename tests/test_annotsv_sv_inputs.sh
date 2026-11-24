@@ -38,7 +38,7 @@
 #      bundle, whose columns are not a full bundle's.
 # Needs docker, and og built for this machine (scripts/setup.sh --og): step
 # 05 runs og sv svlen-fix. Without og the test is skipped with a note; with
-# OG_REQUIRED set, the skip is a failure (the rust job of guard.yml sets it).
+# OG_REQUIRED set, the skip is a failure (the og-musl job of guard.yml sets it).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
