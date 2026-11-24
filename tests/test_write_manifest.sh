@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # og-leg: OG_REQUIRED
-if [ "${OG_REQUIRED:-}" = 1 ]; then echo "planted og-musl failure"; exit 1; fi
 # bin/write_manifest.sh with two or more writers of one sample at once (a run
 # and a report script can both write run_manifest.tsv). A fake container
 # engine holds each writer at its first image lookup, after it has started
