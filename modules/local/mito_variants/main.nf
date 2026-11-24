@@ -102,13 +102,13 @@ process MITO_VARIANTS {
     # with the linear ones outside it. A failure leaves the linear calls alone.
     shifted_pass() {
         rm -rf shifted && mkdir shifted || return 1
-        # Under Docker the task runs as root (above): shifted/ is yours from
-        # the start and the large files go to the container's own /tmp, so a
-        # task killed outright (no EXIT trap) leaves in shifted/ only plain
-        # files, which you can remove. Elsewhere the task runs as you, and
-        # they stay in shifted/.
-        if [ "${workflow.containerEngine}" = docker ]; then
-            [ -z "\${NXF_OWNER:-}" ] || chown "\${NXF_OWNER}" shifted || return 1
+        # Under Docker the task runs as root (above), and NXF_OWNER names
+        # you: shifted/ is yours from the start and the large files go to the
+        # container's own /tmp, so a task killed outright (no EXIT trap)
+        # leaves in shifted/ only plain files, which you can remove.
+        # Elsewhere the task runs as you, and they stay in shifted/.
+        if [ -n "\${NXF_OWNER:-}" ]; then
+            chown "\${NXF_OWNER}" shifted || return 1
             T=\$(mktemp -d) || return 1
         else
             T=shifted/tmp && mkdir "\$T" || return 1
