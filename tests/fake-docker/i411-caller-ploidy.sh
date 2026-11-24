@@ -25,6 +25,9 @@
 #                  --contig-ploidies chrX=1 chrY=1 and the rest with MT=1
 #                  chrM=1, and joins the two VCFs; `female` runs it once as
 #                  before, with no ploidy and no region file.
+#   All four      a cut at the PARs that fails part way (here at the chrX unit)
+#                  stops a male run with exit 1 before any call, and leaves no
+#                  result to reuse.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -263,4 +266,33 @@ run_expect 0 octopus-female "${SCRIPTS}/03d-octopus.sh" sample1 female
 output_has octopus-female "^Ploidy: female, every contig diploid but chrY and chrM \(Octopus' default\)"
 [ "$(octopus_runs)" -eq 1 ] || fail "03d female did not run Octopus once"
 [ "$(count ' octopus .*(--regions-file|--contig-ploidies)')" -eq 0 ] || fail "03d female passed a region file or a ploidy"
+
+# --- A failed PAR cut ---------------------------------------------------------------------
+# This awk fails when it cuts a unit that holds chrX at the PARs. Whole-genome
+# units are cut in order, so GATK and FreeBayes fail after chr1 was cut.
+REAL_AWK=$(command -v awk)
+mkdir -p "${CASE_WORK}/broken-awk"
+cat > "${CASE_WORK}/broken-awk/awk" <<SHIM
+#!/usr/bin/env bash
+for last in "\$@"; do :; done
+case " \$* " in
+  *"/par_grch38.bed "*) if grep -q "^chrX" "\$last" 2>/dev/null; then echo "awk: read error" >&2; exit 2; fi ;;
+esac
+exec "$REAL_AWK" "\$@"
+SHIM
+chmod +x "${CASE_WORK}/broken-awk/awk"
+# broken_cut NAME SCRIPT DIR CALLER: a male run stops, calls nothing, records nothing.
+broken_cut() {
+  rm -rf "${G}/sample1/$3"
+  fresh
+  PATH="${CASE_WORK}/broken-awk:${PATH}" run_expect 1 "$1" "${SCRIPTS}/$2" sample1 male
+  output_has "$1" "ERROR: could not cut .* at .*par_grch38\\.bed\\."
+  [ "$(count "$4")" -eq 0 ] || fail "$2 called after a failed PAR cut"
+  [ ! -e "${G}/sample1/$3/sample1.run" ] || fail "$2 recorded a run after a failed PAR cut"
+}
+broken_cut gatk-broken-cut 03a-gatk-haplotypecaller.sh vcf_gatk " HaplotypeCaller "
+broken_cut freebayes-broken-cut 03b-freebayes.sh vcf_freebayes " freebayes "
+broken_cut strelka-broken-cut 03c-strelka2-germline.sh vcf_strelka2 "configureStrelkaGermlineWorkflow"
+broken_cut octopus-broken-cut 03d-octopus.sh vcf_octopus "^run image=[^ ]*octopus.* octopus -R "
+
 echo "Each alternative caller calls a male's chrX and chrY haploid outside the PARs, and nothing else."

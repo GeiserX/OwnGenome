@@ -1078,7 +1078,7 @@ ploidy_units() {
           s = b
         }
         if (s < e) print c, s, e > hap }' "$PAR_BED" "$u" || return 1
-    if [ -s "${u}.dip" ]; then mv -f "${u}.dip" "$u"; echo "$u"; else rm -f "${u}.dip" "$u"; fi
+    if [ -s "${u}.dip" ]; then mv -f "${u}.dip" "$u" || return 1; echo "$u"; else rm -f "${u}.dip" "$u"; fi
     if [ -s "$hap" ]; then echo "$hap"; fi
   done
 }

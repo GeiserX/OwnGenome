@@ -120,8 +120,9 @@ else
   UNITS_DIR="${OUTPUT_DIR}/ploidy"
   mapfile -t UNITS < <(SCATTER=false scatter_beds "$UNITS_DIR" "${INTERVALS:-}")
   [ "${#UNITS[@]}" -gt 0 ] || { echo "ERROR: no calling regions (INTERVALS='${INTERVALS:-}')" >&2; exit 1; }
-  mapfile -t UNITS < <(ploidy_units male "${UNITS[@]}")
-  [ "${#UNITS[@]}" -gt 0 ] || { echo "ERROR: no calling regions after the ploidy split" >&2; exit 1; }
+  SPLIT=$(ploidy_units male "${UNITS[@]}") || { echo "ERROR: could not cut the calling regions at ${PAR_BED}." >&2; exit 1; }
+  [ -n "$SPLIT" ] || { echo "ERROR: no calling regions after the ploidy split" >&2; exit 1; }
+  mapfile -t UNITS <<< "$SPLIT"
   PARTS=()
   for u in "${UNITS[@]}"; do
     awk -F'\t' '{ print $1 ":" $2 "-" $3 }' "$u" > "${u%.bed}.regions"

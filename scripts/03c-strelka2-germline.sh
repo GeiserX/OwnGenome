@@ -95,7 +95,10 @@ else
   if [ "$SEX" = male ]; then
     # The haploid stretches: chrX and chrY of the reference, cut at the PARs.
     awk -F'\t' -v OFS='\t' '$1 == "chrX" || $1 == "chrY" { print $1, 0, $2 }' "${REF}.fai" > "${OUTPUT_DIR}/xy.bed"
-    HAP=$(ploidy_units male "${OUTPUT_DIR}/xy.bed" | grep '\.hap\.bed$' || true)
+    # A failed cut stops the step: an empty list must mean "no haploid
+    # stretch", never "the cut failed", or a male would be called diploid.
+    SPLIT=$(ploidy_units male "${OUTPUT_DIR}/xy.bed") || { echo "ERROR: could not cut chrX and chrY at ${PAR_BED}." >&2; exit 1; }
+    HAP=$(printf '%s\n' "$SPLIT" | grep '\.hap\.bed$' || true)
     if [ -z "$HAP" ]; then
       echo "NOTE: the reference has no chrX or chrY outside the PARs; every contig is called diploid."
     else

@@ -95,8 +95,11 @@ mapfile -t UNITS < <(scatter_beds "$UNITS_DIR" "$INTERVALS")
 # also when a male sample's ploidy split makes it two: they run in turn.
 ONE=false
 [ "${#UNITS[@]}" -gt 1 ] || ONE=true
-mapfile -t UNITS < <(ploidy_units "$SEX" "${UNITS[@]}")
-[ "${#UNITS[@]}" -gt 0 ] || { echo "ERROR: no calling units after the ploidy split" >&2; exit 1; }
+# The cut is kept only when it succeeds: one that fails part way must not
+# leave the units before the failure to be called and cached as the result.
+SPLIT=$(ploidy_units "$SEX" "${UNITS[@]}") || { echo "ERROR: could not cut the calling units at ${PAR_BED}." >&2; exit 1; }
+[ -n "$SPLIT" ] || { echo "ERROR: no calling units after the ploidy split" >&2; exit 1; }
+mapfile -t UNITS <<< "$SPLIT"
 SCATTER_JOBS=$(scatter_jobs 8)
 [ "$ONE" = false ] || SCATTER_JOBS=1
 
