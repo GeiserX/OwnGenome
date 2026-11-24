@@ -50,31 +50,31 @@ process ROH {
     if [ -n "${panel}" ]; then
         GROUP=\$( [ ! -s "${anc}" ] || awk -F'\\t' '\$1 ~ /^probability_(AFR|AMR|EAS|EUR|SAS)\$/ && \$2 + 0 >= 0.8 {print substr(\$1, 13), \$2}' "${anc}")
         if [ -z "\${GROUP}" ]; then
-            ROH_FLAGS="--AF-file ${panel}"
+            ROH_FLAGS=(--AF-file "${panel}")
             AF_DESC="global (panel ${panel}); no step 26 group at 0.8 or more"
         else
             read -r POP PROB <<< "\${GROUP}"
             case "\${POP}" in AFR) COL=5 ;; AMR) COL=6 ;; EAS) COL=7 ;; EUR) COL=8 ;; SAS) COL=9 ;; esac
             GNOMAD_GROUP=\$(echo "afr amr eas nfe sas" | cut -d' ' -f\$((COL - 4)))
-            bgzip -dc ${panel} \\
+            bgzip -dc "${panel}" \\
                 | awk -F'\\t' -v OFS='\\t' -v c=\${COL} '\$1 !~ /^#/ && \$c != "." && \$c + 0 >= 0.01 && \$c + 0 <= 0.99 {print \$1, \$2, \$3, \$c}' \\
                 | bgzip > ${meta.id}_roh_af.tsv.gz
             tabix -s1 -b2 -e2 ${meta.id}_roh_af.tsv.gz
-            ROH_FLAGS="--AF-file ${meta.id}_roh_af.tsv.gz"
+            ROH_FLAGS=(--AF-file "${meta.id}_roh_af.tsv.gz")
             AF_DESC="\${GNOMAD_GROUP} (panel ${panel}); step 26 gives \${POP} \${PROB}"
         fi
         AF_LINE="# AF used: \${AF_DESC}"
     else
-        ROH_FLAGS="--AF-dflt 0.4"
+        ROH_FLAGS=(--AF-dflt 0.4)
     fi
     if [ "\${HAS_PL}" -eq 0 ]; then
-        ROH_FLAGS="\${ROH_FLAGS} -G30"
+        ROH_FLAGS+=(-G30)
     fi
 
     # Only PASS calls (and records with no filter, as chip VCFs have), as in
     # scripts/11-roh-analysis.sh. pipefail: a failed view must fail the task.
     bcftools view -f PASS,. -Ou ${vcf} \\
-        | bcftools roh \${ROH_FLAGS} -o ${meta.id}_roh.txt -
+        | bcftools roh "\${ROH_FLAGS[@]}" -o ${meta.id}_roh.txt -
     # The table names the frequencies it was found with, when they came from
     # the panel, as the bash step writes it.
     if [ -n "\${AF_LINE}" ]; then
