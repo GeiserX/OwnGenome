@@ -102,7 +102,7 @@ run_in --cpus 4 --memory 8g \
 # '##og_shifted_pass=' header line. The filters below then run on the merged
 # calls with the linear pass's stats. Should any part fail, the step warns
 # and filters the linear calls alone, as before; the summary then keeps the
-# origin_edge flag. The large intermediate files are removed.
+# origin_edge flag. The large intermediate files never leave the container.
 SHIFT_DIR="${OUTPUT_DIR}/shifted"
 SHIFT_C="/genome/${SAMPLE}/mito/shifted"
 RAW_C="/genome/${SAMPLE}/mito/${SAMPLE}_chrM_mutect2.vcf.gz"
@@ -116,47 +116,51 @@ shifted_pass() {
   # LoginException, "invalid null input: name"; HADOOP_USER_NAME and
   # SPARK_USER do not help). The image has no other aligner. The container
   # gives the directory back to you when it ends, so the next run can
-  # remove it. The Nextflow MITO_VARIANTS runs as root for the same reason.
+  # remove it. Its large files stay in the container's own /tmp, so even a
+  # container killed outright (no EXIT trap) leaves in the directory, which
+  # is yours, only plain files you can remove. The Nextflow MITO_VARIANTS
+  # runs as root for the same reason.
   # shellcheck disable=SC2016  # expanded inside the container
   run_in --root --cpus 4 --memory 8g "$GATK_IMAGE" bash -c '
     set -euo pipefail
     d=$1
+    t=$(mktemp -d)
     trap '\''chown -R "$3" "$d" || true'\'' EXIT
     export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
     gatk CreateSequenceDictionary -R "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.dict"
     gatk BwaMemIndexImageCreator -I "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.img"
     # The reads Mutect2 counts on the linear chrM, without their alignment.
-    gatk PrintReads -I "$2" -L chrM -O "$d/reads.bam" \
+    gatk PrintReads -I "$2" -L chrM -O "$t/reads.bam" \
       --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \
       --read-filter NotSupplementaryAlignmentReadFilter --read-filter MateOnSameContigOrNoMappedMateReadFilter
     # Unaligned and grouped by name. Not --SANITIZE: it re-encodes qualities
     # that are all Q31 or more as if they were phred+64.
-    gatk RevertSam -I "$d/reads.bam" -O "$d/unaligned.sam" --SORT_ORDER queryname \
+    gatk RevertSam -I "$t/reads.bam" -O "$t/unaligned.sam" --SORT_ORDER queryname \
       --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false --VALIDATION_STRINGENCY LENIENT \
       --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO
     # BwaSpark aligns records two by two as pairs: keep both mates or neither.
     awk -F"\t" "/^@/ { print; next } \$1 == name { print prev; print; name = \"\"; next } { name = \$1; prev = \$0 }" \
-      "$d/unaligned.sam" > "$d/paired.sam"
+      "$t/unaligned.sam" > "$t/paired.sam"
     # Unpaired reads (single-end, HiFi or ONT) leave no pair, and Mutect2
     # would then see few or none of the reads the linear pass saw, so the
     # control region would lose its calls. Under 90% kept fails the pass.
-    n=$(grep -vc "^@" "$d/unaligned.sam" || true)
-    k=$(grep -vc "^@" "$d/paired.sam" || true)
+    n=$(grep -vc "^@" "$t/unaligned.sam" || true)
+    k=$(grep -vc "^@" "$t/paired.sam" || true)
     echo "  Shifted-reference pass: ${k} of ${n} chrM reads kept as complete pairs" >&2
     if [ "$k" -eq 0 ] || [ $((k * 10)) -lt $((n * 9)) ]; then
       echo "  The chrM reads are not paired (under 90% kept): the rotated pass needs read pairs" >&2
       exit 1
     fi
-    gatk --java-options -Xmx4g BwaSpark -I "$d/paired.sam" -R "$d/chrM_shifted.fasta" \
-      --bwa-mem-index-image "$d/chrM_shifted.img" --spark-master "local[4]" -O "$d/aligned.bam"
-    gatk SortSam -I "$d/aligned.bam" -O "$d/sorted.bam" --SORT_ORDER coordinate --CREATE_INDEX true
-    gatk Mutect2 -R "$d/chrM_shifted.fasta" -I "$d/sorted.bam" -L "$d/control.intervals" \
+    gatk --java-options -Xmx4g BwaSpark -I "$t/paired.sam" -R "$d/chrM_shifted.fasta" \
+      --bwa-mem-index-image "$d/chrM_shifted.img" --spark-master "local[4]" -O "$t/aligned.bam"
+    gatk SortSam -I "$t/aligned.bam" -O "$t/sorted.bam" --SORT_ORDER coordinate --CREATE_INDEX true
+    gatk Mutect2 -R "$d/chrM_shifted.fasta" -I "$t/sorted.bam" -L "$d/control.intervals" \
       --mitochondria-mode --max-mnp-distance 0 -O "$d/shifted_mutect2.vcf.gz"
   ' _ "$SHIFT_C" "/genome/${SAMPLE}/mito/${SAMPLE}_chrM.bam" "$(id -u):$(id -g)" || return 1
   run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og vcf shift-back --linear "$RAW_C" --shifted "${SHIFT_C}/shifted_mutect2.vcf.gz" \
       --out "${SHIFT_C}/merged_mutect2.vcf.gz" || return 1
-  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.sam "$SHIFT_DIR"/*.img
+  rm -f "$SHIFT_DIR"/*.img
 }
 echo "  Shifted-reference pass: the control region again on chrM rotated by 8000 bp..."
 FILTER_IN="$RAW_C"
@@ -165,7 +169,7 @@ if shifted_pass; then
 else
   echo "  WARNING: the shifted-reference pass failed (see above): the control region keeps the"
   echo "  linear calls alone, and calls at its ends keep the origin_edge flag."
-  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.sam "$SHIFT_DIR"/*.img
+  rm -f "$SHIFT_DIR"/*.img
 fi
 
 echo "[4/8] Filtering variants..."

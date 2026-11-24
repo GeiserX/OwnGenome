@@ -37,16 +37,18 @@ process MITO_VARIANTS {
     // Hadoop's login, which needs a passwd entry for the task's uid, and the
     // GATK image has none for the -u of docker.runOptions (a LoginException,
     // "invalid null input: name"; HADOOP_USER_NAME and SPARK_USER do not
-    // help). Step 20 runs that container as root too. A later --user wins,
-    // and docker.fixOwnership gives the work directory back at the end, as
-    // for CPSR and CNVPYTOR. A process's containerOptions replaces the docker
-    // profile's '--network none', so it is repeated here unless the run's
-    // docker.runOptions already sets a network (Docker refuses the flag
-    // twice). Singularity runs as you with your passwd entry, so it needs
-    // nothing.
+    // help). Step 20 runs that container as root too. A later --user wins.
+    // docker.fixOwnership gives the work directory back only after a task
+    // that succeeds, so the script gives it back itself on any exit (below).
+    // A process's containerOptions replaces the run's process.containerOptions
+    // (the docker profile's '--network none', or any extra option of yours),
+    // so '--network none' is repeated here unless the run's docker.runOptions
+    // already sets a network (Docker refuses the flag twice). These are
+    // Docker's options, for Docker only: Singularity and Apptainer run as you
+    // with your passwd entry and need none, and their exec has no --user.
     containerOptions {
         def run_options = ((nextflow.Global.session?.config?.docker as Map)?.runOptions ?: '').toString()
-        workflow.containerEngine == 'singularity' ? '' :
+        workflow.containerEngine != 'docker' ? '' :
             '--user 0:0 -e HOME=/root' + (run_options.contains('--net') ? '' : ' --network none')
     }
 
@@ -76,6 +78,10 @@ process MITO_VARIANTS {
     }
     def depth_files = mosdepth_summary ? "${mosdepth_summary} ${mosdepth_dist}" : ''
     """
+    # Root under Docker (above): give every file back on any exit, also when
+    # the task fails. NXF_OWNER is set under docker.fixOwnership.
+    trap '[ -z "\${NXF_OWNER:-}" ] || chown -R "\${NXF_OWNER}" . 2>/dev/null || true' EXIT
+
     # Step 1: Extract chrM reads
     gatk PrintReads \\
         -I ${bam} \\
@@ -96,49 +102,62 @@ process MITO_VARIANTS {
     # with the linear ones outside it. A failure leaves the linear calls alone.
     shifted_pass() {
         rm -rf shifted && mkdir shifted || return 1
+        # Under Docker the task runs as root (above): shifted/ is yours from
+        # the start and the large files go to the container's own /tmp, so a
+        # task killed outright (no EXIT trap) leaves in shifted/ only plain
+        # files, which you can remove. Elsewhere the task runs as you, and
+        # they stay in shifted/.
+        if [ "${workflow.containerEngine}" = docker ]; then
+            [ -z "\${NXF_OWNER:-}" ] || chown "\${NXF_OWNER}" shifted || return 1
+            T=\$(mktemp -d) || return 1
+        else
+            T=shifted/tmp && mkdir "\$T" || return 1
+        fi
         og setup chrm-shift --fasta ${reference} \\
             --out shifted/chrM_shifted.fasta --intervals shifted/control.intervals || return 1
         export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
         gatk CreateSequenceDictionary -R shifted/chrM_shifted.fasta -O shifted/chrM_shifted.dict || return 1
         gatk BwaMemIndexImageCreator -I shifted/chrM_shifted.fasta -O shifted/chrM_shifted.img || return 1
-        gatk PrintReads -I ${prefix}_chrM.bam -L chrM -O shifted/reads.bam \\
+        gatk PrintReads -I ${prefix}_chrM.bam -L chrM -O "\$T/reads.bam" \\
             --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \\
             --read-filter NotSupplementaryAlignmentReadFilter \\
             --read-filter MateOnSameContigOrNoMappedMateReadFilter || return 1
         # Not --SANITIZE: it re-encodes qualities that are all Q31 or more as
         # if they were phred+64. BwaSpark aligns records two by two as pairs,
         # so awk keeps both mates of a name or neither.
-        gatk RevertSam -I shifted/reads.bam -O shifted/unaligned.sam \\
+        gatk RevertSam -I "\$T/reads.bam" -O "\$T/unaligned.sam" \\
             --SORT_ORDER queryname --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false \\
             --VALIDATION_STRINGENCY LENIENT --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO || return 1
         awk -F'\\t' '/^@/ { print; next } \$1 == name { print prev; print; name = ""; next } { name = \$1; prev = \$0 }' \\
-            shifted/unaligned.sam > shifted/paired.sam || return 1
+            "\$T/unaligned.sam" > "\$T/paired.sam" || return 1
         # Unpaired reads (single-end, HiFi or ONT) leave no pair, and the
         # control region would lose its calls: under 90% kept fails the pass.
-        n=\$(grep -vc '^@' shifted/unaligned.sam || true)
-        k=\$(grep -vc '^@' shifted/paired.sam || true)
+        n=\$(grep -vc '^@' "\$T/unaligned.sam" || true)
+        k=\$(grep -vc '^@' "\$T/paired.sam" || true)
         echo "shifted-reference pass: \${k} of \${n} chrM reads kept as complete pairs" >&2
         if [ "\$k" -eq 0 ] || [ \$((k * 10)) -lt \$((n * 9)) ]; then
             echo "the chrM reads are not paired (under 90% kept): the rotated pass needs read pairs" >&2
             return 1
         fi
-        gatk --java-options -Xmx4g BwaSpark -I shifted/paired.sam -R shifted/chrM_shifted.fasta \\
+        gatk --java-options -Xmx4g BwaSpark -I "\$T/paired.sam" -R shifted/chrM_shifted.fasta \\
             --bwa-mem-index-image shifted/chrM_shifted.img --spark-master "local[${task.cpus}]" \\
-            -O shifted/aligned.bam || return 1
-        gatk SortSam -I shifted/aligned.bam -O shifted/sorted.bam --SORT_ORDER coordinate \\
+            -O "\$T/aligned.bam" || return 1
+        gatk SortSam -I "\$T/aligned.bam" -O "\$T/sorted.bam" --SORT_ORDER coordinate \\
             --CREATE_INDEX true || return 1
-        gatk Mutect2 -R shifted/chrM_shifted.fasta -I shifted/sorted.bam -L shifted/control.intervals \\
+        gatk Mutect2 -R shifted/chrM_shifted.fasta -I "\$T/sorted.bam" -L shifted/control.intervals \\
             --mitochondria-mode --max-mnp-distance 0 -O shifted/shifted_mutect2.vcf.gz || return 1
         og vcf shift-back --linear ${prefix}_chrM_mutect2.vcf.gz \\
             --shifted shifted/shifted_mutect2.vcf.gz --out shifted/merged_mutect2.vcf.gz || return 1
     }
+    T=
     FILTER_IN=${prefix}_chrM_mutect2.vcf.gz
     if shifted_pass; then
         FILTER_IN=shifted/merged_mutect2.vcf.gz
     else
         echo "WARNING: the shifted-reference pass failed: the control region keeps the linear calls alone" >&2
     fi
-    rm -f shifted/*.bam shifted/*.bai shifted/*.sbi shifted/*.sam shifted/*.img
+    [ -z "\$T" ] || rm -rf "\$T"
+    rm -f shifted/*.img
 
     # Step 3: Filter variants (the stats are the linear pass's, over all of chrM)
     gatk FilterMutectCalls \\
