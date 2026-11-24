@@ -4,8 +4,7 @@ moved to og view serve: the Python helpers bin/owngenome_live_viewer.py
 still uses (assets/viewer/serve.py), and the report's links to the viewer
 (bin/render_report.py), on a synthetic sample. The server, the launcher and
 the page in Chrome are checked by rust/crates/og-live/tests/port_viewer.rs
-and tests/test_owngenome_view.sh. tests/test_live_viewer.py imports the
-sample and the Chrome helpers from here.
+and tests/test_owngenome_view.sh.
 
 The sample is made here: a random 3 kb chr1 and 1 kb chr2 reference with its
 .fai, 30 reads on chr1 as a coordinate-sorted BAM with its .bai, a bgzipped
@@ -28,7 +27,6 @@ import os
 import random
 import re
 import shutil
-import socket
 import struct
 import sys
 import tempfile
@@ -162,20 +160,6 @@ def igv_pin():
     if len(pin) != 2:
         raise SystemExit(f"versions.env does not set IGV_JS_VERSION and IGV_JS_SHA256: {pin}")
     return pin
-
-
-def free_port():
-    with socket.socket() as so:
-        so.bind(("127.0.0.1", 0))
-        return so.getsockname()[1]
-
-
-def find_chrome():
-    for c in (os.environ.get("CHROME"), "google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
-              "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
-        if c and (shutil.which(c) or os.path.isfile(c)):
-            return shutil.which(c) or c
-    return None
 
 
 # --- the report's findings tables ---------------------------------------------

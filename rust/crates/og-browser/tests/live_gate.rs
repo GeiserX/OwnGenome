@@ -3,11 +3,13 @@
 //! `demo_report_gate` runs on the static demo: the opaque closed handles, the
 //! order of the closed controls, each guard of the gate with its planted
 //! mistake, the transparency of the gate on adult and no-act pages, the slow
-//! release and two children with the same act IDs. `live_serve_report_gate`
-//! runs on `og live serve`: the live-mode requests, a parent's page whatever
-//! card holds a child's results, the family page's closed and opened lines,
-//! the cross-family partner, an unreadable family file and a failed family
-//! fetch. `families_live_page` runs `og live serve` on
+//! release, a closed child's family data that leaves the family page as it
+//! was and two children with the same act IDs. `live_serve_report_gate`
+//! runs on `og live serve`: the finding route of a child and of an adult,
+//! the live-mode requests, a parent's page whatever card holds a child's
+//! results, a closed child's side by side, the family page's closed and
+//! opened lines, the cross-family partner, an unreadable family file and a
+//! failed family fetch. `families_live_page` runs `og live serve` on
 //! tests/fixtures/families_live: the family card, the pedigree, the couple
 //! screen's risk drawing, the trio and compound-het lines and the side by
 //! side. Moved here from tests/test_live_demo.py and
@@ -17,7 +19,7 @@
 use og_browser::{Browser, Scratch, StaticServer, Value, chrome_or_skip, js_str, repo_root};
 use pycompat::json::{dumps, loads};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -941,8 +943,33 @@ impl Guards<'_> {
     }
 }
 
+/// Whether a guard's probe saw the outcome its planted mistake causes, so a
+/// control cannot go red for another reason (a timeout on a busy runner).
+fn broke(guard: Guard, seen: &Value) -> bool {
+    match guard {
+        // The replacement act shows; the old report stays; one act opens.
+        Guard::Stale | Guard::RefreshCleanup | Guard::Partial | Guard::RawView => {
+            *seen == Value::Bool(true)
+        }
+        // The closed address keeps the map query.
+        Guard::Address => text(&items(seen)[0]).contains("chr=17"),
+        // The closed run's results.json reaches the view; its trio rows reach
+        // the family view.
+        Guard::Handoff | Guard::FamilyRows => matches!(seen, Value::Int(n) if *n > 0),
+        // The search box keeps the query after the close.
+        Guard::Cleanup => items(seen)[1] == s("KCNH2"),
+        // The opening ticket is still stored.
+        Guard::Ticket => items(seen)[0] != Value::Null,
+        // Report attributes are left on the page.
+        Guard::CloseAttrs | Guard::Pagehide => !items(seen).is_empty(),
+        // The page comes back from the back-forward cache, not reloaded.
+        Guard::Back => *seen != s("reload"),
+    }
+}
+
 /// test_live_demo.py's gate controls: each guard of the gate holds, and
-/// fails when its implementation in core.js is deliberately broken.
+/// fails when its implementation in core.js is deliberately broken, with
+/// the outcome that mistake causes.
 fn gate_controls(f: &mut Fixture, base: &str, core: &Path, source: &str) {
     let rj = f.site.join(format!("runs/{CHILD}/results.json"));
     let raw = fs::read(&rj).unwrap();
@@ -1065,6 +1092,10 @@ fn gate_controls(f: &mut Fixture, base: &str, core: &Path, source: &str) {
         fs::write(core, planted).unwrap();
         let (ok, seen) = guards.probe(b, guard);
         assert!(!ok, "the gate control went unnoticed: {what}");
+        assert!(
+            broke(guard, &seen),
+            "the gate control failed without its broken outcome: {what}: {seen:?}"
+        );
         red(&format!("core.js where {what}"), &seen);
         fs::write(core, source).unwrap();
     }
@@ -1119,6 +1150,139 @@ fn add_second_child(site: &Path) -> usize {
     fs::create_dir(&second).unwrap();
     save(&second.join("results.json"), &results);
     acts
+}
+
+// The child's own values on the family page's side by side, in the core.js
+// that leaves them in.
+const SIDE_CLOSED: &str =
+    "values: row.values.map(function (v, i) { return gated(sb.members[i]) ? 'closed' : v; }),";
+const SIDE_LEAKED: &str = "values: row.values.map(function (v, i) { return v; }),";
+const CHANGED: &str = "changed value";
+
+/// The family page while DEMO-003 is closed: the child's cells of the side
+/// by side, and the two sections that draw the children's data (each child,
+/// the side by side). The closed controls are drawn in the same order in
+/// every load.
+fn closed_family(b: &mut Browser, base: &str) -> (Value, Value) {
+    let seed = install(b, &SEEDED.replace("DRAW", "0"));
+    go(b, &run_url(base, FAMILY));
+    wait(
+        b,
+        &format!(
+            "({READY}) && document.querySelectorAll('[data-gate-child={CHILD}] [data-opening^=closed]').length > 0 && !!document.querySelector('#ch-side-by-side td')"
+        ),
+    );
+    // Let the last redraw settle before the page is read.
+    thread::sleep(Duration::from_millis(500));
+    let got = eval(
+        b,
+        &format!(
+            "[[...document.querySelectorAll('#ch-side-by-side td[data-label=\"{CHILD}\"]')].map(td => td.textContent), ['ch-children', 'ch-side-by-side'].map(id => document.getElementById(id)?.outerHTML)]"
+        ),
+    );
+    uninstall(b, &seed);
+    let got = items(&got);
+    (got[0].clone(), got[1].clone())
+}
+
+/// Every cell of the child's column reads "closed", and there is one.
+fn all_closed(cells: &Value) -> bool {
+    !items(cells).is_empty() && items(cells).iter().all(|c| *c == s("closed"))
+}
+
+/// The family page while a gated child's data in family.json changes: the
+/// child's side-by-side cells read "closed", and the page does not change
+/// (test_live_demo.py gate_checks, its family half, on main eba8400b).
+fn gate_family_payload(f: &mut Fixture, base: &str, core: &Path, source: &str) {
+    let family_file = f.site.join(format!("runs/{FAMILY}/family.json"));
+    let saved = fs::read(&family_file).unwrap();
+    let b = &mut f.browser;
+    let (cells, page) = closed_family(b, base);
+    assert!(
+        all_closed(&cells),
+        "family page: the closed child's side-by-side cells: {cells:?}"
+    );
+
+    let mut family = doc(&family_file);
+    let fam = obj(&mut family);
+    let side = obj(fam.get_mut("side_by_side").unwrap());
+    let at = items(&side["members"])
+        .iter()
+        .position(|m| *m == s(CHILD))
+        .unwrap();
+    let width = items(&side["members"]).len();
+    let rows = array(side.get_mut("rows").unwrap());
+    for row in rows.iter_mut() {
+        let row = obj(row);
+        array(row.get_mut("values").unwrap())[at] = s(CHANGED);
+        array(row.get_mut("stale").unwrap())[at] = Value::Bool(true);
+    }
+    // A row only the child has a value in.
+    let mut only = vec![s("."); width];
+    only[at] = s(CHANGED);
+    rows.push(
+        loads(&format!(
+            r#"{{"group": "Blood groups", "label": "Changed system", "values": {}, "stale": {}}}"#,
+            dumps(&Value::Array(only), &Default::default()).unwrap(),
+            dumps(
+                &Value::Array(vec![Value::Bool(false); width]),
+                &Default::default()
+            )
+            .unwrap()
+        ))
+        .unwrap(),
+    );
+    obj(fam.get_mut("trio_status").unwrap()).insert(
+        CHILD.into(),
+        loads(r#"{"de_novo": {"assessed": false, "why": "changed value"}, "compound_het": {"assessed": null, "why": "changed value"}}"#).unwrap(),
+    );
+    for key in ["de_novo", "compound_het"] {
+        let trio = array(fam.get_mut(key).unwrap());
+        let mut extra = None;
+        for row in trio.iter_mut() {
+            if *field(row, "child") != s(CHILD) {
+                continue;
+            }
+            for (k, v) in obj(row).iter_mut() {
+                if k.as_str() != "child"
+                    && let Value::Str(x) = v
+                {
+                    x.push_str(" changed");
+                }
+            }
+            extra = Some(row.clone());
+        }
+        trio.push(extra.unwrap_or_else(|| panic!("the demo has no {key} row of {CHILD}")));
+    }
+    array(
+        obj(fam.get_mut("segments").unwrap())
+            .get_mut(CHILD)
+            .unwrap(),
+    )
+    .truncate(1);
+    save(&family_file, &family);
+
+    let (changed_cells, changed_page) = closed_family(b, base);
+    assert!(
+        all_closed(&changed_cells) && changed_page == page,
+        "family page: a closed child's family.json data changed the page: {changed_cells:?}"
+    );
+    pass(
+        "family page: a closed child's side-by-side cells read closed, and its side-by-side values, trio status, trio rows and stretches in family.json leave the page as it was",
+    );
+
+    fs::write(core, replace_once(source, SIDE_CLOSED, SIDE_LEAKED)).unwrap();
+    let (leaked, leaked_page) = closed_family(b, base);
+    fs::write(core, source).unwrap();
+    assert!(
+        items(&leaked).contains(&s(CHANGED)) && leaked_page != page,
+        "the side-by-side control went unnoticed: {leaked:?}"
+    );
+    red(
+        "core.js that shows a closed child's side-by-side values on the family page",
+        &leaked,
+    );
+    fs::write(&family_file, saved).unwrap();
 }
 
 fn gate_family_independence(f: &mut Fixture, base: &str, core: &Path, source: &str) {
@@ -1654,6 +1818,7 @@ fn demo_report_gate() {
     gate_controls(&mut f, &base, &core, &source);
     gate_transparency(&mut f, &base, &core, &source);
     gate_slow_release(&mut f.browser, &base, &core, &source);
+    gate_family_payload(&mut f, &base, &core, &source);
     gate_family_independence(&mut f, &base, &core, &source);
 }
 
@@ -1713,6 +1878,145 @@ impl Drop for LiveServe {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// One GET to `og live serve`: the status and the body.
+fn http_get(base: &str, path: &str) -> (u16, Vec<u8>) {
+    let host = base.strip_prefix("http://").unwrap();
+    let mut stream = std::net::TcpStream::connect(host).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).unwrap();
+    let end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap_or_else(|| panic!("GET {path}: no end of headers"));
+    let head = String::from_utf8_lossy(&raw[..end]);
+    let status = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (status, raw[end + 4..].to_vec())
+}
+
+/// The ids of a run's findings, from its results.json on `og live serve`,
+/// results to act on first.
+fn finding_ids(base: &str, run: &str) -> Vec<String> {
+    let (status, body) = http_get(base, &format!("/runs/{run}/results.json"));
+    assert_eq!(status, 200, "{run}'s results.json");
+    let results = loads(&String::from_utf8(body).unwrap()).unwrap();
+    let mut found = items(field(&results, "findings")).to_vec();
+    found.sort_by_key(|f| !is_act(f));
+    found
+        .iter()
+        .map(|f| text(field(f, "id")).to_owned())
+        .collect()
+}
+
+// A well-formed finding id that names no finding of the demo, and nonsense.
+const GUESSED: &str = "two-hits-cftr";
+const NONSENSE: &str = "zz-not-a-finding";
+
+/// A run's finding pages for `ids`: the status, and the body with the id it
+/// was asked for replaced (the page names it, as its address does).
+fn finding_answers(base: &str, run: &str, ids: &[&str]) -> Vec<(u16, String)> {
+    ids.iter()
+        .map(|id| {
+            let (status, body) = http_get(base, &format!("/runs/{run}/finding/{id}/"));
+            (status, String::from_utf8_lossy(&body).replace(id, "ID"))
+        })
+        .collect()
+}
+
+/// The same page, 200, for every id.
+fn same_page(answers: &[(u16, String)]) -> bool {
+    answers.iter().all(|a| a.0 == 200 && a.1 == answers[0].1)
+}
+
+fn statuses(answers: &[(u16, String)]) -> Vec<u16> {
+    answers.iter().map(|a| a.0).collect()
+}
+
+/// The finding route of `og live serve` (test_owngenome_live_family.py
+/// finding_route_checks, on main 79b5382c): a child with a result to act on
+/// gets the same page for its own act, a guessed act and nonsense, so a
+/// guessed address never tells whether the child has that result; an adult
+/// keeps the 404 for an id that is not its finding.
+fn finding_route_checks(base: &str) -> String {
+    let child = finding_ids(base, CHILD);
+    let adult = finding_ids(base, LIVE_ADULT);
+    assert!(
+        !child.is_empty() && !adult.is_empty(),
+        "the demo's child and adult have findings"
+    );
+    for id in [GUESSED, NONSENSE] {
+        assert!(
+            !child.iter().chain(&adult).any(|x| x == id),
+            "{id} must be no finding of the demo"
+        );
+    }
+    let act = child[0].clone();
+    let answers = finding_answers(base, CHILD, &[act.as_str(), GUESSED, NONSENSE]);
+    assert!(
+        same_page(&answers),
+        "a child's finding route tells its act, a guessed act and nonsense apart: {:?}",
+        statuses(&answers)
+    );
+    pass("finding route: a child's act, a guessed act and nonsense answer the same page");
+    let answers = finding_answers(base, LIVE_ADULT, &[adult[0].as_str(), GUESSED, NONSENSE]);
+    assert_eq!(
+        statuses(&answers),
+        [200, 404, 404],
+        "an adult's finding route"
+    );
+    pass("finding route: an adult's own finding answers its page, any other id 404");
+    act
+}
+
+/// The family page on `og live serve` while DEMO-003 is closed: the child's
+/// side-by-side cells read "closed", and its summary.json, which the side by
+/// side reads, leaves the page as it was.
+fn live_family_payload(f: &mut Fixture, base: &str, core: &Path, source: &str) {
+    let child_summary = f.work.join(CHILD).join("summary.json");
+    let saved = fs::read(&child_summary).unwrap();
+    let b = &mut f.browser;
+    let (cells, page) = closed_family(b, base);
+    assert!(
+        all_closed(&cells),
+        "live family page: the closed child's side-by-side cells: {cells:?}"
+    );
+    let mut changed = doc(&child_summary);
+    let sections = obj(obj(&mut changed).get_mut("sections").unwrap());
+    let blood = obj(obj(sections.get_mut("bloodtype").unwrap())
+        .get_mut("data")
+        .unwrap());
+    for system in array(blood.get_mut("systems").unwrap()) {
+        obj(system).insert("phenotype".into(), s(CHANGED));
+    }
+    save(&child_summary, &changed);
+    let (changed_cells, changed_page) = closed_family(b, base);
+    assert!(
+        all_closed(&changed_cells) && changed_page == page,
+        "live family page: a closed child's summary changed the page: {changed_cells:?}"
+    );
+    pass(
+        "live family page: a closed child's side-by-side cells read closed, and its blood groups leave the page as it was",
+    );
+    fs::write(core, replace_once(source, SIDE_CLOSED, SIDE_LEAKED)).unwrap();
+    let (leaked, _) = closed_family(b, base);
+    fs::write(core, source).unwrap();
+    assert!(
+        items(&leaked).contains(&s(CHANGED)),
+        "the live side-by-side control went unnoticed: {leaked:?}"
+    );
+    red(
+        "live: core.js that shows a closed child's side-by-side values on the family page",
+        &leaked,
+    );
+    fs::write(&child_summary, saved).unwrap();
+    touch(&child_summary, None);
 }
 
 fn copy_tree(from: &Path, to: &Path, rename: impl Fn(&str) -> String + Copy) {
@@ -2001,6 +2305,19 @@ fn live_mode_checks(f: &mut Fixture, base: &str, core: &Path, source: &str) {
     put_back(&f.work, steps);
 
     // A parent's page, whichever card holds the child's two results to act on.
+    // The two summaries must give different flagged-card counts, or the
+    // comparison could not see a page that tells them apart.
+    let attention = |body: &str| {
+        int(field(
+            &og_results(&f.og, body, &["--overview"]),
+            "attention",
+        ))
+    };
+    let counts = (attention(&two_in_one_card()), attention(&two_cards()));
+    assert_ne!(
+        counts.0, counts.1,
+        "live mode: the two summaries give the same flagged-card count"
+    );
     let mut seen = Vec::new();
     for body in [two_in_one_card(), two_cards()] {
         summary(&f.work, CHILD, &body);
@@ -2221,7 +2538,7 @@ fn home_states(b: &mut Browser, base: &str) -> Value {
     )
 }
 
-fn failure_browser_checks(f: &mut Fixture, base: &str) {
+fn failure_browser_checks(f: &mut Fixture, base: &str, act: &str) {
     let family = f.work.join(FAMILY);
     // The result remains actionable, but the pedigree now lists DEMO-003 as an adult.
     fs::write(family.join("members.tsv"), format!(
@@ -2245,6 +2562,18 @@ fn failure_browser_checks(f: &mut Fixture, base: &str) {
     pass(
         "a family file that cannot be read keeps the runs it lists closed, page and tile, and no other run",
     );
+    let ids = [act, GUESSED, NONSENSE];
+    let listed = finding_answers(base, CHILD, &ids);
+    let other = finding_answers(base, OTHER, &ids);
+    assert!(
+        same_page(&listed) && statuses(&other) == [200, 404, 404],
+        "finding route while a family file cannot be read: {CHILD} {:?}, {OTHER} {:?}",
+        statuses(&listed),
+        statuses(&other)
+    );
+    pass(
+        "finding route while a family file cannot be read: a run it lists answers the same page for any id, another run 404 for a guessed one",
+    );
 
     fs::set_permissions(relationships, mode).unwrap();
     assert_eq!(text(&run_state(&mut f.browser, base, CHILD)), "open");
@@ -2253,6 +2582,18 @@ fn failure_browser_checks(f: &mut Fixture, base: &str) {
         loads(r#"["open","open"]"#).unwrap()
     );
     pass("the child's page and tile reopened once the family file reads");
+    // members.tsv now names DEMO-003 an adult: the same-page check must fail
+    // for it, with a guessed id and nonsense answering 404.
+    let adult = finding_answers(base, CHILD, &ids);
+    assert!(
+        !same_page(&adult) && statuses(&adult) == [200, 404, 404],
+        "the finding route control went unnoticed: {:?}",
+        statuses(&adult)
+    );
+    red(
+        "the finding route of DEMO-003 made an adult in members.tsv",
+        &statuses(&adult),
+    );
 }
 
 const LIVE_RESULTS: &str = r#"[
@@ -2402,9 +2743,11 @@ fn live_serve_report_gate() {
         &f.scratch.path().join("server-state"),
         &assets,
     );
+    let act = finding_route_checks(&server.base);
     live_mode_checks(&mut f, &server.base, &core, &source);
+    live_family_payload(&mut f, &server.base, &core, &source);
     family_gate_checks(&mut f, &server.base, &core, &source);
-    failure_browser_checks(&mut f, &server.base);
+    failure_browser_checks(&mut f, &server.base, &act);
     family_fetch_failure_checks(&mut f, &server.base, &assets.join("person.js"));
 }
 
