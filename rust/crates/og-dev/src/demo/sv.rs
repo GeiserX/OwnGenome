@@ -136,9 +136,11 @@ pub fn structural(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
         &(lines.join("\n") + "\n"),
     )?;
 
-    // Step 05's class 4 and 5 SVs, checked (the columns og sv postfilter writes).
+    // Step 05's class 4 and 5 SVs, checked (the columns og sv postfilter
+    // writes from an AnnotSV table with benign coordinates): no benign
+    // record over either call, so no frequency data, not a rare frequency.
     let mut text = String::from(
-        "AnnotSV_ID\tID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tGene_name\tACMG_class\tAnnotSV_ranking_score\tCaller\tExon_edge\tExon_edge_detail\tPopulation_AF\tPopulation_source\tCommon\tAnnotSV_class\tDepth_support\tRule\tRule_detail\n",
+        "AnnotSV_ID\tID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tGene_name\tACMG_class\tAnnotSV_ranking_score\tCaller\tExon_edge\tExon_edge_detail\tPopulation_AF\tPopulation_source\tCommon\tBenign_match\tClinical_common\tAnnotSV_class\tDepth_support\tRule\tRule_detail\n",
     );
     let row = |id: String,
                mid: &str,
@@ -149,7 +151,7 @@ pub fn structural(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
                class: &str,
                score: &str| {
         format!(
-            "{id}\t{mid}\t{c}\t{a}\t{b}\t{}\tDEL\t{gene}\t{class}\t{score}\tManta\tno\t.\t\t\tno\t{class}\t.\t\t\n",
+            "{id}\t{mid}\t{c}\t{a}\t{b}\t{}\tDEL\t{gene}\t{class}\t{score}\tManta\tno\t.\t\tno frequency data\tno\tnone\tno\t{class}\t.\t\t\n",
             a - b
         )
     };
