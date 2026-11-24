@@ -5,8 +5,10 @@
 # scripts pass, so each task's .command.sh shows them:
 #   1. WES: DeepVariant gets the exome model and the capture BED as its
 #      regions, mosdepth the capture BED as its windows, Manta --exome;
-#      INDEXCOV does not run and somalier (sample_qc) does; CNVpytor, ROH,
-#      TelomereHunter, archaic, MoChA and viral do not run and the log says
+#      INDEXCOV does not run and somalier (sample_qc) does, without
+#      mosdepth's regions (the capture regions are not sex-loss windows);
+#      CNVpytor, ROH, TelomereHunter, archaic, MoChA and viral do not run
+#      and the log says
 #      "not run: exome"; mito_variants runs, MITO_DELETIONS (the mtDNA copy
 #      number) does not;
 #      survivor_merge keeps its two callers, Manta and Delly;
@@ -60,6 +62,10 @@ check "WES: Manta runs with --exome" grep -q -- 'configManta.py options: .*--exo
 check "WES: indexcov does not run" test -z "$(find "${DIR}/work" -name .command.sh -exec grep -l 'goleft' {} + 2>/dev/null)"
 check "WES: no sex check file from indexcov" test ! -e "${DIR}/out/ex1/ex1_sex_check.tsv"
 check "WES: somalier's sex check runs (SAMPLE_QC)" test -e "${DIR}/out/ex1/qc/ex1_sample_qc.tsv"
+QC_SH=$(task_sh 'sex_check_reason')
+check "WES: SAMPLE_QC's task ran" test -n "$QC_SH"
+check "WES: SAMPLE_QC gets no mosdepth regions (capture regions are not sex-loss windows)" \
+  test -n "$QC_SH" -a ! -e "$(dirname "${QC_SH:-/x}")/ex1.regions.bed.gz"
 L=$(exome_line)
 check "WES: the log says which steps are not run: exome" test -n "$L"
 for t in cnvpytor roh telomere_hunter archaic mocha viral; do
@@ -93,6 +99,8 @@ check "WGS: DeepVariant calls the whole genome (no --regions)" test -n "$DV_SH" 
 check "WGS: mosdepth uses 500 bp windows" grep -q -- 'mosdepth options: --by 500' "${MD_SH:-/dev/null}"
 check "WGS: Manta runs without --exome" test -n "$MT_SH" -a -z "$(grep -- '--exome' "${MT_SH:-/dev/null}")"
 check "WGS: indexcov runs" test -e "${DIR}/out/ex1/ex1_sex_check.tsv"
+QC_SH=$(task_sh 'sex_check_reason')
+check "WGS: SAMPLE_QC gets mosdepth's regions" test -n "$QC_SH" -a -e "$(dirname "${QC_SH:-/x}")/ex1.regions.bed.gz"
 check "WGS: no not-run line" test -z "$(exome_line)"
 for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS; do
   check "WGS: ${p} runs" test -n "$(grep -E "[ :>]${p} " "${DIR}/run.log")"

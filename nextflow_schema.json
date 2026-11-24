@@ -64,7 +64,7 @@
                 },
                 "model_type": {
                     "type": "string",
-                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha or viral, nor the NuMT depth and mtDNA copy number of mito_variants: an exome has no depth outside its capture (docs/wes-guide.md).",
+                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha or viral, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing (docs/wes-guide.md).",
                     "default": "WGS",
                     "enum": ["WGS", "WES"],
                     "fa_icon": "fas fa-dna"

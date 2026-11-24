@@ -113,6 +113,7 @@ process MOSDEPTH {
     echo "mosdepth options: --by ${by}"
     touch ${prefix}.mosdepth.summary.txt
     touch ${prefix}.mosdepth.global.dist.txt
+    echo | gzip > ${prefix}.regions.bed.gz
     echo | gzip > ${prefix}_callability.bed.gz
 
     cat <<-END_VERSIONS > versions.yml

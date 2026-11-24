@@ -304,7 +304,8 @@ workflow BAM_ANALYSIS {
     // same person are reported. A sex that disagrees with the samplesheet
     // stops the run as INDEXCOV's check does (--sex_check warn logs it);
     // contamination only warns. SAMPLE_QC also gets mosdepth's windows and
-    // the VCF, when they exist, for the mosaic loss of chrY or chrX.
+    // the VCF, when they exist, for the mosaic loss of chrY or chrX (an
+    // exome: the VCF only).
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('sample_qc')) {
         SOMALIER(ch_bam, ch_reference, ch_reference_fai, ch_somalier_sites)
@@ -319,10 +320,14 @@ workflow BAM_ANALYSIS {
             .first()   // a value channel, so every SAMPLE_QC task gets the tables
         SOMALIER_RELATE(SOMALIER.out.extract.map { meta, f, id_file -> f }.collect(), ch_somalier_sites, ch_somalier_ped)
         VERIFYBAMID2(ch_bam, ch_reference, ch_reference_fai, ch_verifybamid2_panel)
+        // An exome's mosdepth regions are its capture regions, not the
+        // 500 bp windows og qc sex-loss sums into 10 kb blocks: an exome gets
+        // the estimate from its VCF only.
+        ch_qc_regions = params.model_type == 'WES' ? Channel.empty() : ch_mosdepth_regions
         ch_qc_in = SOMALIER.out.extract
             .map { meta, f, id_file -> [meta.id, meta, id_file] }
             .join(VERIFYBAMID2.out.selfsm.map { meta, selfsm, marker_check -> [meta.id, selfsm, marker_check] })
-            .join(ch_mosdepth_regions.map { meta, f -> [meta.id, f] }, remainder: true)
+            .join(ch_qc_regions.map { meta, f -> [meta.id, f] }, remainder: true)
             .join(ch_vcf.map { meta, vcf, _tbi -> [meta.id, vcf] }, remainder: true)
             .filter { items -> items[1] != null }   // a VCF-only row has no BAM
             .map { _id, meta, id_file, selfsm, marker_check, regions, vcf ->
