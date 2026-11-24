@@ -103,6 +103,7 @@ case "$args" in
     else
       printf 'HLA-A\t2\tHLA-A*01:01:01\t100\t60\tHLA-A*26:01:01\t90\t60\n'
     fi > "${p}_genotype.tsv"
+    [ "${FAKE_T1K_NOGENO:-}" != 1 ] || rm -f "${p}_genotype.tsv"
     if [ "${FAKE_T1K_SINGLE:-}" = 1 ]; then fq "${p}_candidate.fq" 5
     else fq "${p}_candidate_1.fq" 7; fq "${p}_candidate_2.fq" 7; fi
     exit 0 ;;
@@ -151,6 +152,15 @@ if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
   miss "step08-qc-class2: OptiType ran on reads with no HLA-A, -B or -C allele called"
 fi
 grep -q '^# OptiType not run: no read pairs' "$OT_RES" 2>/dev/null || miss "step08-qc-class2: the result file does not say OptiType was not run"
+
+# T1K left no genotype file: step 08 cannot tell if it called class I, so it
+# fails, as it did before OptiType's input came from T1K.
+: > "$FAKE_DOCKER_LOG"
+rm -f "$OT_RES"
+FAKE_T1K_NOGENO=1 FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 1 step08-qc-nogeno "${SCRIPTS}/08-hla-typing.sh" sample1
+if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc-nogeno: OptiType ran with no T1K genotype file"
+fi
 
 [ "$MISSES" -eq 0 ] || fail "${MISSES} result(s) above are wrong"
 echo "HLA_QC=true reaches the pipeline as --hla_qc true, step 08 counts OptiType's two processes, and OptiType types the reads T1K extracted."

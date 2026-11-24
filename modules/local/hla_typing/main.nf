@@ -288,6 +288,7 @@ process HLA_QC {
     """
     # No pairs, or T1K called no allele of HLA-A, -B or -C (class II reads
     # only, say): OptiType has nothing to align and fails on that. A no-call.
+    [ -s ${t1k_genotype} ] || { echo "ERROR: T1K wrote no genotype file (${t1k_genotype}), so HLA_QC cannot tell if it called HLA-A, -B or -C" >&2; exit 1; }
     if [ ! -s ${r1} ] || ! awk -F'\\t' '\$1 ~ /^HLA-[ABC]\$/ && \$2 > 0 {f = 1} END {exit !f}' ${t1k_genotype}; then
         printf '# OptiType not run: no read pairs at HLA-A, HLA-B or HLA-C in this BAM\\n' > ${meta.id}_optitype_result.tsv
         echo "OptiType: no reads to type; PGX_CONSENSUS will not pass HLA-A or HLA-B to PharmCAT."

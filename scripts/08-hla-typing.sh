@@ -191,8 +191,10 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
   # T1K called no allele of HLA-A, -B or -C: its reads (class II only, say)
   # give OptiType nothing to align, which OptiType fails on. A no-call, as
   # with no pairs at all.
+  GENO="${OUTPUT_DIR}/${SAMPLE}_hla_genotype.tsv"
+  [ -s "$GENO" ] || { echo "ERROR: T1K wrote no genotype file ($GENO), so step 08 cannot tell if it called HLA-A, -B or -C" >&2; exit 1; }
   CLASS_I=no
-  awk -F'\t' '$1 ~ /^HLA-[ABC]$/ && $2 > 0 {f = 1} END {exit !f}' "${OUTPUT_DIR}/${SAMPLE}_hla_genotype.tsv" && CLASS_I=yes
+  awk -F'\t' '$1 ~ /^HLA-[ABC]$/ && $2 > 0 {f = 1} END {exit !f}' "$GENO" && CLASS_I=yes
   rm -rf "${QC_DIR}/work"
   mkdir -p "${QC_DIR}/work"
   echo "HLA read pairs T1K extracted, OptiType's input: ${PAIRS}"
