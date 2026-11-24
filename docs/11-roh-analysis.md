@@ -20,21 +20,59 @@ export GENOME_DIR=/path/to/your/data
 ./scripts/11-roh-analysis.sh your_sample
 ```
 
-What the script runs. Only PASS records (and records with no filter, as chip VCFs have) go into `bcftools roh`: DeepVariant's `RefCall` and other filtered records are not genotypes to count on. The Nextflow ROH module reads the same records with the same flags.
+What the script runs. Only PASS records (and records with no filter, as chip VCFs have) go into `bcftools roh`: DeepVariant's `RefCall` and other filtered records are not genotypes to count on. With the allele-frequency panel installed (see [Allele frequencies](#allele-frequencies)), bcftools roh reads each site's population frequency from it; this is the command with the panel's global AF. The Nextflow ROH module reads the same records with the same flags.
 
 ```bash
 source versions.env   # from the repository root
 SAMPLE=your_sample
 GENOME_DIR=/path/to/your/data
+PANEL=roh_af/${ROH_AF_PANEL_URL##*/}
 
 docker run --rm \
   -v ${GENOME_DIR}/${SAMPLE}/vcf:/data \
+  -v ${GENOME_DIR}/roh_af:/genome/roh_af:ro \
   "${BCFTOOLS_IMAGE}" \
   bash -euo pipefail -c "bcftools view -f PASS,. -Ou /data/${SAMPLE}.vcf.gz \
-    | bcftools roh --AF-dflt 0.4 -o /data/${SAMPLE}_roh.txt -"
+    | bcftools roh --AF-file /genome/${PANEL} -o /data/${SAMPLE}_roh.txt -"
 ```
 
-For chip data (no `FORMAT/PL`), the script adds `-G30`.
+Without the panel the script runs `bcftools roh --AF-dflt 0.4` instead. For chip data (no `FORMAT/PL`), the script adds `-G30`.
+
+## Allele frequencies
+
+`bcftools roh` weighs each homozygous call by how common its allele is: a homozygous call at an allele most people carry says little about a run, one at a rare allele says more. So it needs each site's population allele frequency (AF).
+
+- **With the panel** (`scripts/setup.sh` installs it as `roh_af/roh_af_gnomad_v4.1.tsv.gz`, with its `.tbi`): the biallelic PASS SNVs of chr1 to chr22 whose global AF in gnomAD v4.1 genomes (76,215 genomes, released under CC0) is 0.01 to 0.99, with the global AF and the AF of five continental groups. `--AF-file` makes bcftools roh use the panel's sites only, and only where the alleles match; a site of the VCF that is not in the panel is skipped. (bcftools refuses `-T` beside `--AF-file`: the panel already sets the sites.) The step uses the global AF, or the AF of one group when step 26's ancestry table (`ancestry/<sample>_ancestry.tsv`) gives that group a probability of 0.8 or more: AFR reads gnomAD's `afr`, AMR `amr`, EAS `eas`, EUR `nfe` (non-Finnish European) and SAS `sas`. For a group, the step writes a temporary 4-column file of the sites whose group AF is 0.01 to 0.99, the global panel's range. Run step 26 before step 11 to have it; the Nextflow pipeline waits for step 26's table when it will come (`--roh_af_panel` with `prs`, `--pgs_scoring` and `--ancestry_ref`).
+- **Without the panel**: `--AF-dflt 0.4`, so every site gets an alternate allele frequency of 0.4. This holds also where a record carries `INFO/AC` and `INFO/AN`: with `--AF-dflt`, bcftools roh does not read them. A homozygous call at a common allele then counts as rare evidence, so the short segments come out too many and too long. The step's note says so.
+
+The first line of `${SAMPLE}_roh.txt` names the frequencies used when they came from the panel, for example `# AF used: nfe (panel roh_af_gnomad_v4.1.tsv.gz); step 26 gives EUR 0.93`. Without the panel there is no such line, and bcftools roh's own header line gives its command with `--AF-dflt 0.4`.
+
+How the panel is built and published: [Reference setup](00-reference-setup.md#roh-allele-frequency-panel).
+
+### Measured on two public genomes
+
+We ran `bcftools roh` 1.24 with the step's flags (PASS records, `-G30`: neither input has `FORMAT/PL`) on two public genomes. Both inputs hold variant records only, as step 11's VCF does:
+
+- **HG002**: the GIAB v4.2.1 benchmark calls, GRCh38, chr1 to chr22.
+- **HG00096**: the 1000 Genomes phase 3 genotypes on GRCh38 positions (low coverage, imputed), the sample's non-reference sites on chr1 to chr22.
+
+"Sites" counts the records bcftools roh used. "Runs of 5 Mb or more" is what `${SAMPLE}_roh_summary.txt` lists, with the centromere and heterochromatin bands left out. Both genomes are European, so the group column is gnomAD's `nfe`.
+
+| Genome | Allele frequencies | Sites | Segments | Total | Runs of 5 Mb or more |
+|---|---|---:|---:|---:|---|
+| HG002 | 0.4 at every site | 4,000,561 | 6,346 | 483.6 Mb | none |
+| HG002 | panel, global AF | 1,746,930 | 2,608 | 362.8 Mb | none |
+| HG002 | panel, `nfe` AF | 1,684,685 | 2,387 | 328.4 Mb | none |
+| HG00096 | 0.4 at every site | 3,997,277 | 6,347 | 449.2 Mb | none |
+| HG00096 | panel, global AF | 1,762,917 | 2,570 | 361.5 Mb | chr22:26,579,132-32,429,957, 5.9 Mb |
+| HG00096 | panel, `nfe` AF | 1,709,455 | 2,283 | 317.9 Mb | chr22:26,579,132-32,429,957, 5.9 Mb |
+
+What it shows:
+
+- The flat 0.4 inflates the short segments. It gives 2.4 to 2.8 times as many segments as the panel, and 24% to 47% more total length.
+- HG002 has no run of 5 Mb or more with any of the three.
+- HG00096 has one run of 5 Mb or more with the panel and none with 0.4. With 0.4, bcftools roh split that stretch of chr22 into 13 segments of 1.1 Mb or less. It broke the stretch at 259 heterozygous calls. 223 of them are indels or SNVs that are not in the panel (rare in gnomAD, or not PASS there), so the panel run does not read them. Inside the stretch the genome is homozygous at 2,387 panel sites and heterozygous at 36. So the run is real: the flat 0.4 broke it at calls that are not common SNVs.
+- The group's AF gives fewer and shorter segments than the global AF. The runs of 5 Mb or more are the same.
 
 ## Output
 - `${SAMPLE}/vcf/${SAMPLE}_roh.txt` — bcftools roh output: per-site states (`ST` lines) and segments (`RG` lines)
@@ -110,9 +148,7 @@ The flag's `note` describes long chromosome-focused ROH and suggests investigati
 
 ## Important Notes
 - The script auto-detects chip data (no FORMAT/PL tag) and adds `-G30` for genotype-only mode
-- `--AF-dflt 0.4` sets a default allele frequency when population AF data is unavailable — suitable for single-sample WGS
-- bcftools roh reads a site's frequency from INFO/AC and INFO/AN when the record has them, and uses 0.4 only where it does not. DeepVariant writes neither, so on its calls every site uses 0.4. A VCF from another caller may carry them: in a single-sample file they are the sample's own allele counts, not a population's.
-- No population allele frequencies are used, and the reports say so: read the total and the short segments as rough, the long segments are the signal. A population allele-frequency file (`--AF-file`, for example from gnomAD) would replace the one default value with real frequencies per site and give better segment edges; neither the script nor the module uses one today, and its effect on the total has not been measured.
+- With the panel, bcftools roh uses gnomAD frequencies at the panel's sites only (see [Allele frequencies](#allele-frequencies)); without it, `--AF-dflt 0.4` gives every site an AF of 0.4, whatever the record's `INFO/AC` and `INFO/AN` say. That inflates the short segments; the long segments are the signal.
 - The centromere and heterochromatin bands (above) are taken out of every count; the step and the reports do it, so there is nothing to subtract by hand
 - Long runs concentrated on one chromosome may indicate uniparental disomy; the reports flag a chromosome whose segments of 5 Mb or more add up to at least 20 Mb and to more than half of the length of all such autosomal segments (above). The flag requires sites on all 22 autosomes. Check copy number and acquired LOH, and confirm with the parents' genotypes. A methylation test assesses an imprinting defect
 - ROH within known disease gene regions warrants checking for homozygous pathogenic variants
