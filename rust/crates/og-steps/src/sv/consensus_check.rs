@@ -1,49 +1,7 @@
-//! `og sv consensus-check`: each record of step 22's SURVIVOR merge checked
-//! so that a consensus record is one event, called by two or more callers.
-//!
-//! SURVIVOR 1.0.7 (`merge LIST 1000 2 1 1 0 50`) pairs calls whose
-//! breakpoints lie within 1,000 bp of each other. That alone merges two
-//! deletions of 100 bp that start 900 bp apart and do not overlap, and on
-//! some inputs it pairs a deletion with a duplication at the same place
-//! although the type and strand flags are set. The record then reads "2
-//! callers" for an event no two callers agree on.
-//!
-//! The members of a record are read from its caller columns: FORMAT `CO`
-//! (each member's coordinates, comma-separated when one caller gave two
-//! calls), `TY` (types), `ST` (strands) and `LN` (length). Two members are
-//! the same event when all of these hold:
-//!
-//! - the same type, by SURVIVOR's own rule: `INV`, `BND` and `TRA` count as
-//!   one type, as they do in SURVIVOR; any other type only matches itself
-//!   (`DUP:TANDEM` is a `DUP`);
-//! - the same strands (`ST`);
-//! - insertions: starts within [`INS_MAX_DIST`] bp, and the shorter at
-//!   least [`INS_MIN_RATIO`] of the longer (`LN`);
-//! - a breakend to another contig: the same contig, both breakpoints
-//!   within [`BND_MAX_DIST`] bp (SURVIVOR's own rule, as there is no span);
-//! - anything else: a reciprocal overlap of at least [`MIN_OVERLAP`], that
-//!   is, an overlap of at least that share of the longer call.
-//!
-//! The members are grouped in column order (the order of SUPP_VEC): each
-//! joins the first group whose every member it matches, or starts a new
-//! one. A record whose members form one group is written as SURVIVOR wrote
-//! it. Otherwise each group with two or more callers becomes a record of
-//! its own and the rest are dropped. Such a record gets SUPP, SUPP_VEC,
-//! SVTYPE, STRANDS and CHR2 of its members, POS and END of its middle
-//! member (by start; the lower of the two middle ones), SVLEN as the mean
-//! of the members' lengths (negative for a deletion, SURVIVOR's own way),
-//! CIPOS and CIEND as the spread of the members' starts and ends around
-//! POS and END, REF `N` and a symbolic ALT. A caller column without a
-//! member gets SURVIVOR's empty column; a column that keeps only some of
-//! its members keeps those entries of `CO`, `TY`, `ST` and `QV`, and its
-//! `ID` only when it names a kept member (SURVIVOR writes the ID of the
-//! last one), `.` otherwise.
-//!
-//! A record whose columns cannot be read this way (no `CO`, a coordinate
-//! that does not parse, a SUPP_VEC that does not fit the columns) is
-//! written as SURVIVOR wrote it and counted apart. A summary line goes to
-//! stderr.
+//! Verify SURVIVOR clusters against the exact VCFs passed to the merge.
+//! See docs/22-survivor-merge.md for the event and output rules.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Write};
@@ -52,446 +10,531 @@ use og_filters::args::{self, ArgError, Spec};
 
 use super::info_value;
 
-const USAGE: &str = "usage: og sv consensus-check IN.vcf[.gz]|- OUT.vcf|-
+const USAGE: &str = "usage: og sv consensus-check --callers LIST IN.vcf[.gz]|- OUT.vcf|-
 ";
-
 const SPEC: Spec = Spec {
     prog: "og sv consensus-check",
     usage: USAGE,
-    options: &[],
+    options: &["--callers"],
     positionals: &["IN", "OUT"],
-    required: &[],
+    required: &["--callers"],
 };
 
-/// The reciprocal overlap two calls of a span need (DEL, DUP, INV).
-pub const MIN_OVERLAP: f64 = 0.5;
-/// How far apart two insertions may start, in bp.
-pub const INS_MAX_DIST: i64 = 1000;
-/// The share of the longer insertion the shorter must reach.
-pub const INS_MIN_RATIO: f64 = 0.5;
-/// How far apart each breakpoint of two breakends to another contig may
-/// be, in bp: SURVIVOR's own distance in step 22.
-pub const BND_MAX_DIST: i64 = 1000;
+const MIN_OVERLAP: f64 = 0.5;
+const INS_MAX_DIST: u64 = 1000;
+const INS_MIN_RATIO: f64 = 0.5;
+const BND_MAX_DIST: u64 = 1000;
 
-/// The header line the check adds, just above `#CHROM`.
-pub const HEADER: &str = "##og_sv_consensus_check=<Description=\"Each record is one event two or more callers agree on: same type (INV, BND and TRA as one), same strands, reciprocal overlap >= 0.5; insertions start within 1000 bp, the shorter >= 0.5 of the longer; breakends to another contig within 1000 bp at both ends. Records that failed were split by event, and dropped when fewer than 2 callers were left.\">";
+pub const HEADER: &str = "##og_sv_consensus_check=<Description=\"Each record has two or more caller records verified against the input VCFs: same type and strands, reciprocal overlap >= 0.5; insertions within 1000 bp and size ratio >= 0.5; intercontig breakends agree on both contigs and are within 1000 bp at both ends. Unresolved members do not vote.\">";
 
-/// SURVIVOR's column for a caller with no member.
 const EMPTY: &str = "./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
 const SURVIVOR_FORMAT: &str = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO";
 
-/// One call of one caller inside a merged record.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Member {
-    /// The caller's column, 0 for the first.
+#[derive(Debug, Clone)]
+pub(super) struct Member {
     pub caller: usize,
-    /// Its place in the column's `CO` list.
-    pub index: usize,
-    /// `TY` (`DEL`, `DUP`, `INV`, `TRA`, `INS`, ...).
     pub kind: String,
-    /// `ST` (`+-`, `-+`, `++`, `--`).
     pub strands: String,
-    /// The contig of the second breakpoint.
+    pub chrom: String,
     pub chrom2: String,
-    /// Start and end on the record's contig; for a breakend to another
-    /// contig, the position on each.
     pub start: i64,
     pub end: i64,
-    /// The length: `LN` for an insertion, 0 for a breakend to another
-    /// contig, the span otherwise.
     pub len: i64,
-    /// Whether the second breakpoint is on another contig.
-    pub other_contig: bool,
+    pub id: String,
+    pub reference: String,
+    pub alt: String,
+    pub qual: String,
+    pub gt: String,
 }
 
-/// Why two members are not one event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Apart {
-    /// Different types, by SURVIVOR's rule.
+pub(super) enum Apart {
     Type,
-    /// Different strands.
     Strands,
-    /// Spans that overlap by less than [`MIN_OVERLAP`].
     Overlap,
-    /// Insertions more than [`INS_MAX_DIST`] apart, or breakends to
-    /// another contig more than [`BND_MAX_DIST`] apart or on two contigs.
     Distance,
-    /// Insertions whose sizes differ more than [`INS_MIN_RATIO`] allows.
     Size,
 }
 
-/// A type as SURVIVOR's rule compares it: the part before `:`, with
-/// `INV`, `BND` and `TRA` as one.
-fn type_class(kind: &str) -> &str {
-    let base = kind.split(':').next().unwrap_or(kind);
-    match base {
-        "INV" | "BND" | "TRA" => "INV",
-        other => other,
+fn type_class(kind: &str, intercontig: bool) -> Option<&'static str> {
+    match kind.split(':').next()? {
+        "DEL" => Some("DEL"),
+        "DUP" => Some("DUP"),
+        "INV" => Some("INV"),
+        "TRA" => Some("TRA"),
+        "INS" | "ALU" | "LINE1" | "SVA" => Some("INS"),
+        "BND" if intercontig => Some("TRA"),
+        "BND" => Some("INV"),
+        "CNV" => Some("CNV"),
+        _ => None,
     }
 }
 
-/// Whether two members are one event (`None`), or why not.
-pub fn apart(a: &Member, b: &Member) -> Option<Apart> {
-    if type_class(&a.kind) != type_class(&b.kind) {
+fn numeric_qual(qual: &str) -> Option<f64> {
+    let value: f64 = qual.parse().ok()?;
+    value.is_finite().then_some(value)
+}
+
+pub(super) fn apart(a: &Member, b: &Member) -> Option<Apart> {
+    let kind = type_class(&a.kind, a.chrom != a.chrom2);
+    if kind != type_class(&b.kind, b.chrom != b.chrom2) {
         return Some(Apart::Type);
     }
     if a.strands != b.strands {
         return Some(Apart::Strands);
     }
-    if type_class(&a.kind) == "INS" {
-        if (a.start - b.start).abs() > INS_MAX_DIST {
+    if a.chrom != b.chrom || a.chrom2 != b.chrom2 {
+        return Some(Apart::Distance);
+    }
+    if kind == Some("INS") {
+        if a.start.abs_diff(b.start) > INS_MAX_DIST {
             return Some(Apart::Distance);
         }
-        let (x, y) = (a.len.abs(), b.len.abs());
-        let (short, long) = (x.min(y), x.max(y));
-        if long == 0 || (short as f64) < INS_MIN_RATIO * long as f64 {
-            return Some(Apart::Size);
+        let long = a.len.max(b.len);
+        return (long == 0 || (a.len.min(b.len) as f64) < INS_MIN_RATIO * long as f64)
+            .then_some(Apart::Size);
+    }
+    if a.chrom != a.chrom2 {
+        return (a.start.abs_diff(b.start) > BND_MAX_DIST || a.end.abs_diff(b.end) > BND_MAX_DIST)
+            .then_some(Apart::Distance);
+    }
+    let (a0, a1) = (a.start.min(a.end), a.start.max(a.end));
+    let (b0, b1) = (b.start.min(b.end), b.start.max(b.end));
+    let overlap = a1.min(b1) - a0.max(b0);
+    let longer = (a1 - a0).max(b1 - b0);
+    (overlap <= 0 || (overlap as f64) < MIN_OVERLAP * longer as f64).then_some(Apart::Overlap)
+}
+
+/// Search caller by caller. First choice wins a tie, so groups of equal
+/// size are ordered by caller column and then by the member's CO index.
+fn largest_group(
+    remaining: &[Vec<usize>],
+    members: &[&Member],
+    group: &mut Vec<usize>,
+    best: &mut Vec<usize>,
+) {
+    if group.len() > best.len() {
+        best.clone_from(group);
+    }
+    if group.len() + remaining.len() <= best.len() {
+        return;
+    }
+    if let Some((choices, rest)) = remaining.split_first() {
+        for &i in choices {
+            if group
+                .iter()
+                .all(|&j| apart(members[j], members[i]).is_none())
+            {
+                group.push(i);
+                largest_group(rest, members, group, best);
+                group.pop();
+                if group.len() + remaining.len() <= best.len() {
+                    return;
+                }
+            }
         }
-        return None;
+        largest_group(rest, members, group, best);
     }
-    if a.other_contig || b.other_contig {
-        if a.chrom2 != b.chrom2
-            || (a.start - b.start).abs() > BND_MAX_DIST
-            || (a.end - b.end).abs() > BND_MAX_DIST
-        {
-            return Some(Apart::Distance);
+}
+
+/// Assign the largest compatible set of distinct callers first. Remove
+/// only its members and repeat while two callers can still agree.
+fn groups(members: &[&Member], caller_count: usize) -> Vec<Vec<usize>> {
+    let mut candidates = vec![Vec::new(); caller_count];
+    for (i, member) in members.iter().enumerate() {
+        candidates[member.caller].push(i);
+    }
+    let mut groups = Vec::new();
+    loop {
+        let mut best = Vec::new();
+        largest_group(&candidates, members, &mut Vec::new(), &mut best);
+        if best.len() < 2 {
+            return groups;
         }
-        return None;
-    }
-    let overlap = a.end.min(b.end) - a.start.max(b.start);
-    let longer = (a.end - a.start).max(b.end - b.start).max(1);
-    if overlap <= 0 || (overlap as f64) < MIN_OVERLAP * longer as f64 {
-        return Some(Apart::Overlap);
-    }
-    None
-}
-
-/// The members grouped into events: each member joins the first group
-/// whose every member it matches, or starts a new one. Indexes into
-/// `members`, in their order.
-pub fn group(members: &[Member]) -> Vec<Vec<usize>> {
-    let mut groups: Vec<Vec<usize>> = Vec::new();
-    for (i, m) in members.iter().enumerate() {
-        match groups
-            .iter_mut()
-            .find(|g| g.iter().all(|&j| apart(&members[j], m).is_none()))
-        {
-            Some(g) => g.push(i),
-            None => groups.push(vec![i]),
+        for &i in &best {
+            candidates[members[i].caller].retain(|&j| j != i);
         }
+        groups.push(best);
     }
-    groups
 }
 
-/// `CHROM_POS` of a SURVIVOR coordinate, split at the last `_`.
-fn contig_pos(s: &str) -> Option<(&str, i64)> {
-    let (chrom, pos) = s.rsplit_once('_')?;
-    if chrom.is_empty() || pos.is_empty() || !pos.bytes().all(|b| b.is_ascii_digit()) {
+/// The pinned merge writes these numeric coordinates and a type for every
+/// member. It prints the cluster's second contig even for a member with a
+/// different mate. Use only the caller, first contig, numeric coordinates
+/// and type to locate the input row. Every collision is ambiguous.
+type Key = (String, i64, i64, String);
+
+struct Caller {
+    name: String,
+    members: HashMap<Key, Option<Member>>,
+}
+
+fn position(value: &str) -> Option<i64> {
+    let pos: i32 = value.parse().ok()?;
+    (pos > 0).then_some(i64::from(pos))
+}
+
+fn allele_len(s: &str) -> Option<usize> {
+    (!s.is_empty() && s.bytes().all(|b| b.is_ascii_alphabetic())).then_some(s.len())
+}
+
+/// Both brackets must agree. The local bases identify which side is joined.
+fn breakend(alt: &str) -> Option<(&str, i64, &'static str)> {
+    let i = alt.find(['[', ']'])?;
+    let bracket = alt.as_bytes()[i] as char;
+    let (mate, tail) = alt[i + 1..].split_once(bracket)?;
+    let (chrom, pos) = mate.rsplit_once(':')?;
+    let left = &alt[..i];
+    let strands = match (allele_len(left), allele_len(tail), bracket) {
+        (Some(_), None, ']') if tail.is_empty() => "++",
+        (Some(_), None, '[') if tail.is_empty() => "+-",
+        (None, Some(_), ']') if left.is_empty() => "-+",
+        (None, Some(_), '[') if left.is_empty() => "--",
+        _ => return None,
+    };
+    (!chrom.is_empty()).then_some((chrom, position(pos)?, strands))
+}
+
+fn source_strands(kind: &str, info: &str, mate: Option<(&str, i64, &str)>) -> Option<String> {
+    if let Some((_, _, strands)) = mate {
+        return Some(strands.to_owned());
+    }
+    let strands = info_value(info, "STRANDS");
+    if !matches!(strands, "" | ".") {
+        let mut pairs = strands.split(',').map(|s| s.split(':').next().unwrap_or(s));
+        let pair = pairs.next()?;
+        return (matches!(pair, "++" | "+-" | "-+" | "--") && pairs.all(|p| p == pair))
+            .then(|| pair.to_owned());
+    }
+    let pair = match info_value(info, "CT") {
+        "3to3" | "NtoN" => "++",
+        "3to5" => "+-",
+        "5to3" => "-+",
+        "5to5" => "--",
+        "" | "." => match kind {
+            "DEL" | "INS" => "+-",
+            "DUP" => "-+",
+            "INV" | "CNV" => "++",
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(pair.to_owned())
+}
+
+fn source_member(line: &str, caller: usize) -> Option<(Key, Option<Member>)> {
+    let fields: Vec<_> = line.split('\t').collect();
+    let [chrom, start, id, reference, alt, qual, _, info, rest @ ..] = fields.as_slice() else {
         return None;
-    }
-    Some((chrom, pos.parse().ok()?))
+    };
+    let (chrom, id, reference, alt, qual, info) = (*chrom, *id, *reference, *alt, *qual, *info);
+    let start = position(start)?;
+    let mate = breakend(alt);
+    let chrom2 = mate.map_or_else(
+        || match info_value(info, "CHR2") {
+            "" | "." => chrom,
+            other => other,
+        },
+        |(other, _, _)| other,
+    );
+    let symbolic = alt.strip_prefix('<').and_then(|s| s.strip_suffix('>'));
+    let sequence_len = allele_len(reference)
+        .zip(allele_len(alt))
+        .map(|(a, b)| b as i64 - a as i64);
+    let kind = match info_value(info, "SVTYPE") {
+        "" | "." => {
+            if let Some(allele) = symbolic {
+                allele
+            } else if mate.is_some() {
+                "BND"
+            } else if sequence_len? > 0 {
+                "INS"
+            } else {
+                "DEL"
+            }
+        }
+        kind => kind,
+    };
+    let kind = type_class(kind, chrom != chrom2)?;
+    // END is the original breakpoint. SURVIVOR adds the insertion length
+    // internally and subtracts it again when writing CO. If the input has
+    // no END, it starts from POS + SVLEN (also for insertions).
+    let stated_len = ["AVGLEN", "SVLEN", "INSLEN"].into_iter().find_map(|key| {
+        let value = info_value(info, key).parse::<i32>().ok()?;
+        let len = i64::from(value).abs();
+        (len > 0).then_some(len)
+    });
+    let ins_len = stated_len.or(sequence_len.filter(|&n| n > 0));
+    let end = mate
+        .map(|(_, end, _)| end)
+        .or_else(|| position(info_value(info, "END")))
+        .or_else(|| Some(start + stated_len.or(sequence_len.map(i64::abs))?))?;
+    let key = (chrom.to_owned(), start, end, kind.to_owned());
+
+    let len = match kind {
+        "INS" => ins_len,
+        _ if chrom != chrom2 => Some(0),
+        _ => Some((end - start).abs()),
+    };
+    // Keep the join key even when a source call is unusable, so another
+    // source row with the same key cannot silently inherit its vote.
+    let member = len
+        .zip(source_strands(kind, info, mate))
+        .and_then(|(len, strands)| {
+            if (alt.contains(['[', ']']) && mate.is_none())
+                || (chrom != chrom2 && kind != "TRA")
+                || (symbolic.is_some_and(|alt_type| {
+                    type_class(alt_type, chrom != chrom2).is_some_and(|alt_kind| alt_kind != kind)
+                }))
+            {
+                return None;
+            }
+            let gt = rest.first().zip(rest.get(1)).and_then(|(format, sample)| {
+                let i = format.split(':').position(|name| name == "GT")?;
+                sample.split(':').nth(i)
+            });
+            Some(Member {
+                caller,
+                kind: kind.to_owned(),
+                strands,
+                chrom: chrom.to_owned(),
+                chrom2: chrom2.to_owned(),
+                start,
+                end,
+                len,
+                id: id.to_owned(),
+                reference: reference.to_owned(),
+                alt: alt.to_owned(),
+                qual: qual.to_owned(),
+                gt: gt.unwrap_or("./.").to_owned(),
+            })
+        });
+    Some((key, member))
 }
 
-/// One `CO` entry, `CHROM_POS-CHROM2_POS2`, on the record's contig
-/// `chrom` (contig names may hold `_` and `-`).
-fn coords(entry: &str, chrom: &str) -> Option<(String, i64, i64)> {
-    let rest = entry.strip_prefix(chrom)?.strip_prefix('_')?;
-    let dash = rest.find('-')?;
-    let (pos1, second) = (&rest[..dash], &rest[dash + 1..]);
-    if pos1.is_empty() || !pos1.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let (chrom2, pos2) = contig_pos(second)?;
-    Some((chrom2.to_owned(), pos1.parse().ok()?, pos2))
+fn invalid(path: &str, message: &str) -> Error {
+    Error::Read(
+        path.to_owned(),
+        io::Error::new(io::ErrorKind::InvalidData, message),
+    )
 }
 
-/// Whether a column value says the caller has no member.
+impl Caller {
+    fn read(reader: impl BufRead, path: &str, caller: usize) -> Result<Self, Error> {
+        let mut name = None;
+        let mut members = HashMap::new();
+        for line in reader.lines() {
+            let line = line.map_err(|e| Error::Read(path.to_owned(), e))?;
+            if line.starts_with("#CHROM\t") {
+                let columns: Vec<_> = line.split('\t').skip(9).collect();
+                if let [sample] = columns.as_slice()
+                    && !sample.is_empty()
+                    && name.is_none()
+                {
+                    name = Some((*sample).to_owned());
+                } else {
+                    return Err(invalid(path, "expected one caller column"));
+                }
+            } else if !line.starts_with('#')
+                && let Some((key, member)) = source_member(&line, caller)
+            {
+                members
+                    .entry(key)
+                    .and_modify(|value| *value = None)
+                    .or_insert(member);
+            }
+        }
+        Ok(Self {
+            name: name.ok_or_else(|| invalid(path, "missing caller header"))?,
+            members,
+        })
+    }
+}
+
 fn absent(v: &str) -> bool {
     matches!(v, "" | "." | "NAN" | "NaN" | "NA")
 }
 
-/// A record split into its columns, with what the check needs.
+/// CO is CHROM_POS-CHROM2_POS2. Both contig names can contain '_' and '-' .
+fn join_key(entry: &str, chrom: &str, kind: &str) -> Option<Key> {
+    let rest = entry.strip_prefix(chrom)?.strip_prefix('_')?;
+    let (start, mate) = rest.split_once('-')?;
+    let (other, end) = mate.rsplit_once('_')?;
+    if other.is_empty() {
+        return None;
+    }
+    Some((
+        chrom.to_owned(),
+        position(start)?,
+        position(end)?,
+        kind.to_owned(),
+    ))
+}
+
 struct Record<'a> {
-    fields: Vec<&'a str>,
-    keys: Vec<&'a str>,
-    members: Vec<Member>,
-    /// Members per column.
-    per_column: Vec<usize>,
+    members: Vec<&'a Member>,
+    unresolved: usize,
 }
 
 impl<'a> Record<'a> {
-    fn key(&self, k: &str) -> Option<usize> {
-        self.keys.iter().position(|&x| x == k)
-    }
-
-    /// The record's members, or `None` when its columns cannot be read.
-    fn read(line: &'a str) -> Option<Record<'a>> {
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() < 10 {
+    fn read(line: &str, callers: &'a [Caller]) -> Option<Self> {
+        let fields: Vec<_> = line.split('\t').collect();
+        let [chrom, _, _, _, _, _, _, info, format, columns @ ..] = fields.as_slice() else {
+            return None;
+        };
+        let bits = info_value(info, "SUPP_VEC").as_bytes();
+        let supp = bits.iter().filter(|&&b| b == b'1').count();
+        if supp < 2
+            || bits.len() != callers.len()
+            || columns.len() != callers.len()
+            || bits.iter().any(|&b| !matches!(b, b'0' | b'1'))
+            || info_value(info, "SUPP").parse() != Ok(supp)
+        {
             return None;
         }
-        let keys: Vec<&str> = fields[8].split(':').collect();
-        let at = |k: &str| keys.iter().position(|&x| x == k);
-        let (co, ty, st, ln_at) = (at("CO")?, at("TY")?, at("ST")?, at("LN")?);
-        let chrom = fields[0];
-        let bits = info_value(fields[7], "SUPP_VEC").as_bytes();
-        let columns = &fields[9..];
-        if bits.len() != columns.len() {
-            return None;
-        }
+        let at = |name: &str| format.split(':').position(|key| key == name);
+        let (co, ty) = (at("CO")?, at("TY")?);
+        let ln = at("LN");
         let mut members = Vec::new();
-        let mut per_column = Vec::with_capacity(columns.len());
-        for (c, (col, &bit)) in columns.iter().zip(bits).enumerate() {
-            let vals: Vec<&str> = col.split(':').collect();
-            let get = |i: usize| vals.get(i).copied().unwrap_or(".");
-            let entries = get(co);
-            if absent(entries) {
-                if bit == b'1' {
+        let mut unresolved = 0;
+        for ((caller, column), &bit) in callers.iter().zip(columns).zip(bits) {
+            let vals: Vec<_> = column.split(':').collect();
+            let value = |i| vals.get(i).copied().unwrap_or(".");
+            let coords = value(co);
+            if bit == b'0' {
+                if !absent(coords) {
                     return None;
                 }
-                per_column.push(0);
                 continue;
             }
-            if bit != b'1' {
-                return None;
+            if absent(coords) {
+                unresolved += 1;
+                continue;
             }
-            let kinds: Vec<&str> = get(ty).split(',').collect();
-            let strands: Vec<&str> = get(st).split(',').collect();
-            let ln: i64 = get(ln_at).parse().map(|v: i64| v.abs()).unwrap_or(-1);
-            let mut n = 0;
-            for (i, e) in entries.split(',').enumerate() {
-                let (chrom2, p1, p2) = coords(e, chrom)?;
-                let kind = kinds.get(i).or(kinds.last())?.to_string();
-                let strand = strands.get(i).or(strands.last())?.to_string();
-                if absent(&kind) || absent(&strand) {
-                    return None;
+            let coords: Vec<_> = coords.split(',').collect();
+            let kinds: Vec<_> = value(ty).split(',').collect();
+            if coords.len() != kinds.len() {
+                unresolved += coords.len();
+                continue;
+            }
+            let insertion_vote_ok = ln.and_then(|i| position(value(i))).is_some();
+            let mut seen = HashSet::new();
+            for (entry, kind) in coords.into_iter().zip(kinds) {
+                let member = join_key(entry, chrom, kind)
+                    .filter(|_| kind != "INS" || insertion_vote_ok)
+                    .and_then(|key| caller.members.get(&key))
+                    .and_then(Option::as_ref)
+                    .filter(|member| seen.insert((member.start, member.end, member.kind.as_str())));
+                if let Some(member) = member {
+                    members.push(member);
+                } else {
+                    unresolved += 1;
                 }
-                let other_contig = chrom2 != chrom;
-                let (start, end) = if other_contig {
-                    (p1, p2)
-                } else {
-                    (p1.min(p2), p1.max(p2))
-                };
-                let len = if type_class(&kind) == "INS" {
-                    if ln < 0 {
-                        return None;
-                    }
-                    ln
-                } else if other_contig {
-                    0
-                } else {
-                    end - start
-                };
-                members.push(Member {
-                    caller: c,
-                    index: i,
-                    kind,
-                    strands: strand,
-                    chrom2,
-                    start,
-                    end,
-                    len,
-                    other_contig,
-                });
-                n += 1;
             }
-            per_column.push(n);
         }
-        if members.is_empty() {
-            return None;
-        }
-        Some(Record {
-            fields,
-            keys,
+        Some(Self {
             members,
-            per_column,
+            unresolved,
         })
-    }
-
-    /// The record of one group of members, as text.
-    fn rebuild(&self, g: &[usize]) -> String {
-        let kept: Vec<&Member> = g.iter().map(|&i| &self.members[i]).collect();
-        let n_cols = self.per_column.len();
-        let mut supp_vec = vec![b'0'; n_cols];
-        for m in &kept {
-            supp_vec[m.caller] = b'1';
-        }
-        let supp = supp_vec.iter().filter(|&&b| b == b'1').count();
-        // The middle member by start; the lower of the two middle ones.
-        let mut by_start: Vec<&Member> = kept.clone();
-        by_start.sort_by_key(|m| (m.start, m.end));
-        let mid = by_start[(by_start.len() - 1) / 2];
-        let (pos, end) = (mid.start, mid.end);
-        let min_s = kept.iter().map(|m| m.start).min().unwrap_or(pos);
-        let max_s = kept.iter().map(|m| m.start).max().unwrap_or(pos);
-        let min_e = kept.iter().map(|m| m.end).min().unwrap_or(end);
-        let max_e = kept.iter().map(|m| m.end).max().unwrap_or(end);
-        let first = kept[0];
-        let old_type = info_value(self.fields[7], "SVTYPE");
-        // The record's SVTYPE stays when it is the members' type (a BND
-        // pair SURVIVOR called INV stays INV); else the first member's.
-        let svtype = if !old_type.is_empty() && type_class(old_type) == type_class(&first.kind) {
-            old_type.to_owned()
-        } else {
-            first
-                .kind
-                .split(':')
-                .next()
-                .unwrap_or(&first.kind)
-                .to_owned()
-        };
-        let mean = kept.iter().map(|m| m.len.abs()).sum::<i64>() as f64 / kept.len() as f64;
-        let mut svlen = mean.round() as i64;
-        if type_class(&svtype) == "DEL" {
-            svlen = -svlen;
-        }
-        let info = set_info(
-            self.fields[7],
-            &[
-                ("SUPP", supp.to_string()),
-                ("SUPP_VEC", String::from_utf8_lossy(&supp_vec).into_owned()),
-                ("SVLEN", svlen.to_string()),
-                ("SVTYPE", svtype.clone()),
-                ("CHR2", first.chrom2.clone()),
-                ("END", end.to_string()),
-                ("CIPOS", format!("{},{}", min_s - pos, max_s - pos)),
-                ("CIEND", format!("{},{}", min_e - end, max_e - end)),
-                ("STRANDS", first.strands.clone()),
-            ],
-        );
-        let mut cols: Vec<String> = Vec::with_capacity(n_cols);
-        for (c, col) in self.fields[9..].iter().enumerate() {
-            let mine: Vec<usize> = kept
-                .iter()
-                .filter(|m| m.caller == c)
-                .map(|m| m.index)
-                .collect();
-            if mine.is_empty() {
-                cols.push(self.empty_column());
-            } else if mine.len() == self.per_column[c] {
-                cols.push((*col).to_owned());
-            } else {
-                cols.push(self.part_column(col, &mine, c));
-            }
-        }
-        let id = self.middle_id(mid);
-        let mut out = vec![
-            self.fields[0].to_owned(),
-            pos.to_string(),
-            id,
-            "N".to_owned(),
-            format!("<{svtype}>"),
-            self.fields[5].to_owned(),
-            self.fields[6].to_owned(),
-            info,
-            self.fields[8].to_owned(),
-        ];
-        out.extend(cols);
-        out.join("\t")
-    }
-
-    /// The source ID of the middle member, when its column's ID names it
-    /// (SURVIVOR writes the last member's), else `.`.
-    fn middle_id(&self, mid: &Member) -> String {
-        let Some(k) = self.key("ID") else {
-            return ".".to_owned();
-        };
-        if mid.index + 1 != self.per_column[mid.caller] {
-            return ".".to_owned();
-        }
-        match self.fields[9 + mid.caller].split(':').nth(k) {
-            Some(v) if !absent(v) => v.to_owned(),
-            _ => ".".to_owned(),
-        }
-    }
-
-    /// SURVIVOR's column for a caller with no member, or `./.` and `.`
-    /// for each key of another FORMAT.
-    fn empty_column(&self) -> String {
-        if self.fields[8] == SURVIVOR_FORMAT {
-            return EMPTY.to_owned();
-        }
-        let mut v = vec!["."; self.keys.len().max(1)];
-        if self.keys.first() == Some(&"GT") {
-            v[0] = "./.";
-        }
-        v.join(":")
-    }
-
-    /// A column that keeps the members `mine` (indexes into its `CO`) of
-    /// its `n` members: those entries of the per-member lists, its ID only
-    /// when the last member is kept, LN as the kept members' mean length.
-    fn part_column(&self, col: &str, mine: &[usize], c: usize) -> String {
-        let n = self.per_column[c];
-        let mut vals: Vec<String> = col.split(':').map(str::to_owned).collect();
-        for k in ["CO", "TY", "ST", "QV"] {
-            if let Some(i) = self.key(k)
-                && let Some(v) = vals.get_mut(i)
-            {
-                let list: Vec<&str> = v.split(',').collect();
-                if list.len() == n {
-                    *v = mine.iter().map(|&j| list[j]).collect::<Vec<_>>().join(",");
-                }
-            }
-        }
-        if let Some(i) = self.key("ID")
-            && let Some(v) = vals.get_mut(i)
-            && !mine.contains(&(n - 1))
-        {
-            *v = ".".to_owned();
-        }
-        if let Some(i) = self.key("LN")
-            && let Some(v) = vals.get_mut(i)
-        {
-            let lens: Vec<i64> = self
-                .members
-                .iter()
-                .filter(|m| m.caller == c && mine.contains(&m.index))
-                .map(|m| m.len.abs())
-                .collect();
-            let mean = lens.iter().sum::<i64>() as f64 / lens.len().max(1) as f64;
-            *v = (mean.round() as i64).to_string();
-        }
-        vals.join(":")
     }
 }
 
-/// INFO with the values of `set` in place of the keys it names; keys the
-/// INFO does not have are not added.
-fn set_info(info: &str, set: &[(&str, String)]) -> String {
-    info.split(';')
-        .map(|kv| {
-            let k = kv.split_once('=').map_or(kv, |(k, _)| k);
-            match set.iter().find(|(key, _)| *key == k) {
-                Some((key, v)) => format!("{key}={v}"),
-                None => kv.to_owned(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(";")
+fn format_member(member: &Member) -> String {
+    let id = member.id.replace(':', "_");
+    let alt = if allele_len(&member.alt).is_some() {
+        &member.alt
+    } else {
+        "NA"
+    };
+    format!(
+        "{}:NA:{}:.,.:{}:{}:{}:{}:{}:{}:{}_{}-{}_{}",
+        member.gt,
+        member.len,
+        member.strands,
+        member.qual,
+        member.kind,
+        id,
+        member.reference,
+        alt,
+        member.chrom,
+        member.start,
+        member.chrom2,
+        member.end
+    )
 }
 
-/// What one run read and wrote.
+fn build_record(kept: &[&Member], caller_count: usize) -> String {
+    let mut ordered = kept.to_vec();
+    ordered.sort_by_key(|m| (m.start, m.end));
+    let mid = ordered[(kept.len() - 1) / 2];
+    // Keep an original bracketed allele, with its own POS and REF, when
+    // some caller used a symbolic ALT for the same intercontig breakend.
+    let mid = if mid.chrom != mid.chrom2 && breakend(&mid.alt).is_none() {
+        ordered
+            .iter()
+            .copied()
+            .find(|m| breakend(&m.alt).is_some())
+            .unwrap_or(mid)
+    } else {
+        mid
+    };
+    let max_qual = kept
+        .iter()
+        .filter_map(|m| numeric_qual(&m.qual).map(|n| (n, m.qual.as_str())))
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map_or(".", |(_, qual)| qual);
+    let mut svlen =
+        (kept.iter().map(|m| m.len).sum::<i64>() as f64 / kept.len() as f64).round() as i64;
+    if mid.kind == "DEL" {
+        svlen = -svlen;
+    }
+
+    let mut bits = vec!['0'; caller_count];
+    let mut columns = vec![EMPTY.to_owned(); caller_count];
+    for member in kept {
+        bits[member.caller] = '1';
+        columns[member.caller] = format_member(member);
+    }
+    let bits: String = bits.into_iter().collect();
+    let (pos, end) = (mid.start, mid.end);
+    let ci = |coord: fn(&Member) -> i64, point: i64| {
+        let (mut min, mut max) = (point, point);
+        for member in kept {
+            min = min.min(coord(member));
+            max = max.max(coord(member));
+        }
+        format!("{},{}", min - point, max - point)
+    };
+    format!(
+        "{}\t{pos}\t{}\t{}\t{}\t{max_qual}\tPASS\tSUPP={};SUPP_VEC={bits};SVLEN={svlen};SVTYPE={};SVMETHOD=SURVIVOR1.0.7;CHR2={};END={end};CIPOS={};CIEND={};STRANDS={}\t{SURVIVOR_FORMAT}\t{}",
+        mid.chrom,
+        mid.id,
+        mid.reference,
+        mid.alt,
+        kept.len(),
+        mid.kind,
+        mid.chrom2,
+        ci(|m| m.start, pos),
+        ci(|m| m.end, end),
+        mid.strands,
+        columns.join("\t")
+    )
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Counts {
-    /// Records read.
+pub(super) struct Counts {
     pub records: usize,
-    /// Records whose members are one event, written as SURVIVOR wrote them.
     pub kept: usize,
-    /// Records whose members are not one event.
     pub split: usize,
-    /// Records the split ones gave (events of two or more callers).
     pub from_split: usize,
-    /// Split records that left no event of two or more callers.
     pub dropped: usize,
-    /// Records whose columns could not be read, written as they were.
     pub unread: usize,
+    pub unresolved: usize,
 }
 
 impl Counts {
-    /// Records written.
     pub fn written(&self) -> usize {
-        self.kept + self.from_split + self.unread
+        self.kept + self.from_split
     }
 }
 
@@ -499,28 +542,21 @@ impl fmt::Display for Counts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} records, {} written; {} one event as merged, {} not one event: split into {} records of 2+ callers, {} dropped with fewer than 2 callers left",
+            "{} records, {} written; {} one event as merged, {} rechecked: split into {} records of 2+ callers, {} dropped with fewer than 2 callers left; {} malformed records dropped, {} unresolved member votes dropped",
             self.records,
             self.written(),
             self.kept,
             self.split,
             self.from_split,
-            self.dropped
-        )?;
-        if self.unread > 0 {
-            write!(
-                f,
-                "; {} could not be read and are written as SURVIVOR wrote them",
-                self.unread
-            )?;
-        }
-        Ok(())
+            self.dropped,
+            self.unread,
+            self.unresolved
+        )
     }
 }
 
-/// A failure that ends the run with exit 1.
 #[derive(Debug)]
-pub enum Error {
+pub(super) enum Error {
     Read(String, io::Error),
     Write(String, io::Error),
 }
@@ -534,85 +570,123 @@ impl fmt::Display for Error {
     }
 }
 
-/// The records one input record becomes, and how it counts.
-pub fn check_line(line: &str, c: &mut Counts) -> Vec<String> {
-    c.records += 1;
-    let Some(rec) = Record::read(line) else {
-        c.unread += 1;
-        return vec![line.to_owned()];
+fn check_line(line: &str, callers: &[Caller], counts: &mut Counts) -> Vec<String> {
+    counts.records += 1;
+    let Some(record) = Record::read(line, callers) else {
+        counts.unread += 1;
+        return Vec::new();
     };
-    let groups = group(&rec.members);
-    let two_callers = |g: &Vec<usize>| {
-        let mut callers: Vec<usize> = g.iter().map(|&i| rec.members[i].caller).collect();
-        callers.sort_unstable();
-        callers.dedup();
-        callers.len() >= 2
-    };
-    if groups.len() == 1 && two_callers(&groups[0]) {
-        c.kept += 1;
+    counts.unresolved += record.unresolved;
+    let groups = groups(&record.members, callers.len());
+    if let [group] = groups.as_slice()
+        && record.unresolved == 0
+        && group.len() == record.members.len()
+    {
+        counts.kept += 1;
         return vec![line.to_owned()];
     }
-    c.split += 1;
-    let out: Vec<String> = groups
+    counts.split += 1;
+    if groups.is_empty() {
+        counts.dropped += 1;
+    }
+    counts.from_split += groups.len();
+    groups
         .iter()
-        .filter(|g| two_callers(g))
-        .map(|g| rec.rebuild(g))
-        .collect();
-    if out.is_empty() {
-        c.dropped += 1;
-    }
-    c.from_split += out.len();
-    out
+        .map(|group| {
+            let kept: Vec<_> = group.iter().map(|&i| record.members[i]).collect();
+            build_record(&kept, callers.len())
+        })
+        .collect()
 }
 
-/// Reads SURVIVOR's merge `input` (named `path`, for messages) and writes
-/// the checked records to `out`.
-pub fn check(input: impl BufRead, path: &str, out: &mut impl Write) -> Result<Counts, Error> {
+fn check(
+    input: impl BufRead,
+    path: &str,
+    callers: &[Caller],
+    out: &mut impl Write,
+) -> Result<Counts, Error> {
     let w = |e| Error::Write("the output".to_owned(), e);
-    let mut c = Counts::default();
+    let mut counts = Counts::default();
+    let mut saw_header = false;
     for line in input.lines() {
         let line = line.map_err(|e| Error::Read(path.to_owned(), e))?;
-        let line = line.trim_end_matches('\r');
         if line.is_empty() {
             continue;
         }
-        if line.starts_with("#CHROM") {
+        if line.starts_with("#CHROM\t") {
+            let names = line.split('\t').skip(9);
+            if saw_header || names.ne(callers.iter().map(|caller| caller.name.as_str())) {
+                return Err(invalid(
+                    path,
+                    "caller columns differ from the supplied VCF list",
+                ));
+            }
+            saw_header = true;
             writeln!(out, "{HEADER}").map_err(w)?;
         }
         if line.starts_with('#') {
             writeln!(out, "{line}").map_err(w)?;
-            continue;
+        } else {
+            if !saw_header {
+                return Err(invalid(path, "missing caller header"));
+            }
+            for rec in check_line(&line, callers, &mut counts) {
+                writeln!(out, "{rec}").map_err(w)?;
+            }
         }
-        for rec in check_line(line, &mut c) {
-            writeln!(out, "{rec}").map_err(w)?;
-        }
+    }
+    if !saw_header {
+        return Err(invalid(path, "missing caller header"));
     }
     out.flush().map_err(w)?;
-    Ok(c)
+    Ok(counts)
 }
 
-/// Runs the verb on files: `out_path` `-` is stdout.
-fn run(input: &str, out_path: &str, stdout: &mut dyn Write) -> Result<Counts, Error> {
+#[cfg(test)]
+pub(super) fn check_text(
+    input: &str,
+    sources: &[&str],
+    out: &mut impl Write,
+) -> Result<Counts, Error> {
+    let callers = sources
+        .iter()
+        .enumerate()
+        .map(|(i, source)| Caller::read(source.as_bytes(), "caller.vcf", i))
+        .collect::<Result<Vec<_>, _>>()?;
+    check(input.as_bytes(), "merged.vcf", &callers, out)
+}
+
+fn run(list: &str, input: &str, out_path: &str, stdout: &mut dyn Write) -> Result<Counts, Error> {
+    let paths = std::fs::read_to_string(list).map_err(|e| Error::Read(list.to_owned(), e))?;
+    let mut callers = Vec::new();
+    let mut names = HashSet::new();
+    for path in paths.lines() {
+        let reader = og_io::open(path).map_err(|e| Error::Read(path.to_owned(), e))?;
+        let caller = Caller::read(reader, path, callers.len())?;
+        if !names.insert(caller.name.clone()) {
+            return Err(invalid(list, "duplicate caller names"));
+        }
+        callers.push(caller);
+    }
+    if callers.len() < 2 {
+        return Err(invalid(list, "expected at least two caller VCFs"));
+    }
     let reader = og_io::open(input).map_err(|e| Error::Read(input.to_owned(), e))?;
     if out_path == "-" {
-        let mut w = BufWriter::new(stdout);
-        return check(reader, input, &mut w);
+        return check(reader, input, &callers, &mut BufWriter::new(stdout));
     }
-    // Written beside the target and renamed, so a failed run leaves no
-    // half file behind.
     let part = format!("{out_path}.part");
     let file = File::create(&part).map_err(|e| Error::Write(part.clone(), e))?;
     let mut w = BufWriter::new(file);
-    let c = check(reader, input, &mut w).inspect_err(|_| {
+    let counts = check(reader, input, &callers, &mut w).inspect_err(|_| {
         let _ = std::fs::remove_file(&part);
     })?;
     drop(w);
     std::fs::rename(&part, out_path).map_err(|e| Error::Write(out_path.to_owned(), e))?;
-    Ok(c)
+    Ok(counts)
 }
 
-/// `og sv consensus-check IN OUT`: exit 0, 1 for an input or output
-/// problem, 2 for a usage error.
+/// Exit 0 on success, 1 on I/O errors, 2 on incorrect usage.
 pub fn cli(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let p = match args::parse(&SPEC, argv) {
         Ok(p) => p,
@@ -625,7 +699,7 @@ pub fn cli(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             return 2;
         }
     };
-    match run(&p.pos[0], &p.pos[1], out) {
+    match run(p.get("--callers").unwrap(), &p.pos[0], &p.pos[1], out) {
         Ok(c) => {
             let _ = writeln!(err, "og sv consensus-check: {c}");
             0

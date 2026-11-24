@@ -87,7 +87,7 @@ process SURVIVOR_MERGE {
     # SURVIVOR's 1 kb rule alone merges disjoint events; og (bin/, a static
     # binary) keeps each record only when its calls are one event, as
     # scripts/22-survivor-merge.sh does.
-    og sv consensus-check ${meta.id}_sv_survivor.vcf ${meta.id}_sv_merged.vcf
+    og sv consensus-check --callers sv_files.txt ${meta.id}_sv_survivor.vcf ${meta.id}_sv_merged.vcf
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

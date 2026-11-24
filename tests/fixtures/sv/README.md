@@ -23,3 +23,10 @@ and counts the second pair as agreement.
 In each of the last three events only the Manta call votes. Step 22 kept every
 PASS record before `og sv survivor-prep` (`tests/e2e/sv-merge-votes.sh`), so
 each read as two callers and the consensus held 4 records instead of 1.
+
+The consensus-review caller inputs exercise repeated calls within a caller,
+a difference in mate contig or orientation, explicit INV and TRA, and split
+records with missing or discarded IDs. The pinned VCF captures SURVIVOR
+1.0.7 output from those three synthetic inputs in Manta, Delly, CNVpytor
+order. The Rust tests read that capture. The end-to-end case runs the pinned
+merge and checker through step 22.

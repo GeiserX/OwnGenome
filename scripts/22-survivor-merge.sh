@@ -12,9 +12,8 @@
 # SURVIVOR's 1 kb rule alone pairs two deletions of 100 bp that start 900 bp
 # apart and share no base, and on some inputs a deletion with a duplication at
 # the same place. og sv consensus-check then reads each merged record's calls
-# (FORMAT CO, TY, ST and LN) and keeps it only when they are one event: the
-# same type (INV, BND and TRA count as one, SURVIVOR's rule), the same strands
-# and a reciprocal overlap of at least 0.5; insertions start within 1 kb and
+# from the VCFs SURVIVOR read. It keeps groups with the same type, the same
+# strands and reciprocal overlap of at least 0.5. Insertions start within 1 kb and
 # the shorter is at least half the longer. A record that fails is split by
 # event, each with its POS, END, SVLEN, CIPOS and CIEND from its own calls,
 # and a part with fewer than 2 callers is dropped.
@@ -22,10 +21,8 @@
 # Inputs, each used when it exists (two or more are needed): Manta (step 04),
 # Delly (19), CNVpytor (18), TIDDIT (04a) and Sniffles2 (04c). GRIDSS (04b) is
 # left out: it reports every event as a pair of breakends (SVTYPE=BND), and
-# nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 counts BND
-# as the same type as INV and TRA, so its breakends would pair with the other
-# callers' inversions and translocations and count as votes for an event GRIDSS
-# never typed.
+# nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 treats
+# same-contig BND calls as INV and intercontig BND calls as TRA.
 #
 # A caller votes only with the calls it makes: og sv survivor-prep drops a
 # record whose FILTER or sample FT is not PASS, or whose genotype is reference
@@ -158,7 +155,8 @@ fi
 
 echo "[2/3] Checking that each merged record is one event (og sv consensus-check)..."
 run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" \
-  /pgp-bin/og sv consensus-check "$(cpath "$MERGED")" "$(cpath "$CHECKED")"
+  /pgp-bin/og sv consensus-check --callers "$(cpath "${IN_DIR}/sv_files.txt")" \
+    "$(cpath "$MERGED")" "$(cpath "$CHECKED")"
 rm -f "$MERGED"
 
 echo "[3/3] Sorting, compressing and indexing..."

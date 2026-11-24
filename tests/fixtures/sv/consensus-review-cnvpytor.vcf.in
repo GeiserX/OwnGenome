@@ -1,0 +1,15 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+##contig=<ID=chr21,length=46709983>
+##contig=<ID=chr22,length=50818468>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="SV length">
+##INFO=<ID=CT,Number=1,Type=String,Description="Connection type">
+##INFO=<ID=CHR2,Number=1,Type=String,Description="Mate contig">
+##INFO=<ID=STRANDS,Number=1,Type=String,Description="Orientation">
+##INFO=<ID=pytorP1,Number=1,Type=Float,Description="E-value">
+##INFO=<ID=pytorQ0,Number=1,Type=Float,Description="Fraction of zero mapping quality reads">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	cnvpytor
+chr20	7000900	discarded-bnd	N	[chr21:7005000[N	90	PASS	SVTYPE=BND;CT=5to5;pytorP1=1e-8;pytorQ0=0	GT	0/1

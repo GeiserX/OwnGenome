@@ -62,7 +62,7 @@ The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `mant
 2. Writes the records each caller votes with (below) as plain VCF under `sv_merged/inputs/`, with one sample column named after the caller (`og sv survivor-prep --caller NAME IN OUT`, which prints how many records it left out and why). SURVIVOR names its output columns after the input samples, so three inputs that all name the sample would give one name three times
 3. Runs `SURVIVOR merge inputs/sv_files.txt 1000 2 1 1 0 50`: maximum breakpoint distance 1,000 bp, support from 2 callers, same type, same strands, no size-scaled distance, minimum size 50 bp
 4. Checks that SURVIVOR wrote a VCF (it exits 0 when it cannot open an input)
-5. Checks each merged record (`og sv consensus-check IN OUT`, below), which prints how many records were one event, how many it split and how many it dropped
+5. Checks each merged record (`og sv consensus-check --callers LIST IN OUT`, below), which prints how many records were one event, how many it split and how many it dropped
 6. Sorts, compresses and indexes the result
 7. Prints the count, and the count per type and caller combination
 
@@ -83,19 +83,20 @@ Delly genotypes every site it reports, so a PASS Delly record with `0/0` is comm
 
 ### One event per record
 
-SURVIVOR writes each caller's calls of a record in that caller's column: their coordinates (`CO`), types (`TY`), strands (`ST`) and length (`LN`). `og sv consensus-check` compares these calls two by two. Two calls are one event when all of the rules below hold:
+`og sv consensus-check --callers LIST IN OUT` reads the same list of prepared caller VCFs as SURVIVOR. It looks up each member by caller, first contig, both numeric breakpoint positions, and the per-member type. It checks the original records for orientation, insertion length, and the mate contig. SURVIVOR summarizes those fields across a caller column or the cluster.
 
 | Calls | Rule |
 |---|---|
-| any | the same type, by SURVIVOR's own rule: `INV`, `BND` and `TRA` count as one type, any other type only matches itself (`DUP:TANDEM` is a `DUP`) |
-| any | the same strands |
-| deletions, duplications, inversions | a reciprocal overlap of at least 0.5: they share at least half of the longer call |
-| insertions | they start within 1,000 bp, and the shorter is at least half as long as the longer |
-| a breakend to another chromosome | the same other chromosome, and both breakpoints within 1,000 bp (SURVIVOR's own rule, as there is no span to overlap) |
+| All calls | Same type and orientation. A same-contig `BND` matches `INV`. An intercontig `BND` matches `TRA`. |
+| Deletions, duplications, inversions | Reciprocal overlap of at least 0.5. The overlap covers at least half of the longer call. |
+| Insertions | Starts within 1,000 bp and the shorter call at least half the length of the longer call. |
+| Intercontig breakends | Same pair of contigs in the same order and both breakpoints within 1,000 bp. |
 
-The calls are taken in the order of `SUPP_VEC`. Each call joins the first group whose every call it matches, or starts a new group. A record whose calls form one group is kept as SURVIVOR wrote it. Any other record is split: each group of two or more callers becomes a record of its own, and a group of one caller is dropped. A split record takes its `SUPP`, `SUPP_VEC`, `SVTYPE`, `STRANDS` and `CHR2` from its calls. `POS` and `END` are those of its middle call by start (the lower of the two middle ones). `SVLEN` is the mean length of its calls, negative for a deletion, as SURVIVOR writes it. `CIPOS` and `CIEND` give the spread of the calls' starts and ends around `POS` and `END`. `REF` is `N`, `ALT` is the type as a symbolic allele (`<DEL>`), and `ID` is the middle call's ID when its column names it. A caller column keeps only the calls of its group. Its `ID` stays only when it names one of them: SURVIVOR writes the ID of the caller's last call there, so the column gets `.` when that call went to another group.
+The checker selects the largest group in which every pair agrees and each caller votes once. It breaks ties by caller column order and then by the order of the caller's `CO` entries. It removes the selected members and repeats until no group has two callers. A cluster with exactly one verified member for each voting caller and one compatible group passes through unchanged.
 
-A record whose columns cannot be read this way (no `CO`, a coordinate that does not parse, a `SUPP_VEC` that does not fit the columns) is kept as SURVIVOR wrote it, and the summary line counts it.
+A split record takes `POS`, `END`, `REF`, `ALT`, and `ID` from the lower middle member when ordered by start and end. For an intercontig group, the checker uses a retained bracketed allele if the middle member used a symbolic allele and another member supplies a bracketed allele. It takes `QUAL` from the highest retained quality and rebuilds `SUPP`, `SUPP_VEC`, `SVTYPE`, `SVLEN`, `CHR2`, `CIPOS`, `CIEND`, and `STRANDS` from the selected calls. The caller columns name only the retained source IDs. An unnamed source call gets `.` in `FORMAT/ID`.
+
+The checker drops an unmatched or ambiguous member, or a member whose insertion length is missing. The log counts each unresolved vote. It also counts and drops records with malformed `SUPP` or `SUPP_VEC`. Every output record has at least two verified callers.
 
 ## Output
 

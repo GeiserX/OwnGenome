@@ -870,11 +870,63 @@ fn cc_ins(a: i64, b: i64) -> String {
     )
 }
 
-fn cc_text(records: &[&str]) -> (String, consensus_check::Counts) {
+const CC_SOURCES: [&str; 3] = [
+    include_str!("../../../../../tests/fixtures/sv/consensus-review-manta.vcf.in"),
+    include_str!("../../../../../tests/fixtures/sv/consensus-review-delly.vcf.in"),
+    include_str!("../../../../../tests/fixtures/sv/consensus-review-cnvpytor.vcf.in"),
+];
+
+fn cc_sources() -> [String; 3] {
+    let mut sources = CC_SOURCES.map(str::to_owned);
+    let rows = [
+        (0, 1_000_000, "m1", "DEL", 1_000_100, 100),
+        (1, 1_000_900, "d1", "DEL", 1_001_000, 100),
+        (0, 2_000_000, "m2", "DEL", 2_000_500, 500),
+        (1, 2_000_100, "d2", "DEL", 2_000_600, 500),
+        (2, 2_000_050, "c2", "DEL", 2_000_550, 500),
+        (0, 3_000_000, "m3", "INV", 3_005_000, 5000),
+        (0, 4_000_000, "a4", "INS", 4_000_001, 1000),
+        (1, 4_000_200, "b4", "INS", 4_000_201, 600),
+        (0, 6_000_000, "m6", "DEL", 6_002_000, 2000),
+        (1, 6_000_050, "d6a", "DEL", 6_002_050, 2000),
+        (1, 6_000_900, "d6b", "DEL", 6_001_900, 1000),
+        (1, 6_000_900, "d6c", "DEL", 6_001_000, 100),
+        (0, 6_000_000, "a6", "DEL", 6_000_600, 600),
+        (1, 6_000_300, "b6", "DEL", 6_000_900, 600),
+        (2, 6_000_700, "c6", "DEL", 6_001_300, 600),
+        (0, 7_000_000, "m7", "DEL", 7_003_000, 3000),
+        (1, 7_000_000, "d7", "DUP", 7_003_000, 3000),
+        (0, 1000, "mA", "DEL", 2000, 1000),
+        (1, 1100, "dA", "DEL", 2100, 1000),
+        (0, 5000, "mB", "DEL", 6000, 1000),
+        (1, 5100, "dB", "DEL", 6100, 1000),
+    ];
+    for (caller, pos, id, kind, end, len) in rows {
+        use std::fmt::Write as _;
+        let extra = if kind == "INS" { ";CT=NtoN" } else { "" };
+        writeln!(
+            sources[caller],
+            "chr20\t{pos}\t{id}\tN\t<{kind}>\t60\tPASS\tSVTYPE={kind};END={end};SVLEN={len}{extra}\tGT\t0/1"
+        )
+        .unwrap();
+    }
+    sources[0].push_str("chr20\t5000000\ta5\tN\tN[chr21:600000[\t60\tPASS\tSVTYPE=BND\tGT\t0/1\n");
+    sources[1].push_str(concat!(
+        "chr20\t3000100\td3\tN\tN]chr20:3005100]\t60\tPASS\tSVTYPE=BND\tGT\t0/1\n",
+        "chr20\t5000300\tb5\tN\tN[chr21:600400[\t60\tPASS\tSVTYPE=BND\tGT\t0/1\n",
+    ));
+    sources
+}
+
+fn cc_text_from(records: &[&str], sources: &[&str]) -> (String, consensus_check::Counts) {
     let input = format!("{CC_HEAD}{}\n", records.join("\n"));
     let mut out = Vec::new();
-    let c = consensus_check::check(input.as_bytes(), "merged.vcf", &mut out).unwrap();
+    let c = consensus_check::check_text(&input, sources, &mut out).unwrap();
     (String::from_utf8(out).unwrap(), c)
+}
+
+fn cc_text(records: &[&str]) -> (String, consensus_check::Counts) {
+    cc_text_from(records, &cc_sources().each_ref().map(String::as_str))
 }
 
 fn cc_records(out: &str) -> Vec<&str> {
@@ -884,14 +936,18 @@ fn cc_records(out: &str) -> Vec<&str> {
 fn member(kind: &str, strands: &str, start: i64, end: i64, len: i64) -> Member {
     Member {
         caller: 0,
-        index: 0,
+        chrom: "chr20".to_owned(),
         kind: kind.to_owned(),
         strands: strands.to_owned(),
         chrom2: "chr20".to_owned(),
         start,
         end,
         len,
-        other_contig: false,
+        id: ".".to_owned(),
+        reference: "N".to_owned(),
+        alt: format!("<{kind}>"),
+        qual: ".".to_owned(),
+        gt: "0/1".to_owned(),
     }
 }
 
@@ -934,10 +990,14 @@ fn delly_shaped_insertions_need_a_like_size() {
     // 1,000 bp and 300 bp: SURVIVOR merged them (ends within 1 kb).
     let unlike = cc_ins(1000, 300);
     let like = cc_ins(1000, 600);
-    let (out, c) = cc_text(&[&unlike, &like]);
-    let recs = cc_records(&out);
-    assert_eq!(recs, [like.as_str()], "{out}");
-    assert_eq!((c.records, c.kept, c.split, c.dropped), (2, 1, 1, 1));
+    let mut sources = cc_sources();
+    sources[1] = sources[1].replace("END=4000201;SVLEN=600", "END=4000201;SVLEN=300");
+    let (out, c) = cc_text_from(&[&unlike], &sources.each_ref().map(String::as_str));
+    assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((c.records, c.kept, c.split, c.dropped), (1, 0, 1, 1));
+    let (out, c) = cc_text(&[&like]);
+    assert_eq!(cc_records(&out), [like.as_str()], "{out}");
+    assert_eq!((c.records, c.kept), (1, 1));
     let a = member("INS", "++", 4_000_000, 4_000_001, 1000);
     let half = member("INS", "++", 4_000_200, 4_000_201, 500);
     assert_eq!(consensus_check::apart(&a, &half), None);
@@ -951,7 +1011,7 @@ fn delly_shaped_insertions_need_a_like_size() {
 
 #[test]
 fn a_breakend_pair_of_an_inversion_and_a_translocation_stay() {
-    // SURVIVOR's own rule counts BND, INV and TRA as one type.
+    // A same-contig BND matches INV. An intercontig BND matches TRA.
     let (out, c) = cc_text(&[CC_BND_INV, CC_TRA]);
     assert_eq!(cc_records(&out), [CC_BND_INV, CC_TRA]);
     assert_eq!((c.kept, c.split), (2, 0));
@@ -960,7 +1020,6 @@ fn a_breakend_pair_of_an_inversion_and_a_translocation_stay() {
     assert_eq!(consensus_check::apart(&inv, &bnd), None);
     let tra = |start: i64, chrom2: &str, end: i64| Member {
         chrom2: chrom2.to_owned(),
-        other_contig: true,
         len: 0,
         ..member("TRA", "+-", start, end, 0)
     };
@@ -989,9 +1048,9 @@ fn a_breakend_pair_of_an_inversion_and_a_translocation_stay() {
 
 #[test]
 fn a_merge_of_one_event_is_written_as_survivor_wrote_it() {
-    let (out, c) = cc_text(&[CC_AGREE, CC_TWO_FROM_ONE]);
-    assert_eq!(cc_records(&out), [CC_AGREE, CC_TWO_FROM_ONE]);
-    assert_eq!((c.records, c.kept, c.written()), (2, 2, 2));
+    let (out, c) = cc_text(&[CC_AGREE]);
+    assert_eq!(cc_records(&out), [CC_AGREE]);
+    assert_eq!((c.records, c.kept, c.written()), (1, 1, 1));
     // The header gains one line, just above #CHROM.
     let head: Vec<&str> = out.lines().filter(|l| l.starts_with('#')).collect();
     assert_eq!(head.len(), 4, "{out}");
@@ -999,7 +1058,7 @@ fn a_merge_of_one_event_is_written_as_survivor_wrote_it() {
     assert!(head[3].starts_with("#CHROM\t"));
     assert_eq!(
         c.to_string(),
-        "2 records, 2 written; 2 one event as merged, 0 not one event: split into 0 records of 2+ callers, 0 dropped with fewer than 2 callers left"
+        "1 records, 1 written; 1 one event as merged, 0 rechecked: split into 0 records of 2+ callers, 0 dropped with fewer than 2 callers left; 0 malformed records dropped, 0 unresolved member votes dropped"
     );
 }
 
@@ -1009,7 +1068,7 @@ fn a_chain_keeps_the_first_event_and_recomputes_its_coordinates() {
     // a6 and b6 overlap by half; c6 overlaps b6 but shares no base with a6,
     // so it is an event of its own, of one caller, and is dropped.
     let want = format!(
-        "chr20\t6000000\ta6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-600;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000600;CIPOS=0,300;CIEND=0,300;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:600:0,0:+-:60:DEL:a6:NA:NA:chr20_6000000-chr20_6000600\t0/1:NA:600:0,0:+-:60:DEL:b6:NA:NA:chr20_6000300-chr20_6000900\t{CC_EMPTY}"
+        "chr20\t6000000\ta6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-600;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000600;CIPOS=0,300;CIEND=0,300;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:600:.,.:+-:60:DEL:a6:N:NA:chr20_6000000-chr20_6000600\t0/1:NA:600:.,.:+-:60:DEL:b6:N:NA:chr20_6000300-chr20_6000900\t{CC_EMPTY}"
     );
     assert_eq!(cc_records(&out), [want.as_str()]);
     assert_eq!((c.split, c.from_split, c.dropped), (1, 1, 0));
@@ -1021,9 +1080,8 @@ fn a_caller_keeps_only_its_calls_of_the_event() {
     let rec = CC_TWO_FROM_ONE.replace("chr20_6000900-chr20_6001900", "chr20_6000900-chr20_6001000");
     let (out, c) = cc_text(&[&rec]);
     let want = format!(
-        "chr20\t6000000\tm6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-2000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6002000;CIPOS=0,50;CIEND=0,50;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:2000:0,0:+-:60:DEL:m6:NA:NA:chr20_6000000-chr20_6002000\t0/1:NA:2000:0,0:+-:60:DEL:.:NA:NA:chr20_6000050-chr20_6002050\t{CC_EMPTY}"
+        "chr20\t6000000\tm6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-2000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6002000;CIPOS=0,50;CIEND=0,50;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:2000:.,.:+-:60:DEL:m6:N:NA:chr20_6000000-chr20_6002000\t0/1:NA:2000:.,.:+-:60:DEL:d6a:N:NA:chr20_6000050-chr20_6002050\t{CC_EMPTY}"
     );
-    // Delly's ID named its second call, so the kept column says "." there.
     assert_eq!(cc_records(&out), [want.as_str()]);
     assert_eq!((c.split, c.from_split), (1, 1));
 }
@@ -1035,36 +1093,35 @@ fn two_events_in_one_record_become_two_records() {
     );
     let (out, c) = cc_text(&[&rec]);
     let first = format!(
-        "chr20\t1000\t.\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:0,0:+-:60:DEL:.:NA:NA:chr20_1000-chr20_2000\t0/1:NA:1000:0,0:+-:60:DEL:.:NA:NA:chr20_1100-chr20_2100\t{CC_EMPTY}"
+        "chr20\t1000\tmA\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:.,.:+-:60:DEL:mA:N:NA:chr20_1000-chr20_2000\t0/1:NA:1000:.,.:+-:60:DEL:dA:N:NA:chr20_1100-chr20_2100\t{CC_EMPTY}"
     );
     let second = format!(
-        "chr20\t5000\tmB\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:0,0:+-:60:DEL:mB:NA:NA:chr20_5000-chr20_6000\t0/1:NA:1000:0,0:+-:60:DEL:dB:NA:NA:chr20_5100-chr20_6100\t{CC_EMPTY}"
+        "chr20\t5000\tmB\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:.,.:+-:60:DEL:mB:N:NA:chr20_5000-chr20_6000\t0/1:NA:1000:.,.:+-:60:DEL:dB:N:NA:chr20_5100-chr20_6100\t{CC_EMPTY}"
     );
     assert_eq!(cc_records(&out), [first.as_str(), second.as_str()]);
     assert_eq!((c.split, c.from_split, c.written()), (1, 2, 2));
 }
 
 #[test]
-fn a_record_it_cannot_read_is_written_as_it_was() {
+fn malformed_records_and_unresolved_votes_are_dropped() {
     let no_co = CC_DISJOINT.replace(":AAL:CO\t", ":AAL\t");
     let short_vec = CC_DISJOINT.replace("SUPP_VEC=110", "SUPP_VEC=11");
     let other_contig =
         CC_DISJOINT.replace("chr20_1000000-chr20_1000100", "chr2_1000000-chr2_1000100");
     let (out, c) = cc_text(&[&no_co, &short_vec, &other_contig]);
-    assert_eq!(
-        cc_records(&out),
-        [no_co.as_str(), short_vec.as_str(), other_contig.as_str()]
-    );
-    assert_eq!((c.unread, c.written()), (3, 3));
-    assert!(
-        c.to_string()
-            .ends_with("; 3 could not be read and are written as SURVIVOR wrote them")
-    );
+    assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((c.unread, c.unresolved, c.written()), (2, 1, 0));
 }
 
 #[test]
 fn consensus_check_cli_writes_the_file_and_refuses_bad_input() {
     let d = scratch("svcc");
+    let mut paths = String::new();
+    for (i, text) in cc_sources().iter().enumerate() {
+        paths.push_str(&put(&d, &format!("caller-{i}.vcf"), text));
+        paths.push('\n');
+    }
+    let list = put(&d, "callers.txt", &paths);
     let input = put(
         &d,
         "merged.vcf",
@@ -1081,20 +1138,137 @@ fn consensus_check_cli_writes_the_file_and_refuses_bad_input() {
             String::from_utf8(e).unwrap(),
         )
     };
-    let (code, _, err) = run(&[&input, &out]);
+    let (code, _, err) = run(&["--callers", &list, &input, &out]);
     assert_eq!(code, 0, "{err}");
     assert_eq!(ids(&std::fs::read_to_string(&out).unwrap()), ["d2"]);
     assert_eq!(
         err,
-        "og sv consensus-check: 2 records, 1 written; 1 one event as merged, 1 not one event: split into 0 records of 2+ callers, 1 dropped with fewer than 2 callers left\n"
+        "og sv consensus-check: 2 records, 1 written; 1 one event as merged, 1 rechecked: split into 0 records of 2+ callers, 1 dropped with fewer than 2 callers left; 0 malformed records dropped, 0 unresolved member votes dropped\n"
     );
-    let (code, stdout, _) = run(&[&input, "-"]);
+    let (code, stdout, _) = run(&["--callers", &list, &input, "-"]);
     assert_eq!((code, ids(&stdout)), (0, vec!["d2".to_owned()]));
-    let (code, _, err) = run(&[&d.join("none.vcf").to_string_lossy(), &out]);
+    let (code, _, err) = run(&[
+        "--callers",
+        &list,
+        &d.join("none.vcf").to_string_lossy(),
+        &out,
+    ]);
     assert!(code == 1 && err.starts_with("ERROR: cannot read "), "{err}");
     let (code, stdout, _) = run(&["--help"]);
     assert!(code == 0 && stdout.starts_with("usage: og sv consensus-check"));
     assert_eq!(run(&[&input]).0, 2);
     assert_eq!(run(&["--og-scaffold-probe"]).0, 2);
     std::fs::remove_dir_all(d).unwrap();
+}
+
+const CC_REVIEW: &str =
+    include_str!("../../../../../tests/fixtures/sv/consensus-review-pinned.vcf.in");
+
+fn cc_review(pos: i64) -> &'static str {
+    cc_records(CC_REVIEW)
+        .into_iter()
+        .find(|line| {
+            let found = line.split('\t').nth(1).unwrap().parse::<i64>().unwrap();
+            found / 1_000_000 == pos
+        })
+        .unwrap()
+}
+
+#[test]
+fn cc_review_member_lengths() {
+    let (out, _) = cc_text(&[cc_review(1)]);
+    let records = cc_records(&out);
+    assert_eq!(records.len(), 1, "{out}");
+    assert!(records[0].starts_with("chr20\t1000200\tsmall\t"), "{out}");
+    assert!(records[0].contains("SVLEN=300"), "{out}");
+}
+
+#[test]
+fn cc_review_member_strands() {
+    let (out, _) = cc_text(&[cc_review(2)]);
+    assert!(cc_records(&out).is_empty(), "{out}");
+}
+
+#[test]
+fn cc_review_second_contig() {
+    let (out, _) = cc_text(&[cc_review(3)]);
+    assert!(cc_records(&out).is_empty(), "{out}");
+}
+
+#[test]
+fn cc_review_choose_distinct_callers() {
+    let (out, _) = cc_text(&[cc_review(4)]);
+    let records = cc_records(&out);
+    assert_eq!(records.len(), 1, "{out}");
+    assert!(records[0].starts_with("chr20\t4000250\tmiddle\t"), "{out}");
+    assert!(records[0].contains("SUPP=2;SUPP_VEC=110"), "{out}");
+}
+
+#[test]
+fn cc_review_support_uses_only_kept_ids() {
+    let (out, _) = cc_text(&[cc_review(5)]);
+    assert!(!out.contains("discard"), "{out}");
+    let d = scratch("cc-postfilter");
+    let body = [
+        c45_row("discard", 5_000_000, 5_000_100, "DEL", "manta", "GT", "0/1"),
+        c45_row("memberD", 5_000_055, 5_001_050, "DEL", "delly", "GT", "0/1"),
+    ]
+    .concat();
+    let rows = postfilter_rows(&d, &body, Some(put(&d, "checked.vcf", &out)));
+    assert_eq!(rows[0]["Support"], "");
+    assert_eq!(rows[1]["Support"], "2");
+    assert_eq!(rows[1]["Support_callers"], "manta,delly");
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn cc_review_inv_and_explicit_tra() {
+    let (out, _) = cc_text(&[cc_review(6)]);
+    assert!(cc_records(&out).is_empty(), "{out}");
+}
+
+#[test]
+fn cc_review_split_tra_keeps_source_mate_and_qual() {
+    let (out, _) = cc_text(&[cc_review(7)]);
+    let records = cc_records(&out);
+    assert_eq!(records.len(), 1, "{out}");
+    assert!(
+        records[0].starts_with("chr20\t7000000\tkept-bnd\tN\tN]chr21:7005000]\t55\t"),
+        "{out}"
+    );
+    assert!(
+        records[0].contains("SUPP=2;SUPP_VEC=110;SVLEN=0;SVTYPE=TRA"),
+        "{out}"
+    );
+}
+
+#[test]
+fn cc_review_malformed_votes() {
+    let good = cc_review(8);
+    let no_length = good.replacen(":300:", ":.:", 1);
+    let zero_support = good.replace("SUPP=2;", "SUPP=0;");
+    let wrong_support = good.replace("SUPP=2;", "SUPP=3;");
+    let (out, _) = cc_text(&[good, &no_length, &zero_support, &wrong_support]);
+    assert_eq!(cc_records(&out), [good], "{out}");
+}
+
+#[test]
+fn cc_ambiguous_join_drops_only_that_members_vote() {
+    let mut sources = cc_sources();
+    sources[0].push_str(
+        "chr20\t2000000\tduplicate\tN\t<DEL>\t80\tPASS\tSVTYPE=DEL;END=2000500;SVLEN=-500\tGT\t0/1\n",
+    );
+    let (out, counts) = cc_text_from(&[CC_AGREE], &sources.each_ref().map(String::as_str));
+    assert_eq!((counts.unresolved, counts.written()), (1, 1));
+    assert!(out.contains("SUPP=2;SUPP_VEC=011"), "{out}");
+    assert!(!out.contains("duplicate"), "{out}");
+}
+
+#[test]
+fn cc_unstated_insertion_length_does_not_vote() {
+    let mut sources = cc_sources();
+    sources[0] = sources[0].replace("END=8000001;SVLEN=300;", "END=8000001;");
+    let (out, counts) = cc_text_from(&[cc_review(8)], &sources.each_ref().map(String::as_str));
+    assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((counts.unresolved, counts.written()), (1, 0));
 }

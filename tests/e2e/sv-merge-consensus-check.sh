@@ -96,7 +96,32 @@ check_eq "the chain keeps Manta's and Delly's calls at Manta's coordinates" \
 check_eq "consensus records in all" "$(vcf_count "$VCF")" 4
 check "the header states the check" has '^##og_sv_consensus_check=' "$(bcf view -h "$VCF" 2>/dev/null)"
 check "the log counts what the check did" has \
-  'og sv consensus-check: 7 records, 4 written; 3 one event as merged, 4 not one event: split into 1 records of 2\+ callers, 3 dropped with fewer than 2 callers left' \
+  'og sv consensus-check: 7 records, 4 written; 3 one event as merged, 4 rechecked: split into 1 records of 2\+ callers, 3 dropped with fewer than 2 callers left; 0 malformed records dropped, 0 unresolved member votes dropped' \
   "$(cat "$STEP_LOG")"
 
+# The round-one review calls go through the same step and bcftools sort.
+T="${SAMPLE}svccr"
+rm -rf "${GENOME_DIR:?}/${T}"
+mkdir -p "${GENOME_DIR}/${T}/manta/results/variants" "${GENOME_DIR}/${T}/delly" "${GENOME_DIR}/${T}/cnvpytor"
+cp "${FIX}"/consensus-review-{manta,delly,cnvpytor}.vcf.in "${CASE_TMP}/in/"
+bgz consensus-review-manta.vcf.in "${T}/manta/results/variants/diploidSV.vcf.gz"
+bgz consensus-review-delly.vcf.in "${T}/delly/${T}_sv.vcf.gz"
+bgz consensus-review-cnvpytor.vcf.in "${T}/cnvpytor/${T}_cnvs.vcf.gz"
+run_step 22-survivor-merge.sh "$T"
+check_step_exit 22-survivor-merge.sh
+VCF="${T}/sv_merged/${T}_sv_consensus.vcf.gz"
+bcf query -f '%POS\t%ID\t%ALT\t%QUAL\t%INFO/SUPP_VEC[\t%ID]\n' "$VCF" >"${CASE_TMP}/review.tsv"
+review() { awk -F'\t' -v m="$1" 'int($1 / 1000000) == m' "${CASE_TMP}/review.tsv"; }
+check_eq "short insertion from the same caller joins the matching insertion" \
+  "$(cut -f1,2,4,5 <<<"$(review 1)")" $'1000200\tsmall\t55\t110'
+check_eq "the older call keeps its own orientation" "$(review 2)" ""
+check_eq "breakends to different contigs cannot agree" "$(review 3)" ""
+check_eq "two same-caller deletions leave the compatible pair" \
+  "$(cut -f1,2,4,5 <<<"$(review 4)")" $'4000250\tmiddle\t58\t110'
+check_eq "the discarded source ID and QUAL leave with its call" \
+  "$(cut -f1,2,4,5,6,7 <<<"$(review 5)")" $'5000050\t.\t59\t110\t.\tmemberD'
+check_eq "explicit INV and TRA cannot agree" "$(review 6)" ""
+check_eq "the split translocation keeps the retained mate, QUAL, and callers" \
+  "$(cut -f1,2,3,4,5 <<<"$(review 7)")" $'7000000\tkept-bnd\tN]chr21:7005000]\t55\t110'
+check_eq "consensus records across the review probes" "$(vcf_count "$VCF")" 5
 finish
