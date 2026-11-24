@@ -779,9 +779,12 @@ fn the_ingest_port_takes_the_token_as_the_http_basic_password_of_og() {
         "another user"
     );
     assert_eq!(
-        post("/ingest/basic1", Some(format!("Bearer {token}"))),
+        post(
+            "/ingest/basic1",
+            Some(format!("Bearer {}", b64(&format!("og:{token}"))))
+        ),
         403,
-        "a bearer token"
+        "the right credentials under another scheme"
     );
     assert_eq!(stored(), 0, "a refused post was stored");
     assert_eq!(
