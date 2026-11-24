@@ -2,7 +2,7 @@
 
 Made-up inputs for `rust/crates/og-live/tests/ops.rs` (the live site's ops card and `/metrics`). No real sample: the run is `OPS-001`.
 
-- `events.jsonl`: Nextflow weblog messages as `bin/owngenome_live.py` stores them. A run starts at
+- `events.jsonl`: Nextflow weblog messages as the live site stores them. A run starts at
   2026-01-02 10:00:00 UTC; step 06's task is killed with exit 137 and its second attempt ends at 7.6 of
   the 8 GB it asked for; step 11's task starts at 10:05 and is still running. `@WORK@` and `@OUT@` are
   replaced by temporary folders in the test.

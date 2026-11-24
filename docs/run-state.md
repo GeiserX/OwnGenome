@@ -26,7 +26,7 @@ When `run-all.sh` ends, however it ends, a `planned` row gives way to the step's
 
 `assets/steps.tsv` has one row per step: its number, its label as `run-all.sh` prints it, its `--tools` name, whether `run-all.sh` records it in `run_status.tsv`, its Nextflow processes, the report sections it feeds, the steps whose output it reads, and its usual hours. The hours are the upper end of the step's time in the [runtime table](hardware-requirements.md#runtime-per-step); `hours_from` says whether that figure was measured or is the page's estimate, and is empty when the table has no time for the step. On a measured row, `hours_low` is the lower end of the same measured time, always below `hours`; a part that runs once per reference, such as building an index, is left out of it.
 
-`tests/test_run_state.py` keeps the catalogue true: every step `run-all.sh` plans has its row with the same label and tool, the recorded steps are the ones `og summary collect` checks for stale results, every report section belongs to the row of its step, every process in `modules/local` belongs to a step, and the tools are the ones `main.nf` accepts.
+`og dev steps-check` keeps the catalogue true (`cargo test -p og-dev` runs it on the checkout): every step `run-all.sh` plans has its row with the same label and tool, the recorded steps are the ones `og summary collect` checks for stale results, every report section belongs to the row of its step, every process in `modules/local` belongs to a step, and the tools are the ones `main.nf` accepts.
 
 ## What a step's state means
 
@@ -98,8 +98,8 @@ It prints plain lines and exits 0; a warn percent outside 1 to 100 exits 2.
 
 **Warn percent.** 90 for both by default. `--disk-warn-percent` or `OWNGENOME_DISK_WARN_PERCENT` sets the disk one, `--mem-warn-percent` or `OWNGENOME_MEM_WARN_PERCENT` the memory one, from 1 to 100.
 
-**As a library.** The live site's alerts measure with the Python module `bin/run_headroom.py`, the same rules as `og run headroom`: `snapshot(events, work_dir, outdir, disk_warn_percent, mem_warn_percent, max_memory, trace_rows)` returns `{disk, tasks, host, warn_used_ratio, mem_warn_ratio}`; `task_memory`, `host_memory` and `disk` give each part alone. It holds no path, and it formats nothing: a page or a metrics endpoint formats the numbers itself. It measures when called; it does not poll and does not project when a disk will fill.
+**As a library.** The live site's alerts measure with the Rust module `og_runlog::headroom` (`rust/crates/og-runlog/src/headroom.rs`), the code of `og run headroom`: `snapshot(host, steps, request)` returns a `Snapshot` with `disk`, `tasks`, `host`, `warn_used_ratio` and `mem_warn_ratio`; `task_memory` and `disk` give each part alone. It holds no path, and it formats nothing: a page or a metrics endpoint formats the numbers itself. It measures when called; it does not poll and does not project when a disk will fill.
 
 ## The page built on it
 
-`og run state` serves no page itself. The live site's server, `bin/owngenome_live.py`, reads the run's messages with the Python module `bin/run_state.py`, which follows the same rules, and serves its state as `state.json` to each person's page, whose step timeline and run band draw it ([Watch a Run Live](live-site.md)).
+`og run state` serves no page itself. The live site's server, `og live serve`, reads the run's messages with the same code (`og_runlog::state`) and serves its state as `state.json` to each person's page, whose step timeline and run band draw it ([Watch a Run Live](live-site.md)).
