@@ -110,6 +110,7 @@ hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
 hla-second-caller-2-nextflow	shard	188	hla-second-caller-1-bash
 i411-callability-overlap-1-mates	shard	40	-
+i411-chrm-shifted-ref-1-step20	shard	5	-
 i411-nf-vcfanno-ops-1-score-tiers	shard	37	-
 ibd-segments-1	shard	239	-
 live-server-1-weblog	shard	18	-
