@@ -10,8 +10,8 @@
 # - a Manta deletion and a Delly duplication at the same place (SURVIVOR
 #   wrote one DUP of two callers): gone;
 # - two insertions of 1,000 and 300 bp, 200 bp apart: gone (sizes too far
-#   apart). Both have Delly's shape (<INS>, END = POS + 1, SVLEN): a Manta
-#   insertion has no SVLEN SURVIVOR reads, so it never merges;
+#   apart). Both use Delly's layout (<INS>, END = POS + 1, SVLEN, CT=NtoN).
+#   Delly's CT=NtoN gives ++ strands. Manta uses +- strands.
 # - two insertions of 1,000 and 600 bp, 200 bp apart: kept, support 2;
 # - a Manta inversion and a Delly breakend pair (BND, 3to3) of it: kept
 #   (SURVIVOR's rule counts BND and INV as one type);
@@ -119,7 +119,7 @@ check_eq "breakends to different contigs cannot agree" "$(review 3)" ""
 check_eq "two same-caller deletions leave the compatible pair" \
   "$(cut -f1,2,4,5 <<<"$(review 4)")" $'4000250\tmiddle\t58\t110'
 check_eq "the discarded source ID and QUAL leave with its call" \
-  "$(cut -f1,2,4,5,6,7 <<<"$(review 5)")" $'5000050\t.\t59\t110\t.\tmemberD'
+  "$(cut -f1,2,4,5,6,7 <<<"$(review 5)")" $'5000050\tmemberD\t59\t110\t.\tmemberD'
 check_eq "explicit INV and TRA cannot agree" "$(review 6)" ""
 check_eq "the split translocation keeps the retained mate, QUAL, and callers" \
   "$(cut -f1,2,3,4,5 <<<"$(review 7)")" $'7000000\tkept-bnd\tN]chr21:7005000]\t55\t110'

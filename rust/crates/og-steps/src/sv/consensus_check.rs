@@ -24,6 +24,7 @@ const MIN_OVERLAP: f64 = 0.5;
 const INS_MAX_DIST: u64 = 1000;
 const INS_MIN_RATIO: f64 = 0.5;
 const BND_MAX_DIST: u64 = 1000;
+const MAX_GROUP_COMBINATIONS: usize = 1_000_000;
 
 pub const HEADER: &str = "##og_sv_consensus_check=<Description=\"Each record has two or more caller records verified against the input VCFs: same type and strands, reciprocal overlap >= 0.5; insertions within 1000 bp and size ratio >= 0.5; intercontig breakends agree on both contigs and are within 1000 bp at both ends. Unresolved members do not vote.\">";
 
@@ -137,12 +138,43 @@ fn largest_group(
     }
 }
 
-/// Assign the largest compatible set of distinct callers first. Remove
-/// only its members and repeat while two callers can still agree.
-fn groups(members: &[&Member], caller_count: usize) -> Vec<Vec<usize>> {
+/// Visit caller columns and their CO entries in order. Add each call to
+/// the first compatible group with room for its caller.
+fn greedy_groups(candidates: Vec<Vec<usize>>, members: &[&Member]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for choices in candidates {
+        for i in choices {
+            let group = groups.iter_mut().find(|group| {
+                group.iter().all(|&j| {
+                    members[j].caller != members[i].caller
+                        && apart(members[j], members[i]).is_none()
+                })
+            });
+            if let Some(group) = group {
+                group.push(i);
+            } else {
+                groups.push(vec![i]);
+            }
+        }
+    }
+    groups.retain(|group| group.len() >= 2);
+    groups
+}
+
+/// Assign the largest compatible group first within the search budget.
+/// Remove its members and repeat while two callers can still agree.
+fn groups(members: &[&Member], caller_count: usize, counts: &mut Counts) -> Vec<Vec<usize>> {
     let mut candidates = vec![Vec::new(); caller_count];
     for (i, member) in members.iter().enumerate() {
         candidates[member.caller].push(i);
+    }
+    // Each column also has a branch for skipping that caller.
+    let combinations = candidates.iter().fold(1_usize, |total, choices| {
+        total.saturating_mul(choices.len() + 1)
+    });
+    if combinations > MAX_GROUP_COMBINATIONS {
+        counts.greedy_clusters += 1;
+        return greedy_groups(candidates, members);
     }
     let mut groups = Vec::new();
     loop {
@@ -222,6 +254,39 @@ fn source_strands(kind: &str, info: &str, mate: Option<(&str, i64, &str)>) -> Op
     Some(pair.to_owned())
 }
 
+/// SURVIVOR uses atoi, which stops at the first nondecimal character.
+fn survivor_integer(value: &str) -> i64 {
+    let value = value.trim_start();
+    let unsigned = value.strip_prefix(['-', '+']).unwrap_or(value);
+    let digits = unsigned.bytes().take_while(u8::is_ascii_digit).count();
+    let end = value.len() - unsigned.len() + digits;
+    value[..end].parse::<i32>().map_or(0, i64::from)
+}
+
+/// Mirror the pinned merge parser so its CO coordinates can join to the
+/// prepared calls. The first recognized length in INFO wins.
+fn survivor_length(info: &str) -> Option<i64> {
+    for (i, field) in info.split(';').enumerate() {
+        if let Some(value) = field.strip_prefix("SVLEN=") {
+            // The first-field case in SURVIVOR skips two extra bytes.
+            let value = if i == 0 {
+                value.get(2..).unwrap_or_default()
+            } else {
+                value
+            };
+            return Some(survivor_integer(value).abs());
+        }
+        if i > 0
+            && let Some(value) = field.strip_prefix("AVGLEN=")
+        {
+            let value = value.split(',').next().unwrap_or_default();
+            return Some(i64::from(value.parse::<f64>().unwrap_or_default() as i32).abs());
+        }
+        // The INSLEN guard in 1.0.7 reads from the '=' and never succeeds.
+    }
+    None
+}
+
 fn source_member(line: &str, caller: usize) -> Option<(Key, Option<Member>)> {
     let fields: Vec<_> = line.split('\t').collect();
     let [chrom, start, id, reference, alt, qual, _, info, rest @ ..] = fields.as_slice() else {
@@ -256,19 +321,20 @@ fn source_member(line: &str, caller: usize) -> Option<(Key, Option<Member>)> {
         kind => kind,
     };
     let kind = type_class(kind, chrom != chrom2)?;
-    // END is the original breakpoint. SURVIVOR adds the insertion length
-    // internally and subtracts it again when writing CO. If the input has
-    // no END, it starts from POS + SVLEN (also for insertions).
-    let stated_len = ["AVGLEN", "SVLEN", "INSLEN"].into_iter().find_map(|key| {
-        let value = info_value(info, key).parse::<i32>().ok()?;
-        let len = i64::from(value).abs();
-        (len > 0).then_some(len)
-    });
-    let ins_len = stated_len.or(sequence_len.filter(|&n| n > 0));
+    // SURVIVOR's END parser recognizes the semicolon-prefixed key. With
+    // no recognized END, CO uses POS + length, including for insertions
+    // (the merge adds length to the end and subtracts it on output).
+    let stated_len = survivor_length(info);
+    let ins_len = stated_len.or(sequence_len).filter(|&n| n > 0);
     let end = mate
         .map(|(_, end, _)| end)
-        .or_else(|| position(info_value(info, "END")))
+        .or_else(|| {
+            info.rsplit_once(";END=")
+                .map(|(_, value)| survivor_integer(value))
+                .filter(|&end| end != -1)
+        })
         .or_else(|| Some(start + stated_len.or(sequence_len.map(i64::abs))?))?;
+    let end = if kind == "INS" { end.max(1) } else { end };
     let key = (chrom.to_owned(), start, end, kind.to_owned());
 
     let len = match kind {
@@ -478,6 +544,15 @@ fn build_record(kept: &[&Member], caller_count: usize) -> String {
     } else {
         mid
     };
+    let named = |id: &str| !matches!(id, "" | ".");
+    let id = if named(&mid.id) {
+        &mid.id
+    } else {
+        kept.iter()
+            .map(|member| &member.id)
+            .find(|id| named(id))
+            .map_or(".", String::as_str)
+    };
     let max_qual = kept
         .iter()
         .filter_map(|m| numeric_qual(&m.qual).map(|n| (n, m.qual.as_str())))
@@ -508,7 +583,7 @@ fn build_record(kept: &[&Member], caller_count: usize) -> String {
     format!(
         "{}\t{pos}\t{}\t{}\t{}\t{max_qual}\tPASS\tSUPP={};SUPP_VEC={bits};SVLEN={svlen};SVTYPE={};SVMETHOD=SURVIVOR1.0.7;CHR2={};END={end};CIPOS={};CIEND={};STRANDS={}\t{SURVIVOR_FORMAT}\t{}",
         mid.chrom,
-        mid.id,
+        id,
         mid.reference,
         mid.alt,
         kept.len(),
@@ -530,6 +605,7 @@ pub(super) struct Counts {
     pub dropped: usize,
     pub unread: usize,
     pub unresolved: usize,
+    pub greedy_clusters: usize,
 }
 
 impl Counts {
@@ -551,7 +627,15 @@ impl fmt::Display for Counts {
             self.dropped,
             self.unread,
             self.unresolved
-        )
+        )?;
+        if self.greedy_clusters > 0 {
+            write!(
+                f,
+                "; clusters using greedy grouping: {}",
+                self.greedy_clusters
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -577,7 +661,7 @@ fn check_line(line: &str, callers: &[Caller], counts: &mut Counts) -> Vec<String
         return Vec::new();
     };
     counts.unresolved += record.unresolved;
-    let groups = groups(&record.members, callers.len());
+    let groups = groups(&record.members, callers.len(), counts);
     if let [group] = groups.as_slice()
         && record.unresolved == 0
         && group.len() == record.members.len()

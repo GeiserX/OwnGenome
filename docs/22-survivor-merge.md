@@ -83,7 +83,7 @@ Delly genotypes every site it reports, so a PASS Delly record with `0/0` is comm
 
 ### One event per record
 
-`og sv consensus-check --callers LIST IN OUT` reads the same list of prepared caller VCFs as SURVIVOR. It looks up each member by caller, first contig, both numeric breakpoint positions, and the per-member type. It checks the original records for orientation, insertion length, and the mate contig. SURVIVOR summarizes those fields across a caller column or the cluster.
+`og sv consensus-check --callers LIST IN OUT` reads the same list of prepared caller VCFs as SURVIVOR. It looks up each member by caller, first contig, both numeric breakpoint positions, and the per-member type. It follows the pinned merge parser when deriving the numeric end from the prepared record. It checks the original records for orientation, insertion length, and the mate contig. SURVIVOR summarizes those fields across a caller column or the cluster.
 
 | Calls | Rule |
 |---|---|
@@ -92,9 +92,9 @@ Delly genotypes every site it reports, so a PASS Delly record with `0/0` is comm
 | Insertions | Starts within 1,000 bp and the shorter call at least half the length of the longer call. |
 | Intercontig breakends | Same pair of contigs in the same order and both breakpoints within 1,000 bp. |
 
-The checker selects the largest group in which every pair agrees and each caller votes once. It breaks ties by caller column order and then by the order of the caller's `CO` entries. It removes the selected members and repeats until no group has two callers. A cluster with exactly one verified member for each voting caller and one compatible group passes through unchanged.
+The checker selects the largest group in which every pair agrees and each caller votes once. It breaks ties by caller column order and then by the order of the caller's `CO` entries. It removes the selected members and repeats until no group has two callers. Above one million possible combinations, including the option to skip each caller, it visits members once in the same order and assigns each to the first compatible group with room for that caller. The log counts clusters that use this greedy pass. A cluster with exactly one verified member for each voting caller and one compatible group passes through unchanged.
 
-A split record takes `POS`, `END`, `REF`, `ALT`, and `ID` from the lower middle member when ordered by start and end. For an intercontig group, the checker uses a retained bracketed allele if the middle member used a symbolic allele and another member supplies a bracketed allele. It takes `QUAL` from the highest retained quality and rebuilds `SUPP`, `SUPP_VEC`, `SVTYPE`, `SVLEN`, `CHR2`, `CIPOS`, `CIEND`, and `STRANDS` from the selected calls. The caller columns name only the retained source IDs. An unnamed source call gets `.` in `FORMAT/ID`.
+A split record takes `POS`, `END`, `REF`, and `ALT` from the lower middle member when ordered by start and end. For an intercontig group, the checker uses a retained bracketed allele and its coordinates if the middle member used a symbolic allele and another member supplies a bracketed allele. The record takes its `ID` from the member that supplied the alleles. If that member is unnamed, the first named retained member in caller order supplies the ID. It takes `QUAL` from the highest retained quality and rebuilds `SUPP`, `SUPP_VEC`, `SVTYPE`, `SVLEN`, `CHR2`, `CIPOS`, `CIEND`, and `STRANDS` from the selected calls. The caller columns name only the retained source IDs. An unnamed source call gets `.` in `FORMAT/ID`.
 
 The checker drops an unmatched or ambiguous member, or a member whose insertion length is missing. The log counts each unresolved vote. It also counts and drops records with malformed `SUPP` or `SUPP_VEC`. Every output record has at least two verified callers.
 

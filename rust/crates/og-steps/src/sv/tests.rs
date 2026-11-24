@@ -861,8 +861,8 @@ const CC_CHAIN: &str = "chr20\t6000300\tb6\tN\t<DEL>\t60\tPASS\tSUPP=3;SUPP_VEC=
 
 /// A Delly-shaped insertion pair (`<INS>`, END = POS + 1, SVLEN, CT=NtoN
 /// in the input) starting 200 bp apart, of `a` and `b` bp, as SURVIVOR
-/// merged it. A Manta insertion has no SVLEN SURVIVOR reads, so it never
-/// merges; Delly's does.
+/// merged it. Delly's CT=NtoN gives ++ strands. Manta insertions have +-
+/// strands.
 fn cc_ins(a: i64, b: i64) -> String {
     let mean = ((a + b) as f64 / 2.0).round() as i64;
     format!(
@@ -1223,8 +1223,9 @@ fn cc_review_support_uses_only_kept_ids() {
 
 #[test]
 fn cc_review_inv_and_explicit_tra() {
-    let (out, _) = cc_text(&[cc_review(6)]);
+    let (out, counts) = cc_text(&[cc_review(6)]);
     assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((counts.unresolved, counts.dropped), (0, 1));
 }
 
 #[test]
@@ -1271,4 +1272,126 @@ fn cc_unstated_insertion_length_does_not_vote() {
     let (out, counts) = cc_text_from(&[cc_review(8)], &sources.each_ref().map(String::as_str));
     assert!(cc_records(&out).is_empty(), "{out}");
     assert_eq!((counts.unresolved, counts.written()), (1, 0));
+}
+
+#[test]
+fn cc_split_tra_uses_a_retained_bracketed_alt() {
+    let sources = [
+        include_str!("../../../../../tests/fixtures/sv/consensus-tra-manta.vcf.in"),
+        include_str!("../../../../../tests/fixtures/sv/consensus-tra-delly.vcf.in"),
+        include_str!("../../../../../tests/fixtures/sv/consensus-tra-cnvpytor.vcf.in"),
+    ];
+    let input = include_str!("../../../../../tests/fixtures/sv/consensus-tra-pinned.vcf.in");
+    let mut out = Vec::new();
+    let counts = consensus_check::check_text(input, &sources, &mut out).unwrap();
+    let output = String::from_utf8(out).unwrap();
+    let records = cc_records(&output);
+    assert_eq!((counts.unresolved, counts.from_split), (0, 1));
+    assert!(
+        records[0].starts_with("chr20\t7000700\tkept-bndD\tN\tN]chr21:7005700]\t55\t"),
+        "{output}"
+    );
+    assert!(records[0].contains("SUPP=2;SUPP_VEC=110"), "{output}");
+}
+
+#[test]
+fn cc_split_id_uses_the_first_named_retained_call() {
+    let (out, _) = cc_text(&[cc_review(5)]);
+    let records = cc_records(&out);
+    assert_eq!(records.len(), 1, "{out}");
+    assert!(records[0].starts_with("chr20\t5000050\tmemberD\t"), "{out}");
+}
+
+#[test]
+fn cc_wide_cluster_bounds_the_group_search() {
+    use std::fmt::Write as _;
+    use std::time::{Duration, Instant};
+
+    // Four columns of pairwise-compatible deletions. The fifth has no
+    // compatible call, so the exact search cannot stop at a full group.
+    let mut merged = String::from(
+        "##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tA\tB\tC\tD\tE\nchr20\t10000\t.\tN\t<DEL>\t.\tPASS\tSUPP=5;SUPP_VEC=11111\tTY:CO",
+    );
+    let mut sources = Vec::new();
+    for name in ["A", "B", "C", "D", "E"] {
+        let kind = if name == "E" { "DUP" } else { "DEL" };
+        let mut source = format!(
+            "##fileformat=VCFv4.1\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{name}\n"
+        );
+        let mut coords = Vec::new();
+        for offset in 0..24 {
+            let start = 10_000 + offset;
+            let end = start + 2_000;
+            writeln!(
+                source,
+                "chr20\t{start}\t{name}{offset}\tN\t<{kind}>\t.\tPASS\tSVTYPE={kind};END={end}\tGT\t0/1"
+            )
+            .unwrap();
+            coords.push(format!("chr20_{start}-chr20_{end}"));
+        }
+        write!(
+            merged,
+            "\t{}{kind}:{}",
+            format!("{kind},").repeat(23),
+            coords.join(",")
+        )
+        .unwrap();
+        sources.push(source);
+    }
+    merged.push('\n');
+    let sources: Vec<_> = sources.iter().map(String::as_str).collect();
+
+    let mut out = Vec::new();
+    let start = Instant::now();
+    let counts = consensus_check::check_text(&merged, &sources, &mut out).unwrap();
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(3),
+        "wide cluster took {elapsed:?}"
+    );
+    let out = String::from_utf8(out).unwrap();
+    assert_eq!((counts.unresolved, counts.from_split), (0, 24));
+    for (offset, record) in cc_records(&out).into_iter().enumerate() {
+        assert!(record.starts_with(&format!("chr20\t{}\tB{offset}\t", 10_000 + offset)));
+        assert!(record.contains("SUPP=4;SUPP_VEC=11110"));
+    }
+    assert!(
+        counts
+            .to_string()
+            .ends_with("clusters using greedy grouping: 1")
+    );
+}
+
+fn cc_pinned_end_records(range: std::ops::Range<usize>) {
+    let sources = [
+        include_str!("../../../../../tests/fixtures/sv/consensus-ends-manta.vcf.in"),
+        include_str!("../../../../../tests/fixtures/sv/consensus-ends-cnvpytor.vcf.in"),
+        include_str!("../../../../../tests/fixtures/sv/consensus-ends-sniffles2.vcf.in"),
+    ];
+    let capture = include_str!("../../../../../tests/fixtures/sv/consensus-ends-pinned.vcf.in");
+    let expected = &cc_records(capture)[range];
+    let header: Vec<_> = capture
+        .lines()
+        .take_while(|line| line.starts_with('#'))
+        .collect();
+    let input = format!("{}\n{}\n", header.join("\n"), expected.join("\n"));
+    let mut out = Vec::new();
+    let counts = consensus_check::check_text(&input, &sources, &mut out).unwrap();
+    assert_eq!((counts.unresolved, counts.kept), (0, expected.len()));
+    assert_eq!(cc_records(&String::from_utf8(out).unwrap()), expected);
+}
+
+#[test]
+fn cc_pinned_end_joins_a_cnvpytor_deletion() {
+    cc_pinned_end_records(0..1);
+}
+
+#[test]
+fn cc_pinned_end_joins_a_manta_sniffles2_insertion() {
+    cc_pinned_end_records(1..2);
+}
+
+#[test]
+fn cc_pinned_end_uses_the_merge_parsers_length_rules() {
+    cc_pinned_end_records(2..8);
 }

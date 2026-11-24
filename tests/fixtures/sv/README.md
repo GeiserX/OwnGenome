@@ -30,3 +30,14 @@ records with missing or discarded IDs. The pinned VCF captures SURVIVOR
 1.0.7 output from those three synthetic inputs in Manta, Delly, CNVpytor
 order. The Rust tests read that capture. The end-to-end case runs the pinned
 merge and checker through step 22.
+
+The consensus-ends input rows use fabricated values. The CNVpytor deletion
+and the Manta insertion preserve the INFO order emitted by the pinned
+caller images. The other rows cover the merge parser's positional length
+rules. The pinned capture comes from SURVIVOR 1.0.7 with Manta, CNVpytor,
+and Sniffles2 columns.
+
+The consensus-tra capture uses a symbolic translocation from Manta and a
+bracketed breakend from Delly. A third call from the CNVpytor column has
+different strands. When the checker splits the cluster, it uses the
+retained bracketed allele and its coordinates.
