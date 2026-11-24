@@ -62,13 +62,16 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 # would lose every post. A URL that holds the token (http://host:port/<token>) is split here: the token goes to
 # OWNGENOME_LIVE_TOKEN, and OWNGENOME_LIVE_URL keeps http://host:port, the only form the recorded command, the output,
 # live.config and every curl argument hold. The value is never printed: it may hold the token.
+# The host and token patterns sit in variables, so the download URL check (scripts/ci/check-links.sh) does not read
+# the pattern as a URL to fetch.
+LIVE_HOST='[A-Za-z0-9.:_-]+' LIVE_TOKEN_RE='[A-Za-z0-9_-]{43}'
 if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
-  [[ "$OWNGENOME_LIVE_URL" =~ ^(http://[A-Za-z0-9.:_-]+)(/([A-Za-z0-9_-]{43}))?/?$ ]] \
+  [[ "$OWNGENOME_LIVE_URL" =~ ^(http://${LIVE_HOST})(/(${LIVE_TOKEN_RE}))?/?$ ]] \
     || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token> (the value is not printed: it may hold the token)" >&2; exit 2; }
   OWNGENOME_LIVE_URL=${BASH_REMATCH[1]}
   [ -z "${BASH_REMATCH[3]}" ] || export OWNGENOME_LIVE_TOKEN=${BASH_REMATCH[3]}
 fi
-[ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || [[ "$OWNGENOME_LIVE_TOKEN" =~ ^[A-Za-z0-9_-]{43}$ ]] \
+[ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || [[ "$OWNGENOME_LIVE_TOKEN" =~ ^${LIVE_TOKEN_RE}$ ]] \
   || { echo "ERROR: OWNGENOME_LIVE_TOKEN is not an ingest token (43 letters, digits, '-' or '_'; the value is not printed)" >&2; exit 2; }
 # This command as given, for bin/og recheck --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
