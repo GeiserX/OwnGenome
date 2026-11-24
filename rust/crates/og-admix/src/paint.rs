@@ -212,7 +212,9 @@ pub struct Painting {
     pub params: Params,
     /// The EM rounds run (parameter updates made).
     pub rounds: usize,
-    /// The log-likelihood of the genome under [`Painting::params`].
+    /// The log-likelihood of the genome under the ancestry level with
+    /// [`Painting::params`], its evidence tempered by [`split::LAMBDA`]: a
+    /// pseudo-likelihood, comparable between runs of this engine only.
     pub loglik: f64,
     pub chroms: Vec<PaintedChrom>,
 }
@@ -316,7 +318,13 @@ pub fn paint(chroms: &[ChromInput], start: Params, opts: &Options) -> Result<Pai
     let mut rounds = 0;
     let (fbs, total) = loop {
         let fbs = par_map(&index, opts.threads, |&i| {
-            split::ancestry_fb(&evidence[i], &chroms[units[i].0].cm, &params, split::LAMBDA, groups)
+            split::ancestry_fb(
+                &evidence[i],
+                &chroms[units[i].0].cm,
+                &params,
+                split::LAMBDA,
+                groups,
+            )
         });
         let mut total = Stats::zero(groups);
         for fb in &fbs {
@@ -366,8 +374,8 @@ pub fn paint(chroms: &[ChromInput], start: Params, opts: &Options) -> Result<Pai
 
 /// Writes `paint/params.tsv`: a header, then one `parameter group value`
 /// row per value (`.` for a parameter of no group): T, epsilon, mu and rho
-/// of each group, the EM rounds and the log-likelihood. `names` names the
-/// groups in their order.
+/// of each group, the EM rounds and the log-likelihood ([`Painting::loglik`]).
+/// `names` names the groups in their order.
 pub fn write_params(out: &mut dyn Write, painting: &Painting, names: &[String]) -> Result<()> {
     let p = &painting.params;
     if names.len() != p.mu.len() {

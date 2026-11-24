@@ -105,7 +105,9 @@ fn world(seed: &str, minor: std::ops::Range<usize>) -> (ChromInput, [Vec<usize>;
         .collect();
     let truth = [
         vec![0; SITES],
-        (0..SITES).map(|m| if minor.contains(&m) { 2 } else { 0 }).collect(),
+        (0..SITES)
+            .map(|m| if minor.contains(&m) { 2 } else { 0 })
+            .collect(),
     ];
     let chrom = ChromInput {
         name: "chr1".into(),
@@ -139,7 +141,10 @@ fn an_unadmixed_person_is_painted_as_one_group() {
     let p = paint(
         std::slice::from_ref(&chrom),
         start(&chrom, mu),
-        &Options { threads: 2, rounds: 5 },
+        &Options {
+            threads: 2,
+            rounds: 5,
+        },
     )
     .unwrap();
     let h = &p.chroms[0].haplotypes;
@@ -164,7 +169,10 @@ fn the_fit_keeps_mu_at_the_projection() {
     let p = paint(
         std::slice::from_ref(&chrom),
         start(&chrom, mu.clone()),
-        &Options { threads: 2, rounds: 5 },
+        &Options {
+            threads: 2,
+            rounds: 5,
+        },
     )
     .unwrap();
     assert_eq!(p.params.mu, mu);
@@ -179,13 +187,19 @@ fn a_minor_ancestry_of_four_percent_is_still_painted() {
     let p = paint(
         std::slice::from_ref(&chrom),
         start(&chrom, mu),
-        &Options { threads: 2, rounds: 5 },
+        &Options {
+            threads: 2,
+            rounds: 5,
+        },
     )
     .unwrap();
     let h = &p.chroms[0].haplotypes;
     let minor = h[1].calls[2_000..2_480].iter().filter(|&&c| c == 2).count();
     let (accuracy, stretches) = score([&h[0].calls, &h[1].calls], &truth);
     eprintln!("minor sites called 2: {minor} of 480, accuracy {accuracy}, {stretches} stretches");
-    assert!(minor >= 400, "{minor} of the 480 minor sites called as group 2");
+    assert!(
+        minor >= 400,
+        "{minor} of the 480 minor sites called as group 2"
+    );
     assert!(accuracy >= 0.98, "accuracy {accuracy}, below 0.98");
 }

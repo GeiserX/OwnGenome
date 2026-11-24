@@ -14,9 +14,9 @@
 //! predictive terms of one copied segment are strongly correlated, so their
 //! raw sum overstates the evidence for short stretches.
 
+use super::Params;
 use super::bits::{Bits, RefPanel};
 use super::hmm::{Fb, Stats};
-use super::Params;
 
 /// lambda, the tempering of the local evidence. Chosen on the ancestry
 /// engines bench (tests/bench/ancestry-engines.sh): 0.15 and 0.2 pass it,
@@ -38,11 +38,19 @@ pub fn local_evidence(panel: &RefPanel, cm: &[f64], target: &Bits, params: &Para
         let mut alpha = vec![0.0f64; idx.len()];
         // forward: left to right
         for m in 0..sites {
-            let pr = if m == 0 { 1.0 } else { -(-rho * (cm[m] - cm[m - 1]) / 100.0).exp_m1() };
+            let pr = if m == 0 {
+                1.0
+            } else {
+                -(-rho * (cm[m] - cm[m - 1]) / 100.0).exp_m1()
+            };
             let row = panel.row(m);
             let mut c = 0.0;
             for (i, &h) in idx.iter().enumerate() {
-                let e = if ((row[h / 64] >> (h % 64)) & 1) as u8 == x[m] { 1.0 - eps } else { eps };
+                let e = if ((row[h / 64] >> (h % 64)) & 1) as u8 == x[m] {
+                    1.0 - eps
+                } else {
+                    eps
+                };
                 let v = e * ((1.0 - pr) * alpha[i] + pr / n);
                 alpha[i] = v;
                 c += v;
@@ -53,11 +61,19 @@ pub fn local_evidence(panel: &RefPanel, cm: &[f64], target: &Bits, params: &Para
         }
         // backward: right to left, the same model run the other way
         for m in (0..sites).rev() {
-            let pr = if m + 1 == sites { 1.0 } else { -(-rho * (cm[m + 1] - cm[m]) / 100.0).exp_m1() };
+            let pr = if m + 1 == sites {
+                1.0
+            } else {
+                -(-rho * (cm[m + 1] - cm[m]) / 100.0).exp_m1()
+            };
             let row = panel.row(m);
             let mut c = 0.0;
             for (i, &h) in idx.iter().enumerate() {
-                let e = if ((row[h / 64] >> (h % 64)) & 1) as u8 == x[m] { 1.0 - eps } else { eps };
+                let e = if ((row[h / 64] >> (h % 64)) & 1) as u8 == x[m] {
+                    1.0 - eps
+                } else {
+                    eps
+                };
                 let v = e * ((1.0 - pr) * alpha[i] + pr / n);
                 alpha[i] = v;
                 c += v;
