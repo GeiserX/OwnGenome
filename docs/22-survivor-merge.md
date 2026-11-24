@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Keeps the structural variants (SVs) that two or more callers agree on. SURVIVOR merge pairs two calls when both of their breakpoints lie within 1,000 bp of each other, their SV type and strands agree, and the event is at least 50 bp long. Each consensus record says how many callers support it and which. That is caller agreement, not validation (see Why).
+Keeps the structural variants (SVs) that two or more callers agree on. SURVIVOR merge pairs two calls when both of their breakpoints lie within 1,000 bp of each other, their SV type and strands agree, and the event is at least 50 bp long. Then `og sv consensus-check` keeps a merged record only when its calls are one event: the same type, the same strands, and an overlap of at least half of the longer call (see [One event per record](#one-event-per-record)). Each consensus record says how many callers support it and which. That is caller agreement, not validation (see Why).
 
 A caller votes only with the calls it makes (see [Which records vote](#which-records-vote)): a record the caller genotyped as reference, or filtered, is not a second caller.
 
@@ -16,19 +16,21 @@ Individual SV callers each have distinct biases and false-positive profiles:
 
 An SV that two callers report is less likely to be one caller's artefact. Agreement is not independent proof, though. Manta and Delly both read split and paired reads from the same alignment, so a misaligned read cluster both of them see can reach the consensus. Only CNVpytor reads a different signal, depth, and its breakpoints are coarse (see Limitations).
 
+SURVIVOR's 1,000 bp rule alone is not enough. The pinned SURVIVOR 1.0.7 merges two deletions of 100 bp that start 900 bp apart and share no base, and on some inputs it merges a deletion and a duplication at the same place into one record, although its type and strand flags are set. Each such record read "2 callers" for an event no two callers called. `og sv consensus-check` reads the calls inside each record and splits it by event, so a record means one event again. The Rust tests of `og-steps` (`rust/crates/og-steps/src/sv/tests.rs`) run SURVIVOR's own records of these cases, and the e2e case `tests/e2e/sv-merge-consensus-check.sh` runs them through the step.
+
 The step used to bin calls by chromosome, `int(POS/1000)` and SV type. That split one deletion called at positions 999 and 1001 over two bins, and counted two deletions of very different size that start in one bin as agreement. SURVIVOR compares both breakpoints, so neither happens: the e2e case `tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` runs both situations on the synthetic three-caller set in `tests/fixtures/sv/`. The e2e case `tests/e2e/sv-merge-votes.sh` runs the records that must not vote on the same set.
 
 ## Tool
 
 - **SURVIVOR** 1.0.7 (Jeffares et al., Nat Commun 2017), `SURVIVOR merge`
-- **og** (`og sv survivor-prep`) for the records each caller votes with
+- **og** (`og sv survivor-prep`) for the records each caller votes with, and (`og sv consensus-check`) for the check that each merged record is one event
 - **bcftools** for the sorted, indexed output
 
 Not chosen: `truvari collapse`, which also compares sequence similarity. It would need a comparison run against SURVIVOR on real calls first.
 
 ## Docker Image
 
-- `SURVIVOR_IMAGE` (the merge), `BCFTOOLS_IMAGE` (runs `og` for the records that vote; sort, index)
+- `SURVIVOR_IMAGE` (the merge), `BCFTOOLS_IMAGE` (runs `og` for the records that vote and for the check of each merged record; sort, index). In Nextflow the check runs in the `SURVIVOR_MERGE` task, right after the merge
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
@@ -59,8 +61,10 @@ The Nextflow pipeline (`survivor_merge` in `--tools`, with at least two of `mant
 1. Turns CNVpytor's table into a VCF when step 18 left no VCF, or when the VCF there has no `pytorP1` (an earlier version of this step made it from the table without the e-value). Each record carries the table's e-value, `q0` and `pN` under the INFO names CNVpytor's own VCF uses (`pytorP1`, `pytorQ0`, `pytorPN`)
 2. Writes the records each caller votes with (below) as plain VCF under `sv_merged/inputs/`, with one sample column named after the caller (`og sv survivor-prep --caller NAME IN OUT`, which prints how many records it left out and why). SURVIVOR names its output columns after the input samples, so three inputs that all name the sample would give one name three times
 3. Runs `SURVIVOR merge inputs/sv_files.txt 1000 2 1 1 0 50`: maximum breakpoint distance 1,000 bp, support from 2 callers, same type, same strands, no size-scaled distance, minimum size 50 bp
-4. Checks that SURVIVOR wrote a VCF (it exits 0 when it cannot open an input), then sorts, compresses and indexes it
-5. Prints the count, and the count per type and caller combination
+4. Checks that SURVIVOR wrote a VCF (it exits 0 when it cannot open an input)
+5. Checks each merged record (`og sv consensus-check IN OUT`, below), which prints how many records were one event, how many it split and how many it dropped
+6. Sorts, compresses and indexes the result
+7. Prints the count, and the count per type and caller combination
 
 ### Which records vote
 
@@ -77,11 +81,27 @@ SURVIVOR counts a caller as support for every record of its input. A record goes
 
 Delly genotypes every site it reports, so a PASS Delly record with `0/0` is common. Before this rule, such a record next to a Manta call read as two callers.
 
+### One event per record
+
+SURVIVOR writes each caller's calls of a record in that caller's column: their coordinates (`CO`), types (`TY`), strands (`ST`) and length (`LN`). `og sv consensus-check` compares these calls two by two. Two calls are one event when all of the rules below hold:
+
+| Calls | Rule |
+|---|---|
+| any | the same type, by SURVIVOR's own rule: `INV`, `BND` and `TRA` count as one type, any other type only matches itself (`DUP:TANDEM` is a `DUP`) |
+| any | the same strands |
+| deletions, duplications, inversions | a reciprocal overlap of at least 0.5: they share at least half of the longer call |
+| insertions | they start within 1,000 bp, and the shorter is at least half as long as the longer |
+| a breakend to another chromosome | the same other chromosome, and both breakpoints within 1,000 bp (SURVIVOR's own rule, as there is no span to overlap) |
+
+The calls are taken in the order of `SUPP_VEC`. Each call joins the first group whose every call it matches, or starts a new group. A record whose calls form one group is kept as SURVIVOR wrote it. Any other record is split: each group of two or more callers becomes a record of its own, and a group of one caller is dropped. A split record takes its `SUPP`, `SUPP_VEC`, `SVTYPE`, `STRANDS` and `CHR2` from its calls. `POS` and `END` are those of its middle call by start (the lower of the two middle ones). `SVLEN` is the mean length of its calls, negative for a deletion, as SURVIVOR writes it. `CIPOS` and `CIEND` give the spread of the calls' starts and ends around `POS` and `END`. `REF` is `N`, `ALT` is the type as a symbolic allele (`<DEL>`), and `ID` is the middle call's ID when its column names it. A caller column keeps only the calls of its group. Its `ID` stays only when it names one of them: SURVIVOR writes the ID of the caller's last call there, so the column gets `.` when that call went to another group.
+
+A record whose columns cannot be read this way (no `CO`, a coordinate that does not parse, a `SUPP_VEC` that does not fit the columns) is kept as SURVIVOR wrote it, and the summary line counts it.
+
 ## Output
 
 | File | Contents |
 |---|---|
-| `${SAMPLE}_sv_consensus.vcf.gz` | Consensus SVs supported by 2+ callers, with `SUPP` and `SUPP_VEC` in INFO |
+| `${SAMPLE}_sv_consensus.vcf.gz` | Consensus SVs supported by 2+ callers, each one event ([One event per record](#one-event-per-record)), with `SUPP` and `SUPP_VEC` in INFO. A header line `##og_sv_consensus_check` states the check |
 | `${SAMPLE}_sv_consensus.vcf.gz.tbi` | Tabix index |
 | `inputs/sv_files.txt`, `inputs/<caller>.vcf` | The records each caller voted with, which SURVIVOR read, in `SUPP_VEC` order |
 
@@ -120,12 +140,13 @@ docker run --rm -v "${GENOME_DIR}:/genome" "${BCFTOOLS_IMAGE}" \
 - Single-caller SVs are discarded even if they are real. If you suspect a specific SV, check the individual caller outputs directly.
 - CNVpytor's calls are depth-only and their breakpoints are coarse (its bin size), so a CNVpytor call often lies more than 1 kb from the Manta or Delly breakpoint of the same event and does not pair with it.
 - The CNVpytor VCF made from its table carries no genotype (`./.`); its e-value and `q0` come from the table.
-- A breakend (BND) record pairs with a breakend, an inversion (INV) or a translocation (TRA) of another caller: SURVIVOR 1.0.7 lets a BND match those two types. That includes a lone Manta inversion junction of 1 Mb or more, which step 4 keeps as its two breakends instead of a whole-span inversion.
+- A breakend (BND) record pairs with a breakend, an inversion (INV) or a translocation (TRA) of another caller: SURVIVOR 1.0.7 lets a BND match those two types, and the check keeps that rule. On one chromosome the pair must still share half of the longer span. That includes a lone Manta inversion junction of 1 Mb or more, which step 4 keeps as its two breakends instead of a whole-span inversion.
+- The check splits a record and never joins two. Calls SURVIVOR put in separate records stay separate, even when they would pass the check.
 
 ## Notes
 
 - Run this step only after completing at least two of: step 4 (Manta), step 19 (Delly), step 18 (CNVpytor).
-- Load the consensus VCF into IGV to look at it, but never run AnnotSV on it. Its sample columns are the callers, not you, and its positions are SURVIVOR's merged ones. AnnotSV (step 5) annotates the callers' own calls, and the reports join `SUPP` and `SUPP_VEC` onto them ([step 5](05-annotsv.md)).
+- Load the consensus VCF into IGV to look at it, but never run AnnotSV on it. Its sample columns are the callers, not you, and its positions are SURVIVOR's merged ones (or, for a record the check split, those of its middle call). AnnotSV (step 5) annotates the callers' own calls, and the reports join `SUPP` and `SUPP_VEC` onto them ([step 5](05-annotsv.md)).
 
 ## Links
 

@@ -1,8 +1,9 @@
 # Synthetic SV calls for step 22
 
 Three caller VCFs on chr20 with a known answer, read by
-`tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` and
-`tests/e2e/sv-merge-votes.sh`; the `SURVIVOR_IMAGE` row of
+`tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh`, `tests/e2e/sv-merge-votes.sh`
+and `tests/e2e/sv-merge-consensus-check.sh` (which adds six events of its own
+and lists them); the `SURVIVOR_IMAGE` row of
 `tests/smoke/commands.tsv` uses the first two events. The records are made up; they describe no
 person.
 

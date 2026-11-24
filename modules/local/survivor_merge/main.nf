@@ -9,7 +9,12 @@
                     CNVpytor none that fails step 05's e-value and q0 rule
     SURVIVOR_MERGE  `SURVIVOR merge LIST 1000 2 1 1 0 50`: both breakpoints
                     within 1,000 bp, same type and strands, >= 50 bp, kept
-                    when 2+ callers support it; SUPP and SUPP_VEC say which
+                    when 2+ callers support it; SUPP and SUPP_VEC say which.
+                    Then og sv consensus-check keeps a merged record only
+                    when its calls are one event (same type, same strands,
+                    reciprocal overlap >= 0.5; insertions within 1 kb and of
+                    like size), splits the others by event and drops a part
+                    with fewer than 2 callers
     SURVIVOR_SORT   sorted, bgzipped and indexed (bcftools)
 
     Equivalent to: scripts/22-survivor-merge.sh
@@ -75,10 +80,14 @@ process SURVIVOR_MERGE {
     def listed = callers.sort(false) { c -> order.indexOf(c) }.collect { c -> "${c}.vcf" }.join(' ')
     """
     printf '%s\\n' ${listed} > sv_files.txt
-    SURVIVOR merge sv_files.txt 1000 2 1 1 0 50 ${meta.id}_sv_merged.vcf
+    SURVIVOR merge sv_files.txt 1000 2 1 1 0 50 ${meta.id}_sv_survivor.vcf
     # SURVIVOR exits 0 when it cannot open an input, so its output is the check.
-    head -n 1 ${meta.id}_sv_merged.vcf | grep -q '^##fileformat=VCF' \\
+    head -n 1 ${meta.id}_sv_survivor.vcf | grep -q '^##fileformat=VCF' \\
         || { echo "ERROR: SURVIVOR wrote no VCF" >&2; exit 1; }
+    # SURVIVOR's 1 kb rule alone merges disjoint events; og (bin/, a static
+    # binary) keeps each record only when its calls are one event, as
+    # scripts/22-survivor-merge.sh does.
+    og sv consensus-check ${meta.id}_sv_survivor.vcf ${meta.id}_sv_merged.vcf
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
