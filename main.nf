@@ -578,6 +578,11 @@ workflow {
     // ClinVar
     ch_clinvar       = params.clinvar       ? Channel.value(file(params.clinvar, checkIfExists: true))       : Channel.value([])
     ch_clinvar_index = params.clinvar_index  ? Channel.value(file(params.clinvar_index, checkIfExists: true)) : Channel.value([])
+    // The conflicting subset step 06 lists apart from the hits (setup.sh's
+    // clinvar/clinvar_conflicting_plp_chr.vcf.gz), its .tbi beside it.
+    ch_clinvar_conflicting = params.clinvar_conflicting
+        ? Channel.value([file(params.clinvar_conflicting, checkIfExists: true), file("${params.clinvar_conflicting}.tbi", checkIfExists: true)])
+        : Channel.value([[], []])
 
     // VEP caches
     ch_vep_cache      = Channel.value(params.vep_cache      ? file(params.vep_cache, checkIfExists: true)      : [])
@@ -737,6 +742,7 @@ workflow {
         ch_reference_fai,
         ch_clinvar,
         ch_clinvar_index,
+        ch_clinvar_conflicting,
         ch_bam,
         ch_pypgx_bundle,
         ch_gvcf,
@@ -1186,6 +1192,7 @@ workflow {
         .join(PGX.out.clinvar_cdna.map            { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_cdna_scan.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_deep_intronic.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(PGX.out.clinvar_conflicting.map     { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_json.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_html.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_phenotypes.map         { meta, f -> [meta.id, f] }, remainder: true)

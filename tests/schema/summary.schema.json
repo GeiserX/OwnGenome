@@ -441,6 +441,99 @@
            "type": "integer",
            "minimum": 0
           },
+          "conflicting": {
+           "type": "object",
+           "required": [
+            "checked",
+            "note",
+            "count",
+            "hits"
+           ],
+           "properties": {
+            "checked": {
+             "type": "boolean"
+            },
+            "note": {
+             "type": [
+              "string",
+              "null"
+             ]
+            },
+            "count": {
+             "type": [
+              "integer",
+              "null"
+             ],
+             "minimum": 0
+            },
+            "hits": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "required": [
+               "chrom",
+               "pos",
+               "ref",
+               "alt",
+               "genotype",
+               "gene",
+               "clinvar_id",
+               "stars",
+               "review_status",
+               "submissions",
+               "plp_submissions"
+              ],
+              "properties": {
+               "pos": {
+                "type": "integer",
+                "minimum": 0
+               },
+               "stars": {
+                "enum": [
+                 0,
+                 1,
+                 2,
+                 3,
+                 4,
+                 null
+                ]
+               },
+               "plp_submissions": {
+                "type": [
+                 "integer",
+                 "null"
+                ],
+                "minimum": 0
+               },
+               "submissions": {
+                "type": "string"
+               },
+               "clinvar_condition": {
+                "$ref": "#/definitions/clinvar_condition"
+               },
+               "clinvar_condition_ids": {
+                "$ref": "#/definitions/clinvar_condition_ids"
+               },
+               "dp": {
+                "type": [
+                 "integer",
+                 "null"
+                ]
+               },
+               "gq": {
+                "type": [
+                 "integer",
+                 "null"
+                ]
+               },
+               "low_confidence": {
+                "type": "boolean"
+               }
+              }
+             }
+            }
+           }
+          },
           "call_floor": {
            "type": "object",
            "required": [

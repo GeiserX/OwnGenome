@@ -4,9 +4,11 @@
 //! og clinvar join-adjacent --mode prepare|finish|tag|build [--fasta REF] [--window N] [VCF]
 //! og clinvar hits [HITS_VCF]
 //! og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS
+//! og clinvar conflicting-subset [CLINVAR_VCF]
+//! og clinvar conflicting-hits [--min-gq N] [--min-dp N] [--skip WHY | HITS_VCF]
 //! ```
 //!
-//! `join-adjacent` and `hits` read standard input when the VCF is missing, and
+//! `join-adjacent`, `hits` and the two `conflicting-` verbs read standard input when the VCF is missing, and
 //! any VCF given as `-` is standard input; plain, gzip and BGZF input are read
 //! alike. `-h` or `--help` before any `--` prints the usage and the defaults on
 //! stdout, exit 0. A refused command line is exit 2, a file that cannot be
@@ -18,11 +20,13 @@ use std::io::{self, BufRead, BufWriter, Write};
 use og_intervals::fasta::Indexed;
 
 use crate::join::{self, Mode, WINDOW};
-use crate::{hits, sites};
+use crate::{CallFloor, conflicting, hits, sites};
 
 const USAGE: &str = "usage: og clinvar join-adjacent --mode prepare|finish|tag|build [--fasta REF] [--window N] [VCF]
        og clinvar hits [HITS_VCF]
-       og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS";
+       og clinvar deep-intronic [--no-gvcf] [--min-gq N] [--min-dp N] SITES VCF_CALLS GVCF_CALLS
+       og clinvar conflicting-subset [CLINVAR_VCF]
+       og clinvar conflicting-hits [--min-gq N] [--min-dp N] [--skip WHY | HITS_VCF]";
 
 /// The usage, then each option's meaning and default: what `--help` prints.
 fn help() -> String {
@@ -32,10 +36,12 @@ fn help() -> String {
   --mode M      join-adjacent: prepare, finish, tag or build
   --fasta REF   join-adjacent --mode build: the reference FASTA (indexed)
   --window N    join-adjacent: join two records when the second starts at most N bases after the first ends (default {WINDOW})
-  --min-gq N    deep-intronic: the call floor, the lowest GQ of a plain reference call, never below 20 (default 30)
-  --min-dp N    deep-intronic: the depth floor, the lowest DP of a plain reference call (default 10)
+  --min-gq N    deep-intronic: the call floor, the lowest GQ of a plain reference call, never below 20; conflicting-hits: a call with a lower GQ is low confidence (default 30)
+  --min-dp N    deep-intronic: the depth floor, the lowest DP of a plain reference call; conflicting-hits: a call with a lower DP is low confidence (default 10)
+  --skip WHY    conflicting-hits: the subset was not checked; write '# not checked: WHY' and the header, no row
   --no-gvcf     deep-intronic: there is no gVCF, so a site with no record is a no call
-  join-adjacent and hits read standard input when the VCF is missing; any VCF given as - is standard input.
+  join-adjacent, hits, conflicting-subset and conflicting-hits read standard input when the VCF is missing; any VCF given as - is standard input.
+  conflicting-subset keeps the records of a ClinVar VCF whose CLNSIG is conflicting and whose CLNSIGCONF counts a Pathogenic or Likely_pathogenic submission.
 "
     )
 }
@@ -152,6 +158,18 @@ pub fn main(args: &[String]) -> u8 {
             },
         },
         "deep-intronic" => deep_intronic(rest, &mut out),
+        "conflicting-subset" => match Line::parse(rest, &[], &[]) {
+            Err(e) => return refuse(&e),
+            Ok(l) if l.files.len() > 1 => {
+                return refuse("conflicting-subset reads one ClinVar VCF");
+            }
+            Ok(l) => match input(l.files.first().map(String::as_str)) {
+                Err(e) => fail("conflicting-subset", &e),
+                Ok(i) => conflicting::subset(i, &mut out)
+                    .map_or_else(|e| fail("conflicting-subset", &e), |()| 0),
+            },
+        },
+        "conflicting-hits" => conflicting_hits(rest, &mut out),
         other => return refuse(&format!("unknown clinvar verb '{other}'")),
     };
     match out.flush() {
@@ -241,4 +259,37 @@ fn deep_intronic(args: &[String], out: &mut impl Write) -> u8 {
     };
     sites::deep_intronic(&texts[0], &texts[1], &texts[2], &o, out)
         .map_or_else(|e| fail("deep-intronic", &e), |()| 0)
+}
+
+fn conflicting_hits(args: &[String], out: &mut impl Write) -> u8 {
+    let l = match Line::parse(args, &["--min-gq", "--min-dp", "--skip"], &[]) {
+        Ok(l) => l,
+        Err(e) => return refuse(&e),
+    };
+    let (gq, dp) = match (l.number("--min-gq", 30), l.number("--min-dp", 10)) {
+        (Ok(g), Ok(d)) => (g, d),
+        (Err(e), _) | (_, Err(e)) => return refuse(&e),
+    };
+    let skip = l.get("--skip");
+    match (skip, l.files.len()) {
+        (Some(_), n) if n > 0 => {
+            return refuse("conflicting-hits takes --skip or a hits VCF, not both");
+        }
+        (Some(w), _) if w.trim().is_empty() => return refuse("argument --skip: say why"),
+        (_, n) if n > 1 => return refuse("conflicting-hits reads one hits VCF"),
+        _ => {}
+    }
+    let floor = CallFloor {
+        gq: gq as f64,
+        dp: dp as f64,
+    };
+    let what = "conflicting-hits";
+    let input = match skip {
+        Some(_) => None,
+        None => match input(l.files.first().map(String::as_str)) {
+            Ok(i) => Some(i),
+            Err(e) => return fail(what, &e),
+        },
+    };
+    conflicting::table(input, skip, &floor, out).map_or_else(|e| fail(what, &e), |()| 0)
 }
