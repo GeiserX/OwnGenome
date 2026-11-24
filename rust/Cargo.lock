@@ -801,6 +801,7 @@ dependencies = [
  "og-io",
  "og-nf",
  "og-runlog",
+ "og-summary",
  "png",
  "pycompat",
  "regex",

@@ -1,4 +1,4 @@
-# assets/steps.tsv: one row per step of a run, read by bin/run_state.py and bin/collect_summary.py.
+# assets/steps.tsv: one row per step of a run, read by og run state, og summary collect and og live serve.
 # step: the step number (scripts/<step>-*.sh, docs/<step>-*.md). label: as scripts/run-all.sh prints it.
 # tool: the main.nf --tools name (empty: the step has none). recorded: yes when scripts/run-all.sh writes the
 # step's row in logs/run_status.tsv. processes: the Nextflow processes of the step, by name without the
@@ -12,7 +12,7 @@
 # changes). bin/og recheck marks a step whose key moved, then every step downstream of it through
 # upstream, then the reports; the Nextflow workflow checks that a stub rerun with a new ClinVar file redoes
 # exactly the steps it names.
-# tests/test_run_state.py checks this table against run-all.sh, main.nf, modules/local and collect_summary.py.
+# og dev steps-check checks this table against run-all.sh, main.nf, modules/local and the summary's sections.
 step	label	tool	recorded	processes	sections	upstream	hours	hours_from	hours_low	reads
 01b	fastp (read trimming)		no	FASTP			0.33	measured	0.25	
 02	Alignment (minimap2)		no	MINIMAP2_INDEX,ALIGN_MINIMAP2,CRAM_TO_BAM	read_count	01b	5.4	measured	3.85	
@@ -25,7 +25,7 @@ step	label	tool	recorded	processes	sections	upstream	hours	hours_from	hours_low	
 04a	TIDDIT		yes			02				
 04b	GRIDSS		yes			02	8	estimate		
 05	AnnotSV	annotsv	yes	ANNOTSV	annotsv	15,19,18	0.03	measured	0.0166	
-06	ClinVar screen	clinvar	yes	CLINVAR_SCREEN,CLINVAR_CDNA_CHECK	clinvar,carrier	03	0.02	measured	0.0083	clinvar_file_date
+06	ClinVar screen	clinvar	yes	CLINVAR_SCREEN,CLINVAR_CDNA_CHECK	clinvar,carrier,acmg_sf	03	0.02	measured	0.0083	clinvar_file_date
 07	PharmCAT	pharmcat	yes	PHARMCAT_PREPROCESS,PHARMCAT	pharmcat	03	0.02	measured	0.0083	PHARMCAT_IMAGE
 08	HLA typing (T1K)	hla_typing	yes	T1K_BUILD,HLA_TYPING,KIR_BUILD,KIR_TYPING,HLA_QC_READS,HLA_QC	hla	02	1.09	measured	0.5833	hla_database
 09	ExpansionHunter	expansion_hunter	yes	EXPANSION_HUNTER	expansions	02	0.01	measured	0.0005	
