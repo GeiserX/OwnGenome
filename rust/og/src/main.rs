@@ -67,7 +67,7 @@ Pipeline helpers (the steps run these):
   og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
   og pgx outside-calls|hla-concordance|pypgx-summary [args]
   og paraphase check-bam|table [args]
-  og clinvar join-adjacent|hits|deep-intronic [args]
+  og clinvar join-adjacent|hits|deep-intronic|conflicting-subset|conflicting-hits [args]
   og str motif|catalog [args]
   og cdna check [args]
   og cdna scan [args]

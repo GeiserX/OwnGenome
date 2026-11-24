@@ -34,6 +34,13 @@
 # other than the default is written into the hits VCF as
 # ##PGP_CALL_FLOOR=GQ=..,DP=.., so og clinvar hits and both reports read
 # the floor this run used; without the line they use the default.
+# clinvar/${SAMPLE}_clinvar_conflicting.tsv lists, apart from the hits, the
+# sample's records that match a ClinVar record labelled conflicting where at least
+# one lab submitted Pathogenic or Likely_pathogenic (clinvar_conflicting_plp_chr.vcf.gz,
+# which setup.sh builds): the submitter split, the stars and the condition, for a
+# clinician to review. They are never hits: no count, report section or later
+# step that reads the hits sees them. Without that file the table says
+# "# not checked: run setup.sh --refresh clinvar", never zero rows.
 # The summary counts the sample records whose REF differs from the reference
 # (bcftools norm -c w warns REF_MISMATCH and keeps them as written).
 set -euo pipefail
@@ -49,9 +56,11 @@ REF="$REF_FASTA"
 # Source file built by setup.sh; the normalised copy beside it is built from it.
 CLINVAR="${GENOME_DIR}/clinvar/clinvar_pathogenic_chr.vcf.gz"
 CLINVAR_NORM="${GENOME_DIR}/clinvar/clinvar_pathogenic_chr.norm.vcf.gz"
+CONFLICTING="${GENOME_DIR}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"
 OUTPUT_DIR="${GENOME_DIR}/${SAMPLE}/clinvar"
 HITS="${OUTPUT_DIR}/${SAMPLE}_clinvar_hits.vcf"
 HITS_TSV="${OUTPUT_DIR}/${SAMPLE}_clinvar_hits.tsv"
+CONFLICTING_TSV="${OUTPUT_DIR}/${SAMPLE}_clinvar_conflicting.tsv"
 CDNA_TSV="${OUTPUT_DIR}/${SAMPLE}_clinvar_cdna_check.tsv"
 BAM="${GENOME_DIR}/${SAMPLE}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam"
 EXONS_BED=$(data_file gencode_exons) || true
@@ -296,6 +305,32 @@ fi
 } > "${HITS_TSV}.part"
 mv "${HITS}.part" "$HITS"
 mv "${HITS_TSV}.part" "$HITS_TSV"
+
+# Step 3c: the conflicting records some labs call pathogenic, matched the way the
+# hits are (the same candidates, a copy of the subset split and left-aligned on
+# the same contigs), written to their own table by og clinvar conflicting-hits.
+# Nothing above reads them, so the hits stay exactly what they were.
+if [ -f "$CONFLICTING" ] && [ -f "${CONFLICTING}.tbi" ]; then
+  CONF_COLS="ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNSIGCONF,INFO/CLNREVSTAT$(bcftools_run bcftools view -h "$(cpath "$CONFLICTING")" \
+    | awk '/^##INFO=<ID=CLNDN,/ { a = ",INFO/CLNDN" } /^##INFO=<ID=CLNDISDB,/ { b = ",INFO/CLNDISDB" } END { printf "%s%s", a, b }')"
+  CONF_NORM="${OUTPUT_DIR}/${SAMPLE}_conflicting_norm.vcf.gz"
+  CONF_SHARED="${OUTPUT_DIR}/${SAMPLE}_conflicting_shared.vcf.gz"
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" \
+    bash -o pipefail -c "set -e
+      bcftools view -T '$(cpath "$CLINVAR_TARGETS")' -Ou '$(cpath "$CONFLICTING")' \\
+        | bcftools norm --no-version -m -any -c w -f '$(cpath "$REF")' -Oz -o '$(cpath "$CONF_NORM")' -
+      bcftools index -f -t '$(cpath "$CONF_NORM")'
+      bcftools isec --no-version -n=2 -w1 -Oz -o '$(cpath "$CONF_SHARED")' '$(cpath "$CANDIDATES")' '$(cpath "$CONF_NORM")'
+      bcftools index -f -t '$(cpath "$CONF_SHARED")'
+      bcftools annotate --no-version -a '$(cpath "$CONF_NORM")' --pair-logic exact -c '${CONF_COLS}' -Ou '$(cpath "$CONF_SHARED")' \\
+        | bcftools view --no-version -i 'GT~\"[1-9]\"' -Ov \\
+        | /pgp-bin/og clinvar conflicting-hits --min-gq '${MIN_GQ}' --min-dp '${MIN_DP}' > '$(cpath "${CONFLICTING_TSV}.part")'"
+  rm -f "$CONF_NORM" "${CONF_NORM}.tbi" "$CONF_SHARED" "${CONF_SHARED}.tbi"
+else
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" \
+    /pgp-bin/og clinvar conflicting-hits --skip "run setup.sh --refresh clinvar" > "${CONFLICTING_TSV}.part"
+fi
+mv "${CONFLICTING_TSV}.part" "$CONFLICTING_TSV"
 rm -f "$SHARED" "${SHARED}.tbi" "${HITS_TSV}.body" "$CLINVAR_TARGETS" "$SAMPLE_TARGETS" \
   "$JOINED" "${JOINED}.tbi" "$CANDIDATES" "${CANDIDATES}.tbi"
 
@@ -370,6 +405,11 @@ echo "cDNA scan of every exon: ${SCAN_TSV}"
 echo "Known deep intronic sites, always reported: ${DEEP_TSV}"
 awk -F'\t' 'NR > 1 {printf "  %s %s %s:%s %s>%s: %s%s\n", $5, $6, $1, $2, $3, $4, $8, ($9 != "" ? ", " $9 : "")}' "$DEEP_TSV"
 echo "Count: ${HIT_COUNT} pathogenic hits"
+if grep -q '^# not checked: ' "$CONFLICTING_TSV"; then
+  echo "Conflicting records some labs call pathogenic: $(sed -n '1s/^# //p' "$CONFLICTING_TSV")"
+else
+  echo "Conflicting records some labs call pathogenic (review with a clinician; not hits): $(awk 'NR > 1' "$CONFLICTING_TSV" | grep -c . || true) in ${CONFLICTING_TSV}"
+fi
 if [ "$HIT_COUNT" -gt 0 ]; then
   HIT_ROWS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar hits "$(cpath "$HITS")")
   LOW_COUNT=$(awk -F'\t' '$13 == "yes"' <<< "$HIT_ROWS" | wc -l | tr -d ' ')
