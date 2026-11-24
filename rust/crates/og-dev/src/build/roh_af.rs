@@ -104,7 +104,7 @@ pub fn row(line: &[u8]) -> Result<Option<String>, String> {
             String::from_utf8_lossy(&line[..line.len().min(80)])
         ));
     };
-    if !chrom_index(chrom).is_some_and(|i| i < 22) || filter != b"PASS" || !base(r) || !base(a) {
+    if chrom_index(chrom).is_none_or(|i| i >= 22) || filter != b"PASS" || !base(r) || !base(a) {
         return Ok(None);
     }
     let Some(af) = info(inf, "AF") else {
