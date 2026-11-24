@@ -7,7 +7,8 @@
 //! `Likely_pathogenic`. When at least one lab submitted it as pathogenic or
 //! likely pathogenic, a clinician would still want to see it. `CLNSIGCONF`
 //! counts the submissions of each class, as in
-//! `Pathogenic(2)|Uncertain_significance(1)`.
+//! `Pathogenic_(2)|Uncertain_significance_(1)` (ClinVar puts a `_` before
+//! each count; a form without it reads the same).
 //!
 //! - [`keep`] (`og clinvar conflicting-subset`): the records of the subset,
 //!   `clinvar_conflicting_plp_chr.vcf.gz`. A record of the pathogenic subset
@@ -51,23 +52,42 @@ pub fn plp_class(class: &[u8]) -> bool {
     })
 }
 
+/// One part of `CLNSIGCONF` as its class and its count. ClinVar writes
+/// `Pathogenic_(2)`: the `_` before the bracket is not part of the class.
+/// The form without it, `Pathogenic(2)`, reads the same. A class without a
+/// count, `Pathogenic` alone, is one submission.
+fn class_count(part: &[u8]) -> (&[u8], Option<&[u8]>) {
+    let (class, n) = match part.strip_suffix(b")").and_then(|r| {
+        let open = r.iter().rposition(|&c| c == b'(')?;
+        Some((&r[..open], &r[open + 1..]))
+    }) {
+        Some((class, n)) if is_digits(n) => (class, Some(n)),
+        _ => (part, None),
+    };
+    (class.strip_suffix(b"_").unwrap_or(class), n)
+}
+
 /// The submissions `CLNSIGCONF` counts as pathogenic or likely pathogenic.
-/// A class without a count, `Pathogenic` alone, is one submission.
 pub fn plp_submissions(clnsigconf: &[u8]) -> u64 {
     split(clnsigconf, b'|')
         .into_iter()
-        .map(|t| {
-            match t.strip_suffix(b")").and_then(|r| {
-                let open = r.iter().rposition(|&c| c == b'(')?;
-                Some((&r[..open], &r[open + 1..]))
-            }) {
-                Some((class, n)) if is_digits(n) => (class, crate::text::whole(n).unwrap_or(0)),
-                _ => (t, 1),
-            }
-        })
+        .map(class_count)
         .filter(|(class, _)| plp_class(class))
-        .map(|(_, n)| n)
+        .map(|(_, n)| n.map_or(1, |n| crate::text::whole(n).unwrap_or(0)))
         .sum()
+}
+
+/// The submitter split as the table shows it: `Pathogenic(2),
+/// Uncertain_significance(1)`, without ClinVar's `_` before each count.
+fn submitter_split(clnsigconf: &[u8]) -> Vec<u8> {
+    let parts: Vec<Vec<u8>> = split(clnsigconf, b'|')
+        .into_iter()
+        .map(|p| match class_count(p) {
+            (class, Some(n)) => [class, b"(", n, b")"].concat(),
+            (class, None) => class.to_vec(),
+        })
+        .collect();
+    parts.join(&b", "[..])
 }
 
 /// True when the subset keeps the record whose INFO column this is: a
@@ -186,7 +206,7 @@ pub fn row(line: &[u8], floor: &CallFloor) -> Vec<u8> {
     let submissions = if conf.is_empty() {
         b".".to_vec()
     } else {
-        split(conf, b'|').join(&b", "[..])
+        submitter_split(conf)
     };
     let (names, ids) = condition(get(b"CLNDN"), get(b"CLNDISDB"));
     let sample = split(nth(&f, 10), b':');
@@ -269,10 +289,40 @@ mod tests {
         String::from_utf8(out).unwrap()
     }
 
-    /// The plan's fixture: a conflicting record two labs call pathogenic
-    /// and one uncertain is kept; one with only benign and uncertain
-    /// submissions is dropped; a plain pathogenic record stays out (the
-    /// pathogenic subset holds it).
+    /// Records of NCBI's ClinVar release of 2026-11-22 (public), with the
+    /// INFO tags this module reads copied as ClinVar writes them: a class,
+    /// `_`, then its count in brackets.
+    const REAL: [&str; 7] = [
+        "1\t930200\t1043045\tG\tA\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Uncertain_significance_(1)|Likely_benign_(2);GENEINFO=SAMD11:148398\n",
+        "1\t1435945\t1264926\tC\tCCGGGCGGGGGCG\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=VUS-mid_(1)|Benign_(1);GENEINFO=VWA1:64856\n",
+        "1\t196725256\t1696102\tG\tA\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Likely_pathogenic,_low_penetrance_(1)|Uncertain_significance_(1);GENEINFO=CFH:3075\n",
+        "1\t201364335\t181617\tC\tT\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Pathogenic_(2)|Likely_pathogenic_(8)|Uncertain_significance_(3)|VUS-mid_(1);GENEINFO=TNNT2:7139\n",
+        "1\t207757204\t4291205\tT\tC\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Pathogenic,_low_penetrance_(1)|Uncertain_significance_(1);GENEINFO=CD46:4179\n",
+        "9\t34648896\t2580245\tT\tC\t.\t.\tCLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Likely_pathogenic_(1)|Benign_(1);GENEINFO=GALT:2592\n",
+        "22\t19177779\t42196\tC\tT\t.\t.\tCLNDISDB=MONDO:MONDO:0014072,MedGen:C5574940,OMIM:615182,Orphanet:356978|MedGen:C3661900;CLNDN=D,L-2-hydroxyglutaric_aciduria|not_provided;CLNREVSTAT=criteria_provided,_conflicting_classifications;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Pathogenic_(2)|Uncertain_significance_(1);GENEINFO=SLC25A1:6576\n",
+    ];
+
+    /// ClinVar's own syntax: the records with a P/LP submission are kept
+    /// (low penetrance too), the two with only benign and uncertain ones
+    /// are dropped, and a plain pathogenic record stays out (the pathogenic
+    /// subset holds it).
+    #[test]
+    fn the_subset_reads_clinvar_s_own_syntax() {
+        let plain = "22\t20982374\t3238279\tG\tA\t.\t.\tCLNREVSTAT=criteria_provided,_single_submitter;CLNSIG=Pathogenic;GENEINFO=LZTR1:8216|LOC130067016:130067016\n";
+        let got = run_subset(&format!("{HEAD}{}{plain}", REAL.concat()));
+        assert_eq!(got, format!("{HEAD}{}", REAL[2..].concat()));
+        for (rec, n) in REAL.iter().zip([0, 0, 1, 10, 1, 1, 2]) {
+            let info = rec.trim_end().split('\t').nth(7).unwrap();
+            assert_eq!(
+                plp_submissions(info_get(info.as_bytes(), b"CLNSIGCONF")),
+                n,
+                "{info}"
+            );
+        }
+    }
+
+    /// The plan's fixture in the hand-made form, without ClinVar's `_`
+    /// before the count, still parses, alone and beside the real form.
     #[test]
     fn the_subset_keeps_conflicting_records_with_a_plp_submission() {
         let kept = rec(
@@ -289,24 +339,32 @@ mod tests {
         );
         let got = run_subset(&format!("{HEAD}{kept}{benign}{plain}"));
         assert_eq!(got, format!("{HEAD}{kept}"));
+        assert_eq!(
+            plp_submissions(b"Pathogenic(2)|Likely_pathogenic_(1)|Uncertain_significance_(1)"),
+            3
+        );
     }
 
     #[test]
     fn the_older_label_and_every_plp_class_count() {
         for (conf, n) in [
-            ("Likely_pathogenic(1)|Benign(4)", 1),
+            ("Likely_pathogenic_(1)|Benign_(4)", 1),
             (
-                "Pathogenic/Likely_pathogenic(3)|Uncertain_significance(1)",
+                "Pathogenic/Likely_pathogenic_(3)|Uncertain_significance_(1)",
                 3,
             ),
-            ("Pathogenic,_low_penetrance(1)|Likely_benign(1)", 1),
-            ("Pathogenic(2)|Likely_pathogenic(1)|Benign(1)", 3),
-            ("Likely_benign(2)|Uncertain_significance(1)", 0),
-            ("Pathogenic|Benign(1)", 1),
+            ("Pathogenic,_low_penetrance_(1)|Likely_benign_(1)", 1),
+            ("Likely_pathogenic,_low_penetrance_(1)|Likely_benign_(1)", 1),
+            ("Pathogenic_(2)|Likely_pathogenic_(1)|Benign_(1)", 3),
+            ("Likely_benign_(2)|Uncertain_significance_(1)", 0),
+            ("VUS-high_(1)|Likely_risk_allele_(1)", 0),
+            ("Pathogenic|Benign_(1)", 1),
+            ("Pathogenic_|Benign_(1)", 1),
             ("", 0),
         ] {
             assert_eq!(plp_submissions(conf.as_bytes()), n, "{conf}");
         }
+        // Releases from before 2024: the older label, no `_` before the count.
         let old = "CLNSIG=Conflicting_interpretations_of_pathogenicity;CLNSIGCONF=Likely_pathogenic(1)|Benign(1)";
         assert!(keep(old.as_bytes()));
         // A conflicting record with no CLNSIGCONF cannot show a P/LP lab.
@@ -315,23 +373,38 @@ mod tests {
         ));
         // A CLNSIG the pathogenic subset also matches is left to it.
         assert!(!keep(
-            b"CLNSIG=Conflicting_classifications_of_pathogenicity|Pathogenic;CLNSIGCONF=Pathogenic(1)"
+            b"CLNSIG=Conflicting_classifications_of_pathogenicity|Pathogenic;CLNSIGCONF=Pathogenic_(1)"
+        ));
+        // Another label beside the conflicting one does not hide it.
+        assert!(keep(
+            b"CLNSIG=Conflicting_classifications_of_pathogenicity|risk_factor;CLNSIGCONF=Likely_pathogenic_(1)|Benign_(1)"
         ));
         // Uncertain alone is not conflicting.
         assert!(!keep(
-            b"CLNSIG=Uncertain_significance;CLNSIGCONF=Pathogenic(1)"
+            b"CLNSIG=Uncertain_significance;CLNSIGCONF=Pathogenic_(1)"
         ));
     }
 
+    /// The submitter split drops ClinVar's `_` before each count, so it
+    /// reads `Pathogenic(2), Uncertain_significance(1)`, in either form.
     #[test]
     fn a_carried_record_in_sixteen_columns() {
-        let line = "chr22\t100\t9900101\tC\tT\t.\tPASS\tGENEINFO=NF2:4771;CLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Pathogenic(2)|Uncertain_significance(1);CLNREVSTAT=criteria_provided,_conflicting_classifications;CLNDN=Neurofibromatosis,_type_2|not_provided;CLNDISDB=MONDO:MONDO:0007039,OMIM:101000|MedGen:CN517202\tGT:GQ:DP\t0/1:20:30";
+        let real = REAL[6].trim_end().replacen("22\t", "chr22\t", 1);
+        let line = format!("{real}\tGT:GQ:DP\t0/1:20:30");
         let got = String::from_utf8(row(line.as_bytes(), &CallFloor::default())).unwrap();
         assert_eq!(
             got,
-            "chr22\t100\tC\tT\thet\tNF2\t9900101\t1\tcriteria provided, conflicting classifications\tPathogenic(2), Uncertain_significance(1)\t2\tNeurofibromatosis, type 2\tMONDO:MONDO:0007039,OMIM:101000\t30\t20\tyes"
+            "chr22\t19177779\tC\tT\thet\tSLC25A1\t42196\t1\tcriteria provided, conflicting classifications\tPathogenic(2), Uncertain_significance(1)\t2\tD,L-2-hydroxyglutaric aciduria\tMONDO:MONDO:0014072,MedGen:C5574940,OMIM:615182,Orphanet:356978\t30\t20\tyes"
         );
         assert_eq!(got.split('\t').count(), COLUMNS.split('\t').count());
+        let old = line.replace(
+            "Pathogenic_(2)|Uncertain_significance_(1)",
+            "Pathogenic(2)|Uncertain_significance(1)",
+        );
+        assert_eq!(
+            String::from_utf8(row(old.as_bytes(), &CallFloor::default())).unwrap(),
+            got
+        );
     }
 
     #[test]
