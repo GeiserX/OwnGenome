@@ -56,19 +56,27 @@
 #                   gene curation list, GRCh38, of 2026-09-07 (CC0), the archived copy
 #                   scripts/ci/build-acmg-lof.sh pins by sha256
 #   lof             whether a predicted loss-of-function call (a VEP HIGH-impact record) counts in the gene:
-#                   yes for a dominant, semidominant or X-linked gene scored 3 and for a recessive gene not
-#                   scored 40; no otherwise (PCSK9, MYH7: their disease is no loss of function, so only a
-#                   ClinVar P/LP variant counts). By hand: APOB and RET no (their score 3 is for another
-#                   disease than the ACMG one), TTN yes (footnote f, see limit), TGFBR1 and TGFBR2 mark
-#                   (counted, with a note: Loeys-Dietz syndrome is mostly missense). clingen_hi and lof are
+#                   yes; no (PCSK9, MYH7: their disease is no loss of function, so only a ClinVar P/LP
+#                   variant counts); mark (counted, with a note that loss of function is a less certain
+#                   cause: TGFBR1, TGFBR2, RBM20). A clingen_hi of 3 gives yes and 40 gives no; every other
+#                   score says too little, so the gene's lof is its reviewed row of
+#                   assets/acmg_lof_overrides.tsv, which also overrides a score that belongs to another
+#                   disease (APOB, RET), and the build stops for a gene with neither. clingen_hi and lof are
 #                   written by og dev build acmg-lof (scripts/ci/build-acmg-lof.sh); never edit them by hand
-#   limit           a footnote of Table 1 that the code applies: "."; truncating_in CHROM:START-END NAME
-#                   (only a stop-gained, frameshift or canonical splice variant at a position in that
-#                   1-based region counts); missense_needs_case_evidence (a variant that may be missense is
-#                   reported with the condition in rule_condition). TTN's region spans exons 252 to 357 of
-#                   ENST00000589042 (MANE Select, NM_001267550.2), the A-band exons, each spliced into every
-#                   cardiac transcript (cardiodb.org titin exon table; Roberts et al., Sci Transl Med
-#                   2015;7(270):270ra6), widened by 2 bases at each end for the canonical splice sites
+#   limit           a footnote of Table 1 that the code applies: "."; truncating_in CHROM:START-END[,...]
+#                   NAME (only a stop-gained, frameshift or canonical splice variant at a position in one of
+#                   those 1-based regions counts); missense_needs_case_evidence (a variant that may be
+#                   missense is reported with the condition in rule_condition). TTN's cell is written by og
+#                   dev build acmg-lof: ACMG SF v3.2 counts only frameshift, nonsense and splice variants of
+#                   TTN exons with high PSI (Table 1 footnote f, citing Roberts et al., Sci Transl Med
+#                   2015;7(270):270ra6, where high is PSI > 0.9). Its regions are the 7 runs of exons that
+#                   cardiodb's titin exon table (Internet Archive copy of 2026-03-12) gives a PSI over 90%
+#                   in the left ventricles of 84 DCM patients, widened by 2 bases at each end for the
+#                   canonical splice sites. In LRG_391 numbering, the table's, they are exons 1-10, 13-44,
+#                   47, 49-50, 220-224, 226-242 and 244-364, every A-band (253-358) and M-band (359-364)
+#                   exon among them; ENST00000589042 (MANE Select, NM_001267550.2) lacks
+#                   LRG exon 48 (novex-3's last exon), so from LRG exon 49 on its exon number is one less
+#                   (the A-band is LRG exons 253-358, Ensembl exons 252-357)
 gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note	phenotype	phenotype_keys	clingen_hi	lof	limit
 APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.	familial adenomatous polyposis	OMIM:175100; familial adenomatous polyposis; adenomatous polyposis coli; gardner syndrome; familial multiple polyposis; carcinoma of colon; colorectal cancer; colon cancer	3	yes	.
 RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.	familial medullary thyroid cancer, multiple endocrine neoplasia type 2	OMIM:155240; OMIM:171400; OMIM:162300; multiple endocrine neoplasia type 2; multiple endocrine neoplasia 2; men2; medullary thyroid; pheochromocytoma	3	no	.
@@ -106,19 +114,19 @@ ACTA2	HGNC:130	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic 
 MYH11	HGNC:7569	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:132900; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy	0	no	.
 PKP2	HGNC:9024	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:609040; arrhythmogenic; cardiomyopathy	3	yes	.
 DSP	HGNC:3052	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:607450; arrhythmogenic; cardiomyopathy	3	yes	.
-DSC2	HGNC:3036	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610476; arrhythmogenic; cardiomyopathy	1	no	.
+DSC2	HGNC:3036	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610476; arrhythmogenic; cardiomyopathy	1	yes	.
 TMEM43	HGNC:28472	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:604400; arrhythmogenic; cardiomyopathy	0	no	.
-DSG2	HGNC:3049	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610193; arrhythmogenic; cardiomyopathy	2	no	.
+DSG2	HGNC:3049	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610193; arrhythmogenic; cardiomyopathy	2	yes	.
 RYR2	HGNC:10484	AD	any	.	no	.	.	1.0	All P and LP	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:604772; catecholaminergic polymorphic ventricular tachycardia; cpvt	0	no	.
 CASQ2	HGNC:1513	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:611938; catecholaminergic polymorphic ventricular tachycardia; cpvt	30	yes	.
 TRDN	HGNC:12261	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:615441; catecholaminergic polymorphic ventricular tachycardia; cpvt	30	yes	.
 TNNT2	HGNC:11949	AD	any	.	no	.	.	1.0	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:601494; cardiomyopathy; ventricular noncompaction	0	no	.
 LMNA	HGNC:6636	AD	any	.	no	.	.	1.0	All P and LP (See text)	SF v3.3 footnote e: report a P/LP missense variant only with case evidence of cardiac disease, which OwnGenome cannot see; such a finding carries that condition.	dilated cardiomyopathy	OMIM:115200; cardiomyopathy	3	yes	missense_needs_case_evidence
 FLNC	HGNC:3756	AD	any	.	no	.	.	3.0	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:617047; cardiomyopathy	3	yes	.
-TTN	HGNC:12403	AD	any	.	no	.	.	3.0	All P and LP (See text)	SF v3.3 footnote f: only truncating TTN variants are reported. OwnGenome counts those in the A-band exons, which every cardiac transcript uses (limit column).	dilated cardiomyopathy	OMIM:604145; cardiomyopathy	2	yes	truncating_in chr2:178535980-178618493 the A-band exons
+TTN	HGNC:12403	AD	any	.	no	.	.	3.0	All P and LP (See text)	SF v3.3 footnote f: only truncating TTN variants are reported; SF v3.2 counts those in TTN exons with high PSI. OwnGenome counts them in the exons cardiodb gives a PSI over 90% in the heart (limit column).	dilated cardiomyopathy	OMIM:604145; cardiomyopathy	2	yes	truncating_in chr2:178525987-178622769,chr2:178625271-178636801,chr2:178639697-178642319,chr2:178738080-178741923,chr2:178753122-178753182,chr2:178758982-178789499,chr2:178792070-178807425 the TTN exons with PSI over 90%
 BAG3	HGNC:939	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613881; cardiomyopathy	3	yes	.
 DES	HGNC:2770	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:604765; cardiomyopathy	.	no	.
-RBM20	HGNC:27424	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613172; cardiomyopathy	1	no	.
+RBM20	HGNC:27424	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613172; cardiomyopathy	1	mark	.
 TNNC1	HGNC:11943	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:611879; cardiomyopathy	0	no	.
 PLN	HGNC:9080	AD	any	.	no	.	.	3.3	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:609909; cardiomyopathy	1	no	.
 COL3A1	HGNC:2201	AD	any	.	no	.	.	1.0	All P and LP	.	Ehlers-Danlos syndrome, vascular type	OMIM:130050; ehlers danlos; thoracic aortic; aortic aneurysm; aortic dissection; aortopathy	3	yes	.

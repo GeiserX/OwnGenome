@@ -33,17 +33,22 @@
 //!
 //! A HIGH-impact record is a predicted loss of function, so it counts only
 //! in a gene where loss of function causes the disease ACMG lists it for:
-//! the `lof` column, built from ClinGen's haploinsufficiency scores by
-//! `og dev build acmg-lof`. A PCSK9 stop-gain (PCSK9 causes familial
+//! the `lof` column, built by `og dev build acmg-lof` from ClinGen's
+//! haploinsufficiency scores and the reviewed hand rows of
+//! `assets/acmg_lof_overrides.tsv`. A PCSK9 stop-gain (PCSK9 causes familial
 //! hypercholesterolemia by gain of function) is listed under `not_reported`
-//! with the reason; TGFBR1 and TGFBR2 count it with a `mechanism_note`. A
-//! HIGH-impact record of unknown frequency, or with no GQ, DP or AD to
-//! judge its call (`call_unverified`), counts but is not counted as rare,
-//! and a pair that needs one carries a `pair_note`. The `limit` column
-//! applies two footnotes of Table 1: TTN counts only a truncating variant
-//! in its A-band exons (a ClinVar hit is truncating when its record in the
-//! clinical VCF is), and an LMNA variant that may be a missense one carries
-//! the case-evidence condition in `rule_condition`.
+//! with the reason; TGFBR1, TGFBR2 and RBM20 count it with a
+//! `mechanism_note`. A HIGH-impact record of unknown frequency, or with no
+//! GQ, DP or AD to judge its call (`call_unverified`), counts but is not
+//! counted as rare, and a pair that needs one carries a `pair_note`.
+//!
+//! The `limit` column applies two footnotes of Table 1. TTN counts only a
+//! truncating variant in its exons with high PSI (SF v3.2 footnote f); the
+//! regions come from cardiodb's exon table, through `og dev build
+//! acmg-lof`. A ClinVar hit is truncating when its record in the clinical
+//! VCF is; a hit that file does not hold is reported with a
+//! `rule_condition` to check it. An LMNA variant that may be a missense one
+//! carries the case-evidence condition in `rule_condition`.
 
 use super::assets::{
     ACMG_SF_VERSION, Key, Limit, Lof, Rule, acmg_sf_rules, asset_rows, carrier_genes,
@@ -339,15 +344,15 @@ fn same_chrom(a: &str, b: &str) -> bool {
 /// condition a reported row must carry, if any. `high` says the candidate
 /// is a HIGH-impact record; `consequence` is its ranked HIGH consequence
 /// (for a ClinVar hit, that of its record in the clinical VCF, `None` when
-/// that VCF has no HIGH-impact record of it); `clinical` says a clinical
-/// VCF was read.
+/// that VCF has no HIGH-impact record of it); `clinical` is `None` when no
+/// clinical VCF was read, else whether it holds a record of the variant.
 fn gate(
     gene: &str,
     rule: &Rule,
     key: &Key,
     high: bool,
     consequence: Option<&str>,
-    clinical: bool,
+    clinical: Option<bool>,
 ) -> Result<Option<String>, String> {
     if high && rule.lof == Lof::No {
         return Err(format!(
@@ -359,31 +364,35 @@ fn gate(
     let trunc = consequence.is_some_and(truncating);
     match &rule.limit {
         Limit::None => Ok(None),
-        Limit::TruncatingIn {
-            chrom,
-            start,
-            end,
-            name,
-        } => {
+        Limit::TruncatingIn { regions, name } => {
             let rule = format!(
-                "SF v3.3 footnote f: {gene} is reported only for a truncating variant, and \
-                 OwnGenome counts one only in {name} ({chrom}:{start}-{end})"
+                "SF v3.2 footnote f: {gene} is reported only for a nonsense, frameshift or \
+                 canonical splice variant in an exon with high PSI, and OwnGenome counts one \
+                 only in {name}"
             );
-            if !(same_chrom(&key.0, chrom) && *start <= key.1 && key.1 <= *end) {
-                Err(format!("{rule}: this variant lies outside it"))
+            let inside = regions
+                .iter()
+                .any(|(c, start, end)| same_chrom(&key.0, c) && *start <= key.1 && key.1 <= *end);
+            if !inside {
+                Err(format!("{rule}: this variant lies outside them"))
             } else if trunc {
                 Ok(None)
             } else if high {
                 Err(format!("{rule}: this call does not truncate the protein"))
-            } else if clinical {
-                Err(format!(
-                    "{rule}: the clinical VCF has no truncating call of this variant"
-                ))
             } else {
-                Ok(Some(format!(
-                    "{rule}. With no clinical VCF its consequence is not known here: check \
-                     that it truncates the protein."
-                )))
+                match clinical {
+                    Some(true) => Err(format!(
+                        "{rule}: its record in the clinical VCF does not truncate the protein"
+                    )),
+                    Some(false) => Ok(Some(format!(
+                        "{rule}. The clinical VCF holds no record of this variant, so its \
+                         consequence is not known here: check that it truncates the protein."
+                    ))),
+                    None => Ok(Some(format!(
+                        "{rule}. With no clinical VCF its consequence is not known here: check \
+                         that it truncates the protein."
+                    ))),
+                }
             }
         }
         Limit::MissenseNeedsCaseEvidence if trunc => Ok(None),
@@ -404,6 +413,11 @@ pub struct ClinicalVcf {
     /// Keyed by `(chrom, pos, ref, alt)`; an error is the collector's note
     /// (a POS that is no integer on a HIGH-impact record, a bad floor).
     pub high: Result<IndexMap<Key, HighRecord>, String>,
+    /// The `(chrom, pos, ref, alt)` of every record, HIGH-impact or not, so
+    /// a ClinVar hit the file holds with a consequence that does not
+    /// truncate is told apart from one it does not hold at all. Step 23's
+    /// clinical VCF has a few hundred records.
+    pub held: HashSet<Key>,
 }
 
 impl ClinicalVcf {
@@ -419,9 +433,11 @@ impl ClinicalVcf {
             scan.line(l);
         })
         .map_err(|e| e.unreadable(path))?;
+        let held = std::mem::take(&mut scan.held);
         Ok(ClinicalVcf {
             records,
             high: scan.finish(),
+            held,
         })
     }
 }
@@ -436,6 +452,7 @@ struct HighScan {
     fmt: Option<Vec<String>>,
     out: IndexMap<Key, HighRecord>,
     err: Option<String>,
+    held: HashSet<Key>,
 }
 
 impl HighScan {
@@ -445,6 +462,18 @@ impl HighScan {
                 self.header.push(line.to_owned());
             } else {
                 self.floor = Some(ClinicalFloor::read(&std::mem::take(&mut self.header)));
+            }
+        }
+        if !line.starts_with('#') {
+            let f: Vec<&str> = line.splitn(6, '\t').collect();
+            if let (Some(c), Some(Ok(p)), Some(r), Some(a)) = (
+                f.first(),
+                f.get(1).map(|p| crate::int(p)),
+                f.get(3),
+                f.get(4),
+            ) {
+                self.held
+                    .insert(((*c).to_owned(), p, (*r).to_owned(), (*a).to_owned()));
             }
         }
         if self.err.is_some() {
@@ -1325,13 +1354,14 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     }
     // Each gene's mechanism and footnote: a HIGH-impact call in a gene where
     // loss of function is not the disease mechanism, or a TTN variant that
-    // is no truncating one in the A-band exons, is listed apart and counts
-    // nothing. A ClinVar hit reads its consequence from its record in the
-    // clinical VCF.
-    let clinical_high = match i.clinical {
-        Some(Ok(c)) => c.high.as_ref().ok(),
+    // is no truncating one in the exons with high PSI, is listed apart and
+    // counts nothing. A ClinVar hit reads its consequence from its record
+    // in the clinical VCF.
+    let clinical_vcf = match i.clinical {
+        Some(Ok(c)) if c.high.is_ok() => Some(c),
         _ => None,
     };
+    let clinical_high = clinical_vcf.and_then(|c| c.high.as_ref().ok());
     let mut conditions: HashMap<(Kind, String, Key), String> = HashMap::new();
     for x in clinvar.iter_mut().chain(high.iter_mut()) {
         let AKey::Small(k) = &x.key else { continue };
@@ -1347,13 +1377,18 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 .and_then(|r| r.genes.get(&x.gene))
                 .cloned()
         };
+        let held = if is_high {
+            Some(true)
+        } else {
+            clinical_vcf.map(|c| c.held.contains(k))
+        };
         match gate(
             &x.gene,
             &rules[&x.gene],
             k,
             is_high,
             consequence.as_deref(),
-            clinical_high.is_some(),
+            held,
         ) {
             Err(why) => x.apart = Some(why),
             Ok(Some(c)) => {
@@ -1822,20 +1857,49 @@ mod tests {
         };
         let k = |chrom: &str, pos| (chrom.to_owned(), pos, "C".to_owned(), "T".to_owned());
         let no = rule(Lof::No, Limit::None);
-        assert!(gate("PCSK9", &no, &k("chr1", 5), true, Some("stop_gained"), true).is_err());
+        assert!(
+            gate(
+                "PCSK9",
+                &no,
+                &k("chr1", 5),
+                true,
+                Some("stop_gained"),
+                Some(true)
+            )
+            .is_err()
+        );
         assert_eq!(
-            gate("PCSK9", &no, &k("chr1", 5), false, None, true),
+            gate("PCSK9", &no, &k("chr1", 5), false, None, Some(false)),
             Ok(None)
         );
         let ttn = rule(
             Lof::Yes,
             Limit::TruncatingIn {
-                chrom: "chr2".into(),
-                start: 100,
-                end: 200,
-                name: "the A-band exons".into(),
+                regions: vec![("chr2".into(), 100, 200), ("chr2".into(), 300, 400)],
+                name: "the TTN exons with PSI over 90%".into(),
             },
         );
+        let stop = |pos| {
+            gate(
+                "TTN",
+                &ttn,
+                &k("chr2", pos),
+                true,
+                Some("stop_gained"),
+                Some(true),
+            )
+        };
+        // Each end of each region counts; the base beyond it does not.
+        for pos in [100, 150, 200, 300, 400] {
+            assert_eq!(stop(pos), Ok(None), "{pos}");
+        }
+        for pos in [99, 201, 250, 299, 401] {
+            let e = stop(pos).unwrap_err();
+            assert!(
+                e.contains("outside") && e.contains("footnote f"),
+                "{pos}: {e}"
+            );
+        }
         assert_eq!(
             gate(
                 "TTN",
@@ -1843,14 +1907,37 @@ mod tests {
                 &k("2", 150),
                 true,
                 Some("frameshift_variant"),
-                true
+                Some(true)
             ),
             Ok(None)
         );
-        let out = gate("TTN", &ttn, &k("chr2", 99), true, Some("stop_gained"), true);
-        assert!(out.unwrap_err().contains("outside"));
-        assert!(gate("TTN", &ttn, &k("chr2", 150), true, Some("start_lost"), true).is_err());
-        assert!(gate("TTN", &ttn, &k("chr2", 150), false, None, true).is_err());
+        assert!(
+            gate(
+                "TTN",
+                &ttn,
+                &k("chr3", 150),
+                true,
+                Some("stop_gained"),
+                Some(true)
+            )
+            .is_err()
+        );
+        assert!(
+            gate(
+                "TTN",
+                &ttn,
+                &k("chr2", 150),
+                true,
+                Some("start_lost"),
+                Some(true)
+            )
+            .is_err()
+        );
+        // A ClinVar hit: its record in the clinical VCF decides; a record
+        // that does not truncate sets it apart, no record at all (or no
+        // clinical VCF) reports it with the condition to check.
+        let e = gate("TTN", &ttn, &k("chr2", 150), false, None, Some(true)).unwrap_err();
+        assert!(e.contains("does not truncate"), "{e}");
         assert_eq!(
             gate(
                 "TTN",
@@ -1858,16 +1945,21 @@ mod tests {
                 &k("chr2", 150),
                 false,
                 Some("stop_gained,splice_region_variant"),
-                true
+                Some(true)
             ),
             Ok(None)
         );
         assert!(
-            matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, false), Ok(Some(c)) if c.contains("not known"))
+            matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, Some(false)), Ok(Some(c)) if c.contains("holds no record") && c.contains("not known"))
         );
+        assert!(
+            matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, None), Ok(Some(c)) if c.contains("no clinical VCF") && c.contains("not known"))
+        );
+        // Outside the regions even a ClinVar hit with no record is apart.
+        assert!(gate("TTN", &ttn, &k("chr2", 250), false, None, Some(false)).is_err());
         let lmna = rule(Lof::Yes, Limit::MissenseNeedsCaseEvidence);
         assert!(
-            matches!(gate("LMNA", &lmna, &k("chr1", 1), false, None, true), Ok(Some(c)) if c.contains("footnote e"))
+            matches!(gate("LMNA", &lmna, &k("chr1", 1), false, None, Some(false)), Ok(Some(c)) if c.contains("footnote e"))
         );
         assert_eq!(
             gate(
@@ -1876,12 +1968,19 @@ mod tests {
                 &k("chr1", 1),
                 false,
                 Some("stop_gained"),
-                true
+                Some(true)
             ),
             Ok(None)
         );
         assert_eq!(
-            gate("LMNA", &lmna, &k("chr1", 1), true, Some("start_lost"), true),
+            gate(
+                "LMNA",
+                &lmna,
+                &k("chr1", 1),
+                true,
+                Some("start_lost"),
+                Some(true)
+            ),
             Ok(None)
         );
     }

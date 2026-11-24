@@ -57,11 +57,11 @@ pub enum Limit {
     /// Every P/LP variant counts.
     None,
     /// Only a truncating variant (stop-gained, frameshift, canonical
-    /// splice) whose position lies in the region counts: TTN, footnote f.
+    /// splice) whose position lies in one of the regions counts: TTN,
+    /// footnote f (the exons with high PSI).
     TruncatingIn {
-        chrom: String,
-        start: i128,
-        end: i128,
+        /// `(chrom, start, end)`, 1-based and inclusive.
+        regions: Vec<(String, i128, i128)>,
         name: String,
     },
     /// A missense variant counts only with case evidence the pipeline
@@ -97,8 +97,8 @@ fn parse_lof(cell: Option<&str>) -> Result<Lof, String> {
     }
 }
 
-/// The `limit` cell: `.`, `truncating_in CHROM:START-END NAME` (1-based,
-/// inclusive) or `missense_needs_case_evidence`.
+/// The `limit` cell: `.`, `truncating_in CHROM:START-END[,CHROM:START-END...]
+/// NAME` (1-based, inclusive) or `missense_needs_case_evidence`.
 pub fn parse_limit(cell: Option<&str>) -> Result<Limit, String> {
     let cell = pycompat::text::strip(cell.unwrap_or(""), None);
     if cell.is_empty() || cell == "." {
@@ -109,22 +109,24 @@ pub fn parse_limit(cell: Option<&str>) -> Result<Limit, String> {
     }
     let bad = || {
         format!(
-            "limit must be ., missense_needs_case_evidence or truncating_in CHROM:START-END NAME, \
+            "limit must be ., missense_needs_case_evidence or truncating_in CHROM:START-END[,...] NAME, \
              not '{cell}'"
         )
     };
     let rest = cell.strip_prefix("truncating_in ").ok_or_else(bad)?;
     let (loc, name) = rest.split_once(' ').unwrap_or((rest, ""));
-    let (chrom, span) = loc.split_once(':').ok_or_else(bad)?;
-    let (a, b) = span.split_once('-').ok_or_else(bad)?;
-    let (start, end) = (crate::int(a)?, crate::int(b)?);
-    if chrom.is_empty() || start > end {
-        return Err(bad());
+    let mut regions = Vec::new();
+    for one in loc.split(',') {
+        let (chrom, span) = one.split_once(':').ok_or_else(bad)?;
+        let (a, b) = span.split_once('-').ok_or_else(bad)?;
+        let (start, end) = (crate::int(a)?, crate::int(b)?);
+        if chrom.is_empty() || start > end {
+            return Err(bad());
+        }
+        regions.push((chrom.to_owned(), start, end));
     }
     Ok(Limit::TruncatingIn {
-        chrom: chrom.to_owned(),
-        start,
-        end,
+        regions,
         name: if name.is_empty() { loc } else { name }.to_owned(),
     })
 }
@@ -394,15 +396,22 @@ mod tests {
         assert_eq!(
             parse_limit(Some("truncating_in chr2:10-20 the A-band")).unwrap(),
             Limit::TruncatingIn {
-                chrom: "chr2".into(),
-                start: 10,
-                end: 20,
+                regions: vec![("chr2".into(), 10, 20)],
                 name: "the A-band".into()
+            }
+        );
+        assert_eq!(
+            parse_limit(Some("truncating_in chr2:10-20,chr2:30-30 two exons")).unwrap(),
+            Limit::TruncatingIn {
+                regions: vec![("chr2".into(), 10, 20), ("chr2".into(), 30, 30)],
+                name: "two exons".into()
             }
         );
         for bad in [
             "truncating_in chr2:20-10 x",
             "truncating_in chr2 x",
+            "truncating_in chr2:10-20,chr2:40-30 x",
+            "truncating_in chr2:10-20, x",
             "truncating",
             "odd",
         ] {
@@ -411,26 +420,47 @@ mod tests {
     }
 
     /// The shipped table: the genes whose disease is no loss of function
-    /// (PCSK9, MYH7, APOB, RET) say so, TGFBR1 and TGFBR2 carry the mark,
-    /// TTN counts truncating variants in its A-band exons only, and LMNA
-    /// names its missense condition.
+    /// (PCSK9, MYH7, APOB, RET) say so, TGFBR1, TGFBR2 and RBM20 carry the
+    /// mark, DSG2 and DSC2 count it, TTN counts truncating variants in its
+    /// exons with PSI over 90% only, and LMNA names its missense condition.
     #[test]
     fn the_shipped_mechanism_and_limit_columns() {
         let repo = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
         let r = acmg_sf_rules(repo).unwrap();
-        for g in ["PCSK9", "MYH7", "APOB", "RET", "RYR1", "TTR", "CACNA1S"] {
+        for g in [
+            "PCSK9", "MYH7", "APOB", "RET", "RYR1", "TTR", "CACNA1S", "DES", "PLN",
+        ] {
             assert_eq!(r[g].lof, Lof::No, "{g}");
         }
-        for g in ["BRCA2", "LDLR", "MYBPC3", "TTN", "MUTYH", "GLA", "BTD"] {
+        for g in [
+            "BRCA2", "LDLR", "MYBPC3", "TTN", "MUTYH", "GLA", "BTD", "DSG2", "DSC2",
+        ] {
             assert_eq!(r[g].lof, Lof::Yes, "{g}");
         }
-        assert_eq!(r["TGFBR1"].lof, Lof::Mark);
-        assert_eq!(r["TGFBR2"].lof, Lof::Mark);
-        assert!(matches!(
-            &r["TTN"].limit,
-            Limit::TruncatingIn { chrom, start, end, .. }
-                if chrom == "chr2" && *start == 178535980 && *end == 178618493
-        ));
+        for g in ["TGFBR1", "TGFBR2", "RBM20"] {
+            assert_eq!(r[g].lof, Lof::Mark, "{g}");
+        }
+        // The seven runs of TTN exons with PSI over 90% in cardiodb's
+        // table (LRG exons 1-10, 13-44, 47, 49-50, 220-224, 226-242 and
+        // 244-364), 2 bases wider at each end.
+        let Limit::TruncatingIn { regions, name } = &r["TTN"].limit else {
+            panic!("{:?}", r["TTN"].limit)
+        };
+        let ends: Vec<(i128, i128)> = regions.iter().map(|(_, a, b)| (*a, *b)).collect();
+        assert_eq!(
+            ends,
+            [
+                (178_525_987, 178_622_769),
+                (178_625_271, 178_636_801),
+                (178_639_697, 178_642_319),
+                (178_738_080, 178_741_923),
+                (178_753_122, 178_753_182),
+                (178_758_982, 178_789_499),
+                (178_792_070, 178_807_425),
+            ]
+        );
+        assert!(regions.iter().all(|(c, _, _)| c == "chr2"));
+        assert!(name.contains("PSI over 90%"), "{name}");
         assert_eq!(r["LMNA"].limit, Limit::MissenseNeedsCaseEvidence);
         let limited = r.values().filter(|x| x.limit != Limit::None).count();
         assert_eq!(limited, 2);

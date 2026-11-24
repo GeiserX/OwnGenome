@@ -448,6 +448,7 @@ fn sf_with_high(
                 .into_iter()
                 .map(|(s, r)| ((s.0.to_owned(), s.1, s.2.to_owned(), s.3.to_owned()), r))
                 .collect()),
+            held: Default::default(),
         })
     });
     obj(acmg_sf(&Inputs {
