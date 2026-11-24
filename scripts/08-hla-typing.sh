@@ -188,10 +188,15 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
   if [ -f "$R1" ] && [ -f "$R2" ]; then
     PAIRS=$(( $(wc -l < "$R1") / 4 ))
   fi
+  # T1K called no allele of HLA-A, -B or -C: its reads (class II only, say)
+  # give OptiType nothing to align, which OptiType fails on. A no-call, as
+  # with no pairs at all.
+  CLASS_I=no
+  awk -F'\t' '$1 ~ /^HLA-[ABC]$/ && $2 > 0 {f = 1} END {exit !f}' "${OUTPUT_DIR}/${SAMPLE}_hla_genotype.tsv" && CLASS_I=yes
   rm -rf "${QC_DIR}/work"
   mkdir -p "${QC_DIR}/work"
   echo "HLA read pairs T1K extracted, OptiType's input: ${PAIRS}"
-  if [ "$PAIRS" -eq 0 ]; then
+  if [ "$PAIRS" -eq 0 ] || [ "$CLASS_I" = no ]; then
     # Step 36 reads this as no OptiType call and passes neither gene on.
     printf '# OptiType not run: no read pairs at HLA-A, HLA-B or HLA-C in this BAM\n' > "$OT_RESULT"
     echo "OptiType: no reads to type; step 36 will not pass HLA-A or HLA-B to PharmCAT."

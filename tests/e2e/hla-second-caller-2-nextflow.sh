@@ -29,6 +29,9 @@ check "the GENCODE gene lines are installed" test -s "$GENES"
 KIR_DAT="${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"
 check "IPD-KIR is installed" test -s "$KIR_DAT"
 
+# A clean work dir: the checks below find task files in it, and an earlier
+# interrupted run must not leave files they would read instead.
+rm -rf "$WORK"
 echo "+ nextflow run main.nf -profile docker (hla_qc)"
 (
   cd "$CASE_TMP" && nextflow run "${REPO}/main.nf" -profile docker -ansi-log false \

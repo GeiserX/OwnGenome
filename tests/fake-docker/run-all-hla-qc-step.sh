@@ -19,6 +19,8 @@
 #      their number;
 #   6. a single-end BAM: T1K writes one candidate file, so OptiType does not
 #      run, and paired files an earlier run left are not typed instead.
+#   7. T1K's pairs hold class II reads only (no allele of HLA-A, -B or -C
+#      called): OptiType, with nothing to align, does not run; a no-call.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -96,7 +98,11 @@ case "$args" in
   *" run-t1k "*)
     # What run-t1k leaves: its genotypes and the reads its extractor took.
     p="$(host_path "$(opt --od)")$(opt -o)"
-    printf 'HLA-A\t2\tHLA-A*01:01:01\t100\t60\tHLA-A*26:01:01\t90\t60\n' > "${p}_genotype.tsv"
+    if [ "${FAKE_T1K_CLASS2:-}" = 1 ]; then
+      printf 'HLA-A\t0\t.\t0\t-1\t.\t0\t-1\t.\nHLA-DRB1\t2\tHLA-DRB1*15:01:01\t80\t60\tHLA-DRB1*03:01:01\t70\t60\t.\n'
+    else
+      printf 'HLA-A\t2\tHLA-A*01:01:01\t100\t60\tHLA-A*26:01:01\t90\t60\n'
+    fi > "${p}_genotype.tsv"
     if [ "${FAKE_T1K_SINGLE:-}" = 1 ]; then fq "${p}_candidate.fq" 5
     else fq "${p}_candidate_1.fq" 7; fq "${p}_candidate_2.fq" 7; fi
     exit 0 ;;
@@ -135,6 +141,16 @@ if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
 fi
 output_has step08-qc-single "^HLA read pairs T1K extracted, OptiType's input: 0$"
 grep -q '^# OptiType not run: no read pairs' "$OT_RES" 2>/dev/null || miss "step08-qc-single: the result file does not say OptiType was not run"
+
+# Read pairs, but T1K called no allele of HLA-A, -B or -C (class II reads only).
+: > "$FAKE_DOCKER_LOG"
+rm -f "$OT_RES"
+FAKE_T1K_CLASS2=1 FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 0 step08-qc-class2 "${SCRIPTS}/08-hla-typing.sh" sample1
+output_has step08-qc-class2 "^HLA read pairs T1K extracted, OptiType's input: 7$"
+if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc-class2: OptiType ran on reads with no HLA-A, -B or -C allele called"
+fi
+grep -q '^# OptiType not run: no read pairs' "$OT_RES" 2>/dev/null || miss "step08-qc-class2: the result file does not say OptiType was not run"
 
 [ "$MISSES" -eq 0 ] || fail "${MISSES} result(s) above are wrong"
 echo "HLA_QC=true reaches the pipeline as --hla_qc true, step 08 counts OptiType's two processes, and OptiType types the reads T1K extracted."
