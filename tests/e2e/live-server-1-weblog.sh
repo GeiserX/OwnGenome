@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The live site (bin/owngenome_live.py) on a real Nextflow run: the pinned Nextflow
+# The live site (og live serve) on a real Nextflow run: the pinned Nextflow
 # loads the nf-weblog plugin from the config run-all.sh writes when
 # OWNGENOME_LIVE_URL is set (the same text, the pin read from versions.env), posts each
 # task to the site's ingest port, and the site stores the messages and shows
@@ -16,11 +16,13 @@ ROOT="${CASE_TMP}/root" STATE="${CASE_TMP}/state"
 mkdir -p "${ROOT}/${SAMPLE}/nextflow"   # a run folder the site lists (it has nextflow/)
 port() { "${REPO}/bin/og" dev fixture free-port; }
 WEB=$(port) ING=$(port)
-python3 "${REPO}/bin/owngenome_live.py" --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
+"${REPO}/bin/og" live serve --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
   2> "${CASE_TMP}/site.err" &
 SITE=$!
 trap 'kill "$SITE" 2>/dev/null' EXIT
-for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
+for _ in $(seq 50); do [ -s "${STATE}/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
+# og live serve takes a message only under its token, the first part of the path (docs/live-site.md).
+TOK=$(cat "${STATE}/ingest-token")
 state11() { curl -s "http://127.0.0.1:${WEB}/runs/${SAMPLE}/state.json" \
   | jq -er 'first(.steps[] | select(.step == "11") | .state // empty)' 2>/dev/null \
   || echo "no state.json"; }
@@ -29,8 +31,8 @@ check_eq "control: before the run, step 11 is not planned" "$(state11)" "not pla
 SHEET="${CASE_TMP}/samplesheet.csv"
 printf 'sample,vcf,vcf_index\n%s,%s,%s\n' "$SAMPLE" "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
   "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz.tbi" > "$SHEET"
-printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$PLUGIN" \
-  "http://127.0.0.1:${ING}/ingest/${SAMPLE}" > "${CASE_TMP}/live.config"
+(umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$PLUGIN" \
+  "http://127.0.0.1:${ING}/${TOK}/ingest/${SAMPLE}" > "${CASE_TMP}/live.config")
 echo "+ nextflow run main.nf --tools roh -c live.config"
 (
   cd "$CASE_TMP" && nextflow run "${REPO}/main.nf" -profile docker -ansi-log false -c "${CASE_TMP}/live.config" \

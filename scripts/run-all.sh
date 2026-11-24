@@ -147,13 +147,13 @@ if [ -n "${FAMILIES:-}" ]; then
 fi
 mkdir -p "${S}/nextflow" "$LOG_DIR"
 GENOME_DIR="$G" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || echo "WARNING: could not write ${S}/run_manifest.tsv"
-STATUS="${LOG_DIR}/run_status.tsv"  # bin/collect_summary.py marks results older than this run stale
+STATUS="${LOG_DIR}/run_status.tsv"  # og summary collect marks results older than this run stale
 # EVERYTHING=true can still refuse before Nextflow: keep the last run's status to put back then.
 [ -z "$EV" ] || [ ! -f "$STATUS" ] || cp "$STATUS" "${STATUS}.prev"
 printf '# run-all.sh: when this run started and how each step ended\nmeta\tstarted_epoch\t%s\nmeta\tstarted_utc\t%s\nmeta\tdeclared_sex\t%s\nmeta\tcommand\t%s\nmeta\tswitches\t%s\n' \
   "$(date +%s)" "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" "$SEX" "$RERUN_CMD" "${SWITCHES[*]}" > "$STATUS"
 # As run-all.sh ends, however it ends: a step still 'planned' did not finish, and the time is recorded
-# (bin/run_state.py reads both). A planned row gives way to the step's result, so each step keeps one row.
+# (og run state reads both). A planned row gives way to the step's result, so each step keeps one row.
 finish_status() {
   local rc=$?
   live_post "$SAMPLE" "{\"event\":\"pgp_run_finished\",\"exit\":${rc},\"utcTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
@@ -441,14 +441,31 @@ export NXF_VER=${NXF_VER:-$NEXTFLOW_VERSION}
 # a config names it, so the block lives in a config of this run's own, passed only when OWNGENOME_LIVE_URL is set: a run
 # without it neither downloads the plugin nor warns about an unknown weblog scope. The pin is NF_WEBLOG_PLUGIN in versions.env.
 if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
-  # The ingest listener speaks plain HTTP and serves /ingest/<run> at its root, so https or a path would lose every post.
-  [[ "$OWNGENOME_LIVE_URL" =~ ^http://[A-Za-z0-9.:_-]+/?$ ]] \
-    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, got '${OWNGENOME_LIVE_URL}'" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
+  # The ingest listener (og live serve) speaks plain HTTP and takes /<token>/ingest/<run> only, with the token of its
+  # STATE_DIR/ingest-token as the first part of the path (Nextflow's weblog cannot send a header): https or another path
+  # would lose every post. A URL without the token gets the one in the state folder, when this account can read it.
+  [[ "$OWNGENOME_LIVE_URL" =~ ^http://[A-Za-z0-9.:_-]+(/[A-Za-z0-9_-]{43})?/?$ ]] \
+    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token>, got '${OWNGENOME_LIVE_URL}'" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
+  LIVE_SHOWN=${OWNGENOME_LIVE_URL%/}
+  if [ -n "${BASH_REMATCH[1]}" ]; then
+    LIVE_SHOWN="${LIVE_SHOWN%/*}/<token>"
+  else
+    TF="${OWNGENOME_LIVE_STATE_DIR:-${GENOME_DIR}/.owngenome-live}/ingest-token" TOK=""
+    if [ -r "$TF" ]; then IFS= read -r TOK < "$TF" || true; fi
+    if [[ "$TOK" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
+      export OWNGENOME_LIVE_URL="${LIVE_SHOWN}/${TOK}"; LIVE_SHOWN="${LIVE_SHOWN}/<token>"
+    else
+      echo "WARNING: OWNGENOME_LIVE_URL has no ingest token and ${TF} cannot be read: og live serve refuses every post; set OWNGENOME_LIVE_URL=${LIVE_SHOWN}/<token>" >&2
+    fi
+    unset TF TOK
+  fi
   export OWNGENOME_LIVE_RUN=$SAMPLE
-  printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$NF_WEBLOG_PLUGIN" \
-    "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config"
+  # The config holds the token: readable by this account only, from the start.
+  rm -f "${S}/nextflow/live.config"
+  (umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$NF_WEBLOG_PLUGIN" \
+    "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config")
   NF+=(-c "${S}/nextflow/live.config")
-  echo "Live site: messages go to ${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
+  echo "Live site: messages go to ${LIVE_SHOWN}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
   # The address the browser opens (the site's own, not the ingest port), when the launcher knows it.
   [ -z "${OWNGENOME_LIVE_PAGE_URL:-}" ] || echo "Live site: this run's page is ${OWNGENOME_LIVE_PAGE_URL%/}/runs/${SAMPLE}/"
 else
@@ -457,7 +474,7 @@ fi
 live_step() { live_post "$SAMPLE" "{\"event\":\"pgp_step\",\"step\":\"$1\",\"state\":\"$2\",\"utcTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"; }
 echo "[Nextflow ${NXF_VER}] launch directory ${S}/nextflow: .nextflow.log, and every task's files under work/"
 FT="${S}/nextflow/failed_tasks.tsv" PT="${S}/nextflow/process_status.tsv"; rm -f "$FT" "$PT"  # main.nf writes both as the run ends
-# Every step that will run, before it starts: 'planned' until its result row (bin/run_state.py shows the run as it goes).
+# Every step that will run, before it starts: 'planned' until its result row (og run state shows the run as it goes).
 for n in "${RUNS[@]}" "${OPTIN[@]}"; do n=${n%%-*}; [[ "$n" != [0-9]* ]] || printf 'step\t%s\tplanned\n' "$n" >> "$STATUS"; done
 # An earlier run's OwnHealth file goes before any result changes, so a run cut short never leaves it beside new results.
 rm -f "${S}/facts/${SAMPLE}_genome_facts.json"

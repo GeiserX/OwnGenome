@@ -41,9 +41,9 @@ THREADS=${THREADS:-8}
 # validate_sample NAME: exit 2 unless NAME is a plain sample name. Scripts put
 # it into container paths and `bash -c` bodies, so only letters, digits, '.',
 # '_' and '-' are allowed (the same rule as main.nf), and '.' and '..' are not
-# names at all. Nor is a name that starts with '-': CPSR, bin/pgx_parse.py and
-# bin/collect_summary.py take it as an argument value, and argparse reads '-x'
-# as an option. CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
+# names at all. Nor is a name that starts with '-': CPSR and bin/pgx_parse.py
+# take it as an argument value, and argparse reads '-x' as an option.
+# CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
 validate_sample() {
   local s=${1:-}
   if [[ ! "$s" =~ ^[A-Za-z0-9._-]+$ ]] || [ "$s" = "." ] || [ "$s" = ".." ]; then
@@ -1025,10 +1025,10 @@ run_parallel() {
   return "$rc"
 }
 
-# live_post RUN JSON: send one message to the live site (bin/owngenome_live.py,
+# live_post RUN JSON: send one message to the live site (og live serve,
 # docs/live-site.md) at OWNGENOME_LIVE_URL/ingest/RUN; nothing without OWNGENOME_LIVE_URL.
 # A site that is down or slow (3 s) costs one warning per script and never the
-# step: it always returns 0.
+# step: it always returns 0. The warning names the site without its ingest token.
 live_post() {
   [ -n "${OWNGENOME_LIVE_URL:-}" ] || return 0
   if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- \
@@ -1036,7 +1036,9 @@ live_post() {
     return 0
   fi
   if [ -z "${OWNGENOME_LIVE_WARNED:-}" ]; then
-    echo "WARNING: the live site at ${OWNGENOME_LIVE_URL} did not take a message; the run goes on without it" >&2
+    local shown=${OWNGENOME_LIVE_URL%/}
+    if [[ "$shown" =~ ^(http://[^/]+)/ ]]; then shown="${BASH_REMATCH[1]}/<token>"; fi
+    echo "WARNING: the live site at ${shown} did not take a message; the run goes on without it" >&2
     OWNGENOME_LIVE_WARNED=1
   fi
   return 0
