@@ -146,7 +146,9 @@ check_eq "without the subset the table says not checked" "$(head -1 "$CONF" 2>/d
 check_eq "without the subset the table has no row" "$(grep -v '^#' "$CONF" 2>/dev/null | awk 'NR > 1' | grep -c . || true)" 0
 check "the step's log says not checked" \
   grep -q 'Conflicting records some labs call pathogenic: not checked: run setup.sh --refresh clinvar' "$STEP_LOG"
-check "the hits VCF is byte-identical with and without the tier" cmp -s "${CASE_TMP}/with.vcf" "${OUT}/${S2}_clinvar_hits.vcf"
+# bcftools stamps "; Date=..." into its command header lines, so compare without it.
+check "the hits VCF is byte-identical with and without the tier, apart from bcftools date stamps" \
+  cmp -s <(sed "s/; Date=.*//" "${CASE_TMP}/with.vcf") <(sed "s/; Date=.*//" "${OUT}/${S2}_clinvar_hits.vcf")
 check "the hits TSV is byte-identical with and without the tier" cmp -s "${CASE_TMP}/with.tsv" "${OUT}/${S2}_clinvar_hits.tsv"
 collect "${CASE_TMP}/without.json"
 check_eq "og summary collect exits 0 (without the subset)" "$?" 0
@@ -197,8 +199,8 @@ if command -v nextflow >/dev/null; then
   check_eq "nextflow run without --clinvar_conflicting exits 0" "$NF_RC" 0
   check "CLINVAR_SCREEN without --clinvar_conflicting says not checked" \
     grep -q '^# not checked: no --clinvar_conflicting' "${G2}/nf-none/${S2}/clinvar/${S2}_clinvar_conflicting.tsv"
-  check "CLINVAR_SCREEN writes the same hits VCF without the tier" \
-    cmp -s "${G2}/nf/${S2}/clinvar/${S2}_clinvar_hits.vcf" "${G2}/nf-none/${S2}/clinvar/${S2}_clinvar_hits.vcf"
+  check "CLINVAR_SCREEN writes the same hits VCF without the tier, apart from bcftools date stamps" \
+    cmp -s <(sed "s/; Date=.*//" "${G2}/nf/${S2}/clinvar/${S2}_clinvar_hits.vcf") <(sed "s/; Date=.*//" "${G2}/nf-none/${S2}/clinvar/${S2}_clinvar_hits.vcf")
   check_eq "the Nextflow summary.json without --clinvar_conflicting says not checked, never zero" \
     "$(jq -c '.sections.clinvar.data.conflicting | [.checked, .count, (.hits | length), .note]' "${G2}/nf-none/${S2}/summary.json" 2>/dev/null)" \
     '[false,null,0,"not checked: no --clinvar_conflicting; run setup.sh --refresh clinvar and pass clinvar/clinvar_conflicting_plp_chr.vcf.gz"]'
