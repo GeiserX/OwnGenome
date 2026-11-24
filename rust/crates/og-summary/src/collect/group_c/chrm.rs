@@ -3,9 +3,12 @@
 //! classes, the confirmed variants of `assets/mito_confirmed.tsv`, the large
 //! deletions and the mtDNA copy number. A heteroplasmic call near the
 //! origin of the circular reference, or under 10% AF, stays counted and
-//! carries a flag that says why it is less reliable.
+//! carries a flag that says why it is less reliable. When step 20 called the
+//! control region again on the rotated chrM (the `##og_shifted_pass=` line
+//! of its calls), no call sits next to a reference end, so none carries the
+//! origin flag.
 
-use super::util::{Obj, asset_rows, cells, lines, opt_s, pairs, round, s, strs, vcf_lines};
+use super::util::{Obj, asset_rows, base, cells, lines, opt_s, pairs, round, s, strs, vcf_lines};
 use super::{Ctx, Found, Out};
 use crate::collect::sections::py_error;
 use indexmap::IndexMap;
@@ -15,9 +18,13 @@ use pycompat::json::Value;
 /// The D-loop poly-C tracts, rCRS m.303-315 and m.16184-16193.
 const POLYC_TRACTS: [(i128, i128); 2] = [(303, 315), (16184, 16193)];
 /// The two ends of the control region, next to the origin of the circular
-/// reference: reads that span the origin align poorly at both edges, and
-/// this step has no shifted-reference pass to call them again.
+/// reference: reads that span the origin align poorly at both edges, unless
+/// the shifted-reference pass called them again ([`SHIFTED_MARK`]).
 const ORIGIN_EDGE: [(i128, i128); 2] = [(1, 500), (16000, 16569)];
+/// The header line `og vcf shift-back` (og-vcf's `shift::MARK`) writes into
+/// the chrM calls it merges: the control region came from Mutect2 on chrM
+/// rotated by 8000 bp, where the origin lies mid-sequence.
+const SHIFTED_MARK: &str = "##og_shifted_pass=";
 const MITO_ANNOT_COLS: [&str; 13] = [
     "chrom",
     "pos",
@@ -373,12 +380,40 @@ fn clinvar_terms(sig: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
+/// The value of the `##og_shifted_pass=` line of the chrM calls, if the
+/// header has one.
+fn shifted_pass(path: &str) -> Result<Option<String>, String> {
+    use std::io::BufRead;
+    let fail = |e: std::io::Error| {
+        format!(
+            "{}: {}",
+            base(path),
+            crate::collect::sections::gzip_message(&e)
+        )
+    };
+    let r = og_io::bgzf::open(path, og_io::bgzf::workers()).map_err(fail)?;
+    for line in r.split(b'\n') {
+        let line = line.map_err(fail)?;
+        if line.first() != Some(&b'#') {
+            break;
+        }
+        if let Some(v) = line.strip_prefix(SHIFTED_MARK.as_bytes()) {
+            let v = v.strip_suffix(b"\r").unwrap_or(v);
+            return Ok(Some(String::from_utf8_lossy(v).into_owned()));
+        }
+    }
+    Ok(None)
+}
+
 pub fn mito(c: &Ctx<'_>) -> Out {
     let Some(p) = c.find1(format!("mito/{}_chrM_filtered.vcf.gz", c.s())) else {
         return Ok(None);
     };
     let mut records = Vec::new();
     vcf_lines(&p.path, |l| records.push(cells(l)))?;
+    let shifted = shifted_pass(&p.path)?;
+    // After the shifted pass no call sits next to a reference end.
+    let edge = |pos: i128, r: &str, a: &str| shifted.is_none() && at_origin_edge(pos, r, a);
     let (mut passed, mut het, mut het_edge, mut het_low) = (0usize, 0usize, 0usize, 0usize);
     let (mut polyc, mut sites) = (Vec::new(), Vec::new());
     for r in &records {
@@ -420,10 +455,10 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         } else {
             // Flagged calls stay counted: the flags say why one is less
             // reliable, they never hide it.
-            let edge = r[4].split(',').any(|a| at_origin_edge(pos, &r[3], a));
+            let at_edge = r[4].split(',').any(|a| edge(pos, &r[3], a));
             let low = low_af(af);
             het += 1;
-            het_edge += usize::from(edge);
+            het_edge += usize::from(at_edge);
             het_low += usize::from(low);
             sites.push(
                 Obj::new()
@@ -431,7 +466,7 @@ pub fn mito(c: &Ctx<'_>) -> Out {
                     .set("ref", s(&r[3]))
                     .set("alt", s(&r[4]))
                     .set("af", round(af, 3))
-                    .set("origin_edge", Value::Bool(edge))
+                    .set("origin_edge", Value::Bool(at_edge))
                     .set("low_af", Value::Bool(low))
                     .val(),
             );
@@ -463,7 +498,7 @@ pub fn mito(c: &Ctx<'_>) -> Out {
             let rf = col(r, "ref")?.unwrap_or("");
             let al = col(r, "alt")?.unwrap_or("");
             o.put("polyc", Value::Bool(in_polyc(pos, rf, al)));
-            o.put("origin_edge", Value::Bool(at_origin_edge(pos, rf, al)));
+            o.put("origin_edge", Value::Bool(edge(pos, rf, al)));
             // Low level only when heteroplasmic: a homoplasmic or absent AF
             // is not a low-level call.
             o.put("low_af", Value::Bool(het_row && af.is_some_and(low_af)));
@@ -492,6 +527,10 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         strs(ORIGIN_EDGE.iter().map(|(a, b)| format!("m.{a}-{b}"))),
     );
     out.put("low_af_ceiling", Value::Float(LOW_AF));
+    // Only when the pass ran, so a summary without it reads as before.
+    if let Some(v) = shifted {
+        out.put("shifted_pass", s(&v));
+    }
     Ok(Some((p, out.val())))
 }
 
@@ -533,8 +572,13 @@ mod tests {
     /// Step 20's section of a sample folder holding these chrM calls and
     /// annotation rows, read with the repository's `assets/`.
     fn section(vcf_body: &str, annot_body: &str) -> Value {
+        section_with(HEAD, vcf_body, annot_body)
+    }
+
+    /// [`section`] with the VCF header `head`.
+    fn section_with(head: &str, vcf_body: &str, annot_body: &str) -> Value {
         let d = crate::testutil::Dir::new("chrm-flags");
-        d.put_gz("mito/S_chrM_filtered.vcf.gz", &format!("{HEAD}{vcf_body}"));
+        d.put_gz("mito/S_chrM_filtered.vcf.gz", &format!("{head}{vcf_body}"));
         d.put(
             "mito/S_chrM_annotated.tsv",
             format!("{ANNOT_HEAD}{annot_body}"),
@@ -601,6 +645,35 @@ mod tests {
             &strs(["m.1-500", "m.16000-16569"])
         );
         assert_eq!(at(&d, &["low_af_ceiling"]), &Value::Float(0.10));
+    }
+
+    #[test]
+    fn after_the_shifted_pass_no_call_is_flagged_at_the_origin() {
+        let body = "chrM\t16\t.\tA\tT\t50\tPASS\t.\tGT:AF\t0/1:0.12\n\
+             chrM\t16050\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.30\n";
+        let annot = "chrM\t16\tA\tT\tPASS\t0.12\t5\tPathogenic\t.\t.\t.\t.\t.\n";
+        let mark = "chrM:16025-16569 and chrM:1-575 from the rotated chrM";
+        let head = format!(
+            "##fileformat=VCFv4.2\n{SHIFTED_MARK}{mark}\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        );
+        let f = Value::Bool(false);
+        let d = section_with(&head, body, annot);
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(2));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(0));
+        for site in items(at(&d, &["heteroplasmic_sites"])) {
+            assert_eq!(at(site, &["origin_edge"]), &f, "{site:?}");
+        }
+        let v = &items(at(&d, &["annotation", "variants"]))[0];
+        assert_eq!(at(v, &["origin_edge"]), &f);
+        assert_eq!(at(&d, &["shifted_pass"]), &s(mark));
+        // The same calls without the line: both flagged, and no new key.
+        let d = section(body, annot);
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(2));
+        match &d {
+            Value::Object(m) => assert!(!m.contains_key("shifted_pass")),
+            _ => panic!("not an object"),
+        }
     }
 
     #[test]
