@@ -161,15 +161,13 @@ fn child_results_stay_closed_until_every_finding_is_opened() {
     let site = scratch.path().join("site");
     let work = scratch.path().join("work");
     fs::create_dir(&work).unwrap();
-    let mut build = Command::new("python3");
+    let mut build = Command::new(&og);
     build
-        .arg(repo_root().join("tests/demo/build_live_demo.py"))
-        .args(["--records", "2000", "--out"])
+        .current_dir(repo_root())
+        .args(["live", "demo", "--records", "2000", "--out"])
         .arg(&site)
         .arg("--work")
-        .arg(&work)
-        .arg("--og")
-        .arg(&og);
+        .arg(&work);
     command(build);
 
     let result_path = site.join("runs/DEMO-003/results.json");
@@ -187,7 +185,7 @@ fn child_results_stay_closed_until_every_finding_is_opened() {
         &value(&site.join("runs/DEMO-003/DEMO-003_search_index.json")),
         &acts,
     );
-    // Exercise both native index entry points as well as the legacy demo's.
+    // Check the other index entry points against the static demo.
     let run = work.join("DEMO-003");
     let index = scratch.path().join("index.json");
     let mut index_build = Command::new(&og);

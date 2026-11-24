@@ -1,0 +1,4 @@
+AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	AnnotSV_ranking_score	Caller	Exon_edge	Exon_edge_detail	Population_AF	Population_source	Common	AnnotSV_class	Depth_support	Rule	Rule_detail	FORMAT	S1
+20_40000000_40300000_DEL_1	ML	20	40000000	40300000	-300000	DEL	"G1
+G2"	4	0.99	manta	not checked			no frequency data	no	4	not checked			GT	0/1
+20_50000000_50300000_DEL_1	ML2	20	50000000	50300000	-300000	DEL	G3	5	0.99	manta	not checked			no frequency data	no	5	not checked			GT	0/1

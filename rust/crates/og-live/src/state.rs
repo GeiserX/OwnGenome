@@ -659,6 +659,16 @@ impl Live {
 
     /// [`Live::base_state`] of the messages `events`.
     pub fn base_state_of(&self, name: &str, d: &Path, events: &[Value]) -> State<'_> {
+        self.base_state_of_at(name, d, events, None)
+    }
+
+    fn base_state_of_at(
+        &self,
+        name: &str,
+        d: &Path,
+        events: &[Value],
+        replay: Option<f64>,
+    ) -> State<'_> {
         let cur = current_run(events);
         let status = files::read_run_status(&d.join("logs").join("run_status.tsv"))
             .ok()
@@ -680,9 +690,23 @@ impl Live {
             event_tasks: tasks::event_tasks(cur, name),
             events: cur,
             sources: files::summary_sources(d),
-            heard: og_runlog::state::last_heard(d, &[events_path.as_path()]),
+            heard: match replay {
+                Some(at) => Some(
+                    cur.last()
+                        .and_then(|ev| get_str(ev, "utcTime"))
+                        .and_then(utc_seconds)
+                        .unwrap_or(at),
+                ),
+                None => og_runlog::state::last_heard(d, &[events_path.as_path()]),
+            },
         };
-        let mut st = og_runlog::state::build(name, &self.steps, &inp, now(), &self.tz);
+        let mut st = og_runlog::state::build(
+            name,
+            &self.steps,
+            &inp,
+            replay.unwrap_or_else(now),
+            &self.tz,
+        );
         if run_finished(events) && matches!(st.run, RunState::Running | RunState::Stopped) {
             st.run = RunState::Finished;
         }
@@ -704,17 +728,50 @@ impl Live {
     pub fn state(&self, run: &Run) -> Value {
         let d = run.folder(&self.root);
         let (st, events) = self.base_state(run);
-        let mut v = self.base_json(&st, events.len());
+        let plugins = crate::plugins::state_hooks(self, run, &d, &st, &Value::Null, &events);
+        self.state_json(run, &d, &st, events.len(), plugins)
+    }
+
+    /// The same page state at a replayed time, with the demo's invented host.
+    pub(crate) fn replay_state(
+        &self,
+        run: &Run,
+        at: f64,
+        host: &dyn og_runlog::host::Host,
+    ) -> Value {
+        let d = run.folder(&self.root);
+        let events = self.store.events(&run.name);
+        let st = self.base_state_of_at(&run.name, &d, &events, Some(at));
+        let ctx = crate::ops::Ctx {
+            now: at,
+            steps: &self.steps,
+            host,
+            tz: &self.tz,
+        };
+        let plugins = crate::plugins::state_hooks_with(self, &d, || {
+            crate::ops::hook(Some(&d), &st, &events, &self.cfg.ops, &ctx).to_json()
+        });
+        self.state_json(run, &d, &st, events.len(), plugins)
+    }
+
+    fn state_json(
+        &self,
+        run: &Run,
+        d: &Path,
+        st: &State<'_>,
+        events: usize,
+        plugins: Value,
+    ) -> Value {
+        let mut v = self.base_json(st, events);
         let mut anchors = Obj::new();
         for k in st.steps.iter().flat_map(|s| s.step.sections.iter()) {
             if let Some(a) = anchor_of(k) {
                 anchors.insert(k.clone(), s(a));
             }
         }
-        let headlines = self.headlines(&run.name, &d, &v);
+        let headlines = self.headlines(&run.name, d, &v);
         let stamp = file_stamp(&d.join("summary.json"))
             .map_or(Value::Null, |(m, n)| Value::Str(format!("{m}-{n}")));
-        let plugins = crate::plugins::state_hooks(self, run, &d, &st, &v, &events);
         if let Value::Object(o) = &mut v {
             o.insert("anchors".into(), Value::Object(anchors));
             o.insert("headlines".into(), headlines);

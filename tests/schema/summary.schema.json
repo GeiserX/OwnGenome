@@ -2011,6 +2011,22 @@
              },
              "common": {
               "type": "boolean"
+             },
+             "clinical_common": {
+              "enum": [
+               "yes",
+               "no",
+               "unknown"
+              ]
+             },
+             "benign_match": {
+              "enum": [
+               "same",
+               "contained",
+               "none",
+               ".",
+               "not checked"
+              ]
              }
             }
            }

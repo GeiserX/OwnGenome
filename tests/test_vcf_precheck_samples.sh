@@ -311,8 +311,7 @@ fi
 # so does a header without ##contig lines (validate-setup.sh spot-checks those).
 {
   grep '^##fileformat' "${FIX}/one_sample.vcf"
-  awk -F'[(", )]+' '/^    \("chr/ { for (i = 2; i < NF; i += 2) print $i, $(i + 1) }' \
-    "${REPO}/tests/demo/make_demo_sample.py" \
+  awk -F '\t' '$1 ~ /^chr([0-9]+|X|Y)$/ { print $1, $3 }' "${REPO}/assets/ownhealth/grch38_refget.tsv" \
     | awk '{ printf "##contig=<ID=%s,assembly=GRCh38,length=%s>\n", $1, $2 }'
   grep -v '^##fileformat' "${FIX}/one_sample.vcf" | grep -v '^##contig'
 } > "${WORK}/grch38-all.vcf"

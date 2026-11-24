@@ -325,3 +325,31 @@ fn og_s_panic_hook_spares_a_report_section_and_aborts_on_a_worker_thread() {
         assert_eq!(out.status.signal(), Some(6), "{so}\n{se}");
     }
 }
+
+#[test]
+fn a_failed_section_shows_no_scope_box() {
+    // The variants section carries a scope mark. Its real writer shows it
+    // in the section; when the writer fails, the frame holds the error
+    // line only, with no scope box over a result that was never written.
+    let mark = "partial: covers 2 of 22 autosomes";
+    let summary = SUMMARY.replacen(
+        "\"variants\": {\"title\": \"Variant calling\", \"state\": \"ok\",",
+        &format!("\"variants\": {{\"title\": \"Variant calling\", \"state\": \"ok\", \"partial\": \"{mark}\","),
+        1,
+    );
+    assert_ne!(summary, SUMMARY, "the mark is planted");
+    let s = Summary::parse(&summary).expect("a summary");
+    let boxed = format!("<div class=\"stale\">{mark}</div>");
+    let (clean, none) = html::report_using(&s, None, chapters::writer).expect("the HTML report");
+    assert!(none.is_empty());
+    assert!(
+        frame_of(&clean, "variants").contains(&boxed),
+        "control: the real writer shows the scope box: {}",
+        frame_of(&clean, "variants")
+    );
+    let (page, failed) = html::report_using(&s, None, planted).expect("the HTML report");
+    assert_eq!(failed, want_failed());
+    let v = frame_of(&page, "variants");
+    assert!(v.contains(&format!("could not be read: {WHY}")), "{v}");
+    assert!(!v.contains(&boxed), "no scope box in a failed section: {v}");
+}
