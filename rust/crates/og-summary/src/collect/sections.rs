@@ -147,22 +147,41 @@ pub struct Coverage {
 
 impl Coverage {
     /// Reads mosdepth's summary. A whole genome's mean depth is the `total`
-    /// row. An exome's (`exome`: the run manifest's `run model_type` is
-    /// `WES`) is the `total_region` row, the mean over the capture regions
-    /// mosdepth was given: `total` spreads the reads over the whole genome,
-    /// a few X for a 100x exome, and every reader of the mean (the QC lines,
-    /// the live headline, the genome facts' depth floor) would read the
-    /// exome as too thin. An exome summary without `total_region` has no
-    /// mean depth.
+    /// row. An exome's is the `total_region` row, the mean over the capture
+    /// regions mosdepth was given: `total` spreads the reads over the whole
+    /// genome, a few X for a 100x exome, and every reader of the mean (the
+    /// QC lines, the live headline, the genome facts' depth floor) would
+    /// read the exome as too thin. An exome summary without `total_region`
+    /// has no mean depth.
+    ///
+    /// The run is an exome when `exome` says so (the run manifest's
+    /// `run model_type` is `WES`), or when the summary shows a capture: a
+    /// `total_region` under half as long as `total`. 500 bp windows tile
+    /// every contig mosdepth reads, so their `total_region` is exactly as
+    /// long as `total`; a capture kit covers 1-3% of the genome. The second
+    /// rule serves every path that writes no manifest row: run-all.sh with
+    /// `--model_type WES`, a re-render with 24-html-report.sh, og live's
+    /// re-read of a sample folder, and step 16b with `CAPTURE_BED`.
     pub fn read(path: &str, exome: bool) -> Result<Coverage, String> {
-        let row = if exome { "total_region" } else { "total" };
-        let mut mean = None;
+        // The `length` and `mean` of the last `total` and `total_region` rows.
+        let (mut total, mut region) = (None, None);
         for r in read_tsv(path)? {
-            if r.get("chrom") == Some(Some(row)) {
-                mean = Some(r.get("mean").flatten().map(str::to_owned));
-            }
+            let row = match r.get("chrom") {
+                Some(Some("total")) => &mut total,
+                Some(Some("total_region")) => &mut region,
+                _ => continue,
+            };
+            let cell = |k: &str| r.get(k).flatten().map(str::to_owned);
+            *row = Some((cell("length"), cell("mean")));
         }
-        let mean_depth = match mean.flatten() {
+        let length = |row: &Option<(Option<String>, Option<String>)>| {
+            row.as_ref()
+                .and_then(|(l, _)| l.as_deref())
+                .and_then(|l| l.parse::<u64>().ok())
+        };
+        let capture = matches!((length(&region), length(&total)), (Some(r), Some(t)) if r.saturating_mul(2) < t);
+        let row = if exome || capture { region } else { total };
+        let mean_depth = match row.and_then(|(_, m)| m) {
             Some(m) if !m.is_empty() => Some(float(&m).map_err(|e| py_error("ValueError", &e))?),
             _ => None,
         };

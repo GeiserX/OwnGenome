@@ -6,8 +6,14 @@
 //! mean depth (the QC lines, the live headline, the genome facts' depth
 //! floor) must be the on-target one for an exome, and stay `total` for a
 //! whole genome, whose 500 bp windows also give a `total_region` row.
-//! HTML_REPORT writes `run model_type WES` into the run manifest for an
-//! exome; nothing is written for a whole genome.
+//! The run reads as an exome when the run manifest says so (HTML_REPORT
+//! writes `run model_type WES`), or when the summary itself shows a capture:
+//! a `total_region` row under half as long as the `total` row. 500 bp
+//! windows tile every contig mosdepth reads, so their `total_region` is as
+//! long as `total`; a capture kit covers 1-3% of the genome. The second rule
+//! covers the paths that write no manifest row: run-all.sh with
+//! `--model_type WES`, a re-render with 24-html-report.sh, og live's own
+//! re-read of a sample folder, and step 16b with `CAPTURE_BED`.
 
 use og_summary::collect::{Group, Input, post};
 use pycompat::json::Value;
@@ -16,12 +22,23 @@ use std::path::PathBuf;
 
 const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
 
-/// A mosdepth summary where the genome-wide and on-target means differ.
+/// A mosdepth summary of an exome: `--by <capture BED>`, so `total_region`
+/// is the capture's 1,250,000 bp of chr20's 64,444,167 (about 2%).
 const SUMMARY: &str = "chrom\tlength\tbases\tmean\tmin\tmax\n\
 chr20\t64444167\t135332751\t2.10\t0\t900\n\
 chr20_region\t1250000\t123750000\t99.00\t0\t900\n\
 total\t64444167\t135332751\t2.10\t0\t900\n\
 total_region\t1250000\t123750000\t99.00\t0\t900\n";
+
+/// A mosdepth summary of a whole genome: `--by 500`, so `total_region` is
+/// as long as `total` (mosdepth 0.3.14 writes the same length in both).
+/// Real windows give the same mean in both rows too; the two means differ
+/// here only so the test sees which row is read.
+const WINDOWS: &str = "chrom\tlength\tbases\tmean\tmin\tmax\n\
+chr20\t64444167\t1933325010\t30.00\t0\t900\n\
+chr20_region\t64444167\t1939769427\t30.10\t0\t900\n\
+total\t64444167\t1933325010\t30.00\t0\t900\n\
+total_region\t64444167\t1939769427\t30.10\t0\t900\n";
 
 struct Dir(PathBuf);
 
@@ -86,16 +103,44 @@ fn an_exome_reads_the_on_target_mean_depth() {
 }
 
 #[test]
+fn an_exome_without_the_manifest_row_reads_the_on_target_mean_depth() {
+    // The paths that write no model_type row: run-all.sh rewrites the run
+    // manifest with bin/write_manifest.sh, as does a re-render with
+    // 24-html-report.sh; og live re-reads the folder; step 16b with
+    // CAPTURE_BED has no manifest of its own. The capture-length
+    // `total_region` says exome.
+    for (tag, manifest) in [
+        ("wes-no-row", "run\ttools\tmosdepth\n"),
+        ("wes-run-all", "run\tscript\trun-all.sh\n"),
+        ("wes-no-manifest", ""),
+    ] {
+        let d = folder(tag, SUMMARY, manifest);
+        assert_eq!(mean_depth(&d), Value::Float(99.0), "{tag}");
+    }
+}
+
+#[test]
 fn a_whole_genome_keeps_the_genome_wide_mean_depth() {
-    // No model_type row (a whole genome, or the bash runner), and the row
-    // a WGS model_type would give if one were written: both read `total`.
+    // 500 bp windows: `total_region` as long as `total`, with no model_type
+    // row, a WGS row, or no manifest: all read `total`.
     for (tag, manifest) in [
         ("wgs-none", "run\ttools\tmosdepth\n"),
         ("wgs-row", "run\tmodel_type\tWGS\n"),
         ("wgs-no-manifest", ""),
     ] {
-        let d = folder(tag, SUMMARY, manifest);
-        assert_eq!(mean_depth(&d), Value::Float(2.1), "{tag}");
+        let d = folder(tag, WINDOWS, manifest);
+        assert_eq!(mean_depth(&d), Value::Float(30.0), "{tag}");
+    }
+    // Regions half as long as the genome or more are not a capture; and a
+    // summary without --by has `total` only.
+    let half = "chrom\tlength\tbases\tmean\tmin\tmax\n\
+total\t64444167\t1933325010\t30.00\t0\t900\n\
+total_region\t32222084\t969864728\t30.10\t0\t900\n";
+    let no_by = "chrom\tlength\tbases\tmean\tmin\tmax\n\
+total\t64444167\t1933325010\t30.00\t0\t900\n";
+    for (tag, summary) in [("wgs-half", half), ("wgs-no-by", no_by)] {
+        let d = folder(tag, summary, "");
+        assert_eq!(mean_depth(&d), Value::Float(30.0), "{tag}");
     }
 }
 

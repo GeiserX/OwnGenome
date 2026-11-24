@@ -178,9 +178,9 @@ With `--model_type WES` the pipeline:
 - runs Manta with `--exome`;
 - skips indexcov and takes the sex check from somalier (`sample_qc`, step 33). A sex that disagrees with the samplesheet stops the run, as on a whole genome, but DeepVariant does not wait for it;
 - does not run `cnvpytor`, `roh`, `telomere_hunter`, `archaic`, `mocha`, `viral`, `cyrius`, `parascopy`, `locityper` or `mei` when they are in `--tools`, nor the mtDNA copy number and large deletions of `mito_variants`. The log says "not run: exome" and names them, and the report lists them as not run. `survivor_merge` goes too when CNVpytor was one of its two callers. The NuMT filter of `mito_variants` gets the exome's median autosomal depth, 0 or close to it, so it marks little or nothing.
-- reports the on-target mean depth: the `total_region` row of `<outdir>/<sample>/coverage/<sample>.mosdepth.summary.txt`, the mean over the capture regions, not the genome-wide `total` row (a few X for an exome). The report's QC lines, the live page and the genome facts' depth floor all read it. Step 16b with `CAPTURE_BED` writes the same file, but a report from the scripts still shows the `total` row: the scripts record no model type.
+- reports the on-target mean depth: the `total_region` row of `<outdir>/<sample>/coverage/<sample>.mosdepth.summary.txt`, the mean over the capture regions, not the genome-wide `total` row (a few X for an exome). The report's QC lines, the live page and the genome facts' depth floor all read it. The report takes the `total_region` row whenever it is under half as long as the `total` row (500 bp windows cover the whole genome, a capture kit 1-3% of it), so a report built again with `24-html-report.sh`, a run through `run-all.sh` and step 16b with `CAPTURE_BED` read it too.
 
-The pipeline refuses `--model_type WES` without `--capture_bed`, `--capture_bed` without `--model_type WES`, `--intervals` with `--capture_bed` (both set DeepVariant's regions: cut the capture BED to your regions instead), and a capture BED none of whose contigs is in the reference, such as a kit BED named `1` instead of `chr1`: use the kit's GRCh38 BED, or add `chr` to the names. Delly and the ancestry projection still run when you select them; leave them out, as the table above says. `run-all.sh` runs the whole-genome steps and has no WES mode.
+The pipeline refuses `--model_type WES` without `--capture_bed`, `--capture_bed` without `--model_type WES`, `--intervals` with `--capture_bed` (both set DeepVariant's regions: cut the capture BED to your regions instead), and a capture BED none of whose contigs is in the reference, such as a kit BED named `1` instead of `chr1`: use the kit's GRCh38 BED, or add `chr` to the names. Delly and the ancestry projection still run when you select them; leave them out, as the table above says. `run-all.sh` passes the options after the sex to Nextflow, so `run-all.sh <sample> <sex> --model_type WES --capture_bed <bed>` runs an exome under the same rules. It selects `sample_qc` only when step 33's data is installed; without it the run stops.
 
 ### Or Run the Scripts One by One
 
@@ -224,7 +224,7 @@ CAPTURE_BED=${GENOME_DIR}/reference/your_capture.bed ./scripts/16b-mosdepth.sh $
 
 ### 7. Skip These Steps
 
-Do **not** run: ROH (11), TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), GRIDSS (4b), Mito analysis (20), Ancestry projection (26), Archaic ancestry (43), Viral DNA (47), MoChA (51).
+Do **not** run: ROH (11), TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), GRIDSS (4b), Mito analysis (20), Cyrius (21), Ancestry projection (26), Parascopy (35), Archaic ancestry (43), Viral DNA (47), Mobile element insertions (50), MoChA (51), Locityper (53).
 
 ---
 

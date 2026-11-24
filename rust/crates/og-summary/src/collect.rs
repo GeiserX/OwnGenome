@@ -311,8 +311,10 @@ pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
         .collect()
 }
 
-/// Whether the run was an exome: the run manifest's `run model_type` row
-/// is `WES` (Nextflow's HTML_REPORT writes it for `--model_type WES`).
+/// Whether the run manifest says the run was an exome: its `run model_type`
+/// row is `WES` (Nextflow's HTML_REPORT writes it for `--model_type WES`).
+/// Without the row, `Coverage::read` still tells an exome from mosdepth's
+/// summary.
 fn exome(folder: &Folder) -> bool {
     folder
         .manifest
