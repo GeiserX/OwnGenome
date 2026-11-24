@@ -556,10 +556,9 @@ jobs:
       - name: cargo test (workspace except the two crates with Chrome tests)
         run: cargo test --workspace --locked --no-fail-fast --exclude og-browser --exclude og-live
 
-      # og-live's test targets split by one rule, the same step in both jobs:
-      # a target whose source calls chrome_or_skip runs in the chrome job,
-      # every other target here. Cargo lists the targets, so a new test of
-      # either kind lands in its job with no edit to this file.
+      # Cargo lists og-live's test-enabled targets and doctests. Integration
+      # tests that call chrome_or_skip run in chrome. The remaining integration
+      # tests, unit tests, and doctests run in rust.
       - &og_live_targets
         name: Sort og-live's test targets into Chrome and the rest
         if: ${{ !cancelled() }}
@@ -567,33 +566,54 @@ jobs:
         run: |
           rows=$(cargo metadata --locked --no-deps --format-version 1 |
             jq -er '.packages[] | select(.name == "og-live") | .targets[]
-              | select(.kind == ["test"] and .test) | "\(.name)\t\(.src_path)"')
-          chrome=() other=()
-          while IFS=$'\t' read -r name src; do
-            [ -f "$src" ] || { echo "ERROR: no source ${src} for the og-live target ${name}"; exit 1; }
-            if grep -qF chrome_or_skip "$src"; then chrome+=("$name"); else other+=("$name"); fi
+              | select(.test or .doctest)
+              | [.name, .kind[0], .test, .doctest, .src_path] | @tsv')
+          chrome=() rust_args=()
+          rust_doctests=false
+          while IFS=$'\t' read -r name kind test_enabled doctest src; do
+            if [ "$doctest" = true ]; then rust_doctests=true; fi
+            if [ "$test_enabled" != true ]; then continue; fi
+            case "$kind" in
+              test)
+                [ -f "$src" ] || { echo "ERROR: no source ${src} for the og-live target ${name}"; exit 1; }
+                if grep -qF chrome_or_skip "$src"; then
+                  chrome+=("$name")
+                else
+                  rust_args+=(--test "$name")
+                fi
+                ;;
+              bin|example|bench)
+                rust_args+=("--$kind" "$name")
+                ;;
+              lib|rlib|dylib|cdylib|staticlib|proc-macro)
+                rust_args+=(--lib)
+                ;;
+              *)
+                echo "ERROR: cannot assign og-live target ${name} of kind ${kind}"
+                exit 1
+                ;;
+            esac
           done <<< "$rows"
-          if [ "${#chrome[@]}" -eq 0 ] || [ "${#other[@]}" -eq 0 ]; then
-            echo "ERROR: og-live has ${#chrome[@]} Chrome targets and ${#other[@]} others; each list must be non-empty"
+          if [ "${#chrome[@]}" -eq 0 ]; then
+            echo "ERROR: no og-live integration tests call chrome_or_skip"
             exit 1
           fi
           echo "Chrome job: ${chrome[*]}"
-          echo "Rust job: ${other[*]}"
-          echo "OG_LIVE_CHROME_TARGETS=${chrome[*]}" >> "$GITHUB_ENV"
-          echo "OG_LIVE_OTHER_TARGETS=${other[*]}" >> "$GITHUB_ENV"
+          echo "Rust job: ${rust_args[*]} (doctests: ${rust_doctests})"
+          printf '%s\n' \
+            "OG_LIVE_CHROME_TARGETS=${chrome[*]}" \
+            "OG_LIVE_RUST_ARGS=${rust_args[*]}" \
+            "OG_LIVE_DOCTESTS=${rust_doctests}" >> "$GITHUB_ENV"
 
       - name: cargo test (og-live without Chrome)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.OG_LIVE_RUST_ARGS != '' }}
         shell: bash
         run: |
-          [ -n "${OG_LIVE_OTHER_TARGETS:-}" ] || { echo "ERROR: the og-live targets were not sorted"; exit 1; }
-          read -ra targets <<< "$OG_LIVE_OTHER_TARGETS"
-          tests=()
-          for target in "${targets[@]}"; do tests+=(--test "$target"); done
-          cargo test --locked --no-fail-fast -p og-live --lib "${tests[@]}"
+          read -ra args <<< "$OG_LIVE_RUST_ARGS"
+          cargo test --locked --no-fail-fast -p og-live "${args[@]}"
 
       - name: cargo test (og-live documentation)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.OG_LIVE_DOCTESTS == 'true' }}
         run: cargo test --locked --no-fail-fast -p og-live --doc
 
       # The output contract keeps every stable row of the newest 1.x release

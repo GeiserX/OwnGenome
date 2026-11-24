@@ -11,14 +11,14 @@
 #   - a control segment with no read (FAKE_ZERO=flank_e19, the others at 30x)
 #     fails step 46 with BROKEN_CONTROL, never a count.
 # It needs og built (scripts/setup.sh --og). The fake-docker job builds no og,
-# so there the case says it is skipped; Guard's rust job runs it with og and
+# so there the case says it is skipped; Guard's og-musl job runs it with og and
 # fails on that line.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 # shellcheck source=../../versions.env
 . "${REPO_ROOT}/versions.env"
 if ! "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
-  echo "skip: bin/og is not built here (Guard's rust job runs this case with og)"
+  echo "skip: bin/og is not built here (Guard's og-musl job runs this case with og)"
   exit 0
 fi
 
