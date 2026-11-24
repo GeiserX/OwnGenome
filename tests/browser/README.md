@@ -28,10 +28,11 @@ Without a Chrome a check prints `[SKIP] no Chrome or Chromium to ...` and passes
 | `rust/crates/og-live/tests/port_live_server_browser.rs` (`cargo test -p og-live`) | the live run page, served by `og live serve` on the synthetic DEMO-001 run: the step map, a box that repaints after a stored message, a stream refused with 503 and opened again, a box's detail with its tasks and its report anchors, and no policy violation or page error |
 | `rust/crates/og-live/tests/port_live_auth_ingest_browser.rs` (`cargo test -p og-live`) | the live site's login form, served by `og live serve` with a password: a run page opened without a session goes to the form, and the form leads back to that page, which loads |
 | `tests/browser/live_demo.rs` | the public site at a subpath, replay, search, report links, family, phone layout, and map views |
-| `rust/crates/og-browser/tests/live_gate.rs` | report gate isolation, transparent renders and slow release on the demo, plus cross-family partners and family read failures on `og live serve` |
+| `rust/crates/og-browser/tests/live_gate.rs` | the report gate. On the demo: the opaque closed handles, the order of the closed controls, each guard of the gate with its planted mistake, renders equal to the page without the gate (adult, finding, home and no-act child pages, and a family that cannot be read), a slow release and two children with the same act IDs. On `og live serve`: the live-mode requests and their order, a section address in each answer order, a parent's page whatever card holds a child's results, the family page's closed and opened lines, a child who is a partner in another family in both sort orders, and family read failures. On `og live serve` with `tests/fixtures/families_live`: the family card, the pedigree, the couple screen's risk drawing, the trio and compound-het lines and the side by side |
+| `rust/crates/og-browser/tests/live_map.rs` | the genome map on the demo: its levels, search, Nearest, Origin, the in-view table, the strip, reloads and a closed result; the person page's layout and its folds on a phone; and the live site's genome viewer behind `og live serve`, with the mistakes a proxy plants in its answers |
 | `rust/crates/og-live/tests/demo.rs` | the live charts after sign-in, the ClinVar tick and its viewer link, and the missing-plugin control |
 
-The other browser checks still run in the Python tests that start the live site's Python server (`test_live_viewer.py`, `test_owngenome_live_family.py`). They drive Chrome with the helpers of `tests/browser/cdp.py`. Each moves here when its server is ported to Rust.
+Every browser check of the live site runs in Rust now. No Python test drives Chrome.
 
 ## The API
 
