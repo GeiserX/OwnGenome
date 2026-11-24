@@ -327,7 +327,7 @@ Run the pipeline for a sample: it runs every step a default run selects, in para
 
 ### Scope: from reads to report
 
-The pipeline starts from paired short-read FASTQ, from a BAM or from a VCF. The reads go through fastp, minimap2 with the `sr` preset (`samtools fixmate`, `sort`, `markdup`) and DeepVariant's WGS model, with the flags of steps 01b, 02 and 03. Other starting points are scripts (below): ORA files, long reads, other aligners and callers, chip data.
+The pipeline starts from paired short-read FASTQ, from a BAM or from a VCF. The reads go through fastp, minimap2 with the `sr` preset (`samtools fixmate`, `sort`, `markdup`) and DeepVariant's WGS model, with the flags of steps 01b, 02 and 03. An exome runs with `--model_type WES` and `--capture_bed`: DeepVariant's exome model on the capture regions, mosdepth over them, Manta with `--exome`, the sex check from somalier, and none of the steps that need whole-genome depth ([WES guide](wes-guide.md#run-the-nextflow-pipeline)). Other starting points are scripts (below): ORA files, long reads, other aligners and callers, chip data.
 
 ### Bash vs Nextflow parity
 
@@ -355,8 +355,9 @@ Where a module and its script differ on purpose:
 | Step | Script | Module |
 |---|---|---|
 | Alignment (02) | pipes minimap2 into samtools, each in its own image (`MINIMAP2_IMAGE`, `SAMTOOLS_IMAGE`) | `ALIGN_MINIMAP2` runs the same pipe in one task, so in one image: `MINIMAP2_SAMTOOLS_IMAGE`, a BioContainers image with both tools at the releases of those two. `scripts/ci/check-images.sh` fails when the releases part, and the parity check above compares the BAMs record by record. The task writes no SAM file |
-| Sex check (16) | runs beside the other steps and stops itself on a mismatch | `INDEXCOV` runs before every BAM step, and a mismatch stops the run before DeepVariant starts |
-| DeepVariant (03) | `MODEL_TYPE` picks WGS, WES, PACBIO or ONT_R104 | the WGS model only: the pipeline takes paired short reads |
+| Sex check (16) | runs beside the other steps and stops itself on a mismatch | `INDEXCOV` runs before every BAM step of a whole genome, and a mismatch stops the run before DeepVariant starts |
+| DeepVariant (03) | `MODEL_TYPE` picks WGS, WES, PACBIO or ONT_R104, and calls the whole BAM | `--model_type` picks WGS or WES: the pipeline takes paired short reads. An exome is called on the regions of `--capture_bed` |
+| Manta (04) | no exome option: the [WES guide](wes-guide.md) runs `configManta.py --exome` by hand | `--model_type WES` adds `--exome` |
 | HLA typing (08) | keeps the T1K index under `t1k_idx/`, named after the T1K version, the IPD-IMGT/HLA release and the GENCODE release | `T1K_BUILD` builds it once per run for every sample; the task hash covers the same three, and `-resume` reuses it |
 | PRS (25) | scores the list in `assets/pgs_scores.tsv`, downloading a missing file | scores every file `--pgs_scoring` holds, labelled from `assets/pgs_scores.tsv` (an id not in it is labelled with its file's `trait_reported`); `PRS` runs pgsc_calc on the host, see [No network inside the containers](#no-network-inside-the-containers). `PRS_PREPARE` formats the scoring files at launch, from the samplesheet's sex column, beside the alignment and DeepVariant |
 | ExpansionHunter (09) | uses STRchive's catalog when `setup.sh` built it, else the GRCh38 catalog inside the image, or `EH_CATALOG` | needs `--expansion_catalog` (`run-all.sh` passes the same one) |
