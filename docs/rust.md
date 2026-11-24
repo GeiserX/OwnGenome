@@ -32,7 +32,7 @@ rust/
   crates/og-fresh/      og dev freshness: the monthly freshness issue's upstream lookups, typed answers
   crates/og-recheck/    og recheck: newer databases since a run, the rerun and the ClinVar lock
   crates/og-render/     og report render|index|charts: the reports from summary.json (render: both reports, every section, called by steps 24, HTML_REPORT and generate-report.sh; a section that cannot be written says so in place and the rest is written)
-  crates/og-live/       og live serve|results|family|demo, og view serve: the live site (family, view serve and serve ported (serve without login or results); results and demo not ported yet)
+  crates/og-live/       og live serve|results|family|demo, og view serve: the live site, all ported (serve with its login, ingest port and results)
   crates/og-couple/     og couple screen|genes: step 39's couple screen (not ported yet)
   crates/og-admix/      what the fine-ancestry engines share: panel, map, ref.geno, RNG, simulator; painting and projection (not ported yet)
   og/                   the binary: og <tool> [args]
