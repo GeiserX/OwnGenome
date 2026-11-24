@@ -18,7 +18,7 @@
 #   4. The control: the rule of before (skip a non-empty .rfmix.map), run on
 #      the folder of 1, keeps the cut-short map, so check 1 can fail.
 # Run: OG=bin/og bash tests/test_setup_fine_maps.sh (skips without og; with
-# OG_REQUIRED set, the skip is a failure, as guard.yml's rust job sets it).
+# OG_REQUIRED set, the skip is a failure, as guard.yml's og-musl job sets it).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)

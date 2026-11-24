@@ -112,6 +112,8 @@ hla-second-caller-2-nextflow	assets/acmg_sf.tsv assets/callability_genes.tsv ass
 i411-callability-exons-1-mosdepth	bin/og modules/local/mosdepth/* scripts/16b-mosdepth.sh scripts/lib/common.sh
 i411-callability-exons-2-catalog	assets/callability_exons.tsv assets/callability_genes.tsv assets/paralog_loci.tsv assets/pgx_genes.tsv bin/cn_loci.tsv bin/og scripts/ci/build-callability.sh scripts/ci/lib/fetch-pinned.sh
 i411-callability-overlap-1-mates	modules/local/mosdepth/* scripts/16b-mosdepth.sh scripts/lib/common.sh
+i411-chrm-shifted-ref-1-step20	bin/og scripts/20-mtoolbox.sh
+i411-chrm-shifted-ref-2-nextflow	bin/og modules/local/mito_variants/* scripts/20-mtoolbox.sh
 i411-nf-vcfanno-ops-1-score-tiers	bin/og modules/local/clinical_filter/* modules/local/vcfanno/* scripts/30-vcfanno.sh
 ibd-segments-1	assets/families.example.tsv assets/par_grch38.bed assets/pedigree.example.tsv assets/stub/pedigree.tsv bin/og rust/crates/og-dev/src/fixture.rs scripts/38-family.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh
 live-server-1-weblog	assets/live/* assets/viewer/index.html bin/og bin/owngenome_live.py bin/owngenome_live_results.py bin/render_report.py bin/run_state.py modules/local/roh/* modules/local/vcf_precheck/* rust/crates/og-dev/src/fixture.rs rust/crates/og-live/src/results/* rust/crates/og-live/src/veil.rs scripts/11-roh-analysis.sh scripts/ci/fake-docker/lib.sh scripts/validate-setup.sh
@@ -169,7 +171,7 @@ short-sample-id-stub	assets/acmg_sf.tsv assets/callability_genes.tsv assets/carr
 single-source-lib-ownership	scripts/11-roh-analysis.sh scripts/ci/fake-docker/lib.sh bin/og
 str-catalog-1-strchive	assets/str_extra_loci.json assets/stub/db/catalog.json assets/stub/sample.bam assets/stub/sample.bam.bai bin/og modules/local/expansion_hunter/* modules/local/stranger/* modules/local/vcf_precheck/* scripts/09-expansion-hunter.sh scripts/09b-stranger.sh scripts/ci/fake-docker/lib.sh scripts/setup.sh scripts/validate-setup.sh rust/crates/og-dev/src/fixture.rs
 str-extra-repeats-1-readings	assets/str_extra_loci.json bin/collect_summary.py bin/og bin/render_report.py bin/results_index.py modules/local/expansion_hunter/* modules/local/html_report/* scripts/09-expansion-hunter.sh scripts/24-html-report.sh scripts/ci/fake-docker/lib.sh scripts/generate-report.sh scripts/validate-setup.sh rust/crates/og-dev/src/fixture.rs
-sv-merge-consensus-check	bin/og scripts/22-survivor-merge.sh tests/fixtures/sv/cnvpytor.vcf.in tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in
+sv-merge-consensus-check	bin/og scripts/22-survivor-merge.sh tests/fixtures/sv/cnvpytor.vcf.in tests/fixtures/sv/consensus-review-*.vcf.in tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in
 sv-merge-votes	bin/og scripts/22-survivor-merge.sh tests/fixtures/sv/cnvpytor.vcf.in tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in
 sv-mito-telomere-steps-1-sv-merge	bin/og scripts/22-survivor-merge.sh scripts/ci/fake-docker/lib.sh tests/fixtures/sv/cnvpytor.vcf.in tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in
 sv-mito-telomere-steps-2-mito	assets/callability_genes.tsv bin/collect_summary.py scripts/12-mito-haplogroup.sh scripts/16b-mosdepth.sh scripts/20-mtoolbox.sh scripts/ci/fake-docker/lib.sh scripts/generate-report.sh bin/og
