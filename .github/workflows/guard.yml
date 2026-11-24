@@ -1003,6 +1003,19 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
+      - name: Plant a failing live_gate assertion
+        working-directory: .
+        shell: bash
+        env:
+          DEMO_BASE: eba8400b9feea1bea664aad5138d977670724be9
+          DEMO_HEAD: 3536b8dea7c69abb106e14fe61adc7ccb131c49f
+        run: |
+          git fetch --no-tags --depth=1 origin "$DEMO_BASE" "$DEMO_HEAD"
+          git diff --binary "$DEMO_BASE" "$DEMO_HEAD" -- rust tests/browser tests/demo tests/fixtures | git apply
+          test_file=rust/crates/og-browser/tests/live_gate.rs
+          sed -i 's/assert_eq!(partner_view(\&mut f.browser, \&url), expected);/assert_ne!(partner_view(\&mut f.browser, \&url), expected, "planted live_gate assertion");/' "$test_file"
+          test "$(grep -c -F 'planted live_gate assertion' "$test_file")" -eq 1
+
       - name: Build og for the browser tests
         run: |
           cargo build --locked -p og
