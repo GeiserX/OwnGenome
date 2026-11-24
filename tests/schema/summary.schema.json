@@ -911,6 +911,9 @@
             "type": "string"
            }
           },
+          "shifted_pass": {
+           "type": "string"
+          },
           "annotation": {
            "type": "object",
            "properties": {

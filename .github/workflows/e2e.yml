@@ -72,6 +72,7 @@ on:
       - 'tests/fixtures/families/stub_families.tsv'
       - 'tests/fixtures/pharmcat/refblocks.g.vcf'
       - 'tests/fixtures/sv/cnvpytor.vcf.in'
+      - 'tests/fixtures/sv/consensus-review-*.vcf.in'
       - 'tests/fixtures/sv/delly.vcf.in'
       - 'tests/fixtures/sv/manta.vcf.in'
       - 'tests/fixtures/vcf/combined_allele_clinvar.vcf'
@@ -419,11 +420,11 @@ jobs:
 
   # og for the legs (rust/, docs/rust.md): built once, as scripts/setup.sh
   # --og builds it, and handed to each leg as the artifact og-e2e, so no leg
-  # pulls the build image or compiles. Only og-linux-x86_64, the one the
-  # runners run (OG_ARCHES, rust/og.sh): Guard's rust job and the Rust
-  # workflow's images job still build all four on every pull request that
-  # changes rust/. The base leg sets up while this builds and waits for the
-  # artifact only before its first case.
+  # pulls the build image or compiles. This job builds og-linux-x86_64 for
+  # the runners (OG_ARCHES, rust/og.sh). Guard's og-musl job builds all
+  # four (both musl builds and the macOS pair), and so does the Rust
+  # workflow's images job on pull requests that change rust/. The base leg sets up while this
+  # builds and waits for the artifact only before its first case.
   og:
     needs: e2e-scope
     if: >-

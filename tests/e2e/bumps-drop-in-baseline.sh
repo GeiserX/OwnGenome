@@ -48,9 +48,9 @@ step14 chr19 records 576
 step14 chr20 records 1063
 step14 chr22 records 579
 step14 chrX records 1161
-step20 chrM records 33
+step20 chrM records 32
 step20 chrM PASS records 19
-step20 chrM call set md5 fb857ef21e2631db3b73978bfe5d3fb6
+step20 chrM call set md5 c9043e04a6f4200ac78212d115d9bdb8
 step08 HLA-A HLA-A*01:01 HLA-A*26:01
 step08 HLA-B HLA-B*35:08 HLA-B*38:01
 step08 HLA-C HLA-C*04:01 HLA-C*12:03

@@ -111,7 +111,7 @@ The server starts at once. How fast a view loads depends on the disk and the rea
 
 ## Tested by
 
-`rust/crates/og-live/tests/port_viewer.rs`, in the Guard job `rust`, on a synthetic sample it writes itself (a random 3 kb reference, 30 reads, one variant, one deletion). It checks that:
+`rust/crates/og-live/tests/port_viewer.rs`, in the Guard job `chrome`, on a synthetic sample it writes itself (a random 3 kb reference, 30 reads, one variant, one deletion). It checks that:
 
 - the page's config names the sample's files and the locus, and a locus that is not on the reference, or ends before it starts, is refused;
 - Manta's diploid SVs come before step 22's consensus;

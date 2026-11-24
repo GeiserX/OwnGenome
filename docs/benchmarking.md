@@ -26,20 +26,21 @@ The image each script runs is on [Image versions](versions.md).
 | Script | Caller | Output Directory | Description |
 |---|---|---|---|
 | `scripts/03-deepvariant.sh` | DeepVariant (`DEEPVARIANT_IMAGE`) | `vcf/` | Default caller. Deep learning model, highest precision and F1. |
-| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Widely used in clinical labs, but this script is not their full GATK Best Practices workflow: it calls the duplicate-marked step-02 BAM without base quality score recalibration (BQSR) and writes a plain VCF (`-ERC NONE`), not a GVCF. Good precision/recall balance. |
+| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Widely used in clinical labs, but this script is not their full GATK Best Practices workflow: it calls the duplicate-marked step-02 BAM without base quality score recalibration (BQSR) and writes variants only (`-ERC NONE`), not a GVCF; the pipeline's gVCF is DeepVariant's, from step 03. Good precision/recall balance. |
 | `scripts/03b-freebayes.sh` | FreeBayes (image set in the script) | `vcf_freebayes/` | Bayesian caller. Highest sensitivity, most false positives, single-threaded. |
 | `scripts/03c-strelka2-germline.sh` | Strelka2 (image set in the script) | `vcf_strelka2/` | Fast heuristic caller (SNVs + indels). Best with BWA-MEM2 alignments. |
 | `scripts/03d-octopus.sh` | Octopus (`OCTOPUS_IMAGE`) | `vcf_octopus/` | Haplotype-based caller. |
 | `scripts/03e-clair3.sh` | Clair3 (`CLAIR3_IMAGE`) | `vcf_clair3/` | Long-read caller (ONT, PacBio HiFi) for a BAM from `scripts/02b-alignment-longread.sh`. |
 
-DeepVariant, GATK, FreeBayes and Strelka2 take the same arguments:
+DeepVariant, GATK, FreeBayes, Strelka2 and Octopus take the same arguments: the sample, then `male` or `female`. With `male`, each calls chrX and chrY with ploidy 1 outside the pseudoautosomal regions, so a male sample gets no heterozygous call there; see [Sex chromosomes](03-variant-calling.md#sex-chromosomes) for how each caller does it. Without the sex, the alternative callers take the one `run-all.sh` recorded for the sample.
 
 ```bash
 export GENOME_DIR=/path/to/your/data
-./scripts/03-deepvariant.sh your_sample
-./scripts/03a-gatk-haplotypecaller.sh your_sample
-./scripts/03b-freebayes.sh your_sample
-./scripts/03c-strelka2-germline.sh your_sample
+./scripts/03-deepvariant.sh your_sample male
+./scripts/03a-gatk-haplotypecaller.sh your_sample male
+./scripts/03b-freebayes.sh your_sample male
+./scripts/03c-strelka2-germline.sh your_sample male
+./scripts/03d-octopus.sh your_sample male
 ```
 
 GATK and FreeBayes also accept an `INTERVALS` environment variable to restrict calling to a specific region (see the chr22 example below). Strelka2 and TIDDIT always process the full genome.
