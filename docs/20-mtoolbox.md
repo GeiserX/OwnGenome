@@ -37,10 +37,19 @@ gatk Mutect2 \
   --max-mnp-distance 0 \
   -O chrM_mutect2.vcf.gz
 
+# The control region again on chrM rotated by 8000 bp (below)
+og setup chrm-shift --fasta reference.fasta --out shifted/chrM_shifted.fasta \
+  --intervals shifted/control.intervals
+#   ... realign the chrM reads to it with GATK's BwaSpark, then Mutect2
+#   -L shifted/control.intervals into shifted/shifted_mutect2.vcf.gz
+og vcf shift-back --linear chrM_mutect2.vcf.gz \
+  --shifted shifted/shifted_mutect2.vcf.gz --out shifted/merged_mutect2.vcf.gz
+
 # Filter
 gatk FilterMutectCalls \
   -R reference.fasta \
-  -V chrM_mutect2.vcf.gz \
+  -V shifted/merged_mutect2.vcf.gz \
+  --stats chrM_mutect2.vcf.gz.stats \
   --mitochondria-mode \
   -O chrM_mutect2_filtered.vcf.gz
 
@@ -53,6 +62,16 @@ gatk NuMTFilterTool \
 ```
 
 The script runs these steps: `./scripts/20-mtoolbox.sh your_sample`. Then it annotates every call with ClinVar and gnomAD (below).
+
+### The shifted-reference pass for the control region
+
+chrM is a circle, but GRCh38 writes it as a line from m.1 to m.16569. A read across the origin, where m.16569 joins m.1, aligns to neither end in full, so the control region around the origin is called from fewer and clipped reads. As Broad's mitochondria pipeline does, the step calls the control region (m.16025-16569 and m.1-575) a second time on chrM rotated by 8000 bp, where the origin lies in the middle:
+
+1. `og setup chrm-shift` writes chrM of the reference rotated by 8000 bp (its base 1 is m.8001), with its `.fai`, and the control region in its positions (`chrM:8025-9144`). It runs in each sample's step, in under a second, so no setup step or extra reference file is needed. It refuses a chrM that is not the 16569 bp of the rCRS.
+2. GATK realigns the chrM reads to it (`PrintReads` without duplicates, secondary or supplementary records, `RevertSam`, then `BwaSpark` on local Spark: the GATK image has no `bwa` binary), and Mutect2 calls the control region on it.
+3. `og vcf shift-back` maps those calls back with `(pos - 1 + 8000) mod 16569 + 1`, so no chain file is needed, and merges them with the linear calls outside the control region. A rotated call whose reference bases cross the origin cannot be written on the linear chrM and is dropped; the step log counts them. The merged VCF carries a `##og_shifted_pass=` header line, which the filters below keep.
+
+FilterMutectCalls and NuMTFilterTool then run on the merged calls, with the linear pass's stats. `mito/shifted/` keeps the rotated calls and the merged ones; the BAMs are removed. Should any part of the pass fail, the step prints a `WARNING` and filters the linear calls alone, as before; the Nextflow `MITO_VARIANTS` does the same.
 
 ### ClinVar and gnomAD beside each call
 
@@ -103,7 +122,8 @@ The copy-number catalog (`bin/cn_loci.tsv`, [docs/cn-loci.md](cn-loci.md)) has n
 NuMTs are copies of mitochondrial DNA in the nuclear genome. Their reads can map to chrM and look like low-level heteroplasmy. GATK's NuMTFilterTool marks an allele `possible_numt` when its depth is no more than such copies could give at the sample's autosomal depth. The script reads the median autosomal depth from step 16b's mosdepth output (`mosdepth/<sample>.mosdepth.summary.txt` and `.global.dist.txt`), so run step 16b first; `AUTOSOMAL_COVERAGE=30` sets it by hand. Without either, the filter runs at depth 0 and marks nothing. The step then prints a `WARNING`, and the annotation table gets a `# numt` header line that reads `NuMT filter used a default depth` (`og mito annotate --numt-default`). The Nextflow `MITO_VARIANTS` runs the same filter with the same depth, read from `MOSDEPTH`'s output when `mosdepth` is in `--tools` (a default tool). Without it the depth is 0: the run prints a warning on the console when it starts, and `MITO_VARIANTS_ANNOTATE` writes the same `# numt` line. The reports do not show that line yet.
 
 ## Output
-- `${SAMPLE}_chrM_mutect2.vcf.gz` — Raw mitochondrial variant calls
+- `${SAMPLE}_chrM_mutect2.vcf.gz` — Raw mitochondrial variant calls on the linear chrM, with its `.stats`
+- `shifted/shifted_mutect2.vcf.gz` — raw calls of the control region on the rotated chrM, in its positions; `shifted/merged_mutect2.vcf.gz` — those calls mapped back, merged with the linear ones outside the control region (the bash step only; Nextflow keeps them in its work directory)
 - `${SAMPLE}_chrM_mutect2_filtered.vcf.gz` — after FilterMutectCalls
 - `${SAMPLE}_chrM_filtered.vcf.gz` — after FilterMutectCalls and NuMTFilterTool, with PASS or the reasons a call failed (`possible_numt` among them); the file the reports and step 12 (haplogroup, haplocheck) read
 - Each variant includes an `AF` (allele fraction) field indicating heteroplasmy level
@@ -121,11 +141,11 @@ NuMTs are copies of mitochondrial DNA in the nuclear genome. Their reads can map
 
 Step 07 reads these calls for the aminoglycoside risk gene MT-RNR1: a PASS allele PharmCAT names (m.1555A>G, m.1494C>T and others) at AF 0.05 or more is passed to PharmCAT, heteroplasmic or not, because CPIC sets no heteroplasmy level at which aminoglycosides are safe ([Pharmacogenomics](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses)).
 
-Count only PASS calls: a call marked `possible_numt` or with another filter is not evidence of heteroplasmy. Calls near the two ends of the control region (m.1-500 and m.16000-16569) are less reliable: the reference is circular, so reads that span its end align poorly at both edges.
+Count only PASS calls: a call marked `possible_numt` or with another filter is not evidence of heteroplasmy. Without the shifted-reference pass, calls near the two ends of the control region (m.1-500 and m.16000-16569) are less reliable: the reference is circular, so reads that span its end align poorly at both edges.
 
 PASS alone does not make a call reliable, so `summary.json` flags two kinds of heteroplasmic call and keeps both in the count:
 
-- `origin_edge`: the bases the call changes touch m.1-500 or m.16000-16569, the edges above.
+- `origin_edge`: the bases the call changes touch m.1-500 or m.16000-16569, the edges above. Only when the calls have no `##og_shifted_pass=` line, so only when the shifted-reference pass did not run: after it, no call sits next to a reference end, and step 20's section of `summary.json` names the pass in `shifted_pass`.
 - `low_af`: the AF is under 0.10, the low-level range above. NuMT reads that the filter missed look like calls in this range.
 
 Each entry of `heteroplasmic_sites` carries both flags, and `heteroplasmic_origin_edge` and `heteroplasmic_low_af` count the flagged ones beside the `heteroplasmic` total. The rows of the annotation list carry the same two flags, so a ClinVar class on a flagged call reads as a class on a less reliable call. On those rows `origin_edge` is set for any listed call, homoplasmic or not, and `low_af` only for a heteroplasmic one. A flag never removes a call: the ClinVar pathogenic count and the confirmed variants still name it. A PASS m.3243A>G at AF 0.07 carries `low_af` and stays in both.
@@ -146,6 +166,5 @@ In the Nextflow pipeline `MITO_DELETIONS` runs stages 7 and 8 on the same BAM, b
 
 ## What is not done, and why
 
-- **The shifted-reference pass for the control region.** Broad's mitochondria pipeline calls the region around the chrM start a second time on a reference rotated by 8 kb, so reads that span the circle's end align well. Here those calls stay less reliable, and carry the `origin_edge` flag (see above).
 - **mtDNA-Server 2 (or mutserve) in place of this step.** Both were last released in December 2024 (mtDNA-Server 2.1.16, mutserve 2.0.3). The cheaper fix for the main source of false heteroplasmy, NuMT reads, is in place (NuMTFilterTool above), and haplocheck, the contamination check of the mtDNA-Server tools, runs in step 12 on these calls.
 

@@ -104,7 +104,7 @@ export REF_FASTA_URL=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GC
 ### Why GRCh38?
 
 This pipeline uses **GRCh38** (also called hg38) exclusively. It's the current standard genome build with:
-- Corrected mitochondrial sequence (rCRS)
+- Corrected mitochondrial sequence (rCRS). Step 20 also calls the chrM control region on chrM rotated by 8000 bp; it writes that rotated copy from this reference in each run (`og setup chrm-shift`), so setup installs no extra file for it ([step 20](20-mtoolbox.md#the-shifted-reference-pass-for-the-control-region))
 - Better representation of centromeres and telomeres
 - `chr` prefix naming (chr1, chr2, ..., chrX, chrY, chrM)
 
