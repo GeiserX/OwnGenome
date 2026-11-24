@@ -34,7 +34,7 @@ pub fn new_since(s: &Summary, keys: &[&str]) -> Result<Option<String>, Malformed
 }
 
 /// The opening of summary key `key`'s block: its title (or `title`), a rule,
-/// the new-since mark, state note and scope mark. `None` when the step did not run,
+/// the new-since mark, scope mark and state note. `None` when the step did not run,
 /// so the block is left out.
 pub fn head(s: &Summary, key: &str, title: Option<&str>) -> Result<Option<Head>, Malformed> {
     let sec = s.section(key);
