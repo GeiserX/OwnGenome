@@ -41,7 +41,7 @@ export GENOME_DIR=/path/to/data
 ./scripts/04b-gridss.sh <sample_name>
 ```
 
-`run-all.sh` runs GRIDSS only when asked, because it needs a classic BWA index that `setup.sh` does not build and about 32 GB of RAM:
+`run-all.sh` runs GRIDSS only when asked, because it needs a classic BWA index and about 32 GB of RAM:
 
 ```bash
 GRIDSS=true ./scripts/run-all.sh <sample_name> <male|female>
@@ -53,19 +53,16 @@ Before it starts, the step reads Docker's memory limit (`docker info`). Below 32
 
 ## Prerequisites
 
-GRIDSS requires a **classic BWA index** (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) alongside the reference FASTA. **BWA-MEM2 index files (`.bwt.2bit.64`) are NOT compatible** — GRIDSS bundles classic `bwa` internally for its read realignment step. Generate the classic index if you don't have one:
+GRIDSS requires a **classic BWA index** (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) alongside the reference FASTA. GRIDSS bundles classic BWA for read realignment. BWA-MEM2 writes a different index format. Build the classic index once for the reference you use.
 
 ```bash
-REF_FASTA=reference/GRCh38_no_alt_analysis_set.fasta   # see 00-reference-setup.md#the-reference-path-on-every-page
-source versions.env   # from the repository root: BWA_IMAGE, the image step 04b uses for this
-docker run --rm -v "${GENOME_DIR}:/genome" \
-  "${BWA_IMAGE}" \
-  bwa index "/genome/${REF_FASTA}"
+./scripts/setup.sh --bwa-index "$GENOME_DIR"
 ```
 
-This takes about an hour (an estimate, not measured here) and produces 5 index files (~5 GB total). Only needed once.
+`setup.sh --everything` builds this index too. Expect about an hour, 5 GB of disk space, and 5.4 GB of RAM for the build.
 
 ## Output
+
 
 | File | Description |
 |---|---|
