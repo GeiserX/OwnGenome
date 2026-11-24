@@ -180,13 +180,12 @@ Step 11 (`bcftools roh`) needs each site's population allele frequency: see [All
 # A failed download, a failed og run or an MD5 that differs stops the build
 # before the panel is joined.
 set -euo pipefail
-base=https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes
 mkdir -p rows
 for c in $(seq 1 22); do
   f=gnomad.genomes.v4.1.sites.chr${c}.vcf.bgz
   want=$(curl -sS --fail "https://storage.googleapis.com/storage/v1/b/gcp-public-data--gnomad/o/release%2F4.1%2Fvcf%2Fgenomes%2F${f}?fields=md5Hash" \
     | sed -n 's/.*"md5Hash": *"\([^"]*\)".*/\1/p')
-  curl -sS --fail "${base}/${f}" | tee >(openssl dgst -md5 -binary | base64 > "rows/chr${c}.md5") \
+  curl -sS --fail "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes/${f}" | tee >(openssl dgst -md5 -binary | base64 > "rows/chr${c}.md5") \
     | bin/og dev build roh-af rows --vcf - --out "rows/chr${c}.tsv"
   sleep 2
   if [ -z "$want" ] || [ "$(cat "rows/chr${c}.md5")" != "$want" ]; then
