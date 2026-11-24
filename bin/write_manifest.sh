@@ -15,7 +15,9 @@
 #   version  every NAME=VALUE line of versions.env
 #   image    each *_IMAGE reference and the digest Docker resolved it to
 #            ("not pulled" when the image is not on this machine)
-#   data     clinvar_file_date (##fileDate of the ClinVar file), gnomad_mito
+#   data     clinvar_file_date (##fileDate of the ClinVar file),
+#            clinvar_conflicting (step 06's conflicting subset: its ##fileDate
+#            and sha256, or "not installed"), gnomad_mito
 #            (step 20's gnomAD chrM sites, installed or not), vep_cache,
 #            pcgr_bundle, cpsr_clinvar_release (the ClinVar release in the PCGR
 #            bundle CPSR uses), pypgx_bundle, ancestry_panel (pgsc_calc's panel,
@@ -132,6 +134,18 @@ for f in clinvar/clinvar_pathogenic_chr.vcf.gz clinvar/clinvar_chr.vcf.gz clinva
   if [ -n "$d" ]; then clinvar_date="${d} (${f})"; break; fi
 done
 row data clinvar_file_date "$clinvar_date"
+
+# Step 06's conflicting subset (setup.sh builds it from the same release):
+# its ##fileDate and sha256, as og recheck reads the installed one, so a subset
+# that appears or is rebuilt for an unchanged release makes step 06 rerun-ready.
+# "not installed" without the file or its .tbi (step 06 then does not check it).
+conflicting="${GENOME_DIR}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"
+if [ -f "$conflicting" ] && [ -f "${conflicting}.tbi" ]; then
+  d=$(header_lines "$conflicting" | awk -F= '/^##fileDate=/ && d == "" {d = $2} END {print d}')
+  row data clinvar_conflicting "${d:-no fileDate} (sha256 $(_digest sha256 "$conflicting"))"
+else
+  row data clinvar_conflicting "not installed"
+fi
 
 # Step 20's gnomAD chrM sites: the pinned file (setup.sh) or not installed.
 gnomad_mito="${GENOME_DIR}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
