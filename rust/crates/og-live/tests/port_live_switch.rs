@@ -558,7 +558,7 @@ const DAY: u64 = 86_400;
 
 /// A run folder `name` under `root` with two planned steps and one trace
 /// row in the shared `root/pipeline_info`, every file written `age` seconds ago.
-fn aged_run(root: &Path, name: &str, age: u64) {
+fn aged_run(root: &Path, name: &str, age: u64) -> std::time::SystemTime {
     let t = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
     let secs = t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let status = root.join(name).join("logs/run_status.tsv");
@@ -589,6 +589,7 @@ fn aged_run(root: &Path, name: &str, age: u64) {
             .set_modified(t)
             .unwrap();
     }
+    t
 }
 
 fn run_state_of(e: &Value) -> (Option<Value>, Option<Value>) {
@@ -601,13 +602,13 @@ fn run_state_of(e: &Value) -> (Option<Value>, Option<Value>) {
 #[test]
 fn the_index_reads_a_quiet_run_stopped_and_a_message_brings_it_back() {
     let w = Work::new("switch-stopped");
-    aged_run(&w.root(), "old1", 3 * DAY);
+    let old = aged_run(&w.root(), "old1", 3 * DAY);
     aged_run(&w.root(), "new1", 60);
     let srv = start(config(&w));
     let p = srv.port();
     let (state, heard) = run_state_of(&index_entry(p, "old1"));
-    let three_days = jiff::Timestamp::now()
-        .checked_sub(jiff::SignedDuration::from_secs(3 * DAY as i64))
+    // The day of the instant the fixture used, so a UTC midnight in between changes nothing.
+    let three_days = jiff::Timestamp::try_from(old)
         .unwrap()
         .strftime("%Y-%m-%d")
         .to_string();
