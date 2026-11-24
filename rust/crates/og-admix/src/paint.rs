@@ -1,34 +1,44 @@
-//! Local-ancestry painting, our own engine in place of RFMix: a Li and
-//! Stephens copying model whose hidden state is (ancestry, reference
-//! haplotype), as Browning, Waples and Browning published it for FLARE
-//! (AJHG 2023). The code is written from the published equations; no FLARE
-//! or RFMix source was read.
+//! Local-ancestry painting, our own engine in place of RFMix, on two
+//! levels.
 //!
-//! Along a target haplotype, ancestry events come at rate T per Morgan, and
-//! each draws the new ancestry from the proportions mu (it may be the old
-//! one) and a reference haplotype of it uniformly. Inside an ancestry a the
+//! Level 1, per group a ([`split::local_evidence`]): a Li and Stephens
+//! copying model over the n_a reference haplotypes of a alone, as
+//! Browning, Waples and Browning published it for FLARE (AJHG 2023): the
 //! copied haplotype jumps at rate rho_a per Morgan to one drawn uniformly
-//! from the n_a haplotypes of a. The copied haplotype carries the target's
-//! allele with chance 1 - epsilon. [`hmm`] has the equations; each forward
-//! and backward step costs O(H) through per-group totals, and the forward
-//! values are kept only every sqrt(M) sites.
+//! from a, and carries the target's allele with chance 1 - epsilon. Run
+//! left to right and right to left, its per-site predictive probabilities
+//! give the local evidence ell_a(m) of each group. Each group's copying
+//! keeps running whatever the ancestry is, so a switch of copied haplotype
+//! inside a group never costs an ancestry switch.
 //!
-//! [`paint`] fits mu, T, epsilon and rho_a by expectation-maximisation over
-//! the whole genome, every chromosome and haplotype at once, for up to
-//! [`Options::rounds`] rounds, and calls each site's ancestry as the group
-//! of highest posterior. The start is [`Params::initial`]: mu from the
-//! continental projection, T = 10, epsilon = 0.01 and rho_a = 4 Ne / n_a.
-//! Chromosomes and haplotypes run on [`Options::threads`] threads; the
-//! sums are taken in a fixed order, so any thread count gives the same
-//! bytes.
+//! Level 2 ([`split::ancestry_fb`]): an ancestry HMM over the A groups.
+//! Ancestry events come at rate T per Morgan and draw the new ancestry
+//! from the proportions mu (it may be the old one); the emission at site m
+//! is exp(lambda ell_a(m)), lambda = [`split::LAMBDA`]. lambda below 1
+//! tempers the evidence, whose per-site terms inside one copied segment
+//! are strongly correlated.
+//!
+//! [`paint`] computes level 1 once, with epsilon = 0.01 and rho_a = 4 Ne /
+//! n_a, then fits T alone by expectation-maximisation over the whole
+//! genome for up to [`Options::rounds`] rounds. mu stays at the start, the
+//! continental projection: fitted from the posterior it drifts towards
+//! groups that are not there. Each site's ancestry is the group of highest
+//! posterior. Chromosomes and haplotypes run on [`Options::threads`]
+//! threads; the sums are taken in a fixed order, so any thread count gives
+//! the same bytes.
+//!
+//! [`hmm`] keeps the joint (ancestry, reference haplotype) model of FLARE,
+//! which over-segments: one sharp emission picks both the copied haplotype
+//! and the ancestry, so a few sites where another group's haplotype matches
+//! better buy an ancestry switch, and EM then raises T to explain them.
 //!
 //! Memory: the reference haplotypes take M H / 8 bytes over all M sites of
-//! the genome, each running haplotype about 16 sqrt(M_c) H bytes for its
-//! chromosome of M_c sites, and the posteriors 8 A bytes per site and
-//! haplotype for A groups.
+//! the genome, the level-1 evidence 8 A bytes per site and haplotype, and
+//! each running haplotype 24 A bytes per site of its chromosome.
 
 pub mod bits;
 pub mod hmm;
+pub mod split;
 
 pub use bits::{Bits, RefPanel};
 pub use hmm::{Fb, Stats, checkpoint_block, forward_backward};
@@ -115,35 +125,17 @@ impl Params {
         Ok(())
     }
 
-    /// The next parameters from the expected counts of a pass.
+    /// The next parameters from the expected counts of a pass: T, expected
+    /// events per Morgan walked. mu, epsilon and rho_a stay.
     fn update(&self, s: &Stats) -> Params {
-        let groups = self.mu.len();
-        // mu: the mean posterior of each ancestry, kept above 1e-6 so no
-        // group drops out of the model.
-        let mut mu: Vec<f64> = s.ancestry.iter().map(|x| (x / s.sites).max(1e-6)).collect();
-        let total: f64 = mu.iter().sum();
-        mu.iter_mut().for_each(|x| *x /= total);
-        // T: expected events per Morgan walked.
         let generations = if s.morgans > 0.0 {
             (s.events / s.morgans).clamp(1e-3, MAX_PER_MORGAN)
         } else {
             self.generations
         };
-        let epsilon = (s.mismatches / s.sites).clamp(1e-6, 0.5);
-        let rho = (0..groups)
-            .map(|a| {
-                if s.exposure[a] > 0.0 {
-                    (s.jumps[a] / s.exposure[a]).clamp(1e-3, 1e7)
-                } else {
-                    self.rho[a]
-                }
-            })
-            .collect();
         Params {
-            mu,
             generations,
-            epsilon,
-            rho,
+            ..self.clone()
         }
     }
 
@@ -271,37 +263,21 @@ fn check_input(chroms: &[ChromInput], start: &Params, opts: &Options) -> Result<
     Ok(())
 }
 
-/// Runs one forward-backward per (chromosome, haplotype) on `threads`
-/// threads; the results in that order.
-fn pass(chroms: &[ChromInput], params: &Params, threads: usize) -> Vec<Fb> {
-    let units: Vec<(usize, usize)> = chroms
-        .iter()
-        .enumerate()
-        .flat_map(|(c, ch)| (0..ch.targets.len()).map(move |t| (c, t)))
-        .collect();
-    let run = |&(c, t): &(usize, usize)| {
-        let ch = &chroms[c];
-        forward_backward(
-            &ch.panel,
-            &ch.cm,
-            &ch.targets[t],
-            params,
-            checkpoint_block(ch.panel.sites()),
-        )
-    };
-    if threads <= 1 || units.len() <= 1 {
-        return units.iter().map(run).collect();
+/// Runs `f` on every item on `threads` threads; the results in order.
+fn par_map<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    if threads <= 1 || items.len() <= 1 {
+        return items.iter().map(&f).collect();
     }
     let next = AtomicUsize::new(0);
-    let mut done: Vec<(usize, Fb)> = std::thread::scope(|s| {
-        let workers: Vec<_> = (0..threads.min(units.len()))
+    let mut done: Vec<(usize, R)> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads.min(items.len()))
             .map(|_| {
                 s.spawn(|| {
                     let mut out = Vec::new();
                     loop {
                         let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(u) = units.get(i) else { break };
-                        out.push((i, run(u)));
+                        let Some(u) = items.get(i) else { break };
+                        out.push((i, f(u)));
                     }
                     out
                 })
@@ -313,7 +289,7 @@ fn pass(chroms: &[ChromInput], params: &Params, threads: usize) -> Vec<Fb> {
             .collect()
     });
     done.sort_by_key(|(i, _)| *i);
-    done.into_iter().map(|(_, fb)| fb).collect()
+    done.into_iter().map(|(_, r)| r).collect()
 }
 
 /// Paints every target haplotype of `chroms`, fitting the parameters from
@@ -324,10 +300,24 @@ fn pass(chroms: &[ChromInput], params: &Params, threads: usize) -> Vec<Fb> {
 pub fn paint(chroms: &[ChromInput], start: Params, opts: &Options) -> Result<Painting> {
     check_input(chroms, &start, opts)?;
     let groups = chroms[0].panel.groups();
+    // One unit per (chromosome, haplotype), in that order.
+    let units: Vec<(usize, usize)> = chroms
+        .iter()
+        .enumerate()
+        .flat_map(|(c, ch)| (0..ch.targets.len()).map(move |t| (c, t)))
+        .collect();
+    // Level 1 depends on epsilon and rho_a only, which the fit keeps.
+    let evidence: Vec<Vec<f64>> = par_map(&units, opts.threads, |&(c, t)| {
+        let ch = &chroms[c];
+        split::local_evidence(&ch.panel, &ch.cm, &ch.targets[t], &start)
+    });
+    let index: Vec<usize> = (0..units.len()).collect();
     let mut params = start;
     let mut rounds = 0;
     let (fbs, total) = loop {
-        let fbs = pass(chroms, &params, opts.threads);
+        let fbs = par_map(&index, opts.threads, |&i| {
+            split::ancestry_fb(&evidence[i], &chroms[units[i].0].cm, &params, split::LAMBDA, groups)
+        });
         let mut total = Stats::zero(groups);
         for fb in &fbs {
             total.add(&fb.stats);
