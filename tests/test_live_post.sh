@@ -5,7 +5,11 @@
 # that a message reaches events.jsonl, that without OWNGENOME_LIVE_URL nothing is
 # sent, and that with the site down it warns once and returns 0 every time, so
 # a run never stops for it. It first proves the store check can fail: a
-# message to another run must not show up in this run's file.
+# message to another run must not show up in this run's file. The token (in
+# OWNGENOME_LIVE_TOKEN, or as the last part of the URL) reaches the site, and
+# no argument curl is started with holds it: a curl in front on PATH writes
+# its arguments down (main's live_post, which put the token in the URL it
+# gave curl, fails this check).
 # It also checks that scripts/owngenome-live.sh hash-password exits non-zero, with no
 # success line, when it cannot write the hash file; the control is the old
 # one-line `a && b && c` form, under which set -e let the script go on.
@@ -67,7 +71,7 @@ EV="${WORK}/state/runs/demo1/events.jsonl"
 MSG='{"event":"pgp_step","step":"14","state":"started"}'
 
 # Without OWNGENOME_LIVE_URL nothing is sent
-unset OWNGENOME_LIVE_URL OWNGENOME_LIVE_WARNED
+unset OWNGENOME_LIVE_URL OWNGENOME_LIVE_WARNED OWNGENOME_LIVE_TOKEN
 live_post demo1 "$MSG" || fail "live_post without OWNGENOME_LIVE_URL returned non-zero"
 [ ! -e "$EV" ] || fail "a message was stored without OWNGENOME_LIVE_URL"
 
@@ -77,21 +81,37 @@ live_post demo1 "$MSG" 2> /dev/null || fail "live_post returned non-zero when th
 [ ! -e "$EV" ] || fail "control: the site stored a message posted without its token"
 unset OWNGENOME_LIVE_WARNED
 
+# A curl in front of the real one writes down the arguments it is started with.
+REAL_CURL=$(command -v curl)
+mkdir -p "${WORK}/spy"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' "${WORK}/argv.log" "$REAL_CURL" > "${WORK}/spy/curl"
+chmod +x "${WORK}/spy/curl"
+: > "${WORK}/argv.log"
+
 # Control: a message to another run is not in this run's file
 export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}/${TOK}/"
-live_post other1 "$MSG"
+PATH="${WORK}/spy:${PATH}" live_post other1 "$MSG"
 if [ -e "$EV" ] && grep -q '"step":"14"' "$EV"; then fail "control: another run's message is in demo1's file"; fi
 [ -s "${WORK}/state/runs/other1/events.jsonl" ] || fail "control: the other run's message was not stored"
 echo "Control: the store check tells one run's file from another's."
 
-# The site up: the message is stored (a URL ending in '/' works too)
-live_post demo1 "$MSG"
+# The site up: the message is stored, with the token in the URL (ending in '/')
+PATH="${WORK}/spy:${PATH}" live_post demo1 "$MSG"
 grep -q '"event":"pgp_step","step":"14","state":"started"' "$EV" || fail "the message is not in ${EV}: $(cat "$EV" 2>/dev/null)"
-echo "PASS: live_post stores the message"
+# and with the plain URL and the token in OWNGENOME_LIVE_TOKEN, as run-all.sh passes it
+export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}" OWNGENOME_LIVE_TOKEN="$TOK"
+PATH="${WORK}/spy:${PATH}" live_post demo1 '{"event":"pgp_step","step":"14","state":"ok"}'
+grep -q '"event":"pgp_step","step":"14","state":"ok"' "$EV" || fail "the message sent with OWNGENOME_LIVE_TOKEN is not in ${EV}: $(cat "$EV" 2>/dev/null)"
+unset OWNGENOME_LIVE_TOKEN
+echo "PASS: live_post stores the message, with the token in the URL or in OWNGENOME_LIVE_TOKEN"
+[ "$(grep -c "/ingest/" "${WORK}/argv.log")" -eq 3 ] || fail "control: the curl in front saw $(grep -c "/ingest/" "${WORK}/argv.log") posts, not 3"
+if grep -q -- "$TOK" "${WORK}/argv.log"; then fail "curl was started with the ingest token in its arguments"; fi
+echo "PASS: no argument curl was started with holds the token"
 
 # The site down: one warning, exit 0 each time
 kill "$PID"; wait "$PID" 2>/dev/null || true; PID=""
 unset OWNGENOME_LIVE_WARNED
+export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}/${TOK}/"
 rc=0; { live_post demo1 "$MSG"; live_post demo1 "$MSG"; } 2> "${WORK}/warn.txt" || rc=$?
 [ "$rc" -eq 0 ] || fail "live_post returned ${rc} with the site down"
 [ "$(grep -c 'WARNING: the live site' "${WORK}/warn.txt")" -eq 1 ] || fail "expected one warning: $(cat "${WORK}/warn.txt")"

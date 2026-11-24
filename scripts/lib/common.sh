@@ -1097,18 +1097,22 @@ ploidy_units() {
 
 # live_post RUN JSON: send one message to the live site (og live serve,
 # docs/live-site.md) at OWNGENOME_LIVE_URL/ingest/RUN; nothing without OWNGENOME_LIVE_URL.
+# The site's ingest token (OWNGENOME_LIVE_TOKEN, or the last part of a
+# OWNGENOME_LIVE_URL of the form http://host:port/<token>) goes as the HTTP
+# Basic password of user og, in a curl config curl reads from a pipe (fd 3):
+# it is in no argument of any process and in no output line.
 # A site that is down or slow (3 s) costs one warning per script and never the
-# step: it always returns 0. The warning names the site without its ingest token.
+# step: it always returns 0.
 live_post() {
   [ -n "${OWNGENOME_LIVE_URL:-}" ] || return 0
-  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- \
-      "${OWNGENOME_LIVE_URL%/}/ingest/$1" 2>/dev/null; then
+  local site=${OWNGENOME_LIVE_URL%/} tok=${OWNGENOME_LIVE_TOKEN:-}
+  if [[ "$site" =~ ^(http://[^/]+)/([A-Za-z0-9_-]{43})$ ]]; then site=${BASH_REMATCH[1]} tok=${BASH_REMATCH[2]}; fi
+  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- -K/dev/fd/3 \
+      "${site}/ingest/$1" 3< <([ -z "$tok" ] || printf 'user = "og:%s"\n' "$tok") 2>/dev/null; then
     return 0
   fi
   if [ -z "${OWNGENOME_LIVE_WARNED:-}" ]; then
-    local shown=${OWNGENOME_LIVE_URL%/}
-    if [[ "$shown" =~ ^(http://[^/]+)/ ]]; then shown="${BASH_REMATCH[1]}/<token>"; fi
-    echo "WARNING: the live site at ${shown} did not take a message; the run goes on without it" >&2
+    echo "WARNING: the live site at ${site} did not take a message; the run goes on without it" >&2
     OWNGENOME_LIVE_WARNED=1
   fi
   return 0

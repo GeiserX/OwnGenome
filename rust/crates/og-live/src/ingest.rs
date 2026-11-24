@@ -1,5 +1,5 @@
 //! The ingest listener: the run's own processes post their progress here
-//! (`POST /<token>/ingest/<run>`): a Nextflow weblog message, or a
+//! (`POST /ingest/<run>`): a Nextflow weblog message, or a
 //! `pgp_step` / `pgp_run_finished` message from `scripts/run-all.sh`. Each
 //! message is cut to the fields a progress view needs ([`cut`]) and
 //! appended to `STATE_DIR/runs/<run>/events.jsonl`, which the browser side
@@ -7,9 +7,11 @@
 //!
 //! It listens on loopback only, and it takes a message only with the token
 //! the server made ([`token`], `STATE_DIR/ingest-token`, mode 600), so
-//! another account on the machine cannot post fake progress. Nextflow's
-//! weblog cannot send a header, so the token is the first part of the
-//! path: `OWNGENOME_LIVE_URL=http://127.0.0.1:8788/<token>`. The state
+//! another account on the machine cannot post fake progress. The token goes
+//! as the password of HTTP Basic, user `og` (`POST /ingest/<run>`: the
+//! nf-weblog plugin's `basicToken`, curl's `user`), so it is in no URL and
+//! no log line that prints one; or, as before, as the first part of the
+//! path (`POST /<token>/ingest/<run>`). The state
 //! folder and the run folders in it must be the server account's own
 //! ([`trusted_dir`]), and no file in them is opened through a symlink. The
 //! locks that order two writers are on mode 600 lock files (`lock_file`),
@@ -445,8 +447,44 @@ pub fn token(state_dir: &Path) -> Result<String, String> {
     Ok(t)
 }
 
-const NEEDS_TOKEN: &str = "an ingest token is needed: post to /<token>/ingest/<run>, with the token of \
-                           STATE_DIR/ingest-token";
+const NEEDS_TOKEN: &str = "an ingest token is needed: post to /ingest/<run> with the token of \
+                           STATE_DIR/ingest-token as the HTTP Basic password of user og, or to \
+                           /<token>/ingest/<run>";
+
+/// The user name of the HTTP Basic credentials that carry the token.
+pub const BASIC_USER: &str = "og";
+
+/// Standard base64 with padding (RFC 4648 section 4), as HTTP Basic sends it.
+fn base64_std(bytes: &[u8]) -> String {
+    let mut out: String = crate::auth::base64url(bytes)
+        .chars()
+        .map(|c| match c {
+            '-' => '+',
+            '_' => '/',
+            c => c,
+        })
+        .collect();
+    while !out.len().is_multiple_of(4) {
+        out.push('=');
+    }
+    out
+}
+
+/// Whether `authorization` (the header's value) is HTTP Basic with user
+/// [`BASIC_USER`] and password `token`.
+fn basic_holds(authorization: Option<&str>, token: &str) -> bool {
+    let Some(v) = authorization.map(str::trim) else {
+        return false;
+    };
+    let Some((scheme, cred)) = v.split_once(' ') else {
+        return false;
+    };
+    scheme.eq_ignore_ascii_case("basic")
+        && same_secret(
+            cred.trim().as_bytes(),
+            base64_std(format!("{BASIC_USER}:{token}").as_bytes()).as_bytes(),
+        )
+}
 
 /// `run`'s events file (`STATE_DIR/runs/<run>/events.jsonl`, the file
 /// [`crate::state::Store`] reads), opened to append, and the run's lock
@@ -566,23 +604,30 @@ fn answer(
         };
     }
     let path = target.split(['?', '#']).next().unwrap_or("");
-    // /<token>/ingest/<run>; a OWNGENOME_LIVE_URL ending in '/' gives
-    // '//' before ingest.
+    // /ingest/<run> with the token as HTTP Basic, or /<token>/ingest/<run>;
+    // a OWNGENOME_LIVE_URL ending in '/' gives '//' before ingest.
     let rest = path.trim_start_matches('/');
     let (given, after) = rest.split_once('/').unwrap_or((rest, ""));
-    let run = after.trim_start_matches('/').strip_prefix("ingest/");
-    if run.is_none() && given != "ingest" {
+    let basic = given == "ingest";
+    let run = if basic {
+        Some(after)
+    } else {
+        after.trim_start_matches('/').strip_prefix("ingest/")
+    };
+    if run.is_none() {
         return (404, "not found".into());
     }
     if header("origin").is_some() {
         // Nextflow and curl send no Origin.
         return (403, "a browser cannot post here".into());
     }
-    let taken = live
-        .cfg
-        .ingest_token
-        .as_deref()
-        .is_some_and(|t| same_secret(t.as_bytes(), given.as_bytes()));
+    let taken = live.cfg.ingest_token.as_deref().is_some_and(|t| {
+        if basic {
+            basic_holds(header("authorization"), t)
+        } else {
+            same_secret(t.as_bytes(), given.as_bytes())
+        }
+    });
     let Some(run) = run.filter(|_| taken) else {
         return (403, NEEDS_TOKEN.into());
     };
@@ -662,6 +707,31 @@ mod tests {
     /// the copy of this test binary it starts: the state folder the second
     /// server appends to.
     const OTHER_WRITER: &str = "OG_LIVE_TEST_OTHER_WRITER";
+
+    #[test]
+    fn basic_credentials_are_standard_base64_of_og_and_the_token() {
+        // RFC 4648 section 10, and what curl sends for user og:abc.
+        assert_eq!(base64_std(b"f"), "Zg==");
+        assert_eq!(base64_std(b"fo"), "Zm8=");
+        assert_eq!(base64_std(b"foo"), "Zm9v");
+        assert_eq!(base64_std(b"og:abc"), "b2c6YWJj");
+        assert_eq!(base64_std(b"\xfb\xff"), "+/8=");
+        assert!(basic_holds(Some("Basic b2c6YWJj"), "abc"));
+        assert!(basic_holds(Some("basic  b2c6YWJj "), "abc"));
+        for bad in [
+            None,
+            Some("b2c6YWJj"),
+            Some("Bearer b2c6YWJj"),
+            Some("Basic b2c6YWJk"),
+        ] {
+            assert!(!basic_holds(bad, "abc"), "{bad:?}");
+        }
+        // Another user name with the right token is refused.
+        assert!(!basic_holds(
+            Some(&format!("Basic {}", base64_std(b"me:abc"))),
+            "abc"
+        ));
+    }
 
     /// The second server: another process that appends one message to the
     /// run of the state folder in [`OTHER_WRITER`]. Run only by the test

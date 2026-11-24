@@ -57,6 +57,19 @@ SAMPLE=${1:-} SEX=${2:-}
   [ -z "$SEX" ] || echo "ERROR: sex must be 'male' or 'female', got '${SEX}'."; } >&2; exit 2; }
 ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404)) || { echo "ERROR: run-all.sh needs bash 4.4 or later (this is ${BASH_VERSION}); on macOS: brew install bash" >&2; exit 2; }
 shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
+# The live site's ingest port (og live serve, docs/live-site.md), checked before anything is recorded. It speaks plain
+# HTTP and takes /ingest/<run> with its token (STATE_DIR/ingest-token) as the HTTP Basic password: https or another path
+# would lose every post. A URL that holds the token (http://host:port/<token>) is split here: the token goes to
+# OWNGENOME_LIVE_TOKEN, and OWNGENOME_LIVE_URL keeps http://host:port, the only form the recorded command, the output,
+# live.config and every curl argument hold. The value is never printed: it may hold the token.
+if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
+  [[ "$OWNGENOME_LIVE_URL" =~ ^(http://[A-Za-z0-9.:_-]+)(/([A-Za-z0-9_-]{43}))?/?$ ]] \
+    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token> (the value is not printed: it may hold the token)" >&2; exit 2; }
+  OWNGENOME_LIVE_URL=${BASH_REMATCH[1]}
+  [ -z "${BASH_REMATCH[3]}" ] || export OWNGENOME_LIVE_TOKEN=${BASH_REMATCH[3]}
+fi
+[ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || [[ "$OWNGENOME_LIVE_TOKEN" =~ ^[A-Za-z0-9_-]{43}$ ]] \
+  || { echo "ERROR: OWNGENOME_LIVE_TOKEN is not an ingest token (43 letters, digits, '-' or '_'; the value is not printed)" >&2; exit 2; }
 # This command as given, for bin/og recheck --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
@@ -70,6 +83,19 @@ RERUN_CMD+=$(printf '%q ' "${SCRIPT_DIR}/run-all.sh" "$SAMPLE" "$SEX" "$@"); RER
 # With -bg nextflow returns at once, and the steps would be recorded and the reports written before the run ends.
 for a in "$@"; do [ "$a" != -bg ] || { echo "ERROR: run-all.sh does not take -bg: it waits for the pipeline to record each step and write the reports. Run it inside tmux or screen, or with nohup." >&2; exit 2; }; done
 export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
+# Without a token, the one of the site's state folder (OWNGENOME_LIVE_STATE_DIR, else GENOME_DIR/.owngenome-live), when
+# this account can read it. It is read here, before the first post, and never written anywhere: a replay (og recheck
+# --rerun) reads it again, or takes OWNGENOME_LIVE_TOKEN from its environment.
+if [ -n "${OWNGENOME_LIVE_URL:-}" ] && [ -z "${OWNGENOME_LIVE_TOKEN:-}" ]; then
+  TF="${OWNGENOME_LIVE_STATE_DIR:-${GENOME_DIR}/.owngenome-live}/ingest-token" TOK=""
+  if [ -r "$TF" ]; then IFS= read -r TOK < "$TF" || true; fi
+  if [[ "$TOK" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
+    export OWNGENOME_LIVE_TOKEN=$TOK
+  else
+    echo "WARNING: no ingest token for the live site: ${TF} cannot be read, so og live serve refuses every post; set OWNGENOME_LIVE_URL=${OWNGENOME_LIVE_URL}/<token>, or OWNGENOME_LIVE_STATE_DIR to the site's state folder" >&2
+  fi
+  unset TF TOK
+fi
 # shellcheck source=lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 validate_sample "$SAMPLE"
@@ -441,32 +467,17 @@ export NXF_VER=${NXF_VER:-$NEXTFLOW_VERSION}
 # a config names it, so the block lives in a config of this run's own, passed only when OWNGENOME_LIVE_URL is set: a run
 # without it neither downloads the plugin nor warns about an unknown weblog scope. The pin is NF_WEBLOG_PLUGIN in versions.env.
 if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
-  # The ingest listener (og live serve) speaks plain HTTP and takes /<token>/ingest/<run> only, with the token of its
-  # STATE_DIR/ingest-token as the first part of the path (Nextflow's weblog cannot send a header): https or another path
-  # would lose every post. A URL without the token gets the one in the state folder, when this account can read it.
-  LIVE_HOST='[A-Za-z0-9.:_-]+' LIVE_TOKEN='(/[A-Za-z0-9_-]{43})?'
-  [[ "$OWNGENOME_LIVE_URL" =~ ^http://${LIVE_HOST}${LIVE_TOKEN}/?$ ]] \
-    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token> (the value is not printed: it may hold the token)" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
-  LIVE_SHOWN=${OWNGENOME_LIVE_URL%/}
-  if [ -n "${BASH_REMATCH[1]}" ]; then
-    LIVE_SHOWN="${LIVE_SHOWN%/*}/<token>"
-  else
-    TF="${OWNGENOME_LIVE_STATE_DIR:-${GENOME_DIR}/.owngenome-live}/ingest-token" TOK=""
-    if [ -r "$TF" ]; then IFS= read -r TOK < "$TF" || true; fi
-    if [[ "$TOK" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
-      export OWNGENOME_LIVE_URL="${LIVE_SHOWN}/${TOK}"; LIVE_SHOWN="${LIVE_SHOWN}/<token>"
-    else
-      echo "WARNING: OWNGENOME_LIVE_URL has no ingest token and ${TF} cannot be read: og live serve refuses every post; set OWNGENOME_LIVE_URL=${LIVE_SHOWN}/<token>" >&2
-    fi
-    unset TF TOK
-  fi
-  export OWNGENOME_LIVE_RUN=$SAMPLE
-  # The config holds the token: readable by this account only, from the start.
-  rm -f "${S}/nextflow/live.config"
-  (umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$NF_WEBLOG_PLUGIN" \
-    "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config")
+  export OWNGENOME_LIVE_URL OWNGENOME_LIVE_RUN=$SAMPLE
+  # The weblog sends the token as its HTTP Basic password, read by Nextflow from OWNGENOME_LIVE_TOKEN as it starts: the
+  # config and the plugin's log line (which names its URL) hold no token.
+  LC="${S}/nextflow/live.config" BT=""
+  [ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || BT="    basicToken = \"og:\${env('OWNGENOME_LIVE_TOKEN')}\""$'\n'
+  rm -f "$LC"
+  (umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n%s}\n" "$NF_WEBLOG_PLUGIN" \
+    "${OWNGENOME_LIVE_URL}/ingest/${SAMPLE}" "$BT" > "$LC")
+  unset LC BT
   NF+=(-c "${S}/nextflow/live.config")
-  echo "Live site: messages go to ${LIVE_SHOWN}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
+  echo "Live site: messages go to ${OWNGENOME_LIVE_URL}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
   # The address the browser opens (the site's own, not the ingest port), when the launcher knows it.
   [ -z "${OWNGENOME_LIVE_PAGE_URL:-}" ] || echo "Live site: this run's page is ${OWNGENOME_LIVE_PAGE_URL%/}/runs/${SAMPLE}/"
 else
