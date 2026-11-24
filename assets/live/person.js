@@ -201,11 +201,13 @@
           (lo !== null && hi !== null ? ', 95% interval ' + lo + ' to ' + hi : '') + (unsized ? ', not sized from short reads' : '')));
       });
       var st = l.status ? 'Stranger: "' + l.status + '"' : 'no Stranger status';
-      var legend = (nmax !== null || pmin !== null)
-        ? [nmax !== null ? '"normal" up to ' + nmax : '', pmin !== null ? 'pathologic from ' + pmin : '',
-          l.penetrance ? 'reduced penetrance ' + l.penetrance : '', 'scale 0 to ' + max]
-          .filter(Boolean).join(' · ')
-        : 'No Stranger thresholds for this locus. Scale 0 to ' + max + '.';
+      // The range of reduced penetrance comes from its own table, not from Stranger, so it is
+      // named whether or not the locus has Stranger thresholds.
+      var thresholds = nmax !== null || pmin !== null;
+      var legend = [nmax !== null ? '"normal" up to ' + nmax : '', pmin !== null ? 'pathologic from ' + pmin : '',
+        l.penetrance ? 'reduced penetrance ' + l.penetrance : '',
+        thresholds ? 'scale 0 to ' + max : 'No Stranger thresholds for this locus. Scale 0 to ' + max + '.']
+        .filter(Boolean).join(' · ');
       var flagged = l.status && l.status.split(',').some(function (x) { return x && x !== 'normal'; });
       add(box, wrow(whead(l.locus, (l.repeat_count || '.') + ' repeats', st), trackOf(max, parts), legend, flagged ? 'w-attn' : ''));
     });
