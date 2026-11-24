@@ -12,6 +12,7 @@
 #      takes every one of those posts, and refuses a post without the token, with
 #      another token and a message it does not know; no line of the output, no
 #      argument and neither live.config nor `meta command` hold the token;
+#      `meta command` names OWNGENOME_LIVE_STATE_DIR, so a replay reads the token there;
 #      with OWNGENOME_LIVE_PAGE_URL set it prints the run's page, which the site serves;
 #   2. without OWNGENOME_LIVE_URL, nextflow sees no OWNGENOME_LIVE_RUN and no live.config,
 #      and nothing is posted; no page is printed, even with OWNGENOME_LIVE_PAGE_URL;
@@ -102,6 +103,8 @@ if grep -qF -- "$TOK" "$LC"; then fail "live.config holds the token"; fi
 case "$(ls -l "$LC")" in -rw-------*) ;; *) fail "live.config is not mode 600: $(ls -l "$LC")" ;; esac
 [ "$(meta_command | grep -cF "OWNGENOME_LIVE_URL=${URL} ")" -eq 1 ] || fail "meta command does not name the plain URL: $(meta_command)"
 if meta_command | grep -qF -- "$TOK"; then fail "meta command holds the token"; fi
+# The state folder that holds the token is recorded too, so a replay reads the token from the same place.
+[ "$(meta_command | grep -cF "OWNGENOME_LIVE_STATE_DIR=${STATE} ")" -eq 1 ] || fail "meta command does not name OWNGENOME_LIVE_STATE_DIR: $(meta_command)"
 # Every post is a message the site takes: each body, posted again with the real curl to og live serve.
 sed -n 's/^post [^ ]* //p' "$LOG" > "${CASE_WORK}/bodies.jsonl"
 n=0
