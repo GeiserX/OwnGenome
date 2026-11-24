@@ -2430,12 +2430,18 @@ fn live_mode_checks(f: &mut Fixture, base: &str, core: &Path, source: &str) {
             capture_live(b, &url, core, &bare, &map_last, false),
             capture_live(b, &url, core, source, &map_last, false),
         ];
+        // hidden="" and hidden="hidden" are one state. Which one the map's tooltip carries
+        // depends on whether map.js's last redraw ran after map.json, with or without the
+        // gate, so this compare reads the state; the section marks below fix the order and
+        // check the attribute itself.
+        let page = |p: &[Value]| text(&p[0]).replace(r#"hidden="hidden""#, r#"hidden="""#);
+        let (bare_page, gated_page) = (page(&pair[0][..]), page(&pair[1][..]));
         assert!(
-            pair[0][..3] == pair[1][..3],
+            bare_page == gated_page && pair[0][1..3] == pair[1][1..3],
             "live mode: {label}'s page differs with the gate: {:?} / {:?}; {:?}",
             pair[0][2],
             pair[1][2],
-            differences(text(&pair[0][0]), text(&pair[1][0]))
+            differences(&bare_page, &gated_page)
         );
         pass(&format!(
             "live mode: the page of {label} makes the requests of the page without the gate, in its order, and is the same page"
