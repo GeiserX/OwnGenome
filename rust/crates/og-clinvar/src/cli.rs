@@ -160,7 +160,9 @@ pub fn main(args: &[String]) -> u8 {
         "deep-intronic" => deep_intronic(rest, &mut out),
         "conflicting-subset" => match Line::parse(rest, &[], &[]) {
             Err(e) => return refuse(&e),
-            Ok(l) if l.files.len() > 1 => return refuse("conflicting-subset reads one ClinVar VCF"),
+            Ok(l) if l.files.len() > 1 => {
+                return refuse("conflicting-subset reads one ClinVar VCF");
+            }
             Ok(l) => match input(l.files.first().map(String::as_str)) {
                 Err(e) => fail("conflicting-subset", &e),
                 Ok(i) => conflicting::subset(i, &mut out)
@@ -270,7 +272,9 @@ fn conflicting_hits(args: &[String], out: &mut impl Write) -> u8 {
     };
     let skip = l.get("--skip");
     match (skip, l.files.len()) {
-        (Some(_), n) if n > 0 => return refuse("conflicting-hits takes --skip or a hits VCF, not both"),
+        (Some(_), n) if n > 0 => {
+            return refuse("conflicting-hits takes --skip or a hits VCF, not both");
+        }
         (Some(w), _) if w.trim().is_empty() => return refuse("argument --skip: say why"),
         (_, n) if n > 1 => return refuse("conflicting-hits reads one hits VCF"),
         _ => {}

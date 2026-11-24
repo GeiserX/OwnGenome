@@ -54,16 +54,30 @@ pub fn plp_class(class: &[u8]) -> bool {
 /// The submissions `CLNSIGCONF` counts as pathogenic or likely pathogenic.
 /// A class without a count, `Pathogenic` alone, is one submission.
 pub fn plp_submissions(clnsigconf: &[u8]) -> u64 {
-    let _ = clnsigconf;
-    0
+    split(clnsigconf, b'|')
+        .into_iter()
+        .map(|t| {
+            match t.strip_suffix(b")").and_then(|r| {
+                let open = r.iter().rposition(|&c| c == b'(')?;
+                Some((&r[..open], &r[open + 1..]))
+            }) {
+                Some((class, n)) if is_digits(n) => (class, crate::text::whole(n).unwrap_or(0)),
+                _ => (t, 1),
+            }
+        })
+        .filter(|(class, _)| plp_class(class))
+        .map(|(_, n)| n)
+        .sum()
 }
 
 /// True when the subset keeps the record whose INFO column this is: a
 /// conflicting record with at least one pathogenic or likely pathogenic
 /// submission, that the pathogenic subset does not hold.
 pub fn keep(info: &[u8]) -> bool {
-    let _ = info;
-    false
+    let clnsig = info_get(info, b"CLNSIG");
+    conflicting(clnsig)
+        && !in_plp_subset(clnsig)
+        && plp_submissions(info_get(info, b"CLNSIGCONF")) > 0
 }
 
 /// `og clinvar conflicting-subset`: the header of a ClinVar VCF as it is,
@@ -281,7 +295,10 @@ mod tests {
     fn the_older_label_and_every_plp_class_count() {
         for (conf, n) in [
             ("Likely_pathogenic(1)|Benign(4)", 1),
-            ("Pathogenic/Likely_pathogenic(3)|Uncertain_significance(1)", 3),
+            (
+                "Pathogenic/Likely_pathogenic(3)|Uncertain_significance(1)",
+                3,
+            ),
             ("Pathogenic,_low_penetrance(1)|Likely_benign(1)", 1),
             ("Pathogenic(2)|Likely_pathogenic(1)|Benign(1)", 3),
             ("Likely_benign(2)|Uncertain_significance(1)", 0),
@@ -320,7 +337,13 @@ mod tests {
     #[test]
     fn a_missing_subset_is_not_zero_rows() {
         let mut out = Vec::new();
-        table(None::<&[u8]>, Some("run setup.sh --refresh clinvar"), &CallFloor::default(), &mut out).unwrap();
+        table(
+            None::<&[u8]>,
+            Some("run setup.sh --refresh clinvar"),
+            &CallFloor::default(),
+            &mut out,
+        )
+        .unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
             format!("# not checked: run setup.sh --refresh clinvar\n{COLUMNS}\n")
@@ -333,7 +356,10 @@ mod tests {
     #[test]
     fn conditions_drop_placeholders_and_repeats() {
         assert_eq!(
-            condition(b"not_provided|Long_QT_syndrome_1", b"MedGen:CN517202|OMIM:192500,OMIM:192500"),
+            condition(
+                b"not_provided|Long_QT_syndrome_1",
+                b"MedGen:CN517202|OMIM:192500,OMIM:192500"
+            ),
             (b"Long QT syndrome 1".to_vec(), b"OMIM:192500".to_vec())
         );
         assert_eq!(condition(b"", b""), (b".".to_vec(), b".".to_vec()));
