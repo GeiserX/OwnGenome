@@ -6,7 +6,7 @@
 use super::roh::masked_overlap;
 use super::util::{Obj, at, base, cells, count, int, lines, number, s, strs, table, vcf_lines};
 use super::{Ctx, Found, Out};
-use og_steps::sv::postfilter::{ConsensusSupport, Membership};
+use og_steps::sv::postfilter::{BENIGN_MATCH, CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use std::collections::HashMap;
@@ -260,6 +260,15 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
             consensus_support(&t.rows, None)?
         }
     };
+    // Evidence columns belong to the metadata before FORMAT.
+    let evidence_column = |name| {
+        t.head
+            .iter()
+            .take_while(|key| *key != "FORMAT")
+            .position(|key| key == name)
+    };
+    let benign_match = evidence_column(BENIGN_MATCH);
+    let clinical_common = evidence_column(CLINICAL_COMMON);
     let mut keep = Vec::new();
     let mut moved = Vec::new();
     for (r, (sp, callers)) in t.rows.iter().zip(support) {
@@ -316,7 +325,19 @@ pub fn annotsv(c: &Ctx<'_>) -> Out {
                 "population_source",
                 s(&super::util::or(r, "Population_source", "")),
             )
-            .set("common", Value::Bool(at(r, "Common")? == Some("yes")))
+            .set("common", Value::Bool(at(r, "Common")? == Some("yes")));
+        let evidence_value = |index| super::util::opt_s(r.cells().get(index).map(String::as_str));
+        let row = if let Some(index) = benign_match {
+            row.set("benign_match", evidence_value(index))
+        } else {
+            row
+        };
+        let row = if let Some(index) = clinical_common {
+            row.set("clinical_common", evidence_value(index))
+        } else {
+            row
+        };
+        let row = row
             .set(
                 "annotsv_class",
                 match r.get("AnnotSV_class").flatten().filter(|v| !v.is_empty()) {
@@ -504,6 +525,191 @@ mod tests {
             .filter_map(|(name, passed)| (!passed).then_some(name))
             .collect();
         assert!(failed.is_empty(), "failed report checks: {failed:#?}");
+    }
+
+    #[test]
+    fn the_benign_match_reaches_the_summary_only_when_step_05_wrote_it() {
+        use crate::collect::{Group, Input, collect};
+        use crate::testutil::Dir;
+
+        let dir = Dir::new("annotsv-benign-match");
+        let rows = |table: String| {
+            dir.put("S/annotsv/S_sv_class4_5_checked.tsv", table);
+            let summary = collect(&Input {
+                sample: "S".into(),
+                sample_dir: dir.path("S"),
+                declared_sex: None,
+                assets: dir.path("assets"),
+                group: Group::C,
+                tables: dir.path("bin"),
+            })
+            .unwrap()
+            .to_json();
+            let section = report_field(report_field(&summary, "sections"), "annotsv");
+            report_rows(report_field(section, "data"), "rows").to_vec()
+        };
+        let head = REPORT_HEADER.replace("Common\t", "Common\tBenign_match\t");
+        let with = rows(format!(
+            "{head}{}{}",
+            "NESTED\t20\t3000\t3500\tDEL\t4\tmanta\tG1\tno\t\t0.05\tgnomAD-SV_v4\tyes\tcontained\t4\t\t\n",
+            "BLANK\t20\t9000\t9500\tDEL\t4\tmanta\tG2\tno\t\t\tno frequency data\tno\tnone\t4\t\t\n",
+        ));
+        let field = |r: &Value, k: &str| report_field(r, k).clone();
+        assert_eq!(
+            (field(&with[0], "benign_match"), field(&with[0], "common")),
+            (s("contained"), Value::Bool(true)),
+            "Common keeps its meaning beside the match"
+        );
+        assert_eq!(
+            (
+                field(&with[1], "population_af"),
+                field(&with[1], "population_source"),
+                field(&with[1], "benign_match")
+            ),
+            (Value::Null, s("no frequency data"), s("none"))
+        );
+        let without = rows(format!("{REPORT_HEADER}{REPORT_LAST}"));
+        let Value::Object(m) = &without[0] else {
+            panic!("a row is an object")
+        };
+        assert!(!m.contains_key("benign_match"), "{m:?}");
+    }
+
+    #[test]
+    fn summary_keeps_mixed_frequency_evidence_in_the_acmg_structural_list() {
+        use crate::collect::{Group, Input, post};
+        use crate::testutil::Dir;
+
+        let d = Dir::new("annotsv-clinical-common");
+        d.put(
+            "S/annotsv/S_sv_class4_5_checked.tsv",
+            concat!(
+                "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tGene_name\tExon_edge\tPopulation_AF\tPopulation_source\tCommon\tBenign_match\tClinical_common\tFORMAT\tS\n",
+                "MIXED\t20\t1000\t9000\tDEL\t4\tmanta\tLDLR\tno\t0.05\tfixture\tyes\tsame\tunknown\tGT\t0/1\n",
+                "SHIFTED\t20\t41000\t49000\tDEL\t4\tmanta\tLDLR\tno\t\tno frequency data\tno\tnone\tyes\tGT\t0/1\n",
+            ),
+        );
+        d.put(
+            "assets/acmg_sf.tsv",
+            "gene\tinheritance\treport_if\tsv_cn\tsv_regions\tvariants\tseverity\ttable_text\tnote\nLDLR\tSD\tany\tyes\t.\t.\t.\tAll P and LP\t.\n",
+        );
+        d.put(
+            "S/clinvar/S_clinvar_hits.vcf",
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+        );
+        let summary = post::collect(&Input {
+            sample: "S".into(),
+            sample_dir: d.path("S"),
+            declared_sex: None,
+            assets: d.path("assets"),
+            group: Group::All,
+            tables: d.path("bin"),
+        })
+        .unwrap();
+        let sections = report_field(&summary, "sections");
+        let sf = report_field(report_field(sections, "acmg_sf"), "data");
+        let variants: Vec<_> = report_rows(sf, "structural")
+            .iter()
+            .map(|row| report_field(row, "variant"))
+            .collect();
+        assert_eq!(variants, [&s("DEL chr20:1000-9000")]);
+        let annotsv = report_field(report_field(sections, "annotsv"), "data");
+        let rows = report_rows(annotsv, "rows");
+        assert_eq!(report_field(annotsv, "common"), &int(1));
+        assert_eq!(report_field(&rows[0], "population_af"), &Value::Float(0.05));
+        assert_eq!(report_field(&rows[0], "common"), &Value::Bool(true));
+        assert_eq!(report_field(&rows[0], "clinical_common"), &s("unknown"));
+        assert_eq!(report_field(&rows[1], "clinical_common"), &s("yes"));
+    }
+
+    #[test]
+    fn legacy_annotsv_samples_named_like_evidence_keep_the_common_gate() {
+        use crate::collect::{Group, Input, post};
+        use crate::testutil::Dir;
+
+        let d = Dir::new("annotsv-legacy-evidence-name");
+        d.put(
+            "assets/acmg_sf.tsv",
+            "gene\tinheritance\treport_if\tsv_cn\tsv_regions\tvariants\tseverity\ttable_text\tnote\nLDLR\tSD\tany\tyes\t.\t.\t.\tAll P and LP\t.\n",
+        );
+        d.put(
+            "S/clinvar/S_clinvar_hits.vcf",
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+        );
+        let mut failures = Vec::new();
+        for sample_column in ["Clinical_common", "Benign_match"] {
+            d.put(
+                "S/annotsv/S_sv_class4_5_checked.tsv",
+                format!(
+                    "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tGene_name\tExon_edge\tPopulation_AF\tPopulation_source\tCommon\tFORMAT\t{sample_column}\n{}",
+                    concat!(
+                        "OLD1\t20\t1000\t9000\tDEL\t4\tmanta\tLDLR\tno\t0.05\tfixture\tyes\tGT\t0/1\n",
+                        "OLD2\t20\t11000\t19000\tDEL\t4\tmanta\tLDLR\tno\t0.05\tfixture\tyes\tGT\t0/1\n",
+                        "OLD3\t20\t21000\t29000\tDEL\t4\tmanta\tLDLR\tno\t0.05\tfixture\tyes\tGT\t0/1\n",
+                    ),
+                ),
+            );
+            let summary = post::collect(&Input {
+                sample: "S".into(),
+                sample_dir: d.path("S"),
+                declared_sex: None,
+                assets: d.path("assets"),
+                group: Group::All,
+                tables: d.path("bin"),
+            })
+            .unwrap();
+            let sections = report_field(&summary, "sections");
+            let sf = report_field(report_field(sections, "acmg_sf"), "data");
+            let findings = report_rows(sf, "structural").len();
+            if findings != 0 {
+                failures.push(format!(
+                    "{sample_column}: {findings} ACMG SV findings, expected 0"
+                ));
+            }
+            let annotsv = report_field(report_field(sections, "annotsv"), "data");
+            let rows = report_rows(annotsv, "rows");
+            assert_eq!(rows.len(), 3);
+            for row in rows {
+                assert_eq!(report_field(row, "common"), &Value::Bool(true));
+                assert_eq!(report_field(row, "gt"), &s("0/1"));
+                let Value::Object(fields) = row else {
+                    panic!("an AnnotSV row is an object");
+                };
+                if fields.contains_key("clinical_common") || fields.contains_key("benign_match") {
+                    failures.push(format!("{sample_column}: sample was copied into evidence"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    #[test]
+    fn annotsv_summary_schema_declares_optional_evidence_enums() {
+        let schema = pycompat::json::loads(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../tests/schema/summary.schema.json"
+        )))
+        .unwrap();
+        let sections = report_field(report_field(&schema, "properties"), "sections");
+        let annotsv = report_field(report_field(sections, "properties"), "annotsv");
+        let section = &report_rows(annotsv, "allOf")[1];
+        let data = report_field(report_field(section, "properties"), "data");
+        let rows = report_field(report_field(data, "properties"), "rows");
+        let row = report_field(rows, "items");
+        let properties = report_field(row, "properties");
+        let required = report_rows(row, "required");
+        for (field, allowed) in [
+            ("clinical_common", &["yes", "no", "unknown"][..]),
+            (
+                "benign_match",
+                &["same", "contained", "none", ".", "not checked"][..],
+            ),
+        ] {
+            assert!(!required.contains(&s(field)), "{field} must be optional");
+            let values = report_rows(report_field(properties, field), "enum");
+            assert!(!values.contains(&int(42)), "{field} must reject a number");
+            assert_eq!(Value::Array(values.to_vec()), strs(allowed.iter().copied()));
+        }
     }
 
     #[test]

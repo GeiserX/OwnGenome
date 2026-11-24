@@ -1,8 +1,9 @@
 # Synthetic SV calls for step 22
 
 Three caller VCFs on chr20 with a known answer, read by
-`tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh` and
-`tests/e2e/sv-merge-votes.sh`; the `SURVIVOR_IMAGE` row of
+`tests/e2e/sv-mito-telomere-steps-1-sv-merge.sh`, `tests/e2e/sv-merge-votes.sh`
+and `tests/e2e/sv-merge-consensus-check.sh` (which adds six events of its own
+and lists them); the `SURVIVOR_IMAGE` row of
 `tests/smoke/commands.tsv` uses the first two events. The records are made up; they describe no
 person.
 
@@ -22,3 +23,21 @@ and counts the second pair as agreement.
 In each of the last three events only the Manta call votes. Step 22 kept every
 PASS record before `og sv survivor-prep` (`tests/e2e/sv-merge-votes.sh`), so
 each read as two callers and the consensus held 4 records instead of 1.
+
+The consensus-review caller inputs exercise repeated calls within a caller,
+a difference in mate contig or orientation, explicit INV and TRA, and split
+records with missing or discarded IDs. The pinned VCF captures SURVIVOR
+1.0.7 output from those three synthetic inputs in Manta, Delly, CNVpytor
+order. The Rust tests read that capture. The end-to-end case runs the pinned
+merge and checker through step 22.
+
+The consensus-ends input rows use fabricated values. The CNVpytor deletion
+and the Manta insertion preserve the INFO order emitted by the pinned
+caller images. The other rows cover the merge parser's positional length
+rules. The pinned capture comes from SURVIVOR 1.0.7 with Manta, CNVpytor,
+and Sniffles2 columns.
+
+The consensus-tra capture uses a symbolic translocation from Manta and a
+bracketed breakend from Delly. A third call from the CNVpytor column has
+different strands. When the checker splits the cluster, it uses the
+retained bracketed allele and its coordinates.

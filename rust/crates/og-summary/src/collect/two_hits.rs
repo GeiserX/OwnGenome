@@ -26,7 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
-use og_steps::sv::postfilter::{ConsensusSupport, Membership};
+use og_steps::sv::postfilter::{BENIGN_MATCH, CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -311,6 +311,8 @@ pub struct SvRow {
     pub caller: Option<String>,
     /// Callers supporting it in step 22's consensus; `None` without one.
     pub support: Option<i128>,
+    /// The clinical rules set aside SVs with a common reciprocal BED match.
+    /// Legacy checked tables without either evidence column use `Common`.
     pub common: bool,
 }
 
@@ -365,6 +367,12 @@ pub fn read_annotsv(
         .iter()
         .zip(support)
         .map(|(r, support)| {
+            // A sample name after FORMAT can also name an evidence column.
+            let evidence = |name| {
+                r.iter()
+                    .take_while(|(key, _)| *key != "FORMAT")
+                    .find_map(|(key, value)| (key == name).then_some(value))
+            };
             let fmt = sample_format(r);
             let some = |k: &str| {
                 fmt.get(k)
@@ -389,7 +397,10 @@ pub fn read_annotsv(
                     .collect(),
                 caller: cell(r, "Caller").map(str::to_owned),
                 support,
-                common: cell(r, "Common") == Some("yes"),
+                common: match evidence(CLINICAL_COMMON) {
+                    Some(value) => value == Some("yes"),
+                    None => evidence(BENIGN_MATCH).is_none() && cell(r, "Common") == Some("yes"),
+                },
             }
         })
         .filter(|x| matches!(x.class(), "4" | "5"))
@@ -965,5 +976,61 @@ mod tests {
         );
         assert_eq!(found.entries["G"].verdict, Verdict::Biallelic);
         assert!(found.pairs[&("G".to_owned(), v.key)].starts_with("biallelic with DEL: in trans"));
+    }
+
+    /// Step 05's checked table with `body`, read as the rules read it.
+    fn annotsv(name: &str, body: &str) -> Vec<SvRow> {
+        let d = std::env::temp_dir().join(format!("og-two-hits-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("checked.tsv").to_string_lossy().into_owned();
+        std::fs::write(&p, body).unwrap();
+        let rows = read_annotsv(Some((p, "checked.tsv".into())), None)
+            .unwrap()
+            .unwrap();
+        std::fs::remove_dir_all(d).unwrap();
+        rows
+    }
+
+    #[test]
+    fn a_call_inside_a_much_larger_common_sv_is_not_read_as_common() {
+        let head = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\tBenign_match\tClinical_common\tFORMAT\tS1\n";
+        let rows = annotsv(
+            "benign-match",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
+                "NODATA\t1\t120\t180\tDEL\t4\tmanta\tno\t\tno\tnone\tunknown\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let common: Vec<bool> = rows.iter().map(|r| r.common).collect();
+        assert_eq!(common, [true, false, false], "same, contained, no data");
+        // A table written before Benign_match: Common alone decides.
+        let rows = annotsv(
+            "no-benign-match",
+            "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n\
+             OLD\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\n",
+        );
+        assert!(rows[0].common);
+        // The two-hit rule: the nested deletion is a second hit, the same-size
+        // common one is not.
+        let rows = annotsv(
+            "benign-match-hits",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let inp = DeletionInputs {
+            annotsv: Ok(Some(rows)),
+            step35: Ok(None),
+        };
+        let spans: Spans = IndexMap::from([("G".to_owned(), ("chr1".to_owned(), 1, 1000))]);
+        let (found, _, _) = gene_deletions(&inp, &spans);
+        let texts: Vec<&str> = found["G"].iter().map(|x| x.text.as_str()).collect();
+        assert_eq!(texts, ["DEL chr1:120-180 (AnnotSV class 4, manta)"]);
     }
 }
