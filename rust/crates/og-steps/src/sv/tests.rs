@@ -830,3 +830,271 @@ fn survivor_prep_cli_writes_the_file_and_refuses_bad_input() {
     assert_eq!(run(&[&input, &out]).0, 2);
     std::fs::remove_dir_all(d).unwrap();
 }
+
+// og sv consensus-check: a SURVIVOR record is one event two or more callers
+// agree on. The records below are what the pinned SURVIVOR 1.0.7 wrote for
+// made-up calls (`merge LIST 1000 2 1 1 0 50`, columns manta, delly,
+// cnvpytor), so each red case is a merge SURVIVOR really makes.
+
+use super::consensus_check::{self, Apart, Member};
+
+const CC_HEAD: &str = "##fileformat=VCFv4.1\n##source=SURVIVOR\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tmanta\tdelly\tcnvpytor\n";
+const CC_FORMAT: &str = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO";
+const CC_EMPTY: &str = "./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+
+/// Two deletions of 100 bp that start 900 bp apart and share no base.
+const CC_DISJOINT: &str = "chr20\t1000900\td1\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-100;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=1001000;CIPOS=-900,0;CIEND=-900,0;STRANDS=+-\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:100:0,0:+-:60:DEL:m1:NA:NA:chr20_1000000-chr20_1000100\t0/1:NA:100:0,0:+-:60:DEL:d1:NA:NA:chr20_1000900-chr20_1001000\t./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+/// A Manta deletion and a Delly duplication at the same place: SURVIVOR
+/// wrote one DUP with two callers, type and strand flags set.
+const CC_DEL_DUP: &str = "chr20\t7000000\td7\tN\t<DUP>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-3000;SVTYPE=DUP;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=7003000;CIPOS=0,0;CIEND=0,0;STRANDS=-+\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:3000:0,0:+-:60:DEL:m7:NA:NA:chr20_7000000-chr20_7003000\t0/1:NA:3000:0,0:-+:60:DUP:d7:NA:NA:chr20_7000000-chr20_7003000\t./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+/// The same 500 bp deletion from all three callers.
+const CC_AGREE: &str = "chr20\t2000100\td2\tN\t<DEL>\t60\tPASS\tSUPP=3;SUPP_VEC=111;SVLEN=-500;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2000600;CIPOS=-100,0;CIEND=-100,0;STRANDS=+-\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:500:0,0:+-:60:DEL:m2:NA:NA:chr20_2000000-chr20_2000500\t0/1:NA:500:0,0:+-:60:DEL:d2:NA:NA:chr20_2000100-chr20_2000600\t./.:NA:500:0,0:+-:.:DEL:c2:NA:NA:chr20_2000050-chr20_2000550";
+/// A Manta inversion and a Delly breakend pair (BND, 3to3) of it.
+const CC_BND_INV: &str = "chr20\t3000100\td3\tN\tN]chr20:3005100]\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=5000;SVTYPE=INV;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=3005100;CIPOS=-100,0;CIEND=-100,0;STRANDS=++\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:5000:0,0:++:60:INV:m3:NA:NA:chr20_3000000-chr20_3005000\t0/1:NA:5000:0,0:++:60:INV:d3:NA:NA:chr20_3000100-chr20_3005100\t./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+/// One translocation, chr20 to chr21, from two callers.
+const CC_TRA: &str = "chr20\t5000300\tb5\tN\tN[chr21:600000[\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=0;SVTYPE=TRA;SVMETHOD=SURVIVOR1.0.7;CHR2=chr21;END=600400;CIPOS=-300,0;CIEND=-400,0;STRANDS=+-\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:4400000:0,0:+-:60:TRA:a5:NA:NA:chr20_5000000-chr21_600000\t0/1:NA:4399900:0,0:+-:60:TRA:b5:NA:NA:chr20_5000300-chr21_600400\t./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+/// Delly gave two calls; both overlap Manta's by half or more.
+const CC_TWO_FROM_ONE: &str = "chr20\t6000050\td6b\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-2000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6002050;CIPOS=-50,850;CIEND=-150,0;STRANDS=+-\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:2000:0,0:+-:60:DEL:m6:NA:NA:chr20_6000000-chr20_6002000\t0/1:NA:2000:0,0:+-:60,60:DEL,DEL:d6b:NA:NA:chr20_6000050-chr20_6002050,chr20_6000900-chr20_6001900\t./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN";
+/// Three 600 bp deletions 300 and 400 bp apart: the first and the last
+/// share no base.
+const CC_CHAIN: &str = "chr20\t6000300\tb6\tN\t<DEL>\t60\tPASS\tSUPP=3;SUPP_VEC=111;SVLEN=-600;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000900;CIPOS=-300,400;CIEND=-300,400;STRANDS=+-\tGT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO\t0/1:NA:600:0,0:+-:60:DEL:a6:NA:NA:chr20_6000000-chr20_6000600\t0/1:NA:600:0,0:+-:60:DEL:b6:NA:NA:chr20_6000300-chr20_6000900\t0/1:NA:600:0,0:+-:60:DEL:c6:NA:NA:chr20_6000700-chr20_6001300";
+
+/// A Delly-shaped insertion pair (`<INS>`, END = POS + 1, SVLEN, CT=NtoN
+/// in the input) starting 200 bp apart, of `a` and `b` bp, as SURVIVOR
+/// merged it. A Manta insertion has no SVLEN SURVIVOR reads, so it never
+/// merges; Delly's does.
+fn cc_ins(a: i64, b: i64) -> String {
+    let mean = ((a + b) as f64 / 2.0).round() as i64;
+    format!(
+        "chr20\t4000200\tb4\tN\t<INS>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN={mean};SVTYPE=INS;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=4000201;CIPOS=-200,0;CIEND=0,0;STRANDS=++\t{CC_FORMAT}\t0/1:NA:{a}:0,0:++:60:INS:a4:NA:NA:chr20_4000000-chr20_4000001\t0/1:NA:{b}:0,0:++:60:INS:b4:NA:NA:chr20_4000200-chr20_4000201\t{CC_EMPTY}"
+    )
+}
+
+fn cc_text(records: &[&str]) -> (String, consensus_check::Counts) {
+    let input = format!("{CC_HEAD}{}\n", records.join("\n"));
+    let mut out = Vec::new();
+    let c = consensus_check::check(input.as_bytes(), "merged.vcf", &mut out).unwrap();
+    (String::from_utf8(out).unwrap(), c)
+}
+
+fn cc_records(out: &str) -> Vec<&str> {
+    out.lines().filter(|l| !l.starts_with('#')).collect()
+}
+
+fn member(kind: &str, strands: &str, start: i64, end: i64, len: i64) -> Member {
+    Member {
+        caller: 0,
+        index: 0,
+        kind: kind.to_owned(),
+        strands: strands.to_owned(),
+        chrom2: "chr20".to_owned(),
+        start,
+        end,
+        len,
+        other_contig: false,
+    }
+}
+
+#[test]
+fn two_deletions_900_bp_apart_are_not_one_event() {
+    let (out, c) = cc_text(&[CC_DISJOINT]);
+    // Red-first: SURVIVOR's record reads SUPP=2 for two events of one caller each.
+    assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((c.records, c.split, c.dropped, c.written()), (1, 1, 1, 0));
+    let a = member("DEL", "+-", 1_000_000, 1_000_100, 100);
+    let b = member("DEL", "+-", 1_000_900, 1_001_000, 100);
+    assert_eq!(consensus_check::apart(&a, &b), Some(Apart::Overlap));
+    // Half the longer call is enough; a base less is not.
+    let c50 = member("DEL", "+-", 1_000_050, 1_000_150, 100);
+    assert_eq!(consensus_check::apart(&a, &c50), None);
+    let c49 = member("DEL", "+-", 1_000_051, 1_000_151, 100);
+    assert_eq!(consensus_check::apart(&a, &c49), Some(Apart::Overlap));
+}
+
+#[test]
+fn a_deletion_and_a_duplication_are_not_one_event() {
+    let (out, c) = cc_text(&[CC_DEL_DUP]);
+    assert!(cc_records(&out).is_empty(), "{out}");
+    assert_eq!((c.split, c.dropped), (1, 1));
+    let del = member("DEL", "+-", 7_000_000, 7_003_000, 3000);
+    let dup = member("DUP", "-+", 7_000_000, 7_003_000, 3000);
+    assert_eq!(consensus_check::apart(&del, &dup), Some(Apart::Type));
+    let del_other_strands = member("DEL", "-+", 7_000_000, 7_003_000, 3000);
+    assert_eq!(
+        consensus_check::apart(&del, &del_other_strands),
+        Some(Apart::Strands)
+    );
+    // DUP:TANDEM is a DUP.
+    let tandem = member("DUP:TANDEM", "-+", 7_000_000, 7_003_000, 3000);
+    assert_eq!(consensus_check::apart(&dup, &tandem), None);
+}
+
+#[test]
+fn delly_shaped_insertions_need_a_like_size() {
+    // 1,000 bp and 300 bp: SURVIVOR merged them (ends within 1 kb).
+    let unlike = cc_ins(1000, 300);
+    let like = cc_ins(1000, 600);
+    let (out, c) = cc_text(&[&unlike, &like]);
+    let recs = cc_records(&out);
+    assert_eq!(recs, [like.as_str()], "{out}");
+    assert_eq!((c.records, c.kept, c.split, c.dropped), (2, 1, 1, 1));
+    let a = member("INS", "++", 4_000_000, 4_000_001, 1000);
+    let half = member("INS", "++", 4_000_200, 4_000_201, 500);
+    assert_eq!(consensus_check::apart(&a, &half), None);
+    let under = member("INS", "++", 4_000_200, 4_000_201, 499);
+    assert_eq!(consensus_check::apart(&a, &under), Some(Apart::Size));
+    let far = member("INS", "++", 4_001_001, 4_001_002, 1000);
+    assert_eq!(consensus_check::apart(&a, &far), Some(Apart::Distance));
+    let near = member("INS", "++", 4_001_000, 4_001_001, 1000);
+    assert_eq!(consensus_check::apart(&a, &near), None);
+}
+
+#[test]
+fn a_breakend_pair_of_an_inversion_and_a_translocation_stay() {
+    // SURVIVOR's own rule counts BND, INV and TRA as one type.
+    let (out, c) = cc_text(&[CC_BND_INV, CC_TRA]);
+    assert_eq!(cc_records(&out), [CC_BND_INV, CC_TRA]);
+    assert_eq!((c.kept, c.split), (2, 0));
+    let inv = member("INV", "++", 3_000_000, 3_005_000, 5000);
+    let bnd = member("BND", "++", 3_000_100, 3_005_100, 5000);
+    assert_eq!(consensus_check::apart(&inv, &bnd), None);
+    let tra = |start: i64, chrom2: &str, end: i64| Member {
+        chrom2: chrom2.to_owned(),
+        other_contig: true,
+        len: 0,
+        ..member("TRA", "+-", start, end, 0)
+    };
+    assert_eq!(
+        consensus_check::apart(
+            &tra(5_000_000, "chr21", 600_000),
+            &tra(5_000_300, "chr21", 601_000)
+        ),
+        None
+    );
+    assert_eq!(
+        consensus_check::apart(
+            &tra(5_000_000, "chr21", 600_000),
+            &tra(5_000_300, "chr21", 601_001)
+        ),
+        Some(Apart::Distance)
+    );
+    assert_eq!(
+        consensus_check::apart(
+            &tra(5_000_000, "chr21", 600_000),
+            &tra(5_000_000, "chr22", 600_000)
+        ),
+        Some(Apart::Distance)
+    );
+}
+
+#[test]
+fn a_merge_of_one_event_is_written_as_survivor_wrote_it() {
+    let (out, c) = cc_text(&[CC_AGREE, CC_TWO_FROM_ONE]);
+    assert_eq!(cc_records(&out), [CC_AGREE, CC_TWO_FROM_ONE]);
+    assert_eq!((c.records, c.kept, c.written()), (2, 2, 2));
+    // The header gains one line, just above #CHROM.
+    let head: Vec<&str> = out.lines().filter(|l| l.starts_with('#')).collect();
+    assert_eq!(head.len(), 4, "{out}");
+    assert_eq!(head[2], consensus_check::HEADER);
+    assert!(head[3].starts_with("#CHROM\t"));
+    assert_eq!(
+        c.to_string(),
+        "2 records, 2 written; 2 one event as merged, 0 not one event: split into 0 records of 2+ callers, 0 dropped with fewer than 2 callers left"
+    );
+}
+
+#[test]
+fn a_chain_keeps_the_first_event_and_recomputes_its_coordinates() {
+    let (out, c) = cc_text(&[CC_CHAIN]);
+    // a6 and b6 overlap by half; c6 overlaps b6 but shares no base with a6,
+    // so it is an event of its own, of one caller, and is dropped.
+    let want = format!(
+        "chr20\t6000000\ta6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-600;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000600;CIPOS=0,300;CIEND=0,300;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:600:0,0:+-:60:DEL:a6:NA:NA:chr20_6000000-chr20_6000600\t0/1:NA:600:0,0:+-:60:DEL:b6:NA:NA:chr20_6000300-chr20_6000900\t{CC_EMPTY}"
+    );
+    assert_eq!(cc_records(&out), [want.as_str()]);
+    assert_eq!((c.split, c.from_split, c.dropped), (1, 1, 0));
+}
+
+#[test]
+fn a_caller_keeps_only_its_calls_of_the_event() {
+    // Delly's second call (100 bp inside Manta's 2 kb) is not the event.
+    let rec = CC_TWO_FROM_ONE.replace("chr20_6000900-chr20_6001900", "chr20_6000900-chr20_6001000");
+    let (out, c) = cc_text(&[&rec]);
+    let want = format!(
+        "chr20\t6000000\tm6\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-2000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6002000;CIPOS=0,50;CIEND=0,50;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:2000:0,0:+-:60:DEL:m6:NA:NA:chr20_6000000-chr20_6002000\t0/1:NA:2000:0,0:+-:60:DEL:.:NA:NA:chr20_6000050-chr20_6002050\t{CC_EMPTY}"
+    );
+    // Delly's ID named its second call, so the kept column says "." there.
+    assert_eq!(cc_records(&out), [want.as_str()]);
+    assert_eq!((c.split, c.from_split), (1, 1));
+}
+
+#[test]
+fn two_events_in_one_record_become_two_records() {
+    let rec = format!(
+        "chr20\t1000\tdB\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2000;CIPOS=0,4000;CIEND=0,4000;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:0,0:+-:60,60:DEL,DEL:mB:NA:NA:chr20_1000-chr20_2000,chr20_5000-chr20_6000\t0/1:NA:1000:0,0:+-:60,60:DEL,DEL:dB:NA:NA:chr20_1100-chr20_2100,chr20_5100-chr20_6100\t{CC_EMPTY}"
+    );
+    let (out, c) = cc_text(&[&rec]);
+    let first = format!(
+        "chr20\t1000\t.\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:0,0:+-:60:DEL:.:NA:NA:chr20_1000-chr20_2000\t0/1:NA:1000:0,0:+-:60:DEL:.:NA:NA:chr20_1100-chr20_2100\t{CC_EMPTY}"
+    );
+    let second = format!(
+        "chr20\t5000\tmB\tN\t<DEL>\t60\tPASS\tSUPP=2;SUPP_VEC=110;SVLEN=-1000;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6000;CIPOS=0,100;CIEND=0,100;STRANDS=+-\t{CC_FORMAT}\t0/1:NA:1000:0,0:+-:60:DEL:mB:NA:NA:chr20_5000-chr20_6000\t0/1:NA:1000:0,0:+-:60:DEL:dB:NA:NA:chr20_5100-chr20_6100\t{CC_EMPTY}"
+    );
+    assert_eq!(cc_records(&out), [first.as_str(), second.as_str()]);
+    assert_eq!((c.split, c.from_split, c.written()), (1, 2, 2));
+}
+
+#[test]
+fn a_record_it_cannot_read_is_written_as_it_was() {
+    let no_co = CC_DISJOINT.replace(":AAL:CO\t", ":AAL\t");
+    let short_vec = CC_DISJOINT.replace("SUPP_VEC=110", "SUPP_VEC=11");
+    let other_contig =
+        CC_DISJOINT.replace("chr20_1000000-chr20_1000100", "chr2_1000000-chr2_1000100");
+    let (out, c) = cc_text(&[&no_co, &short_vec, &other_contig]);
+    assert_eq!(
+        cc_records(&out),
+        [no_co.as_str(), short_vec.as_str(), other_contig.as_str()]
+    );
+    assert_eq!((c.unread, c.written()), (3, 3));
+    assert!(
+        c.to_string()
+            .ends_with("; 3 could not be read and are written as SURVIVOR wrote them")
+    );
+}
+
+#[test]
+fn consensus_check_cli_writes_the_file_and_refuses_bad_input() {
+    let d = scratch("svcc");
+    let input = put(
+        &d,
+        "merged.vcf",
+        &format!("{CC_HEAD}{CC_DISJOINT}\n{CC_AGREE}\n"),
+    );
+    let out = d.join("checked.vcf").to_string_lossy().into_owned();
+    let run = |a: &[&str]| {
+        let argv: Vec<String> = a.iter().map(|s| (*s).to_owned()).collect();
+        let (mut o, mut e) = (Vec::new(), Vec::new());
+        let code = consensus_check::cli(&argv, &mut o, &mut e);
+        (
+            code,
+            String::from_utf8(o).unwrap(),
+            String::from_utf8(e).unwrap(),
+        )
+    };
+    let (code, _, err) = run(&[&input, &out]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(ids(&std::fs::read_to_string(&out).unwrap()), ["d2"]);
+    assert_eq!(
+        err,
+        "og sv consensus-check: 2 records, 1 written; 1 one event as merged, 1 not one event: split into 0 records of 2+ callers, 1 dropped with fewer than 2 callers left\n"
+    );
+    let (code, stdout, _) = run(&[&input, "-"]);
+    assert_eq!((code, ids(&stdout)), (0, vec!["d2".to_owned()]));
+    let (code, _, err) = run(&[&d.join("none.vcf").to_string_lossy(), &out]);
+    assert!(code == 1 && err.starts_with("ERROR: cannot read "), "{err}");
+    let (code, stdout, _) = run(&["--help"]);
+    assert!(code == 0 && stdout.starts_with("usage: og sv consensus-check"));
+    assert_eq!(run(&[&input]).0, 2);
+    assert_eq!(run(&["--og-scaffold-probe"]).0, 2);
+    std::fs::remove_dir_all(d).unwrap();
+}
