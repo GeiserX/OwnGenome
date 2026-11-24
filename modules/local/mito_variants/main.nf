@@ -89,10 +89,15 @@ process MITO_VARIANTS {
             --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \\
             --read-filter NotSupplementaryAlignmentReadFilter \\
             --read-filter MateOnSameContigOrNoMappedMateReadFilter || return 1
-        gatk RevertSam -I shifted/reads.bam -O shifted/unaligned.bam --SANITIZE true \\
+        # Not --SANITIZE: it re-encodes qualities that are all Q31 or more as
+        # if they were phred+64. BwaSpark aligns records two by two as pairs,
+        # so awk keeps both mates of a name or neither.
+        gatk RevertSam -I shifted/reads.bam -O shifted/unaligned.sam \\
             --SORT_ORDER queryname --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false \\
             --VALIDATION_STRINGENCY LENIENT --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO || return 1
-        gatk --java-options -Xmx4g BwaSpark -I shifted/unaligned.bam -R shifted/chrM_shifted.fasta \\
+        awk -F'\\t' '/^@/ { print; next } \$1 == name { print prev; print; name = ""; next } { name = \$1; prev = \$0 }' \\
+            shifted/unaligned.sam > shifted/paired.sam || return 1
+        gatk --java-options -Xmx4g BwaSpark -I shifted/paired.sam -R shifted/chrM_shifted.fasta \\
             --bwa-mem-index-image shifted/chrM_shifted.img --spark-master "local[${task.cpus}]" \\
             -O shifted/aligned.bam || return 1
         gatk SortSam -I shifted/aligned.bam -O shifted/sorted.bam --SORT_ORDER coordinate \\
@@ -108,7 +113,7 @@ process MITO_VARIANTS {
     else
         echo "WARNING: the shifted-reference pass failed: the control region keeps the linear calls alone" >&2
     fi
-    rm -f shifted/*.bam shifted/*.bai shifted/*.sbi shifted/*.img
+    rm -f shifted/*.bam shifted/*.bai shifted/*.sbi shifted/*.sam shifted/*.img
 
     # Step 3: Filter variants (the stats are the linear pass's, over all of chrM)
     gatk FilterMutectCalls \\

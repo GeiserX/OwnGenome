@@ -122,10 +122,15 @@ shifted_pass() {
     gatk PrintReads -I "$2" -L chrM -O "$d/reads.bam" \
       --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \
       --read-filter NotSupplementaryAlignmentReadFilter --read-filter MateOnSameContigOrNoMappedMateReadFilter
-    gatk RevertSam -I "$d/reads.bam" -O "$d/unaligned.bam" --SANITIZE true --SORT_ORDER queryname \
+    # Unaligned and grouped by name. Not --SANITIZE: it re-encodes qualities
+    # that are all Q31 or more as if they were phred+64.
+    gatk RevertSam -I "$d/reads.bam" -O "$d/unaligned.sam" --SORT_ORDER queryname \
       --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false --VALIDATION_STRINGENCY LENIENT \
       --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO
-    gatk --java-options -Xmx4g BwaSpark -I "$d/unaligned.bam" -R "$d/chrM_shifted.fasta" \
+    # BwaSpark aligns records two by two as pairs: keep both mates or neither.
+    awk -F"\t" "/^@/ { print; next } \$1 == name { print prev; print; name = \"\"; next } { name = \$1; prev = \$0 }" \
+      "$d/unaligned.sam" > "$d/paired.sam"
+    gatk --java-options -Xmx4g BwaSpark -I "$d/paired.sam" -R "$d/chrM_shifted.fasta" \
       --bwa-mem-index-image "$d/chrM_shifted.img" --spark-master "local[4]" -O "$d/aligned.bam"
     gatk SortSam -I "$d/aligned.bam" -O "$d/sorted.bam" --SORT_ORDER coordinate --CREATE_INDEX true
     gatk Mutect2 -R "$d/chrM_shifted.fasta" -I "$d/sorted.bam" -L "$d/control.intervals" \
@@ -134,7 +139,7 @@ shifted_pass() {
   run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og vcf shift-back --linear "$RAW_C" --shifted "${SHIFT_C}/shifted_mutect2.vcf.gz" \
       --out "${SHIFT_C}/merged_mutect2.vcf.gz" || return 1
-  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.img
+  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.sam "$SHIFT_DIR"/*.img
 }
 echo "  Shifted-reference pass: the control region again on chrM rotated by 8000 bp..."
 FILTER_IN="$RAW_C"
@@ -143,7 +148,7 @@ if shifted_pass; then
 else
   echo "  WARNING: the shifted-reference pass failed (see above): the control region keeps the"
   echo "  linear calls alone, and calls at its ends keep the origin_edge flag."
-  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.img
+  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.sam "$SHIFT_DIR"/*.img
 fi
 
 echo "[4/8] Filtering variants..."
