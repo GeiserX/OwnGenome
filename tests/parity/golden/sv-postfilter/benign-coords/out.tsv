@@ -1,0 +1,9 @@
+AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	AnnotSV_ranking_score	Caller	Exon_edge	Exon_edge_detail	Population_AF	Population_source	Common	Benign_match	Clinical_common	AnnotSV_class	Depth_support	Rule	Rule_detail
+20_1001000_1009000_DEL_1	HALF	20	1001000	1009000	-8000	DEL	FIXG1	4	0.9	manta	not checked		0.05	fixture_half	yes	same	unknown	4	not checked		
+20_2000_2500_DEL_1	NESTED	20	2000	2500	-500	DEL	G1	4	0.9	manta	not checked		0.05	gnomAD-SV_v4.1_DEL	yes	contained	unknown	4	not checked		
+20_3000_3500_DEL_1	MIXED	20	3000	3500	-500	DEL	G1	4	0.9	manta	not checked		0.05	CLN:2;gnomAD-SV_v4.1_DEL	yes	same	unknown	4	not checked		
+20_4000_4500_DEL_1	NOAF	20	4000	4500	-500	DEL	G1	4	0.9	manta	not checked			no frequency data	no	same	unknown	4	not checked		
+20_6000_6500_DEL_1	BADPOS	20	6000	6500	-500	DEL	G1	4	0.9	manta	not checked		0.05	fixture	yes	not checked	unknown	4	not checked		
+20_7000_7500_DEL_1	BLANK	20	7000	7500	-500	DEL	G1	4	0.9	manta	not checked			no frequency data	no	none	unknown	4	not checked		
+20_8000_8500_DEL_1	DISJOINT	20	8000	8500	-500	DEL	G1	4	0.9	manta	not checked		0.05	fixture	yes	not checked	unknown	4	not checked		
+20_3050_3550_DUP_1	DUP	20	3050	3550	500	DUP	G1	4	0.9	manta	.		0.02	gnomAD-SV_v4.1_DUP	yes	same	unknown	4	not checked		
