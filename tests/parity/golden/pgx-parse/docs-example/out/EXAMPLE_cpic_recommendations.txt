@@ -1,0 +1,111 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: EXAMPLE
+Date: 2026-11-23
+Source: PharmCAT v3.1.1-7-g1b371646 report (pharmcat-docs-example.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+ABCG2        rs2231142 reference (G)/rs2231142 reference (G) Normal Function
+CACNA1S      Reference/Reference            Uncertain Susceptibility
+CFTR         Reference/Reference            ivacaftor non-responsive in CF patients
+CYP2B6       *1/*1                          Normal Metabolizer
+CYP2C19      *38/*38                        Normal Metabolizer
+CYP2C9       *1/*1                          Normal Metabolizer
+CYP2D6       *1/*3                          Intermediate Metabolizer  [outside call]
+CYP3A4       *1/*1                          Normal Metabolizer
+CYP3A5       *1/*1                          Normal Metabolizer
+CYP4F2       *1/*1                          no phenotype assigned
+DPYD         Reference/Reference            Normal Metabolizer
+G6PD         B (reference)/B (reference)    Normal
+HLA-A        Unknown/Unknown                No Result
+HLA-B        *15:02/*57:01                  *15:02 positive; *57:01 positive; *58:01 negative  [outside call]
+IFNL3        rs12979860 reference (C)/rs12979860 reference (C) n/a
+MT-RNR1      1555A>G                        n/a  [outside call]
+NAT2         *1/*1                          Rapid Metabolizer
+NUDT15       *1/*1                          Normal Metabolizer
+RYR1         Reference/Reference            Uncertain Susceptibility
+SLCO1B1      *1/*1                          Normal Function
+TPMT         *1/*1                          Normal Metabolizer
+UGT1A1       *1/*1                          Normal Metabolizer
+VKORC1       rs9923231 reference (C)/rs9923231 reference (C) -1639 GG
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP2D6 -- Intermediate Metabolizer:
+    Diplotype: *1/*3
+    Drugs with guidance in this PharmCAT report:
+      - amitriptyline [CPIC, Moderate]: Consider a 25% reduction of recommended starting dose. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - atomoxetine [CPIC, Moderate]: Initiate with a dose of 40 mg/day and increase to 80 mg/day after 3 days. If no clinical response and in the absence of adverse events after 2 weeks, consider increasing dose to 100 mg/day. If no clinical response observed after 2 weeks, consider obtaining a peak plasma concentration (1 to 2 hours after dose administered). If <200 ng/mL, consider a proportional increase in dose to approach 400 ng/mL. Dosages greater than 100 mg/day may be needed to achieve target concentrations.
+      - clomipramine [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - codeine [CPIC, Moderate]: Use codeine label recommended age- or weight-specific dosing. If no response and opioid use is warranted, consider a non-tramadol opioid.
+      - desipramine [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Titrate dose to observed clinical response with symptom improvement and minimal (if any) side effects. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - doxepin [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - fluvoxamine [CPIC, Moderate]: Initiate therapy with recommended starting dose.
+      - hydrocodone [CPIC, Optional]: Use hydrocodone label recommended age- or weight-specific dosing. If no response and opioid use is warranted, consider non-codeine or non-tramadol opioid.
+      - imipramine [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - metoprolol [CPIC, Moderate]: Initiate standard dosing
+      - nortriptyline [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Titrate dose to observed clinical response with symptom improvement and minimal (if any) side effects. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - ondansetron [CPIC, No recommendation]: Insufficient evidence demonstrating clinical impact based on CYP2D6 genotype. Initiate therapy with recommended starting dose.
+      - paroxetine [CPIC, Optional]: Consider a lower starting dose and slower titration schedule as compared to normal metabolizers.
+      - tamoxifen [CPIC, Optional]: Consider hormonal therapy such as an aromatase inhibitor for postmenopausal women or aromatase inhibitor along with ovarian function suppression in premenopausal women, given that these approaches are superior to tamoxifen regardless of CYP2D6 genotype (PMID 26211827). If aromatase inhibitor use is contraindicated, consideration should be given to use a higher but FDA approved tamoxifen dose (40 mg/day)(PMID 27226358). Avoid CYP2D6 strong to weak inhibitors.
+      - tramadol [CPIC, Optional]: Use tramadol label recommended age- or weight-specific dosing. If no response and opioid use is warranted, consider non-codeine opioid.
+      - trimipramine [CPIC, Optional]: Consider a 25% reduction of recommended starting dose. Utilize therapeutic drug monitoring to guide dose adjustments.
+      - tropisetron [CPIC, No recommendation]: Insufficient evidence demonstrating clinical impact based on CYP2D6 genotype. Initiate therapy with recommended starting dose.
+      - venlafaxine [CPIC, No recommendation]: No action recommended based on genotype for venlafaxine because of minimal evidence regarding the impact on efficacy or side effects.
+      - vortioxetine [CPIC, Moderate]: Initiate therapy with recommended starting dose.
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      also named by DPWG, FDA label, FDA association: amoxapine, aripiprazole, brexpiprazole, eliglustat, flecainide, haloperidol, meclizine, pimozide, propafenone, risperidone, tetrabenazine, thioridazine, zuclopenthixol
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  HLA-B -- *15:02 positive; *57:01 positive; *58:01 negative:
+    Diplotype: *15:02/*57:01
+    Drugs with guidance in this PharmCAT report:
+      - abacavir [CPIC, Strong]: Abacavir is not recommended
+      - allopurinol [CPIC, Strong]: Use allopurinol per standard dosing guidelines
+      - carbamazepine [CPIC, Strong]: If patient is carbamazepine-naïve, do not use carbamazepine.
+      - fosphenytoin [CPIC, Strong]: If patient is phenytoin-naive, do not use phenytoin/fosphenytoin. Avoid carbamazepine and oxcarbazepine.
+      - oxcarbazepine [CPIC, Strong]: If patient is oxcarbazepine-naïve, do not use oxcarbazepine.
+      - phenytoin [CPIC, Strong]: If patient is phenytoin-naive, do not use phenytoin/fosphenytoin. Avoid carbamazepine and oxcarbazepine.
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+      also named by DPWG, FDA label, FDA association: flucloxacillin, lamotrigine, pazopanib
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  NAT2 -- Rapid Metabolizer:
+    Diplotype: *1/*1
+    Drugs with guidance in this PharmCAT report:
+      - hydralazine [CPIC, Moderate]: Consider a starting total daily dose of at least 75 mg. Titrate up to 300 mg total daily hydralazine dose as tolerated. NAT2 rapid metabolizers typically require a 50-100% higher maintenance dose compared to poor metabolizers.
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Called Genes Without a Function Phenotype:
+------------------------------------------------------------------------
+
+  CACNA1S -- Uncertain Susceptibility (Reference/Reference)
+  CFTR -- ivacaftor non-responsive in CF patients (Reference/Reference)
+  CYP4F2 -- no phenotype assigned (*1/*1)
+  IFNL3 -- n/a (rs12979860 reference (C)/rs12979860 reference (C))
+  MT-RNR1 -- n/a (1555A>G)
+  RYR1 -- Uncertain Susceptibility (Reference/Reference)
+  VKORC1 -- -1639 GG (rs9923231 reference (C)/rs9923231 reference (C))
+  PharmCAT called these genes but its phenotype (n/a, a reference genotype,
+  'no phenotype assigned', an uncertain result) names no changed function, so
+  they are not counted as non-normal and get no drug list here. A variant allele
+  among them can still matter: see the PharmCAT HTML report.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  HLA-A -- No Result (not callable from available data)
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

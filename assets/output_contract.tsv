@@ -105,6 +105,7 @@ file	{sample}/coverage/{sample}.mosdepth.summary.txt	16b	MOSDEPTH	nextflow	tsv	s
 file	{sample}/coverage/{sample}.regions.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
 file	{sample}/coverage/{sample}.thresholds.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
 file	{sample}/coverage/{sample}_callability.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
+file	{sample}/coverage/{sample}_callability_exons.bed.gz	16b	MOSDEPTH	nextflow	bed	stable	nextflow	-
 file	{sample}/cpic/{sample}_cpic_recommendations.txt	27	CPIC_LOOKUP	both	text	stable	both	-
 file	{sample}/cpic/{sample}_phenotypes.tsv	27	CPIC_LOOKUP	both	tsv	stable	both	-
 file	{sample}/cpsr/{sample}.cpsr.grch38.classification.tsv.gz	17	CPSR	both	tsv	stable	-	-
@@ -129,6 +130,7 @@ file	{sample}/fastq_trimmed/{sample}_R1.fastq.gz	01b	FASTP	nextflow	bin	internal
 file	{sample}/fastq_trimmed/{sample}_R2.fastq.gz	01b	FASTP	nextflow	bin	internal	-	-
 file	{sample}/fastq_trimmed/{sample}_fastp.html	01b	FASTP	both	html	stable	-	-
 file	{sample}/fastq_trimmed/{sample}_fastp.json	01b	FASTP	both	json	stable	-	-
+file	{sample}/hla/*_hla_candidate*.fq	08	HLA_TYPING	nextflow	text	internal	-	-
 file	{sample}/hla/{sample}_hla_genotype.tsv	08	HLA_TYPING	nextflow	tsv	stable	-	-
 file	{sample}/hla_optitype/{sample}_hla_concordance.tsv	08	HLA_QC	both	tsv	experimental	-	-
 file	{sample}/hla_optitype/{sample}_optitype_result.tsv	08	HLA_QC	both	tsv	experimental	-	-

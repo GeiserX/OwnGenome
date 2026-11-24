@@ -700,6 +700,23 @@ fn parity_hba_tables_are_the_ones_before_the_engine() {
 fn parity_lpa_tables_are_the_ones_before_the_engine() {
     let (c, w) = (cat(), Scratch::new("gold-lpa"));
     let (a, q, tab) = (w.path("a.tsv"), w.path("q.tsv"), w.path("t.tsv"));
+    // The code before the engine had no systematic term: the parity runs on
+    // the catalog with LPA_KIV2's interval as plain cv (the term itself is
+    // checked in genome_lpa.rs and og-cn's engine tests).
+    let plain_cv = w.path("cn_loci.tsv");
+    let col = COLUMNS.iter().position(|c| *c == "interval").unwrap();
+    let text: String = read(&catalog_path())
+        .lines()
+        .map(|l| {
+            let mut f: Vec<&str> = l.split('\t').collect();
+            if f[0] == "LPA_KIV2" {
+                assert!(f[col].starts_with("cv:"), "LPA_KIV2 has cv:SYS");
+                f[col] = "cv";
+            }
+            f.join("\t") + "\n"
+        })
+        .collect();
+    std::fs::write(&plain_cv, text).unwrap();
     let lrow = &c.loci["LPA_KIV2"];
     let g = gold();
     let Value::Object(g) = &g else { panic!() };
@@ -740,7 +757,7 @@ fn parity_lpa_tables_are_the_ones_before_the_engine() {
         let (rc, _, err) = og_cn(&[
             "call",
             "--catalog",
-            &catalog_path(),
+            &plain_cv,
             "--locus",
             "LPA_KIV2",
             "--bedcov",

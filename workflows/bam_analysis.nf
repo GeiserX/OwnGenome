@@ -95,7 +95,7 @@ workflow BAM_ANALYSIS {
     ch_y_str_csv        = Channel.empty()   // [meta, <id>_y_str.csv]
     ch_mosdepth_depth   = Channel.empty()   // [meta, summary, global_dist] when mosdepth runs
     ch_mosdepth_regions = Channel.empty()   // [meta, regions.bed.gz] when mosdepth runs
-    ch_callability      = Channel.empty()   // [meta, <id>_callability.bed.gz] when mosdepth runs
+    ch_callability      = Channel.empty()   // [meta, <id>_callability.bed.gz and, when exons are measured, <id>_callability_exons.bed.gz] when mosdepth runs
 
     //
     // MODULE 1: HLA Typing (T1K)
@@ -119,10 +119,11 @@ workflow BAM_ANALYSIS {
         }
 
         // Opt-in: --hla_qc, OptiType as a second caller of HLA-A, -B and -C,
-        // on the reads of those genes; PGX_CONSENSUS passes HLA-A and HLA-B
+        // on the read pairs T1K extracted (HLA_TYPING's candidate reads, so
+        // both callers judge the same reads); PGX_CONSENSUS passes HLA-A and HLA-B
         // to PharmCAT only when it agrees with T1K at two fields
         if (params.hla_qc) {
-            HLA_QC_READS(ch_bam, T1K_BUILD.out.coord_fa)
+            HLA_QC_READS(HLA_TYPING.out.candidates)
             HLA_QC(
                 HLA_QC_READS.out.reads.map { meta, r1, r2 -> [meta.id, meta, r1, r2] }
                     .join(HLA_TYPING.out.hla_alleles.map { meta, f -> [meta.id, f] })
@@ -190,11 +191,11 @@ workflow BAM_ANALYSIS {
 
     //
     // MODULE 4: mosdepth (coverage statistics, and the callability of the
-    // genes of assets/callability_genes.tsv)
+    // genes of assets/callability_genes.tsv and of their coding exons)
     // Gates on: params.tools contains 'mosdepth'
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mosdepth')) {
-        MOSDEPTH(ch_bam, Channel.value(file("${projectDir}/assets/callability_genes.tsv", checkIfExists: true)))
+        MOSDEPTH(ch_bam, Channel.value(["callability_genes.tsv", "callability_exons.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }))
         ch_callability    = MOSDEPTH.out.callability
         ch_coverage       = MOSDEPTH.out.summary
         ch_mosdepth_depth = MOSDEPTH.out.summary.join(MOSDEPTH.out.global_dist)
@@ -406,7 +407,7 @@ workflow BAM_ANALYSIS {
     eh_catalog       = ch_eh_catalog      // [meta, <id>_eh_catalog.json]
     telomere_results = ch_telomere_results
     coverage         = ch_coverage
-    callability      = ch_callability     // [meta, <id>_callability.bed.gz]
+    callability      = ch_callability     // [meta, <id>_callability.bed.gz and, when exons are measured, <id>_callability_exons.bed.gz]
     cn_intervals     = ch_cn_intervals    // [meta, <id>_cn_intervals.tsv]: bin/cn_loci.tsv's interval rows
     cn_dosage        = ch_cn_dosage       // [meta, <id>_cn_dosage.tsv]: bin/cn_loci.tsv's gene-dosage rows
     cyp21a2          = ch_cyp21a2         // [meta, <id>_cyp21a2_psv.tsv]: CYP21A2 from depth and PSV sites

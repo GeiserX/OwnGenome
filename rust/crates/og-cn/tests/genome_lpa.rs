@@ -10,9 +10,10 @@
 //! KIV-2 depth from reads of MAPQ 0 unless a case says otherwise:
 //!  1. the arithmetic: a block depth of 30 x (N + 2) / 14 gives N, for N =
 //!     12, 20 and 40;
-//!  2. the interval: equal depths give a zero-width interval; planted spread
-//!     gives sqrt(cv_kiv2^2 / 14 + cv_flank^2 / 15) on N + 2, computed here
-//!     by hand; twice the spread gives a wider interval;
+//!  2. the interval: equal depths give the catalog's systematic term alone
+//!     (cv:SYS); planted spread gives sqrt(cv_kiv2^2 / 14 + cv_flank^2 / 15 +
+//!     SYS^2) on N + 2, computed here by hand; twice the spread gives a wider
+//!     interval;
 //!  3. the class: low, typical and high by the whole interval against 30
 //!     and 45;
 //!  4. too little depth, no MAPQ 0 read over KIV-2, no chr6 and a depth under
@@ -22,7 +23,7 @@
 //!     uncertain, too little depth, not assessed; other positions and indel
 //!     bases are not counted; step 46's table is left byte for byte;
 //!     `call --marker` writes what `marker-read` writes;
-//!  9. the demo sample's step 46 table (`tests/demo/make_demo_sample.py`) is
+//!  9. the demo sample's step 46 table (`og dev demo-sample`'s `LPA_TABLE`) is
 //!     the one `og cn call` writes for its depths.
 
 use std::collections::HashMap;
@@ -226,17 +227,25 @@ fn the_arithmetic_a_block_at_30_n_plus_2_over_14_is_n() {
 #[test]
 fn the_interval_by_hand() {
     let r = lpa_row();
+    // The catalog's systematic term, measured against assembled genomes
+    // (docs/46-lpa.md): equal depths have no read-sampling spread, so the
+    // interval is exp(+-1.96 x SYS) of N + 2.
+    let sys = r.depth().ci_sys;
+    assert_eq!(sys, 0.035, "the LPA_KIV2 row's interval is cv:0.035");
     let t = plain("zero", 20.0, 30.0, 0.9);
     assert_eq!(
         (g(&t, "ci95_low"), g(&t, "ci95_high")),
-        ("20.0", "20.0"),
-        "equal depths: zero width"
+        (
+            format!("{:.1}", 22.0 * (-1.96 * sys).exp() - 2.0).as_str(),
+            format!("{:.1}", 22.0 * (1.96 * sys).exp() - 2.0).as_str()
+        ),
+        "equal depths: the systematic term alone"
     );
     let m = depths(&r, 20.0, 30.0, 0.10, 0.15);
     let t = assess("spread", Some((&m, &q1(&m, 0.9))));
     let kv: Vec<f64> = r.targets.iter().map(|s| m[&s.name]).collect();
     let fv: Vec<f64> = r.controls.iter().map(|s| m[&s.name]).collect();
-    let rel = (cv(&kv).powi(2) / 14.0 + cv(&fv).powi(2) / 15.0).sqrt();
+    let rel = (cv(&kv).powi(2) / 14.0 + cv(&fv).powi(2) / 15.0 + sys.powi(2)).sqrt();
     let pooled = |segs: &[og_cn::catalog::Segment]| {
         segs.iter()
             .map(|s| m[&s.name] * (s.end - s.start) as f64)
@@ -267,9 +276,12 @@ fn the_interval_by_hand() {
 #[test]
 fn the_class_by_the_whole_interval() {
     let r = lpa_row();
+    // With the systematic term (cv:0.035) even a tight spread leaves an
+    // interval of about +-7% of N + 2: 26 copies reach no higher than 28.
     for (n, sp, cls) in [
         (20.0, 0.03, "low"),
-        (29.0, 0.03, "low"),
+        (26.0, 0.03, "low"),
+        (29.0, 0.03, "typical"),
         (29.0, 0.25, "typical"),
         (38.0, 0.03, "typical"),
         (47.0, 0.25, "typical"),
@@ -614,13 +626,14 @@ fn kiv2_4925_statuses_and_what_is_not_counted() {
 
 // 9. the demo's step 46 table
 
-/// The string the parenthesised literals assigned to `var` in `src` join to.
-fn py_str(src: &str, var: &str) -> String {
+/// The string the `concat!` of string literals assigned to `const NAME` in
+/// `src` (Rust source) joins to.
+fn rs_str(src: &str, name: &str) -> String {
     let start = src
-        .find(&format!("\n{var} = ("))
-        .unwrap_or_else(|| panic!("no {var} literal"));
+        .find(&format!("const {name}: &str = concat!("))
+        .unwrap_or_else(|| panic!("no {name} literal"));
     let rest = &src[start..];
-    let body = &rest[rest.find('(').unwrap() + 1..rest.find(")\n").unwrap()];
+    let body = &rest[rest.find('(').unwrap() + 1..rest.find("\n);").unwrap()];
     body.split('"')
         .skip(1)
         .step_by(2)
@@ -628,19 +641,20 @@ fn py_str(src: &str, var: &str) -> String {
         .collect()
 }
 
+/// The demo writer `og dev demo-sample` (it replaced
+/// `tests/demo/make_demo_sample.py`) writes step 46's table as a constant:
+/// it must be what `og cn call` writes for the demo's depths, about 37
+/// KIV-2 repeats at a flank depth near 31 (KIV-2 exons 86.5 x 1.02 and
+/// x 0.98 in turn, single-copy exons 31.0 x 1.03 and x 0.97), half the
+/// KIV-2 depth at MAPQ 0 (MAPQ >= 1: KIV-2 x 0.5, the rest x 0.98).
 #[test]
 fn the_demo_step_46_table_is_what_og_cn_call_writes_for_its_depths() {
-    let src = read(&format!("{REPO}/tests/demo/make_demo_sample.py"));
-    let want = py_str(&src, "LPA_TABLE");
+    let src = read(&format!("{REPO}/rust/crates/og-dev/src/demo/clinical.rs"));
+    let want = rs_str(&src, "LPA_TABLE");
     assert!(
         want.starts_with("metric\tvalue\nstatus\testimated\n"),
         "{want:?}"
     );
-    // lpa_depth: about 37 KIV-2 repeats at a flank depth near 31, half the
-    // KIV-2 depth at MAPQ 0.
-    assert!(src.contains("m = {n: 86.5 * (1.02 if i % 2 == 0 else 0.98)"));
-    assert!(src.contains("m.update({n: 31.0 * (1.03 if i % 2 == 0 else 0.97)"));
-    assert!(src.contains("return m, {n: v * (0.5 if n.startswith(\"kiv2_\") else 0.98)"));
     let r = lpa_row();
     let mut m = Depth::new();
     for (i, s) in r.targets.iter().enumerate() {

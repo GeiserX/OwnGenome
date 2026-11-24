@@ -740,6 +740,7 @@ dependencies = [
 name = "og-browser"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "indexmap",
  "pycompat",
  "regex",
@@ -799,6 +800,7 @@ dependencies = [
  "og-intervals",
  "og-io",
  "og-nf",
+ "og-runlog",
  "png",
  "pycompat",
  "regex",
@@ -860,6 +862,7 @@ dependencies = [
  "jiff",
  "og-bloodtype",
  "og-browser",
+ "og-dev",
  "og-io",
  "og-nf",
  "og-pedigree",

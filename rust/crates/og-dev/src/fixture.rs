@@ -8,6 +8,8 @@
 //! - `og dev fixture trim-pharmcat REPORT OUT [MAX_ANNOTATIONS]`: a PharmCAT
 //!   `report.json` cut down to the fields `og pgx` reads. It replaces
 //!   `tests/fixtures/pharmcat/trim_report.py` and writes the same bytes.
+//! - `og dev fixture check-pharmcat FIXTURE_DIR`: checks each derived JSON
+//!   report fixture for its PharmGKB license notice in the adjacent README.
 //!
 //! - `og dev fixture <kind>` for the kinds of [`e2e`]: the inputs the
 //!   genotype, repeat and copy-number e2e cases make for themselves.
@@ -25,7 +27,7 @@ use std::path::Path;
 
 pub mod e2e;
 
-const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n";
+const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n       og dev fixture check-pharmcat FIXTURE_DIR\n";
 
 /// Runs `og dev fixture ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -76,6 +78,12 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
                 }
             };
             trim_pharmcat(Path::new(&rest[0]), Path::new(&rest[1]), max)
+        }
+        Some("check-pharmcat") => {
+            let [_, dir] = args else {
+                return usage(err, "check-pharmcat takes one FIXTURE_DIR");
+            };
+            check_pharmcat(Path::new(dir))
         }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
@@ -640,6 +648,51 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
     crate::evidence::publish(dst, text.as_bytes())
 }
 
+const PHARMGKB_NOTICE: &str =
+    "PharmGKB ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/))";
+
+fn check_pharmcat(dir: &Path) -> Result<(), String> {
+    let readme = dir.join("README.md");
+    let contents = fs::read_to_string(&readme).map_err(|e| format!("{}: {e}", readme.display()))?;
+    let entries = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut missing = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("{}: {e}", dir.display()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // These hand-written reports contain gene calls, with no copied guidance text.
+        if !name.ends_with(".json")
+            || matches!(
+                name.as_ref(),
+                "exome-cyp2c19-unread.json" | "wgs-cyp2c19-complete.json"
+            )
+        {
+            continue;
+        }
+        let file_cell = format!("`{name}`");
+        let credited = contents
+            .lines()
+            .filter_map(|line| line.strip_prefix('|'))
+            .any(|row| {
+                let mut cells = row.split('|').map(str::trim);
+                cells.next() == Some(file_cell.as_str()) && cells.nth(1) == Some(PHARMGKB_NOTICE)
+            });
+        if !credited {
+            missing.push(name.into_owned());
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        missing.sort_unstable();
+        Err(format!(
+            "{} needs a PharmGKB CC BY-SA 4.0 notice in the row for each fixture: {}",
+            readme.display(),
+            missing.join(", ")
+        ))
+    }
+}
+
 // The kinds of the ancestry, family, QC, PRS, Y, CHIP, MoChA, viral and
 // live e2e cases (`og dev fixture <kind> --help`).
 pub mod lineage;
@@ -650,6 +703,22 @@ pub mod clinical;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn committed_pharmcat_reports_have_license_notices() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/pharmcat");
+        let args = [
+            "check-pharmcat".to_owned(),
+            dir.to_str().unwrap().to_owned(),
+        ];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(
+            cli(&args, &mut out, &mut err),
+            0,
+            "{}",
+            String::from_utf8_lossy(&err)
+        );
+    }
 
     #[test]
     fn fixture_verbs_use_checked_runner_even_with_empty_status() {

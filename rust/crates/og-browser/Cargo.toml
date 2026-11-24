@@ -16,9 +16,20 @@ pycompat.workspace = true
 indexmap.workspace = true
 regex.workspace = true
 
+[dev-dependencies]
+flate2.workspace = true
+
 [lints]
 workspace = true
 
 [[test]]
 name = "live_results_veil"
 path = "../../../tests/browser/live_results_veil.rs"
+
+[[test]]
+name = "live_demo"
+path = "../../../tests/browser/live_demo.rs"
+
+[[test]]
+name = "live_gate"
+path = "tests/live_gate.rs"

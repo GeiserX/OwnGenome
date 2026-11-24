@@ -13,7 +13,7 @@ name: Demo pictures
 # The job live-picture takes docs/images/demo-live-site.png and
 # docs/images/demo-live-phone.png (docs/live-site.md) with og dev pictures
 # live: the live-site demo as the docs workflow publishes it, built by
-# tests/demo/build_live_demo.py on a DEMO-001 of its own, with no container,
+# og live demo on a DEMO-001 of its own, with no container,
 # and its partner page on a 390 px phone. Both come back as the artifact
 # `demo-live-picture`.
 #
@@ -31,6 +31,7 @@ on:
       - 'tests/og_binary.py'
       # og dev demo-sample, which writes the sample the pictures show
       - 'rust/crates/og-dev/src/demo/**'
+      - 'rust/crates/og-live/src/demo.rs'
       # og dev pictures, which takes and checks them, and its Chrome driver
       - 'rust/crates/og-dev/src/pictures.rs'
       - 'rust/crates/og-browser/src/**'
@@ -119,7 +120,7 @@ jobs:
       # 390 px wide.
       - name: Take the live-site pictures
         run: |
-          python3 tests/demo/build_live_demo.py --out "$RUNNER_TEMP/site" --og "$OG"
+          "$OG" live demo --out "$RUNNER_TEMP/site"
           "$OG" dev pictures live --site "$RUNNER_TEMP/site" --out "$RUNNER_TEMP/pictures"
           "$OG" dev pictures live --site "$RUNNER_TEMP/site" --out "$RUNNER_TEMP/pictures" --phone
           "$OG" dev pictures check --self-test

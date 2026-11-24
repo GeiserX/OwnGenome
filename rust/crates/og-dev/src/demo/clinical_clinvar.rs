@@ -25,6 +25,10 @@ pub const PLANTED: Planted = Planted {
     sv: ("chr7", 150_955_000, 150_965_000),
 };
 
+/// Invented ClinVar genes and the chromosome of each hit.
+pub const INVENTED_GENES: [(&str, &str); 3] =
+    [("DEMOA", "chr2"), ("DEMOB", "chr11"), ("DEMOC", "chr16")];
+
 /// Three heterozygous hits in genes with invented names (the picture stops
 /// above the hits table, and no real gene is tied to an invented person).
 /// DEMO-003 gets a fourth, the planted result to act on: a real gene,
@@ -32,32 +36,33 @@ pub const PLANTED: Planted = Planted {
 /// the ClinVar file itself, cut down to the header lines the run manifest
 /// reads.
 pub fn clinvar(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
+    let [(a, chr_a), (b, chr_b), (c, chr_c)] = INVENTED_GENES;
     let multi = "criteria_provided,_multiple_submitters,_no_conflicts";
     let mut hits: Vec<(&str, i64, &str, &str, String, &str, &str)> = vec![
         (
-            "chr2",
+            chr_a,
             47403191,
             "C",
             "T",
-            "DEMOA:90001".to_owned(),
+            format!("{a}:90001"),
             "Pathogenic",
             multi,
         ),
         (
-            "chr11",
+            chr_b,
             108259012,
             "G",
             "A",
-            "DEMOB:90002".to_owned(),
+            format!("{b}:90002"),
             "Likely_pathogenic",
             "criteria_provided,_single_submitter",
         ),
         (
-            "chr16",
+            chr_c,
             2087914,
             "CT",
             "C",
-            "DEMOC:90003".to_owned(),
+            format!("{c}:90003"),
             "Pathogenic",
             multi,
         ),

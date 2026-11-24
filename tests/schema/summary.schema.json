@@ -2033,6 +2033,143 @@
        }
       }
      ]
+    },
+    "callability": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "min_share": {
+           "type": "number"
+          },
+          "read": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "catalog_genes": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "exons_checked": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "not_read": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "share",
+             "status",
+             "hgnc_id"
+            ],
+            "properties": {
+             "gene": {
+              "type": "string"
+             },
+             "share": {
+              "type": [
+               "number",
+               "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+             },
+             "status": {
+              "enum": [
+               "not read",
+               "exon not read",
+               "not on this reference"
+              ]
+             },
+             "worst_exon": {
+              "type": "object",
+              "required": [
+               "exon",
+               "share"
+              ],
+              "properties": {
+               "exon": {
+                "type": "string",
+                "pattern": ":exon[0-9]+$"
+               },
+               "share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              }
+             }
+            }
+           }
+          },
+          "not_read_owned": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "share",
+             "status",
+             "owner"
+            ],
+            "properties": {
+             "gene": {
+              "type": "string"
+             },
+             "share": {
+              "type": [
+               "number",
+               "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+             },
+             "status": {
+              "enum": [
+               "not read",
+               "exon not read",
+               "not on this reference"
+              ]
+             },
+             "worst_exon": {
+              "type": "object",
+              "required": [
+               "exon",
+               "share"
+              ],
+              "properties": {
+               "exon": {
+                "type": "string",
+                "pattern": ":exon[0-9]+$"
+               },
+               "share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              }
+             }
+            }
+           }
+          },
+          "not_on_reference": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
     }
    }
   },
