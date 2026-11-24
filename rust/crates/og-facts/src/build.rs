@@ -1843,8 +1843,20 @@ pub fn build(
     }
     put(&mut provenance, "generated_utc", s(&generated));
     put(&mut provenance, "db_versions", db_versions(&summary, dir));
+    // An exome when og summary read its mean depth over the capture regions
+    // (`on_target`: the run manifest says WES, or mosdepth's regions are a
+    // capture), as og-summary's Coverage::read decides.
+    let exome = section(&summary, "coverage")
+        .is_some_and(|c| matches!(get(c, &["on_target"]), Some(Value::Bool(true))));
     let mut assay = obj([
-        ("type", s(if reads { "wgs" } else { "vcf_only" })),
+        (
+            "type",
+            s(match (reads, exome) {
+                (false, _) => "vcf_only",
+                (true, true) => "wes",
+                (true, false) => "wgs",
+            }),
+        ),
         ("build", s("GRCh38")),
     ]);
     if let Some(d) = section(&summary, "coverage").and_then(|c| number(get(c, &["mean_depth"]))) {

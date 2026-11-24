@@ -604,6 +604,9 @@
             "number",
             "null"
            ]
+          },
+          "on_target": {
+           "const": true
           }
          }
         }

@@ -74,6 +74,12 @@ fn folder(tag: &str, summary: &str, manifest: &str) -> Dir {
 }
 
 fn mean_depth(d: &Dir) -> Value {
+    coverage_data(d, "mean_depth")
+}
+
+/// `sections.coverage.data.<key>` of the folder's summary, `Null` when the
+/// key is not there.
+fn coverage_data(d: &Dir, key: &str) -> Value {
     let v = post::collect(&Input {
         sample: "S".into(),
         sample_dir: d.0.to_str().unwrap().to_owned(),
@@ -83,13 +89,16 @@ fn mean_depth(d: &Dir) -> Value {
         tables: format!("{REPO}/bin"),
     })
     .unwrap();
-    ["sections", "coverage", "data", "mean_depth"]
+    let data = ["sections", "coverage", "data"]
         .iter()
         .fold(&v, |v, k| match v {
             Value::Object(m) => m.get(*k).unwrap_or_else(|| panic!("no {k} in {v:?}")),
             _ => panic!("no {k} in {v:?}"),
-        })
-        .clone()
+        });
+    match data {
+        Value::Object(m) => m.get(key).cloned().unwrap_or(Value::Null),
+        _ => panic!("coverage data is not an object: {data:?}"),
+    }
 }
 
 #[test]
@@ -153,4 +162,35 @@ chr20\t64444167\t135332751\t2.10\t0\t900\n\
 total\t64444167\t135332751\t2.10\t0\t900\n";
     let d = folder("wes-no-region", summary, "run\tmodel_type\tWES\n");
     assert_eq!(mean_depth(&d), Value::Null);
+}
+
+#[test]
+fn only_an_exome_says_its_mean_is_on_target() {
+    // og facts writes the assay type `wes` from `on_target`, so it must
+    // follow the same rule as the mean: the manifest row, or a capture-length
+    // `total_region`. A whole genome's section keeps its one key.
+    for (tag, summary, manifest, want) in [
+        ("ot-wes-row", SUMMARY, "run\tmodel_type\tWES\n", true),
+        ("ot-wes-length", SUMMARY, "", true),
+        (
+            "ot-wes-no-region",
+            "chrom\tlength\tbases\tmean\tmin\tmax\ntotal\t64444167\t135332751\t2.10\t0\t900\n",
+            "run\tmodel_type\tWES\n",
+            true,
+        ),
+        ("ot-wgs", WINDOWS, "", false),
+        ("ot-wgs-row", WINDOWS, "run\tmodel_type\tWGS\n", false),
+    ] {
+        let d = folder(tag, summary, manifest);
+        let got = coverage_data(&d, "on_target");
+        if want {
+            assert_eq!(got, Value::Bool(true), "{tag}");
+        } else {
+            assert_eq!(
+                got,
+                Value::Null,
+                "{tag}: a whole genome has no on_target key"
+            );
+        }
+    }
 }

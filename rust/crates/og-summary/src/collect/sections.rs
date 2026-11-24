@@ -143,6 +143,11 @@ pub struct Coverage {
     /// The `mean` of the `total` row, the last one when there are several;
     /// for an exome, of the `total_region` row.
     pub mean_depth: Option<f64>,
+    /// The run is an exome (by the rule `read` describes), so the mean is
+    /// over the capture regions. summary.json carries `on_target: true`
+    /// only then, so a whole genome's section keeps its one key; og facts
+    /// reads it to write the assay type `wes`.
+    pub on_target: bool,
 }
 
 impl Coverage {
@@ -180,16 +185,24 @@ impl Coverage {
                 .and_then(|l| l.parse::<u64>().ok())
         };
         let capture = matches!((length(&region), length(&total)), (Some(r), Some(t)) if r.saturating_mul(2) < t);
-        let row = if exome || capture { region } else { total };
+        let on_target = exome || capture;
+        let row = if on_target { region } else { total };
         let mean_depth = match row.and_then(|(_, m)| m) {
             Some(m) if !m.is_empty() => Some(float(&m).map_err(|e| py_error("ValueError", &e))?),
             _ => None,
         };
-        Ok(Coverage { mean_depth })
+        Ok(Coverage {
+            mean_depth,
+            on_target,
+        })
     }
 
     fn to_json(&self) -> Value {
-        obj([("mean_depth", opt_float(self.mean_depth))])
+        let mut pairs = vec![("mean_depth", opt_float(self.mean_depth))];
+        if self.on_target {
+            pairs.push(("on_target", Value::Bool(true)));
+        }
+        obj(pairs)
     }
 }
 
