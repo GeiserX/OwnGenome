@@ -3350,12 +3350,16 @@ impl Proxy {
         let viewer_rest = (parts.len() == 4 && parts[0] == "runs" && parts[2] == "viewer")
             .then(|| (parts[1], parts[3]));
         match (mistake, viewer_rest) {
+            // Any file inside the genome folder: a path that leaves it, by
+            // `..` or by a symlink, is not served.
             (Mistake::AnyFile, Some((run, rest)))
                 if !rest.is_empty()
                     && !format!("{run}/{rest}")
                         .split('/')
                         .any(|p| p.is_empty() || p == "..")
-                    && gd.join(run).join(rest).is_file() =>
+                    && gd.join(run).join(rest).is_file()
+                    && fs::canonicalize(gd.join(run).join(rest))
+                        .is_ok_and(|p| p.starts_with(fs::canonicalize(&gd).unwrap())) =>
             {
                 let body = fs::read(gd.join(run).join(rest)).unwrap();
                 return reply(&mut c, 200, "application/octet-stream", &body, "");
@@ -4133,7 +4137,12 @@ fn map_reads_checks(
     e(&mut b, "savedFrame.style.width=''; true");
     resized(&mut b);
     sleep(500);
-    w(&mut b, &same, 20);
+    let ok = w(&mut b, &same, 20);
+    r.ok(
+        "viewer: restoring the width keeps the full requested locus",
+        ok,
+        locus(&mut b),
+    );
     // A locus the reader types in igv stays through a resize: only a new map locus moves igv again.
     e(
         &mut b,
