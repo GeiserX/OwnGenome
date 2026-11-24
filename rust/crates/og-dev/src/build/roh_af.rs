@@ -137,7 +137,9 @@ pub fn row(line: &[u8]) -> Result<Option<String>, String> {
 }
 
 /// `rows`: the panel rows of one VCF, written to `out`. Returns the
-/// number of records read and of rows written.
+/// number of records read and of rows written. An input with no `#CHROM`
+/// line is no VCF (an empty download, an error page) and fails, so it
+/// never becomes an empty part that `panel` would join without a word.
 fn rows(
     input: Box<dyn BufRead + Send>,
     out: &mut dyn Write,
@@ -145,6 +147,7 @@ fn rows(
 ) -> Result<(u64, u64), BuildError> {
     let mut input = input;
     let (mut read, mut kept) = (0u64, 0u64);
+    let mut header = false;
     let mut buf = Vec::with_capacity(1 << 14);
     loop {
         buf.clear();
@@ -153,12 +156,19 @@ fn rows(
             .map_err(|e| input_error(what, &e))?
             == 0
         {
+            if !header {
+                return Err(BuildError::Input(format!(
+                    "{}: no #CHROM header line, so not a VCF (an empty or cut download?)",
+                    what.display()
+                )));
+            }
             return Ok((read, kept));
         }
         let mut line = buf.as_slice();
         if let Some(l) = line.strip_suffix(b"\n") {
             line = l.strip_suffix(b"\r").unwrap_or(l);
         }
+        header |= line.starts_with(b"#CHROM\t");
         if line.first() != Some(&b'#') {
             read += 1;
         }
@@ -405,6 +415,7 @@ mod tests {
         let vcf = d.join("in.vcf");
         let body = [
             "##fileformat=VCFv4.2".to_owned(),
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO".to_owned(),
             rec("chr1", 10, "A", "G", "PASS", INFO_ROW),
             rec("chr1", 20, "A", "G", "AC0", INFO_ROW),
             rec("chr2", 5, "G", "C", "PASS", INFO_ROW),
@@ -465,6 +476,38 @@ mod tests {
         .unwrap();
         assert_eq!(cli(&check, &mut o, &mut Vec::new()), 1);
         assert_eq!(fs::read(&out).unwrap(), before);
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn rows_refuses_input_with_no_vcf_header() {
+        let d = tmp("empty");
+        let part = d.join("part.tsv");
+        for (name, body) in [
+            ("empty", String::new()),
+            (
+                "no-chrom-line",
+                rec("chr1", 10, "A", "G", "PASS", INFO_ROW) + "\n",
+            ),
+        ] {
+            let vcf = d.join(format!("{name}.vcf"));
+            fs::write(&vcf, body).unwrap();
+            let (mut o, mut e) = (Vec::new(), Vec::new());
+            let argv = s(&[
+                "rows",
+                "--vcf",
+                vcf.to_str().unwrap(),
+                "--out",
+                part.to_str().unwrap(),
+            ]);
+            assert_ne!(cli(&argv, &mut o, &mut e), 0, "{name}");
+            assert!(
+                String::from_utf8_lossy(&e).contains("no #CHROM header line"),
+                "{name}: {}",
+                String::from_utf8_lossy(&e)
+            );
+            assert!(!part.exists(), "{name}: no part is written");
+        }
         fs::remove_dir_all(&d).unwrap();
     }
 

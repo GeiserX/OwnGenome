@@ -176,19 +176,29 @@ Step 11 (`bcftools roh`) needs each site's population allele frequency: see [All
 `setup.sh` downloads the published file (`ROH_AF_PANEL_URL`), checks its sha256 and writes its index with `tabix -s1 -b2 -e2` from `BCFTOOLS_IMAGE`. To build it again from gnomAD, byte for byte, with `og` built from this checkout: each VCF streams through `og` and is not kept, and each stream's MD5 is compared with the one gnomAD's bucket lists for the file (a stream cut short makes `og` stop with "the gzip input ends inside a member").
 
 ```bash
+#!/usr/bin/env bash
+# A failed download, a failed og run or an MD5 that differs stops the build
+# before the panel is joined.
+set -euo pipefail
 base=https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes
 mkdir -p rows
 for c in $(seq 1 22); do
   f=gnomad.genomes.v4.1.sites.chr${c}.vcf.bgz
-  want=$(curl -sS "https://storage.googleapis.com/storage/v1/b/gcp-public-data--gnomad/o/release%2F4.1%2Fvcf%2Fgenomes%2F${f}?fields=md5Hash" \
+  want=$(curl -sS --fail "https://storage.googleapis.com/storage/v1/b/gcp-public-data--gnomad/o/release%2F4.1%2Fvcf%2Fgenomes%2F${f}?fields=md5Hash" \
     | sed -n 's/.*"md5Hash": *"\([^"]*\)".*/\1/p')
   curl -sS --fail "${base}/${f}" | tee >(openssl dgst -md5 -binary | base64 > "rows/chr${c}.md5") \
     | bin/og dev build roh-af rows --vcf - --out "rows/chr${c}.tsv"
-  sleep 2; [ "$(cat "rows/chr${c}.md5")" = "$want" ] || echo "chr${c}: MD5 differs, build it again"
+  sleep 2
+  if [ -z "$want" ] || [ "$(cat "rows/chr${c}.md5")" != "$want" ]; then
+    echo "chr${c}: MD5 differs from gnomAD's, build it again" >&2
+    exit 1
+  fi
 done
 bin/og dev build roh-af panel --rows $(printf 'rows/chr%s.tsv ' $(seq 1 22)) --out roh_af_gnomad_v4.1.tsv.gz
 sha256sum roh_af_gnomad_v4.1.tsv.gz   # ROH_AF_PANEL_SHA256
 ```
+
+Run it as a script, not pasted into a shell: `exit 1` stops it. `og dev build roh-af rows` also fails on an input with no `#CHROM` line, such as an empty download.
 
 `og dev build roh-af panel ... --check` compares a panel with what the rows give and exits 1 when they differ. The published panel was built this way, three chromosomes at a time, in 1 h 45 min. That is 563 GB read at about 90 MB/s. It holds 7,439,999 sites and is 207,888,195 bytes. It is published as a release asset of the tag `data-roh-af-gnomad-v4.1`, the file `ROH_AF_PANEL_URL` names.
 

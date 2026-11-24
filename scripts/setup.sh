@@ -2869,12 +2869,23 @@ fi
 # ROH_AF_PANEL_SHA256 and indexed here with tabix. Without it step 11 gives
 # every site AF 0.4, so a failed download warns and does not stop setup.
 ROH_AF_PANEL="${GENOME_DIR}/roh_af/${ROH_AF_PANEL_URL##*/}"
-if [ -s "$ROH_AF_PANEL" ] && [ -s "${ROH_AF_PANEL}.tbi" ] && [ "$(_digest sha256 "$ROH_AF_PANEL")" = "$ROH_AF_PANEL_SHA256" ]; then
-  echo "[OK] ROH allele-frequency panel (step 11) already present (sha256 matches ROH_AF_PANEL_SHA256)."
+# Download only a missing panel or one whose sha256 is not the pinned one;
+# then index the checked file, so a failed index is retried without
+# downloading the panel again.
+ROH_AF_PANEL_OK=0
+if [ -s "$ROH_AF_PANEL" ] && [ "$(_digest sha256 "$ROH_AF_PANEL")" = "$ROH_AF_PANEL_SHA256" ]; then
+  ROH_AF_PANEL_OK=1
 else
   rm -f "${ROH_AF_PANEL}.tbi"
-  if ! fetch "$ROH_AF_PANEL_URL" "$ROH_AF_PANEL" sha256 "$ROH_AF_PANEL_SHA256"; then
+  if fetch "$ROH_AF_PANEL_URL" "$ROH_AF_PANEL" sha256 "$ROH_AF_PANEL_SHA256"; then
+    ROH_AF_PANEL_OK=1
+  else
     echo "[WARN] Could not install step 11's allele-frequency panel: step 11 gives every site AF 0.4 without it. Re-run setup.sh to try again."
+  fi
+fi
+if [ "$ROH_AF_PANEL_OK" = 1 ]; then
+  if [ -s "${ROH_AF_PANEL}.tbi" ]; then
+    echo "[OK] ROH allele-frequency panel (step 11) already present (sha256 matches ROH_AF_PANEL_SHA256)."
   elif run_in --rw "${GENOME_DIR}/roh_af" "$BCFTOOLS_IMAGE" tabix -f -s1 -b2 -e2 "$(cpath "$ROH_AF_PANEL")"; then
     echo "[OK] ROH allele-frequency panel (step 11): ${ROH_AF_PANEL}"
   else
