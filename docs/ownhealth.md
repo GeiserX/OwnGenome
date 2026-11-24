@@ -30,7 +30,7 @@ When you run the pipeline again on the same sample, import the new file. It repl
 
 | Kind | From | What OwnHealth shows |
 |---|---|---|
-| PGx | PharmCAT ([step 7](07-pharmacogenomics.md)) and the CPIC lookup ([step 27](27-cpic-lookup.md)), CYP2D6 from the consensus of [step 36](36-pgx-consensus.md) | diplotype, phenotype, the drugs with a CPIC or DPWG guideline |
+| PGx | PharmCAT ([step 7](07-pharmacogenomics.md)) and the CPIC lookup ([step 27](27-cpic-lookup.md)), CYP2D6 from the consensus of [step 36](36-pgx-consensus.md) | diplotype, phenotype, the drugs with a CPIC or DPWG guideline. A DPWG recommendation text comes from PharmGKB (ClinPGx) annotations under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): credit PharmGKB when you share it. CPIC text is [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | HLA | the drug-related alleles of [step 8](08-hla-typing.md) | present or absent |
 | Monogenic, ACMG SF, carrier | the Pathogenic and Likely pathogenic hits of the ClinVar screen ([step 6](06-clinvar-screen.md)); a hit is filed under the gene the ACMG SF list reports it for. A hypomorph or pseudodeficiency allele of the carrier list is not a carrier finding on its own, so it is left out and its gene is partly assessed. A gene whose X-linked condition is dominant (MECP2, for example) is never a carrier finding: one change can affect a woman | the variant, its ClinVar review stars, and "a clinical test confirms this before any decision" |
 | PRS | the polygenic scores of [step 25](25-prs.md) | the percentile, the PGS Catalog id, the share of the score's variants found |

@@ -21,6 +21,16 @@
 //! `assets/pgx_genes.tsv` callable without ALT contigs, `cn_loci:<locus>`
 //! for a gene a gene row of `bin/cn_loci.tsv` names; `.` for none.
 //!
+//! It also writes `assets/callability_exons.tsv` (`--exons`, by default
+//! beside `--out`): the coding exons of each listed gene with a position,
+//! from its MANE Select transcript (GENCODE's `MANE_Select` tag), one row
+//! per CDS record with 2 bases more on each side for the splice site, named
+//! `GENE:exonN` by the record's `exon_number`. Step 16b measures them in
+//! the same mosdepth pass as the genes, so a gene with an unread coding exon
+//! is not passed on the share of its whole body. A gene with no MANE Select
+//! CDS (a T-cell receptor segment, a gene MANE has not chosen) has no rows
+//! and is judged on its body alone.
+//!
 //! `--work` holds the seven downloads `scripts/ci/build-callability.sh`
 //! names. The GTF is read once, line by line; each interval file is merged
 //! once per chromosome, so a gene's coverage is a binary search.
@@ -69,6 +79,31 @@ struct Genes {
     /// HGNC id -> (symbol, UCSC ALT scaffold name) of the first
     /// protein-coding ALT copy.
     alt: HashMap<String, (String, String)>,
+    /// HGNC id -> the CDS records of its MANE Select transcript on chr1-22,
+    /// X or Y, in the GTF's order (the first such transcript when there
+    /// were two).
+    mane: HashMap<String, Mane>,
+}
+
+/// A gene's MANE Select transcript and its CDS records.
+struct Mane {
+    transcript: String,
+    /// (exon_number, 0-based start, end) of each CDS record.
+    cds: Vec<(u32, i64, i64)>,
+}
+
+/// The splice-site bases added on each side of a coding exon.
+pub const SPLICE_MARGIN: i64 = 2;
+
+/// Whether the attribute column has the pair `tag "<tag>"` (a GTF repeats
+/// `tag`, so the last value alone is not enough).
+fn has_tag(attrs: &[u8], tag: &[u8]) -> bool {
+    attrs.split(|&b| b == b';').any(|pair| {
+        pair.trim_ascii()
+            .strip_prefix(b"tag \"")
+            .and_then(|r| r.strip_suffix(b"\""))
+            == Some(tag)
+    })
 }
 
 /// The ALT scaffolds of NCBI's assembly report: GenBank accession -> UCSC
@@ -91,6 +126,9 @@ fn read_gtf(path: &Path, alt: &HashMap<String, String>) -> Result<Genes, BuildEr
         let Some(r) = Record::parse(line)? else {
             return Ok(());
         };
+        if r.feature == b"CDS" {
+            return read_mane_cds(&r, line, &mut g.mane);
+        }
         if r.feature != b"gene" {
             return Ok(());
         }
@@ -141,6 +179,62 @@ fn read_gtf(path: &Path, alt: &HashMap<String, String>) -> Result<Genes, BuildEr
         Ok(())
     })?;
     Ok(g)
+}
+
+/// Keeps a CDS record of a MANE Select transcript on chr1-22, X or Y (not
+/// a `_PAR_Y` copy) under its gene's HGNC id.
+fn read_mane_cds(
+    r: &Record,
+    line: &[u8],
+    mane: &mut HashMap<String, Mane>,
+) -> Result<(), BuildError> {
+    if chrom_index(r.seq).is_none() || !has_tag(r.attrs, b"MANE_Select") {
+        return Ok(());
+    }
+    let Some(h) = r.attr("hgnc_id")?.filter(|h| !h.is_empty()) else {
+        return Ok(());
+    };
+    let need = |k: &str| {
+        r.attr(k)?.ok_or_else(|| {
+            BuildError::Input(format!(
+                "GTF: a MANE Select CDS with no {k}: {:?}",
+                String::from_utf8_lossy(line)
+            ))
+        })
+    };
+    if need("gene_id")?.ends_with("_PAR_Y") {
+        return Ok(());
+    }
+    let transcript = need("transcript_id")?;
+    // exon_number is unquoted in some GTFs; GENCODE quotes it.
+    let exon = super::gtf::attr(r.attrs, b"exon_number")
+        .or_else(|| bare(r.attrs, b"exon_number"))
+        .and_then(|v| std::str::from_utf8(v).ok()?.parse::<u32>().ok())
+        .ok_or_else(|| {
+            BuildError::Input(format!(
+                "GTF: a MANE Select CDS with no exon_number: {:?}",
+                String::from_utf8_lossy(line)
+            ))
+        })?;
+    let (start, end) = r.span()?;
+    let m = mane.entry(h.to_owned()).or_insert_with(|| Mane {
+        transcript: transcript.to_owned(),
+        cds: Vec::new(),
+    });
+    if m.transcript == transcript {
+        m.cds.push((exon, start, end));
+    }
+    Ok(())
+}
+
+/// The value of an unquoted `key value` pair.
+fn bare<'a>(attrs: &'a [u8], key: &[u8]) -> Option<&'a [u8]> {
+    attrs.split(|&b| b == b';').find_map(|pair| {
+        pair.trim_ascii()
+            .strip_prefix(key)?
+            .strip_prefix(b" ")
+            .filter(|v| !v.starts_with(b"\""))
+    })
 }
 
 /// A BED file as a [`Set`] per sequence.
@@ -355,9 +449,18 @@ fn reasons(work: &Path, genes: &Genes) -> Result<HashMap<String, u8>, BuildError
 /// id; ALT-only genes last), its cells and its reasons.
 type CatalogRow<'a> = ((usize, i64, &'a str, &'a str), [String; 7], u8);
 
-/// The catalog's text and the summary line, from the downloads in `work`
-/// and the owner tables of `repo`.
-pub fn build(work: &Path, repo: &Path) -> Result<(String, String), BuildError> {
+/// What a build writes: the catalog, its summary line, the exon table and
+/// its summary line.
+pub struct Built {
+    pub genes: String,
+    pub summary: String,
+    pub exons: String,
+    pub exon_summary: String,
+}
+
+/// The catalog and its exon table, from the downloads in `work` and the
+/// owner tables of `repo`.
+pub fn build(work: &Path, repo: &Path) -> Result<Built, BuildError> {
     let alt = read_alt(&work.join("report.txt"))?;
     let genes = read_gtf(&work.join("gencode.gtf.gz"), &alt)?;
     let why = reasons(work, &genes)?;
@@ -453,15 +556,77 @@ pub fn build(work: &Path, repo: &Path) -> Result<(String, String), BuildError> {
         text.push_str(&r.1.join("\t"));
         text.push('\n');
     }
-    Ok((text, summary))
+    let (exons, exon_summary) = exon_table(&rows, &genes);
+    Ok(Built {
+        genes: text,
+        summary,
+        exons,
+        exon_summary,
+    })
+}
+
+/// `assets/callability_exons.tsv`: the MANE Select coding exons of each
+/// catalog gene with a position, in the catalog's order and then by exon
+/// number, each widened by [`SPLICE_MARGIN`] on both sides.
+fn exon_table(rows: &[CatalogRow], genes: &Genes) -> (String, String) {
+    let mut body = String::new();
+    let (mut n_exons, mut n_genes, mut without) = (0usize, 0usize, 0usize);
+    for r in rows.iter().filter(|r| r.0.0 < CHROMS.len()) {
+        let [sym, h, chrom, ..] = &r.1;
+        let Some(m) = genes.mane.get(h) else {
+            without += 1;
+            continue;
+        };
+        let mut cds = m.cds.clone();
+        cds.sort_unstable();
+        n_genes += 1;
+        for (exon, s, e) in cds {
+            n_exons += 1;
+            let _ = writeln!(
+                body,
+                "{sym}:exon{exon}\t{sym}\t{}\t{chrom}\t{}\t{}",
+                m.transcript,
+                (s - SPLICE_MARGIN).max(0),
+                e + SPLICE_MARGIN
+            );
+        }
+    }
+    let summary = format!(
+        "Coding exons: {n_exons} of {n_genes} genes; {without} genes with a position have no MANE Select CDS"
+    );
+    let mut text = String::from(
+        "# assets/callability_exons.tsv: the coding exons of the genes of assets/callability_genes.tsv, so step 16b\n\
+         # can say a gene was not read when one of its coding exons was not, even when 90% of the whole gene was.\n\
+         # Each row is one CDS record of the gene's MANE Select transcript in GENCODE 50, with 2 bases added on\n\
+         # each side for the splice site; exon is GENE:exonN, N the transcript's exon number. A gene with no MANE\n\
+         # Select CDS has no rows. Written by scripts/ci/build-callability.sh with the gene table; rebuild it\n\
+         # there, do not edit it by hand. start is 0-based and end 1-based, as in a BED file. Source and terms:\n\
+         # GENCODE 50 (MANE Select tags from NCBI and EMBL-EBI's MANE project), open access.\n",
+    );
+    let _ = writeln!(text, "# {summary}.");
+    text.push_str("exon\tgene\ttranscript\tchrom\tstart\tend\n");
+    text.push_str(&body);
+    (text, summary)
 }
 
 pub(super) fn cli(args: &[String], err: &mut dyn Write) -> Result<u8, Failure> {
-    let a = Args::parse(args, &["--work", "--repo", "--out"], &[])?;
+    let a = Args::parse(args, &["--work", "--repo", "--out", "--exons"], &[])?;
     let (work, repo, out) = (a.need("--work")?, a.need("--repo")?, a.need("--out")?);
-    let (text, summary) = build(Path::new(work), Path::new(repo))?;
-    super::write_atomic(Path::new(out), text.as_bytes())?;
-    let _ = writeln!(err, "{summary}");
+    // The exon table goes beside the catalog unless --exons names it.
+    let exons_at = a.get("--exons").map_or_else(
+        || {
+            Path::new(out)
+                .parent()
+                .unwrap_or(Path::new(""))
+                .join("callability_exons.tsv")
+        },
+        |p| Path::new(p).to_owned(),
+    );
+    let b = build(Path::new(work), Path::new(repo))?;
+    super::write_atomic(Path::new(out), b.genes.as_bytes())?;
+    super::write_atomic(&exons_at, b.exons.as_bytes())?;
+    let _ = writeln!(err, "{}", b.summary);
+    let _ = writeln!(err, "{} ({})", b.exon_summary, exons_at.display());
     Ok(0)
 }
 
@@ -490,10 +655,43 @@ mod tests {
                 "{seq}\tX\tgene\t{s}\t{e}\t.\t+\t.\tgene_id \"{id}\"; gene_type \"{ty}\"; gene_name \"{name}\";{hg}\n"
             )
         };
+        #[allow(clippy::too_many_arguments)]
+        fn cds(
+            seq: &str,
+            s: u32,
+            e: u32,
+            id: &str,
+            tx: &str,
+            n: &str,
+            h: &str,
+            mane: bool,
+        ) -> String {
+            let tag = if mane { " tag \"MANE_Select\";" } else { "" };
+            format!(
+                "{seq}\tX\tCDS\t{s}\t{e}\t.\t-\t0\tgene_id \"{id}\"; transcript_id \"{tx}\"; hgnc_id \"{h}\"; exon_number {n}; tag \"basic\";{tag} tag \"CCDS\";\n"
+            )
+        }
         let gtf = [
             "##format: gtf\n".to_owned(),
             gene("chr1", 101, 200, "G1", "protein_coding", "A", "HGNC:1"),
             "chr1\tX\texon\t101\t150\t.\t+\t.\tgene_id \"G1\";\n".to_owned(),
+            // A plain CDS first, then A's MANE Select CDS, exon 3 before
+            // exon 2 (as on the minus strand), exon_number unquoted as
+            // GENCODE writes it; the plain CDS and a second MANE-tagged
+            // transcript are not read.
+            cds("chr1", 101, 110, "G1", "T2", "1", "HGNC:1", false),
+            cds("chr1", 181, 190, "G1", "T1", "3", "HGNC:1", true),
+            cds("chr1", 121, 140, "G1", "T1", "2", "HGNC:1", true),
+            cds("chr1", 151, 160, "G1", "T9", "4", "HGNC:1", true),
+            // C's CDS starts at the first base: the margin stops at 0.
+            cds("chr2", 1, 50, "G3", "T3", "\"1\"", "HGNC:3", true),
+            // P's _PAR_Y copy is not read; its chrX copy is.
+            cds(
+                "chrY", 100_101, 100_200, "G6_PAR_Y", "T6", "5", "HGNC:6", true,
+            ),
+            cds("chrX", 100_101, 100_200, "G6", "T6", "5", "HGNC:6", true),
+            // E is ALT-only: an ALT CDS gives no row.
+            cds("KI1.1", 1, 50, "G8", "T8", "1", "HGNC:8", true),
             gene("chr1", 1001, 2000, "G2", "protein_coding", "B", "HGNC:2"),
             gene("chr2", 101, 1100, "G3", "protein_coding", "C", "HGNC:3"),
             gene("chr2", 5001, 6000, "G4", "protein_coding", "D", "HGNC:4"),
@@ -565,7 +763,11 @@ mod tests {
     fn the_tiny_catalog_has_every_reason_and_owner() {
         let dir = std::env::temp_dir().join(format!("og-callability-{}", std::process::id()));
         let (work, repo) = fixture(&dir);
-        let (text, summary) = build(&work, &repo).unwrap();
+        let Built {
+            genes: text,
+            summary,
+            ..
+        } = build(&work, &repo).unwrap();
         fs::remove_dir_all(&dir).unwrap();
         let body: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
         assert_eq!(
@@ -588,10 +790,83 @@ mod tests {
     }
 
     #[test]
+    fn the_exon_table_has_each_mane_select_coding_exon_with_its_margins() {
+        let dir = std::env::temp_dir().join(format!("og-callability-exons-{}", std::process::id()));
+        let (work, repo) = fixture(&dir);
+        let b = build(&work, &repo).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        let body: Vec<&str> = b.exons.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(
+            body,
+            [
+                "exon\tgene\ttranscript\tchrom\tstart\tend",
+                "A:exon2\tA\tT1\tchr1\t118\t142",
+                "A:exon3\tA\tT1\tchr1\t178\t192",
+                "C:exon1\tC\tT3\tchr2\t0\t52",
+                "P:exon5\tP\tT6\tchrX\t100098\t100202",
+            ]
+        );
+        assert_eq!(
+            b.exon_summary,
+            "Coding exons: 4 of 3 genes; 2 genes with a position have no MANE Select CDS"
+        );
+        assert!(b.exons.contains(&format!("\n# {}.\n", b.exon_summary)));
+    }
+
+    #[test]
+    fn the_cli_writes_the_exon_table_beside_the_catalog() {
+        let dir = std::env::temp_dir().join(format!("og-callability-cli-{}", std::process::id()));
+        let (work, repo) = fixture(&dir);
+        let out = dir.join("out/callability_genes.tsv");
+        fs::create_dir_all(out.parent().unwrap()).unwrap();
+        let args: Vec<String> = [
+            "--work",
+            work.to_str().unwrap(),
+            "--repo",
+            repo.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        let mut err = Vec::new();
+        assert_eq!(cli(&args, &mut err).ok(), Some(0));
+        let beside = fs::read_to_string(dir.join("out/callability_exons.tsv")).unwrap();
+        let named = dir.join("named.tsv");
+        let mut more = args.clone();
+        more.extend(["--exons".to_owned(), named.to_str().unwrap().to_owned()]);
+        assert_eq!(cli(&more, &mut Vec::new()).ok(), Some(0));
+        let named = fs::read_to_string(&named).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(beside.contains("\nA:exon2\tA\tT1\tchr1\t118\t142\n"));
+        assert_eq!(beside, named);
+        assert!(
+            String::from_utf8(err)
+                .unwrap()
+                .contains("Coding exons: 4 of 3 genes")
+        );
+    }
+
+    #[test]
+    fn a_tag_is_matched_whole() {
+        assert!(has_tag(
+            b"tag \"basic\"; tag \"MANE_Select\";",
+            b"MANE_Select"
+        ));
+        assert!(!has_tag(b"tag \"MANE_Plus_Clinical\";", b"MANE_Select"));
+        assert!(!has_tag(b"xtag \"MANE_Select\";", b"MANE_Select"));
+        assert_eq!(
+            bare(b"level 2; exon_number 7;", b"exon_number"),
+            Some(&b"7"[..])
+        );
+        assert_eq!(bare(b"exon_number \"7\";", b"exon_number"), None);
+    }
+
+    #[test]
     fn the_header_names_each_source_and_its_terms() {
         let dir = std::env::temp_dir().join(format!("og-callability-terms-{}", std::process::id()));
         let (work, repo) = fixture(&dir);
-        let (text, _) = build(&work, &repo).unwrap();
+        let text = build(&work, &repo).unwrap().genes;
         fs::remove_dir_all(&dir).unwrap();
         let header: String = text
             .lines()
