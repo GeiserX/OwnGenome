@@ -267,10 +267,15 @@ fn both_reports_show_a_filtered_call_and_a_site_not_assessed() {
 /// An expansions section whose HTT locus has `count` repeats, flagged by
 /// Stranger as a full mutation, with `extra` keys on the locus.
 fn htt(count: &str, extra: &str) -> Summary {
+    htt_sized(count, "sized/sized", extra)
+}
+
+/// [`htt`] with each allele's sizing given (`allele_sizing`).
+fn htt_sized(count: &str, allele_sizing: &str, extra: &str) -> Summary {
     let locus = format!(
         r#"{{"locus": "HTT", "repeat_count": "{count}", "status": "full_mutation", "normal_max": "26",
             "pathologic_min": "36", "support": "SPANNING/SPANNING", "adsp": "12/9", "ci": "17-17/{count}-{count}",
-            "sizing": "sized", "allele_sizing": "sized/sized", "zone": "", "zone_label": "",
+            "sizing": "sized", "allele_sizing": "{allele_sizing}", "zone": "", "zone_label": "",
             "zone_citation": ""{extra}}}"#
     );
     summary(&section(
@@ -349,6 +354,56 @@ fn a_mixed_htt_pair_names_only_the_allele_of_reduced_penetrance() {
     assert!(
         !txt.contains("\n      36-39: reduced penetrance"),
         "the whole locus reads as reduced penetrance:\n{txt}"
+    );
+}
+
+/// Invented HTT pairs for the per-allele rules below, kept apart from the
+/// gene name for the personal-data scan.
+const UNSIZED_IN_RANGE: &str = "37/42";
+const AT_RANGE_END: &str = "39/40";
+const BOTH_IN_RANGE: &str = "37/38";
+
+/// Only a sized allele is read against the range: an allele of 37 that
+/// ExpansionHunter could not size (flanking reads only, a lower bound) is
+/// never named as reduced penetrance.
+#[test]
+fn an_unsized_htt_allele_is_not_named_as_reduced_penetrance() {
+    let (txt, page) = reports(&htt_sized(
+        UNSIZED_IN_RANGE,
+        "flanking_only/sized",
+        HTT_PENETRANCE,
+    ));
+    assert!(!txt.contains("37 repeats in 36-39"), "{txt}");
+    assert!(!page.contains("37 repeats in 36-39"), "{page}");
+}
+
+/// The range is inclusive: 39 is named, and its partner of 40 keeps
+/// Stranger's full-mutation reading.
+#[test]
+fn an_htt_allele_of_39_is_inside_the_range() {
+    let (txt, page) = reports(&htt(AT_RANGE_END, HTT_PENETRANCE));
+    assert!(
+        txt.contains("39 repeats in 36-39: reduced penetrance"),
+        "{txt}"
+    );
+    assert!(!txt.contains("40 repeats in 36-39"), "{txt}");
+    assert!(
+        frame(&page, "expansions").contains("39 repeats in 36-39: reduced penetrance"),
+        "{page}"
+    );
+}
+
+/// Both alleles inside the range are both named.
+#[test]
+fn both_htt_alleles_in_the_range_are_named() {
+    let (txt, page) = reports(&htt(BOTH_IN_RANGE, HTT_PENETRANCE));
+    assert!(
+        txt.contains("37 and 38 repeats in 36-39: reduced penetrance"),
+        "{txt}"
+    );
+    assert!(
+        frame(&page, "expansions").contains("37 and 38 repeats in 36-39: reduced penetrance"),
+        "{page}"
     );
 }
 
