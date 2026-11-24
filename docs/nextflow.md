@@ -79,6 +79,9 @@ nextflow run main.nf \
 #                                                and --gnomad_mito <gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz>
 #                                                (setup.sh installs both): ClinVar and gnomAD for each chrM call,
 #                                                as step 20 does; without them those columns are '.'
+#    roh (a default tool) takes --roh_af_panel <roh_af/roh_af_gnomad_v4.1.tsv.gz, its .tbi beside it>
+#                                                (setup.sh installs it): gnomAD allele frequencies for
+#                                                bcftools roh; without it 0.4 at every site (docs/11-roh-analysis.md)
 #    --kir true (with hla_typing)              + --kir_dat (setup.sh --kir-data; KIR genes, a second T1K pass)
 #    --hla_qc true (with hla_typing)           OptiType as a second HLA caller; HLA-A and HLA-B reach PharmCAT
 #                                                only when it agrees with T1K (docs/08-hla-typing.md)

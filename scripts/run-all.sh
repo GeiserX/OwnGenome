@@ -387,6 +387,8 @@ rm -f "${STATUS}.prev"
 arg --cytoband "$(data_file cytoband || true)"; ! GEX=$(data_file gencode_exons) || NF+=(--gencode_exons "$GEX"); arg --delly_exclude "$(data_file delly_exclude || true)"; arg --manta_call_regions "${MANTA_CALL_REGIONS:-}"
 # Step 20's annotation of the chrM calls (MITO_VARIANTS_ANNOTATE): ClinVar with its index, and gnomAD's chrM sites.
 MC="${G}/clinvar/clinvar_chr.vcf.gz"; if [ -s "$MC" ] && [ -s "${MC}.tbi" ]; then NF+=(--mito_clinvar "$MC"); fi; arg --gnomad_mito "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
+# Step 11's allele-frequency panel (ROH), with its .tbi: without both, bcftools roh uses 0.4 at every site.
+RAF="${G}/roh_af/${ROH_AF_PANEL_URL##*/}"; if [ -s "$RAF" ] && [ -s "${RAF}.tbi" ]; then NF+=(--roh_af_panel "$RAF"); fi
 [ -z "${INTERVALS:-}" ] || NF+=(--intervals "$INTERVALS")
 # The CPUs and RAM the tasks get: the host's, or the container engine's when docker info reports less. Docker Desktop
 # and colima run the containers in a VM, often smaller than the host; Nextflow books the host's RAM by default, and

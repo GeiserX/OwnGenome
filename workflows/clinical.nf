@@ -52,6 +52,7 @@ workflow CLINICAL {
     ch_bam              // channel: [meta, bam, bai] — every sample with a BAM (CPSR's cDNA read check)
     ch_gencode_exons    // channel: path — GENCODE's exons (--gencode_exons), or []
     ch_prs_score_sets   // channel: val — the PRS score sets the samplesheet needs (with_x, autosomes), known at launch
+    ch_roh_af_panel     // channel: val([panel, its .tbi]) — step 11's allele-frequency panel (--roh_af_panel), or [[], []]
 
     main:
     ch_versions = Channel.empty()
@@ -92,15 +93,6 @@ workflow CLINICAL {
         )
         ch_cpsr_cdna = CPSR_CDNA_CHECK.out.cpsr_cdna_check
         ch_versions  = ch_versions.mix(CPSR_CDNA_CHECK.out.versions)
-    }
-
-    //
-    // MODULE 2: ROH — Runs of homozygosity
-    //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('roh')) {
-        ROH(ch_vcf)
-        ch_roh_regions = ROH.out.roh_regions
-        ch_versions    = ch_versions.mix(ROH.out.versions)
     }
 
     //
@@ -173,6 +165,26 @@ workflow CLINICAL {
             ch_versions = ch_versions.mix(PRS_PREPARE.out.versions, PRS_SCORE_SITES.out.versions,
                                           PRS.out.versions, PRS_SUMMARY.out.versions)
         }
+    }
+
+    //
+    // MODULE 2: ROH — Runs of homozygosity. With the allele-frequency panel
+    // (--roh_af_panel) and step 26's ancestry table on the way (prs with
+    // --pgs_scoring and --ancestry_ref), each sample waits for its table, so
+    // ROH can take one continental group's frequencies (scripts/11-roh-analysis.sh
+    // reads the same table); otherwise it starts at once.
+    //
+    if (tools_here.contains('roh')) {
+        def roh_waits = params.roh_af_panel && tools_here.contains('prs') && params.pgs_scoring && params.ancestry_ref
+        ch_roh_input = roh_waits
+            ? ch_vcf.map { meta, vcf, idx -> [meta.id, meta, vcf, idx] }
+                .join(ch_ancestry_results.map { meta, tsv -> [meta.id, tsv] }, remainder: true)
+                .filter { row -> row[1] != null }
+                .map { _id, meta, vcf, idx, anc -> [meta, vcf, idx, anc ?: []] }
+            : ch_vcf.map { meta, vcf, idx -> [meta, vcf, idx, []] }
+        ROH(ch_roh_input, ch_roh_af_panel)
+        ch_roh_regions = ROH.out.roh_regions
+        ch_versions    = ch_versions.mix(ROH.out.versions)
     }
 
     //

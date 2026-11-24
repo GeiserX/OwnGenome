@@ -16,6 +16,10 @@
 #   header   a phrase the file's opening # lines must carry word for word (line breaks and runs of
 #            blanks count as one space), several split by |; - when the file carries no header
 #            (a binary file, JSON, a format whose readers take every line, a byte-for-byte copy).
+# Data setup.sh downloads is pinned in versions.env, not listed here. One such file is built here:
+# step 11's allele-frequency panel (ROH_AF_PANEL_URL), a release asset of this repository that
+# og dev build roh-af makes from gnomAD v4.1 genomes' sites VCFs, released under CC0 1.0. Its header
+# names that source; docs/00-reference-setup.md says how it is built.
 path	source	version	licence	header
 assets/acmg_sf.tsv	Lee et al., ACMG SF v3.3 list for reporting of secondary findings, Genet Med 2025;27(8):101454 (doi:10.1016/j.gim.2025.101454), Table 1; HGNC ids; Ensembl GRCh38 positions	ACMG SF v3.3, read 2026-10-27	gene list: facts; table_text: short cited quotations of a factual reporting rule	Source: Lee et al., ACMG SF v3.3 | short cited quotations of a factual reporting rule
 assets/bloodtype_markers.tsv	RBCeq2 2.4.4 (database v2.5.1), Australian Red Cross Lifeblood; ISBT nomenclature; dbSNP and Ensembl GRCh38 positions	RBCeq2 2.4.4	MIT (assets/licences/RBCeq2-LICENSE.txt); dbSNP and Ensembl: no restriction on use	used under RBCeq2's MIT licence, Copyright 2025 Australian Red Cross Lifeblood

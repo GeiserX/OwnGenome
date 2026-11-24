@@ -296,6 +296,12 @@
                     "description": "gnomAD v3.1's chrM sites VCF (GNOMAD_MITO_URL in versions.env), which scripts/setup.sh installs under gnomad_mito/. With mito_variants, MITO_VARIANTS_ANNOTATE gives each chrM call its gnomAD frequencies, as step 20 does; without it those columns are '.'.",
                     "fa_icon": "fas fa-database"
                 },
+                "roh_af_panel": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Step 11's allele-frequency panel (ROH_AF_PANEL_URL in versions.env), which scripts/setup.sh installs under roh_af/ with its .tbi beside it. With roh, bcftools roh reads each site's gnomAD frequency from it (--AF-file) and uses the panel's sites only: the global AF, or one continental group's when the run's step 26 ancestry table gives that group 0.8 or more. Without it every site gets 0.4 (--AF-dflt 0.4).",
+                    "fa_icon": "fas fa-database"
+                },
                 "kir": {
                     "type": "boolean",
                     "default": false,
