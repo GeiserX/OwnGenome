@@ -35,6 +35,41 @@ pub struct Allele {
     pub name: String,
 }
 
+/// Whether a predicted loss-of-function call (a VEP HIGH-impact record)
+/// counts as a finding in a gene: the `lof` column, built from ClinGen's
+/// haploinsufficiency scores by `og dev build acmg-lof`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lof {
+    /// It counts: loss of function causes the disease ACMG lists.
+    Yes,
+    /// It does not: the disease comes from a gain of function or another
+    /// mechanism (PCSK9, MYH7), so only a ClinVar P/LP variant counts.
+    No,
+    /// It counts, with a mark: loss of function is a less certain cause of
+    /// the disease (TGFBR1 and TGFBR2).
+    Mark,
+}
+
+/// A footnote of Table 1 that limits which variants of a gene count: the
+/// `limit` column.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Limit {
+    /// Every P/LP variant counts.
+    None,
+    /// Only a truncating variant (stop-gained, frameshift, canonical
+    /// splice) whose position lies in the region counts: TTN, footnote f.
+    TruncatingIn {
+        chrom: String,
+        start: i128,
+        end: i128,
+        name: String,
+    },
+    /// A missense variant counts only with case evidence the pipeline
+    /// cannot see: such a finding is reported with that condition. LMNA,
+    /// footnote e.
+    MissenseNeedsCaseEvidence,
+}
+
 /// The reporting rule of one ACMG gene.
 #[derive(Debug, Clone)]
 pub struct Rule {
@@ -47,6 +82,51 @@ pub struct Rule {
     pub severity: IndexMap<Key, Allele>,
     pub table_text: String,
     pub note: Option<String>,
+    /// `Yes` when the table has no `lof` column (a table older than it).
+    pub lof: Lof,
+    pub limit: Limit,
+}
+
+/// The `lof` cell: `yes`, `no` or `mark`; `None` (or empty) is `yes`.
+fn parse_lof(cell: Option<&str>) -> Result<Lof, String> {
+    match cell.unwrap_or("") {
+        "" | "yes" => Ok(Lof::Yes),
+        "no" => Ok(Lof::No),
+        "mark" => Ok(Lof::Mark),
+        other => Err(format!("lof must be yes, no or mark, not '{other}'")),
+    }
+}
+
+/// The `limit` cell: `.`, `truncating_in CHROM:START-END NAME` (1-based,
+/// inclusive) or `missense_needs_case_evidence`.
+pub fn parse_limit(cell: Option<&str>) -> Result<Limit, String> {
+    let cell = pycompat::text::strip(cell.unwrap_or(""), None);
+    if cell.is_empty() || cell == "." {
+        return Ok(Limit::None);
+    }
+    if cell == "missense_needs_case_evidence" {
+        return Ok(Limit::MissenseNeedsCaseEvidence);
+    }
+    let bad = || {
+        format!(
+            "limit must be ., missense_needs_case_evidence or truncating_in CHROM:START-END NAME, \
+             not '{cell}'"
+        )
+    };
+    let rest = cell.strip_prefix("truncating_in ").ok_or_else(bad)?;
+    let (loc, name) = rest.split_once(' ').unwrap_or((rest, ""));
+    let (chrom, span) = loc.split_once(':').ok_or_else(bad)?;
+    let (a, b) = span.split_once('-').ok_or_else(bad)?;
+    let (start, end) = (crate::int(a)?, crate::int(b)?);
+    if chrom.is_empty() || start > end {
+        return Err(bad());
+    }
+    Ok(Limit::TruncatingIn {
+        chrom: chrom.to_owned(),
+        start,
+        end,
+        name: if name.is_empty() { loc } else { name }.to_owned(),
+    })
 }
 
 impl Rule {
@@ -218,6 +298,8 @@ pub fn acmg_sf_rules(assets: &str) -> Result<IndexMap<String, Rule>, String> {
             let note = col(r, "note")?
                 .filter(|x| !matches!(*x, "" | "."))
                 .map(str::to_owned);
+            let lof = parse_lof(r.get("lof").flatten())?;
+            let limit = parse_limit(r.get("limit").flatten())?;
             Ok((
                 g,
                 Rule {
@@ -228,6 +310,8 @@ pub fn acmg_sf_rules(assets: &str) -> Result<IndexMap<String, Rule>, String> {
                     severity,
                     table_text,
                     note,
+                    lof,
+                    limit,
                 },
             ))
         };
@@ -293,6 +377,58 @@ mod tests {
         assert!(parse_alleles(Some("odd chr1:5:A:T"), true).is_err());
         assert!(parse_alleles(Some("chr1:5:A"), false).is_err());
         assert!(parse_alleles(None, true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn lof_and_limit_cells() {
+        assert_eq!(parse_lof(None).unwrap(), Lof::Yes);
+        assert_eq!(parse_lof(Some("no")).unwrap(), Lof::No);
+        assert_eq!(parse_lof(Some("mark")).unwrap(), Lof::Mark);
+        assert!(parse_lof(Some("maybe")).is_err());
+        assert_eq!(parse_limit(Some(".")).unwrap(), Limit::None);
+        assert_eq!(parse_limit(None).unwrap(), Limit::None);
+        assert_eq!(
+            parse_limit(Some("missense_needs_case_evidence")).unwrap(),
+            Limit::MissenseNeedsCaseEvidence
+        );
+        assert_eq!(
+            parse_limit(Some("truncating_in chr2:10-20 the A-band")).unwrap(),
+            Limit::TruncatingIn {
+                chrom: "chr2".into(),
+                start: 10,
+                end: 20,
+                name: "the A-band".into()
+            }
+        );
+        for bad in ["truncating_in chr2:20-10 x", "truncating_in chr2 x", "truncating", "odd"] {
+            assert!(parse_limit(Some(bad)).is_err(), "{bad}");
+        }
+    }
+
+    /// The shipped table: the genes whose disease is no loss of function
+    /// (PCSK9, MYH7, APOB, RET) say so, TGFBR1 and TGFBR2 carry the mark,
+    /// TTN counts truncating variants in its A-band exons only, and LMNA
+    /// names its missense condition.
+    #[test]
+    fn the_shipped_mechanism_and_limit_columns() {
+        let repo = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+        let r = acmg_sf_rules(repo).unwrap();
+        for g in ["PCSK9", "MYH7", "APOB", "RET", "RYR1", "TTR", "CACNA1S"] {
+            assert_eq!(r[g].lof, Lof::No, "{g}");
+        }
+        for g in ["BRCA2", "LDLR", "MYBPC3", "TTN", "MUTYH", "GLA", "BTD"] {
+            assert_eq!(r[g].lof, Lof::Yes, "{g}");
+        }
+        assert_eq!(r["TGFBR1"].lof, Lof::Mark);
+        assert_eq!(r["TGFBR2"].lof, Lof::Mark);
+        assert!(matches!(
+            &r["TTN"].limit,
+            Limit::TruncatingIn { chrom, start, end, .. }
+                if chrom == "chr2" && *start == 178535980 && *end == 178618493
+        ));
+        assert_eq!(r["LMNA"].limit, Limit::MissenseNeedsCaseEvidence);
+        let limited = r.values().filter(|x| x.limit != Limit::None).count();
+        assert_eq!(limited, 2);
     }
 
     /// The `#` lines of `acmg_sf.tsv` (its source, its columns, the note

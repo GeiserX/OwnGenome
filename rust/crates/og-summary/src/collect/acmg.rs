@@ -30,8 +30,24 @@
 //! named is another disease (a RET variant asserted for Hirschsprung
 //! disease only, not for MEN2), the row carries `condition_not_acmg: true`.
 //! It is still reported: the mark is for the reader, never a filter.
+//!
+//! A HIGH-impact record is a predicted loss of function, so it counts only
+//! in a gene where loss of function causes the disease ACMG lists it for:
+//! the `lof` column, built from ClinGen's haploinsufficiency scores by
+//! `og dev build acmg-lof`. A PCSK9 stop-gain (PCSK9 causes familial
+//! hypercholesterolemia by gain of function) is listed under `not_reported`
+//! with the reason; TGFBR1 and TGFBR2 count it with a `mechanism_note`. A
+//! HIGH-impact record of unknown frequency, or with no GQ, DP or AD to
+//! judge its call (`call_unverified`), counts but is not counted as rare,
+//! and a pair that needs one carries a `pair_note`. The `limit` column
+//! applies two footnotes of Table 1: TTN counts only a truncating variant
+//! in its A-band exons (a ClinVar hit is truncating when its record in the
+//! clinical VCF is), and an LMNA variant that may be a missense one carries
+//! the case-evidence condition in `rule_condition`.
 
-use super::assets::{ACMG_SF_VERSION, Key, Rule, acmg_sf_rules, asset_rows, carrier_genes};
+use super::assets::{
+    ACMG_SF_VERSION, Key, Limit, Lof, Rule, acmg_sf_rules, asset_rows, carrier_genes,
+};
 use super::clinvar::{
     COMMON_AF, Condition, Floor, Hit, HitRecords, allele_copies, condition_fields, floor_values,
     obj, opt_int, opt_s,
@@ -273,6 +289,113 @@ pub struct HighRecord {
     pub ad: Option<String>,
 }
 
+impl HighRecord {
+    /// The call has nothing to judge it by: no number in GQ or DP, and no
+    /// read total in AD on a call of two numbered alleles. Step 23 writes
+    /// such a call `CALL_CHECK=unknown` (`og vcf csq-rank`, the same rule);
+    /// the card marks it `call_unverified` and does not count it as rare.
+    /// A vendor VCF can carry such calls; DeepVariant writes GQ, DP and AD.
+    pub fn unverified(&self) -> bool {
+        if self.weak || self.gq.is_some() || self.dp.is_some() {
+            return false;
+        }
+        let gt = self.genotype.replace('|', "/");
+        let al: Vec<&str> = gt.split('/').collect();
+        let depths: Vec<&str> = self.ad.as_deref().unwrap_or("").split(',').collect();
+        let judged = al.len() == 2
+            && al.iter().all(|a| isdigit(a))
+            && depths.len() > 1
+            && depths.iter().all(|x| isdigit(x))
+            && depths
+                .iter()
+                .filter_map(|x| crate::int(x).ok())
+                .sum::<i128>()
+                != 0;
+        !judged
+    }
+}
+
+/// The consequences that truncate the protein, as ACMG counts a truncating
+/// TTN variant: nonsense, frameshift and canonical splice.
+const TRUNCATING: [&str; 4] = [
+    "stop_gained",
+    "frameshift_variant",
+    "splice_donor_variant",
+    "splice_acceptor_variant",
+];
+
+/// Whether a ranked consequence (terms joined by `,`) truncates.
+fn truncating(consequence: &str) -> bool {
+    consequence.split(',').any(|c| TRUNCATING.contains(&c))
+}
+
+/// `chr2` and `2` name one chromosome.
+fn same_chrom(a: &str, b: &str) -> bool {
+    a.strip_prefix("chr").unwrap_or(a) == b.strip_prefix("chr").unwrap_or(b)
+}
+
+/// Whether a candidate counts under its gene's mechanism (`lof`) and
+/// footnote (`limit`): `Err` is the reason it is listed apart, `Ok` the
+/// condition a reported row must carry, if any. `high` says the candidate
+/// is a HIGH-impact record; `consequence` is its ranked HIGH consequence
+/// (for a ClinVar hit, that of its record in the clinical VCF, `None` when
+/// that VCF has no HIGH-impact record of it); `clinical` says a clinical
+/// VCF was read.
+fn gate(
+    gene: &str,
+    rule: &Rule,
+    key: &Key,
+    high: bool,
+    consequence: Option<&str>,
+    clinical: bool,
+) -> Result<Option<String>, String> {
+    if high && rule.lof == Lof::No {
+        return Err(format!(
+            "a predicted loss-of-function call does not count in {gene}: loss of function is not \
+             how {gene} causes the disease ACMG lists it for (lof no in assets/acmg_sf.tsv, from \
+             ClinGen's haploinsufficiency score); only a ClinVar P/LP variant counts"
+        ));
+    }
+    let trunc = consequence.is_some_and(truncating);
+    match &rule.limit {
+        Limit::None => Ok(None),
+        Limit::TruncatingIn {
+            chrom,
+            start,
+            end,
+            name,
+        } => {
+            let rule = format!(
+                "SF v3.3 footnote f: {gene} is reported only for a truncating variant, and \
+                 OwnGenome counts one only in {name} ({chrom}:{start}-{end})"
+            );
+            if !(same_chrom(&key.0, chrom) && *start <= key.1 && key.1 <= *end) {
+                Err(format!("{rule}: this variant lies outside it"))
+            } else if trunc {
+                Ok(None)
+            } else if high {
+                Err(format!("{rule}: this call does not truncate the protein"))
+            } else if clinical {
+                Err(format!(
+                    "{rule}: the clinical VCF has no truncating call of this variant"
+                ))
+            } else {
+                Ok(Some(format!(
+                    "{rule}. With no clinical VCF its consequence is not known here: check \
+                     that it truncates the protein."
+                )))
+            }
+        }
+        Limit::MissenseNeedsCaseEvidence if trunc => Ok(None),
+        Limit::MissenseNeedsCaseEvidence if high => Ok(None),
+        Limit::MissenseNeedsCaseEvidence => Ok(Some(format!(
+            "SF v3.3 footnote e: ACMG reports a missense variant of {gene} only with case \
+             evidence of cardiac disease, which OwnGenome cannot see; check that before you \
+             read this as a finding"
+        ))),
+    }
+}
+
 /// The clinical VCF read once: its records count and its HIGH-impact
 /// records. An error is the note of a file that cannot be read.
 #[derive(Debug, Clone)]
@@ -405,7 +528,7 @@ fn high_record(
 }
 
 /// A source of a candidate variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Kind {
     ClinVar,
     High,
@@ -445,6 +568,19 @@ struct Cand {
     ps: Option<String>,
     /// The parts of a combined allele (step 06's `PGP_JOINED_FROM`).
     joined: Vec<Key>,
+    /// The reason its gene's mechanism or footnote leaves it uncounted
+    /// ([`gate`]); such a candidate is listed apart and counts nothing.
+    apart: Option<String>,
+}
+
+impl Cand {
+    /// A HIGH-impact call of unknown frequency, or with nothing to judge
+    /// the call by: it counts, but a pair that needs it carries a note.
+    fn unsure(&self) -> bool {
+        self.kind == Kind::High
+            && (matches!(self.fields.get("frequency_unknown"), Some(Value::Bool(true)))
+                || matches!(self.fields.get("call_unverified"), Some(Value::Bool(true))))
+    }
 }
 
 /// One distinct variant of a gene as the verdict counts it: its alt
@@ -463,6 +599,9 @@ struct Allele {
     firm: usize,
     firm_gt: String,
     firm_ps: Option<String>,
+    /// Some call of it is more than a HIGH-impact call of unknown frequency
+    /// or with no GQ, DP or AD ([`Cand::unsure`]). An SV or a deletion is.
+    sure: bool,
 }
 
 impl Allele {
@@ -476,6 +615,7 @@ impl Allele {
             firm: 0,
             firm_gt: String::new(),
             firm_ps: None,
+            sure: true,
         }
     }
 
@@ -574,6 +714,17 @@ fn copies_hit(kept: &IndexMap<AKey, Allele>) -> (usize, Option<String>, Vec<Stri
     (n, proof, cis)
 }
 
+/// What [`sf_verdicts`] gives a gene: for each distinct variant `None`
+/// (reported) or the reason it is not, the partial-deficiency note, how a
+/// gene whose rule needs two hits met it, and the note of a pair that needs
+/// a HIGH-impact call of unknown frequency or with no GQ, DP or AD.
+type Verdicts = (
+    HashMap<AKey, Option<String>>,
+    Option<String>,
+    Option<Pair>,
+    Option<String>,
+);
+
 /// `sf_verdicts`: for each distinct variant of a gene, `None` (reported) or
 /// the reason it is not, the partial-deficiency note of a reported gene
 /// with a hypomorph allele, and how a gene whose rule needs two hits met
@@ -583,7 +734,7 @@ fn sf_verdicts(
     rule: &Rule,
     alleles: &IndexMap<AKey, Allele>,
     deletion: Option<&Entry>,
-) -> (HashMap<AKey, Option<String>>, Option<String>, Option<Pair>) {
+) -> Verdicts {
     let sev = |k: &AKey| match k {
         AKey::Small(k) => rule.severity.get(k),
         _ => None,
@@ -700,6 +851,20 @@ fn sf_verdicts(
             (None, None, None) => low(unknown()),
         }
     });
+    // A HIGH-impact call of unknown frequency (or with nothing to judge its
+    // call by) counts toward the pair, with a note when the pair needs it:
+    // the count again without such alleles.
+    let sure: IndexMap<AKey, Allele> = kept
+        .iter()
+        .filter(|(_, a)| a.sure)
+        .map(|(k, a)| (k.clone(), a.clone()))
+        .collect();
+    let pair_note = (pair.is_some() && copies_hit(&sure).0 < 2).then(|| {
+        "the pair needs a HIGH-impact call of unknown frequency or with no GQ, DP or AD to \
+         judge it: check that call (its frequency in gnomAD, its reads) before you count both \
+         copies"
+            .to_owned()
+    });
     let hypo: Vec<&str> = out
         .iter()
         .filter(|(_, why)| why.is_none())
@@ -712,7 +877,7 @@ fn sf_verdicts(
             hypo.join("; ")
         )
     });
-    (out.into_iter().collect(), partial, pair)
+    (out.into_iter().collect(), partial, pair, pair_note)
 }
 
 /// `CHROM:POS:REF:ALT` joined by `|`, as step 06 writes `PGP_JOINED_FROM`.
@@ -850,6 +1015,7 @@ fn sf_structural(
                 gt: String::new(),
                 ps: None,
                 joined: Vec::new(),
+                apart: None,
             });
         }
     }
@@ -1089,6 +1255,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     gt: gt.clone(),
                     ps: gt_field(r, "PS"),
                     joined: joined.clone(),
+                    apart: None,
                 });
             }
         }
@@ -1125,6 +1292,9 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     Value::Bool(x.frequency == "unknown"),
                 );
                 f.insert("weak_call".into(), Value::Bool(x.weak));
+                if x.unverified() {
+                    f.insert("call_unverified".into(), Value::Bool(true));
+                }
                 f.insert(
                     "call_note".into(),
                     if x.why.is_empty() {
@@ -1146,8 +1316,48 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                     gt: x.genotype.clone(),
                     ps: x.ps.clone(),
                     joined: Vec::new(),
+                    apart: None,
                 });
             }
+        }
+    }
+    // Each gene's mechanism and footnote: a HIGH-impact call in a gene where
+    // loss of function is not the disease mechanism, or a TTN variant that
+    // is no truncating one in the A-band exons, is listed apart and counts
+    // nothing. A ClinVar hit reads its consequence from its record in the
+    // clinical VCF.
+    let clinical_high = match i.clinical {
+        Some(Ok(c)) => c.high.as_ref().ok(),
+        _ => None,
+    };
+    let mut conditions: HashMap<(Kind, String, Key), String> = HashMap::new();
+    for x in clinvar.iter_mut().chain(high.iter_mut()) {
+        let AKey::Small(k) = &x.key else { continue };
+        let is_high = x.kind == Kind::High;
+        let consequence = if is_high {
+            match x.fields.get("consequence") {
+                Some(Value::Str(s)) => Some(s.clone()),
+                _ => None,
+            }
+        } else {
+            clinical_high
+                .and_then(|h| h.get(k))
+                .and_then(|r| r.genes.get(&x.gene))
+                .cloned()
+        };
+        match gate(
+            &x.gene,
+            &rules[&x.gene],
+            k,
+            is_high,
+            consequence.as_deref(),
+            clinical_high.is_some(),
+        ) {
+            Err(why) => x.apart = Some(why),
+            Ok(Some(c)) => {
+                conditions.insert((x.kind, x.gene.clone(), k.clone()), c);
+            }
+            Ok(None) => {}
         }
     }
     let (svs, sv_checked, sv_note) = sf_structural(i.deletions, &rules);
@@ -1157,7 +1367,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
     let small: Vec<&Cand> = clinvar
         .iter()
         .chain(&high)
-        .filter(|x| x.copies > 0)
+        .filter(|x| x.copies > 0 && x.apart.is_none())
         .collect();
     let units = counting_keys(&small);
     let unit = |x: &Cand| {
@@ -1188,11 +1398,13 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             .or_insert(Allele {
                 gt: x.gt.clone(),
                 ps: x.ps.clone(),
+                sure: false,
                 ..Allele::of(x.copies, p)
             });
         if !is_low(x) {
             a.confirm(x.copies, &x.gt, &x.ps);
         }
+        a.sure |= !x.unsure();
     }
     for x in &folded {
         let p = if x.ploidy == 0 { 2 } else { x.ploidy };
@@ -1203,6 +1415,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             .or_insert(Allele {
                 gt: x.gt.clone(),
                 ps: x.ps.clone(),
+                sure: false,
                 ..Allele::of(x.copies, p)
             });
         a.copies = a.copies.max(x.copies);
@@ -1210,6 +1423,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         if !is_low(x) {
             a.confirm(x.copies, &x.gt, &x.ps);
         }
+        a.sure |= !x.unsure();
     }
     for x in &svs {
         alleles
@@ -1335,8 +1549,21 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             ]));
             continue;
         }
+        if let Some(reason) = &x.apart {
+            not_reported.push(obj([
+                ("gene", Value::Str(x.gene.clone())),
+                ("variant", x.fields["variant"].clone()),
+                (
+                    "genotype",
+                    x.fields.get("genotype").cloned().unwrap_or(Value::Null),
+                ),
+                ("source", Value::Str(x.kind.source().into())),
+                ("reason", Value::Str(reason.clone())),
+            ]));
+            continue;
+        }
         let key = unit(&x);
-        let (whys, partial, pair) = &verdict[&x.gene];
+        let (whys, partial, pair, pair_note) = &verdict[&x.gene];
         let why = whys.get(&key).cloned().flatten();
         let rule = &rules[&x.gene];
         let mut f = x.fields;
@@ -1354,6 +1581,22 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
             None => {
                 f.insert("rule".into(), Value::Str(rule.table_text.clone()));
                 f.insert("rule_note".into(), opt_s(rule.note.as_deref()));
+                if let AKey::Small(k) = &x.key
+                    && let Some(c) = conditions.get(&(x.kind, x.gene.clone(), k.clone()))
+                {
+                    f.insert("rule_condition".into(), Value::Str(c.clone()));
+                }
+                if x.kind == Kind::High && rule.lof == Lof::Mark {
+                    f.insert(
+                        "mechanism_note".into(),
+                        Value::Str(format!(
+                            "{} counts a predicted loss-of-function call with a mark: its \
+                             disease is mostly caused by missense variants, so a truncating \
+                             one is a less certain cause; check it with a clinician",
+                            x.gene
+                        )),
+                    );
+                }
                 f.insert("severity".into(), opt_s(partial.as_deref()));
                 if x.kind != Kind::Sv
                     && let AKey::Small(k) = &key
@@ -1364,6 +1607,9 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
                 if let Some((word, phase)) = pair {
                     f.insert("pair".into(), Value::Str((*word).into()));
                     f.insert("phase".into(), Value::Str(phase.clone()));
+                    if let Some(n) = pair_note {
+                        f.insert("pair_note".into(), Value::Str(n.clone()));
+                    }
                 }
                 reported[slot].push(Value::Object(f));
             }
@@ -1384,13 +1630,28 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         |x: &Value, k: &str| matches!(x, Value::Object(m) if m.get(k) == Some(&Value::Bool(true)));
     let sure = high_rows
         .iter()
-        .filter(|x| !(flag(x, "weak_call") || flag(x, "frequency_unknown")))
+        .filter(|x| {
+            !(flag(x, "weak_call") || flag(x, "frequency_unknown") || flag(x, "call_unverified"))
+        })
+        .count();
+    let unverified = high_rows
+        .iter()
+        .filter(|x| flag(x, "call_unverified"))
         .count();
     let weak = high_rows.iter().filter(|x| flag(x, "weak_call")).count();
     let unknown = high_rows
         .iter()
         .filter(|x| flag(x, "frequency_unknown"))
         .count();
+    // A HIGH-impact call with nothing to judge it by is counted apart, and
+    // only a run that has one gets the count.
+    let mut tail = vec![(
+        "high_impact_frequency_unknown",
+        Value::Int(unknown as i128),
+    )];
+    if unverified > 0 {
+        tail.push(("high_impact_unverified", Value::Int(unverified as i128)));
+    }
     Ok(Ok(obj([
         ("version", Value::Str(ACMG_SF_VERSION.into())),
         ("genes_on_list", Value::Int(rules.len() as i128)),
@@ -1401,13 +1662,16 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         ("high_impact_checked", Value::Bool(i.clinical.is_some())),
         ("high_impact_rare", Value::Int(sure as i128)),
         ("high_impact_weak", Value::Int(weak as i128)),
-        ("high_impact_frequency_unknown", Value::Int(unknown as i128)),
+    ]
+    .into_iter()
+    .chain(tail)
+    .chain([
         ("structural", Value::Array(sv_rows)),
         ("structural_checked", Value::Bool(sv_checked)),
         ("structural_note", opt_s(sv_note.as_deref())),
         ("not_reported", Value::Array(not_reported)),
         ("two_hit_note", opt_s(two_hit_note.as_deref())),
-    ])))
+    ]))))
 }
 
 #[cfg(test)]
@@ -1511,6 +1775,79 @@ mod tests {
             words("Ehlers-Danlos syndrome, type IV"),
             "ehlers danlos syndrome type iv"
         );
+    }
+
+    fn rec(gt: &str, gq: Option<i128>, dp: Option<i128>, ad: Option<&str>) -> HighRecord {
+        HighRecord {
+            genotype: gt.into(),
+            ps: None,
+            genes: IndexMap::new(),
+            transcript: "MANE",
+            frequency: "rare",
+            weak: false,
+            why: Vec::new(),
+            gq,
+            dp,
+            ad: ad.map(str::to_owned),
+        }
+    }
+
+    /// A call with no GQ, DP or AD read total is unverified, as step 23's
+    /// `CALL_CHECK=unknown`; any one of them makes it judged.
+    #[test]
+    fn a_call_with_nothing_to_judge_it_by_is_unverified() {
+        assert!(rec("0/1", None, None, None).unverified());
+        assert!(rec("0/1", None, None, Some(".")).unverified());
+        assert!(rec("0/1", None, None, Some("0,0")).unverified());
+        assert!(rec("1", None, None, Some("3,4")).unverified());
+        assert!(!rec("0/1", Some(50), None, None).unverified());
+        assert!(!rec("0/1", None, Some(30), None).unverified());
+        assert!(!rec("0|1", None, None, Some("15,15")).unverified());
+        let mut w = rec("0/1", None, None, None);
+        w.weak = true;
+        assert!(!w.unverified());
+    }
+
+    #[test]
+    fn the_gate_of_a_gene_mechanism_and_footnote() {
+        let rule = |lof, limit| Rule {
+            report_if: "any".into(),
+            variants: IndexMap::new(),
+            sv_cn: false,
+            sv_regions: Vec::new(),
+            severity: IndexMap::new(),
+            table_text: "All P and LP".into(),
+            note: None,
+            lof,
+            limit,
+        };
+        let k = |chrom: &str, pos| (chrom.to_owned(), pos, "C".to_owned(), "T".to_owned());
+        let no = rule(Lof::No, Limit::None);
+        assert!(gate("PCSK9", &no, &k("chr1", 5), true, Some("stop_gained"), true).is_err());
+        assert_eq!(gate("PCSK9", &no, &k("chr1", 5), false, None, true), Ok(None));
+        let ttn = rule(
+            Lof::Yes,
+            Limit::TruncatingIn {
+                chrom: "chr2".into(),
+                start: 100,
+                end: 200,
+                name: "the A-band exons".into(),
+            },
+        );
+        assert_eq!(gate("TTN", &ttn, &k("2", 150), true, Some("frameshift_variant"), true), Ok(None));
+        let out = gate("TTN", &ttn, &k("chr2", 99), true, Some("stop_gained"), true);
+        assert!(out.unwrap_err().contains("outside"));
+        assert!(gate("TTN", &ttn, &k("chr2", 150), true, Some("start_lost"), true).is_err());
+        assert!(gate("TTN", &ttn, &k("chr2", 150), false, None, true).is_err());
+        assert_eq!(
+            gate("TTN", &ttn, &k("chr2", 150), false, Some("stop_gained,splice_region_variant"), true),
+            Ok(None)
+        );
+        assert!(matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, false), Ok(Some(c)) if c.contains("not known")));
+        let lmna = rule(Lof::Yes, Limit::MissenseNeedsCaseEvidence);
+        assert!(matches!(gate("LMNA", &lmna, &k("chr1", 1), false, None, true), Ok(Some(c)) if c.contains("footnote e")));
+        assert_eq!(gate("LMNA", &lmna, &k("chr1", 1), false, Some("stop_gained"), true), Ok(None));
+        assert_eq!(gate("LMNA", &lmna, &k("chr1", 1), true, Some("start_lost"), true), Ok(None));
     }
 
     #[test]
