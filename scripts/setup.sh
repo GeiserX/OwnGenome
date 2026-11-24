@@ -1254,7 +1254,7 @@ install_fine_maps() {
 # case uses both, for the fixture's slices and the two people of its
 # synthetic mix. ANCESTRY_FINE_THIN (default 2kb) is the window that keeps
 # one SNV (the e2e case keeps more of its few megabases with 200bp), and
-# ANCESTRY_FINE_PAINT_PER_GROUP (default 50, at least 10) caps the painting
+# ANCESTRY_FINE_PAINT_PER_GROUP (default 200, at least 10) caps the painting
 # references of each continental group.
 install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
@@ -1331,7 +1331,7 @@ install_ancestry_fine_panel() {
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
-          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
+          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-200}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
     echo "[WARN] Could not write the panel's sample table"
     return 1

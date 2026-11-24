@@ -331,7 +331,7 @@ pub(crate) fn panel_map_main(a: &Args, out: &mut dyn Write) -> Result<()> {
             unknown.into_iter().collect::<Vec<_>>().join(", ")
         )));
     }
-    let paint_per_group = a.int("--paint-per-group", 100).unwrap_or(100);
+    let paint_per_group = a.int("--paint-per-group", 200).unwrap_or(200);
     let rows = panel_map(&meta, &samples, &exclude, paint_per_group, MIN_REFERENCES)?;
     let mut text = String::new();
     text.push_str(&HEADER.join("\t"));

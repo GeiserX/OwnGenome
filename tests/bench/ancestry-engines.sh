@@ -9,8 +9,9 @@
 #              an earlier run finished and scores again
 #
 # What it does, with every number fixed so two runs give the same genomes:
-#   1. Holds out 4 painting references per continental group, one per
-#      population first, and builds a bench model without them: the panel
+#   1. Holds out 19 fixed painting references whose ancestry is one group
+#      (4 per continental group, 3 for AMR; the list and its rule are at
+#      HELDOUT below), and builds a bench model without them: the panel
 #      VCFs without them, each group's frequencies counted again by og
 #      ancestry-fine freqs --exclude at the model's SNVs, and a paint_map
 #      without them.
@@ -84,7 +85,37 @@ SHIFT=${BENCH_SHIFT:-0}
 SELF=${BENCH_SELF:-0}
 OG=${OG:-${REPO}/bin/.og/og-linux-$(uname -m)}
 GROUPS_ALL="AFR WEA CSA EAS AMR"
-HOLD=4
+# HELDOUT: the people the genomes are built from, sample and group. S0
+# calls each of its genomes 100% one group, so each person must be that:
+# a painting reference whose own-group fraction from og ancestry-fine
+# project, against the full panel's frequencies, is at least 0.99, taken
+# one population after another. AMR has 3, from Karitiana and Surui only:
+# the panel's AMR frequencies are dominated by Maya, so Maya, Pima and
+# Colombian people read as about 0.99 AMR against them, while against
+# Karitiana and Surui as the AMR group they carry 26 to 56% of other
+# groups. A list chosen once keeps the genomes the same however the
+# panel's painting map is capped.
+HELDOUT="HGDP01405 AFR
+HGDP00993 AFR
+HGDP00453 AFR
+HG02922 AFR
+HGDP00995 AMR
+HGDP00838 AMR
+HGDP01009 AMR
+NA20847 CSA
+HG03717 CSA
+HG03643 CSA
+NA20849 CSA
+HG00759 EAS
+NA18525 EAS
+HG00403 EAS
+HGDP01309 EAS
+HGDP01357 WEA
+HGDP01149 WEA
+NA06984 WEA
+HGDP00511 WEA"
+# hold_count <group>: how many of HELDOUT are of that group.
+hold_count() { case $1 in AMR) echo 3 ;; *) echo 4 ;; esac; }
 
 # shellcheck source=../../versions.env
 . "${REPO}/versions.env"
@@ -134,22 +165,21 @@ echo "Ancestry engines bench: panel ${PANEL}, work ${WORK}, threads ${THREADS}, 
 
 # --- 1. Held-out people and the bench model ----------------------------------------
 if ! finished heldout; then
-  # Painting references (paint_map.tsv) with their population from
-  # samples.tsv; per group, the first person of each population in
-  # population order, then the second of each, until HOLD.
-  awk -F'\t' -v OFS='\t' 'NR == FNR { if (FNR > 1) pop[$1] = $2; next }
-      !/^#/ && NF >= 2 { k = $2 SUBSEP pop[$1]; print $2, n[k]++, pop[$1], $1 }' \
-      "${PANEL}/samples.tsv" <(LC_ALL=C sort -k1,1 "${PANEL}/model/paint_map.tsv") \
-    | LC_ALL=C sort -t$'\t' -k1,1 -k2,2n -k3,3 -k4,4 \
-    | awk -F'\t' -v OFS='\t' -v hold="$HOLD" '++n[$1] <= hold { print $4, $1 }' > "${WORK}/heldout.tsv"
+  echo "$HELDOUT" | tr ' ' '\t' > "${WORK}/heldout.tsv"
+  # Each must be a painting reference of its group in this panel: the bench
+  # model leaves them out of the paint_map, and RFMix and og must not have
+  # painted with them.
+  bad=$(awk -F'\t' 'NR == FNR { if (!/^#/ && NF >= 2) g[$1] = $2; next } g[$1] != $2 { print $1 " (" $2 ")" }' \
+    "${PANEL}/model/paint_map.tsv" "${WORK}/heldout.tsv" | tr '\n' ' ')
+  [ -z "$bad" ] || { echo "ERROR: not a painting reference of that group in ${PANEL}/model/paint_map.tsv: ${bad}" >&2; exit 2; }
   for g in $GROUPS_ALL; do
     k=$(awk -F'\t' -v g="$g" '$2 == g' "${WORK}/heldout.tsv" | wc -l | tr -d ' ')
-    [ "$k" -eq "$HOLD" ] || { echo "ERROR: ${g} has ${k} painting references to hold out, not ${HOLD}" >&2; exit 1; }
+    [ "$k" -eq "$(hold_count "$g")" ] || { echo "ERROR: ${g} has ${k} people to hold out, not $(hold_count "$g")" >&2; exit 1; }
   done
   cut -f1 "${WORK}/heldout.tsv" > "${WORK}/heldout.txt"
   mark heldout
 fi
-echo "[1] Held out $(wc -l < "${WORK}/heldout.txt" | tr -d ' ') people (${HOLD} per group)"
+echo "[1] Held out $(wc -l < "${WORK}/heldout.txt" | tr -d ' ') people (4 per group, 3 for AMR)"
 
 mkdir -p "${WORK}/panel" "${WORK}/model"
 for c in $CHROMS; do
