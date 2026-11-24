@@ -20,7 +20,9 @@
 //! On the rotated chrM the control region is one stretch, m.16025 at 8025 to
 //! m.575 at 9144, with the origin between 8569 (m.16569) and 8570 (m.1). A
 //! call of the rotated pass whose reference bases cross that point cannot be
-//! written on the linear chrM: it is dropped and counted on stderr.
+//! written on the linear chrM: it is dropped and counted on stderr, and the
+//! linear pass's calls that start at the positions it covers are kept in its
+//! place (unless the rotated pass has its own call at that position).
 
 use og_io::AtomicFile;
 use std::fs::File;
@@ -380,8 +382,9 @@ enum Back {
     Kept(u64, Vec<u8>),
     /// Outside the control region: the linear pass calls it.
     Outside,
-    /// Its reference bases cross the origin.
-    Crosses,
+    /// Its reference bases cross the origin: the first and the last of
+    /// them, on the rotated chrM.
+    Crosses(u64, u64),
 }
 
 fn shift_record(path: &Path, line: &[u8]) -> Result<Back, String> {
@@ -390,7 +393,7 @@ fn shift_record(path: &Path, line: &[u8]) -> Result<Back, String> {
     let last = s + cols[3].len().max(1) as u64 - 1;
     let origin = RCRS_LEN - SHIFT; // m.16569 on the rotated chrM
     if s <= origin && last > origin {
-        return Ok(Back::Crosses);
+        return Ok(Back::Crosses(s, last));
     }
     let pos = from_rotated(s, RCRS_LEN, SHIFT);
     if !in_control(pos) {
@@ -426,6 +429,9 @@ struct Counts {
     shifted: usize,
     linear: usize,
     crossing: usize,
+    /// Linear calls in the control region kept where a crossing call was
+    /// dropped.
+    kept_for_crossing: usize,
 }
 
 /// The merged VCF of the linear and the rotated pass, as text, and its counts.
@@ -449,14 +455,8 @@ fn merge(linear_path: &Path, shifted_path: &Path) -> Result<(Vec<u8>, Counts), S
     }
     let mut counts = Counts::default();
     let mut records: Vec<(u64, Vec<u8>)> = Vec::new();
-    for line in &linear.records {
-        let cols: Vec<&[u8]> = line.split(|b| *b == b'\t').collect();
-        let pos = record_pos(linear_path, &cols)?;
-        if !in_control(pos) {
-            records.push((pos, line.clone()));
-            counts.linear += 1;
-        }
-    }
+    // The rotated spans of the calls across the origin, which are dropped.
+    let mut crossing: Vec<(u64, u64)> = Vec::new();
     for line in &shifted.records {
         match shift_record(shifted_path, line)? {
             Back::Kept(pos, l) => {
@@ -464,7 +464,31 @@ fn merge(linear_path: &Path, shifted_path: &Path) -> Result<(Vec<u8>, Counts), S
                 counts.shifted += 1;
             }
             Back::Outside => {}
-            Back::Crosses => counts.crossing += 1,
+            Back::Crosses(s, last) => {
+                crossing.push((s, last));
+                counts.crossing += 1;
+            }
+        }
+    }
+    // A linear call in the control region is replaced by the rotated pass,
+    // except where a dropped crossing call covers its position and the
+    // rotated pass has no call of its own there: the event would then be
+    // lost from both passes.
+    let rotated_at: Vec<u64> = records.iter().map(|(p, _)| *p).collect();
+    for line in &linear.records {
+        let cols: Vec<&[u8]> = line.split(|b| *b == b'\t').collect();
+        let pos = record_pos(linear_path, &cols)?;
+        if !in_control(pos) {
+            records.push((pos, line.clone()));
+            counts.linear += 1;
+        } else if !rotated_at.contains(&pos)
+            && crossing.iter().any(|(s, last)| {
+                let r = to_rotated(pos, RCRS_LEN, SHIFT);
+                *s <= r && r <= *last
+            })
+        {
+            records.push((pos, line.clone()));
+            counts.kept_for_crossing += 1;
         }
     }
     records.sort_by_key(|(p, _)| *p);
@@ -548,8 +572,9 @@ pub fn shift_back_cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write)
             let _ = writeln!(
                 err,
                 "og vcf shift-back: {} control-region calls from the rotated pass, {} calls of the \
-                 linear pass outside it, {} rotated calls across the origin dropped",
-                c.shifted, c.linear, c.crossing
+                 linear pass outside it, {} rotated calls across the origin dropped, {} linear \
+                 calls kept at the positions they cover",
+                c.shifted, c.linear, c.crossing, c.kept_for_crossing
             );
             0
         }
@@ -859,7 +884,8 @@ mod tests {
         assert_eq!(
             err,
             "og vcf shift-back: 4 control-region calls from the rotated pass, 2 calls of the linear \
-             pass outside it, 1 rotated calls across the origin dropped\n"
+             pass outside it, 1 rotated calls across the origin dropped, 0 linear calls kept at \
+             the positions they cover\n"
         );
         assert_eq!(
             records(&out),
@@ -891,6 +917,64 @@ mod tests {
         let mut r = og_io::tabix::Reader::open(&out).unwrap();
         let hits: Vec<Vec<u8>> = r.query("chrM", 0, 100).collect::<io::Result<_>>().unwrap();
         assert_eq!(hits.len(), 2, "m.3 and m.73");
+    }
+
+    #[test]
+    fn shift_back_keeps_the_linear_calls_a_dropped_crossing_call_covers() {
+        let t = Tmp::new("back-cross");
+        // The rotated pass calls a deletion of m.1 anchored at m.16569, which
+        // the linear chrM cannot hold, and a SNV at m.16569. The linear pass
+        // has the deletion at m.1 (kept: only it holds the event), a call at
+        // m.16569 (replaced by the rotated one) and one at m.16568 (outside
+        // the crossing call: replaced, the rotated pass has none there).
+        let linear = t.put(
+            "linear.vcf",
+            format!(
+                "{META}{COLS}{}{}{}{}",
+                rec(1, "GA", "A", "PASS", "0/1:0.2:.:."),
+                rec(3243, "A", "G", "PASS", "0/1:0.3:.:."),
+                rec(16568, "A", "G", "weak_evidence", "0/1:0.02:.:."),
+                rec(16569, "C", "T", "PASS", "0/1:0.3:.:."),
+            )
+            .as_bytes(),
+        );
+        let shifted = t.put(
+            "shifted.vcf",
+            format!(
+                "{META}{COLS}{}{}",
+                rec(rot(16569), "CG", "C", "PASS", "0/1:0.25:.:."),
+                rec(rot(16569), "C", "T", "PASS", "0/1:0.35:.:."),
+            )
+            .as_bytes(),
+        );
+        let out = t.0.join("merged.vcf.gz");
+        let (rc, err) = run(
+            shift_back_cli,
+            &[
+                "--linear",
+                linear.to_str().unwrap(),
+                "--shifted",
+                shifted.to_str().unwrap(),
+                "--out",
+                out.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(rc, 0, "{err}");
+        assert_eq!(
+            records(&out),
+            [
+                rec(1, "GA", "A", "PASS", "0/1:0.2:.:."),
+                rec(3243, "A", "G", "PASS", "0/1:0.3:.:."),
+                rec(16569, "C", "T", "PASS", "0/1:0.35:.:."),
+            ]
+            .map(|r| r.trim_end().to_owned())
+        );
+        assert_eq!(
+            err,
+            "og vcf shift-back: 1 control-region calls from the rotated pass, 1 calls of the linear \
+             pass outside it, 1 rotated calls across the origin dropped, 1 linear calls kept at \
+             the positions they cover\n"
+        );
     }
 
     #[test]
