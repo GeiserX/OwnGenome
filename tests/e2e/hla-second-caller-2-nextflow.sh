@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The Nextflow side of step 08's second HLA caller: --hla_qc on a VCF+BAM row
 # of HG002 with hla_typing and pharmcat. HLA_QC_READS and HLA_QC run for real;
+# OptiType types the read pairs HLA_TYPING's T1K extracted, as step 08 does;
 # the concordance table they publish is the one the bash step wrote for the
 # same BAM (case hla-second-caller-1), and PGX_CONSENSUS names both callers
 # for what it passes to PharmCAT, which reports HLA-A and HLA-B as outside
@@ -49,6 +50,28 @@ cp "${CASE_TMP}/.nextflow.log" "${E2E_WORK}/logs/${CASE_NAME}.nextflow.log" 2>/d
 [ "$NF_RC" -eq 0 ] || grep -E 'Error executing process|Command exit status|Command error' -A 12 "${CASE_TMP}/.nextflow.log" | head -80
 
 R="${NF_OUT}/${SAMPLE}"
+# OptiType's input is T1K's extraction: HLA_QC_READS' read pairs are the ones
+# run-t1k took in HLA_TYPING (the reads over the HLA genes and their mates,
+# the unmapped pairs and the ALT and decoy reads that match HLA sequence), not
+# a cut of the BAM around HLA-A, -B and -C. Task files, so read in the work dir
+# (staged inputs are links; -type f finds each task's own file).
+CAND1=$(find "$WORK" -type f -name "${SAMPLE}_hla_candidate_1.fq" | head -n 1)
+CAND2=$(find "$WORK" -type f -name "${SAMPLE}_hla_candidate_2.fq" | head -n 1)
+OTIN1=$(find "$WORK" -type f -name "${SAMPLE}_hla_R1.fq" | head -n 1)
+OTIN2=$(find "$WORK" -type f -name "${SAMPLE}_hla_R2.fq" | head -n 1)
+# shellcheck disable=SC2329  # called through check
+same_reads() { [ -s "$1" ] && cmp -s "$1" "$2"; }
+# shellcheck disable=SC2329  # called through check
+not_same_reads() { ! same_reads "$@"; }
+check "HLA_TYPING kept T1K's candidate read pairs" test -s "$CAND1"
+check "HLA_QC_READS gives OptiType T1K's first reads" same_reads "$CAND1" "$OTIN1"
+check "and T1K's second reads" same_reads "$CAND2" "$OTIN2"
+PAIRS=$(( $(wc -l < "${OTIN1:-/dev/null}") / 4 ))
+check_ge "read pairs OptiType typed" "$PAIRS" 100
+echo "- HLA_QC_READS on the fixture: ${PAIRS} read pairs from T1K's extraction" >> "$E2E_NOTES"
+# Red control: the same reads less their last pair are rejected.
+head -n -4 "${OTIN1:-/dev/null}" > "${CASE_TMP}/ctl_R1.fq"
+check "control: the check above rejects reads that are not T1K's" not_same_reads "$CAND1" "${CASE_TMP}/ctl_R1.fq"
 OT="${R}/hla_optitype/${SAMPLE}_optitype_result.tsv"
 CONC="${R}/hla_optitype/${SAMPLE}_hla_concordance.tsv"
 cat "$OT" "$CONC" 2>/dev/null
