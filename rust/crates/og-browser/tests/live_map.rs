@@ -454,9 +454,9 @@ const SECOND_JS: &str = r#"(function () {
 
 const SECOND_FACTS: &str = r#"JSON.stringify((function () {
   var f = document.getElementById('gm-second');
+  var text = function (q) { var n = f.querySelector(q); return n ? n.textContent : ''; }, tip = f.querySelector('.gm-tip');
   return { state: f.dataset.pgpMap, marks: f.querySelectorAll('.gm-marks a').length,
-    narr: f.querySelector('.gm-narration').textContent, layers: f.querySelector('.gm-layers').textContent,
-    tip: f.querySelector('.gm-tip').hidden ? '' : f.querySelector('.gm-tip').textContent };
+    narr: text('.gm-narration'), layers: text('.gm-layers'), tip: !tip || tip.hidden ? '' : tip.textContent };
 }()))"#;
 
 const ROWS_JS: &str = r#"JSON.stringify(Array.prototype.map.call(
@@ -641,6 +641,7 @@ impl Demo {
                         let at = num(get(g, "s")) / 1e6;
                         if st(get(g, "level")) != *lv
                             || st(get(g, "chrom")) != *c
+                            || !at.is_finite()
                             || (at - mb).abs() > 0.01
                         {
                             bad.push(format!(
@@ -854,6 +855,12 @@ impl Demo {
         }
         sleep(1000);
         let c = self.jv(SECOND_FACTS);
+        if st(get(&c, "state")) != "failed" {
+            return vec![format!(
+                "after the failed reload the figure could not be read: {}",
+                show(&c)
+            )];
+        }
         if ["marks", "narr", "layers", "tip"]
             .iter()
             .any(|k| truthy(get(&c, k)))
@@ -3344,7 +3351,11 @@ impl Proxy {
             .then(|| (parts[1], parts[3]));
         match (mistake, viewer_rest) {
             (Mistake::AnyFile, Some((run, rest)))
-                if !rest.is_empty() && gd.join(run).join(rest).is_file() =>
+                if !rest.is_empty()
+                    && !format!("{run}/{rest}")
+                        .split('/')
+                        .any(|p| p.is_empty() || p == "..")
+                    && gd.join(run).join(rest).is_file() =>
             {
                 let body = fs::read(gd.join(run).join(rest)).unwrap();
                 return reply(&mut c, 200, "application/octet-stream", &body, "");
@@ -3586,6 +3597,16 @@ fn login(port: u16) -> Option<String> {
     (r.code == 303).then(|| format!("owngenome_live={value}"))
 }
 
+/// A process stopped and reaped when dropped, also when a check panics.
+struct Reap(Child);
+
+impl Drop for Reap {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 fn wait_port(port: u16, child: &mut Child, secs: u64) -> bool {
     let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
@@ -3645,31 +3666,33 @@ fn live_site_genome_viewer() {
     fs::set_permissions(stub.join("python3"), fs::Permissions::from_mode(0o755)).unwrap();
     let (port, iport) = (free_port(), free_port());
     let log = work.join("site.log");
-    let mut script = Command::new("bash")
-        .arg(repo_root().join("scripts/owngenome-live.sh"))
-        .arg("--quiet")
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                stub.display(),
-                std::env::var("PATH").unwrap_or_default()
-            ),
-        )
-        .env("OG_UNDER_TEST", &og)
-        .env("OG_REPO", repo_root())
-        .env("GENOME_DIR", &gd)
-        .env("REF_FASTA", "reference/synthetic.fasta")
-        .env("OWNGENOME_LIVE_PORT", port.to_string())
-        .env("OWNGENOME_LIVE_INGEST_PORT", iport.to_string())
-        .env("OWNGENOME_LIVE_STATE_DIR", &state)
-        .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
-        .stdin(Stdio::null())
-        .stdout(fs::File::create(&log).unwrap())
-        .stderr(fs::File::create(work.join("site.err")).unwrap())
-        .spawn()
-        .unwrap();
-    let up = wait_port(port, &mut script, 120);
+    let mut script = Reap(
+        Command::new("bash")
+            .arg(repo_root().join("scripts/owngenome-live.sh"))
+            .arg("--quiet")
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    stub.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("OG_UNDER_TEST", &og)
+            .env("OG_REPO", repo_root())
+            .env("GENOME_DIR", &gd)
+            .env("REF_FASTA", "reference/synthetic.fasta")
+            .env("OWNGENOME_LIVE_PORT", port.to_string())
+            .env("OWNGENOME_LIVE_INGEST_PORT", iport.to_string())
+            .env("OWNGENOME_LIVE_STATE_DIR", &state)
+            .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
+            .stdin(Stdio::null())
+            .stdout(fs::File::create(&log).unwrap())
+            .stderr(fs::File::create(work.join("site.err")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let up = wait_port(port, &mut script.0, 120);
     let said = || {
         format!(
             "{}{}",
@@ -3740,10 +3763,12 @@ fn live_site_genome_viewer() {
     sleep(500);
     let mine: Vec<String> = access_rows(&acc).into_iter().skip(before).collect();
     r.ok("access log: one row for the page, none for config.json, igv.js or the byte ranges (and one for the run that does not exist)",
-        mine.len() == 2 && mine.iter().all(|x| x.contains("\t200") || x.contains("\t404")), &mine);
-    let _ = script.kill();
-    let _ = script.wait();
-    // The script's exec replaced bash with og live serve, so the kill above stopped the site.
+        mine.len() == 2
+            && mine.iter().filter(|x| x.ends_with("\tviewer\tS\t-\t200")).count() == 1
+            && mine.iter().filter(|x| x.ends_with("\tviewer\t-\t-\t404")).count() == 1,
+        &mine);
+    drop(script);
+    // The script's exec replaced bash with og live serve, so stopping it stopped the site.
 
     // 5: a BAM, and a VCF index, symlinked out of GENOME_DIR; an odd reference name.
     let (sd, td, ud) = (gd.join("S"), gd.join("T"), gd.join("U"));
@@ -4094,6 +4119,7 @@ fn map_reads_checks(
     let expected = locus(&mut b);
     e(&mut b, "savedFrame.style.width='50%'; true");
     resized(&mut b);
+    sleep(500); // past viewer.js's 100 ms resize timer
     let same = format!(
         "savedFrame.contentDocument.getElementById('igv').shadowRoot.querySelector('input.igv-search-input').value==={}",
         js_str(&expected)
@@ -4106,6 +4132,7 @@ fn map_reads_checks(
     );
     e(&mut b, "savedFrame.style.width=''; true");
     resized(&mut b);
+    sleep(500);
     w(&mut b, &same, 20);
     // A locus the reader types in igv stays through a resize: only a new map locus moves igv again.
     e(
@@ -4174,10 +4201,12 @@ fn map_reads_checks(
     );
     let ok = w(
         &mut b,
-        "!document.querySelector('.gm-reads').hidden && document.querySelector('.gmap').dataset.level==='reads'",
+        "!document.querySelector('.gm-reads').hidden && document.querySelector('.gmap').dataset.level==='reads' && \
+        (function(){var m=/:(\\d+)-(\\d+)$/.exec(document.querySelector('.gmap').dataset.view||'');return !!m&&m[2]-m[1]+1===2000;})()",
         20,
     );
-    r.ok("map: Reads gauge opens a 2 kb view and the panel", ok, "");
+    let view = e(&mut b, "document.querySelector('.gmap').dataset.view");
+    r.ok("map: Reads gauge opens a 2 kb view and the panel", ok, view);
     let ok = truthy(&e(&mut b, "history.length===gaugeHistoryLength+1"));
     r.ok("map: the Reads gauge adds one camera history entry", ok, "");
     e(
