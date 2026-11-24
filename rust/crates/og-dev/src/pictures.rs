@@ -26,7 +26,7 @@
 //!   last row of the Gene Results table (`--cpic-head N` sets N,
 //!   `--cpic-full` draws the whole file as `cat` prints it).
 //!
-//! `live` takes the live-site demo SITE (as `tests/demo/build_live_demo.py
+//! `live` takes the live-site demo SITE (as `og live demo
 //! --out SITE` builds it), served from 127.0.0.1, at the last moment of its
 //! replay: `demo-live-site.png` is DEMO-001's person page in a 1280 x 1000
 //! dark window; with `--phone`, `demo-live-phone.png` is DEMO-002's person
@@ -811,7 +811,7 @@ fn live(args: &[String], out: &mut dyn Write) -> Result<u8, Fail> {
     let person = if phone { PARTNER } else { SAMPLE };
     if !site.join("runs").join(person).join("index.html").is_file() {
         return Err(Fail::Error(format!(
-            "{} is not a built live demo (no runs/{person}/index.html): build it with tests/demo/build_live_demo.py --out {}",
+            "{} is not a built live demo (no runs/{person}/index.html): build it with og live demo --out {}",
             site.display(),
             site.display()
         )));
