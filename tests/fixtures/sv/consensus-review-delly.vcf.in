@@ -1,0 +1,22 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+##contig=<ID=chr21,length=46709983>
+##contig=<ID=chr22,length=50818468>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="SV length">
+##INFO=<ID=CT,Number=1,Type=String,Description="Connection type">
+##INFO=<ID=CHR2,Number=1,Type=String,Description="Mate contig">
+##INFO=<ID=STRANDS,Number=1,Type=String,Description="Orientation">
+##INFO=<ID=pytorP1,Number=1,Type=Float,Description="E-value">
+##INFO=<ID=pytorQ0,Number=1,Type=Float,Description="Fraction of zero mapping quality reads">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	delly
+chr20	1000300	insD	N	<INS>	55	PASS	SVTYPE=INS;END=1000301;SVLEN=300;CT=NtoN	GT	0/1
+chr20	2000005	strandD	N	<DEL>	56	PASS	SVTYPE=DEL;END=2001000;SVLEN=-995;CT=3to5	GT	0/1
+chr20	3000005	diff-chrD	N	N]chr22:3001000]	57	PASS	SVTYPE=BND;CT=3to3	GT	0/1
+chr20	4000500	last	N	<DEL>	58	PASS	SVTYPE=DEL;END=4001100;SVLEN=-600;CT=3to5	GT	0/1
+chr20	5000055	memberD	N	<DEL>	59	PASS	SVTYPE=DEL;END=5001050;SVLEN=-995;CT=3to5	GT	0/1
+chr20	6000005	traD	N	<TRA>	55	PASS	SVTYPE=TRA;CHR2=chr20;END=6001000;SVLEN=995;CT=3to3	GT	0/1
+chr20	7000700	kept-bndD	N	N]chr21:7005700]	55	PASS	SVTYPE=BND;CT=3to3	GT	0/1
+chr20	8000100	valid-insD	N	<INS>	60	PASS	SVTYPE=INS;END=8000101;SVLEN=300;CT=NtoN	GT	0/1

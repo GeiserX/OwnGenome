@@ -170,6 +170,7 @@ short-sample-id-stub	shard	48	-
 single-source-lib-ownership	shard	1	-
 str-catalog-1-strchive	shard	12	-
 str-extra-repeats-1-readings	shard	16	-
+sv-merge-consensus-check	shard	10	-
 sv-merge-votes	shard	10	-
 sv-mito-telomere-steps-1-sv-merge	shard	5	-
 sv-mito-telomere-steps-2-mito	shard	6	bash-step-20-numt

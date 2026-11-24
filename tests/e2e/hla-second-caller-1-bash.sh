@@ -70,7 +70,7 @@ CONS="${G}/${S}/pgx_consensus/${S}_pgx_consensus.tsv"
 
 HLA_QC=true run_step 08-hla-typing.sh "$S"
 check_step_exit 08-hla-typing.sh
-check_ge "read pairs step 08 gave OptiType" "$(sed -n 's/^Read pairs at HLA-A, HLA-B and HLA-C: //p' "$STEP_LOG")" 100
+check_ge "read pairs step 08 gave OptiType" "$(sed -n "s/^HLA read pairs T1K extracted, OptiType's input: //p" "$STEP_LOG")" 100
 cat "$OT" "$CONC" 2>/dev/null
 check_eq "OptiType's HLA-A is HG002's published pair" "$(ot_pair "$OT" A)" '*01:01/*26:01'
 check "OptiType called two HLA-B alleles" has '^\*[0-9]+:[0-9]+/\*[0-9]+:[0-9]+$' "$(ot_pair "$OT" B)"

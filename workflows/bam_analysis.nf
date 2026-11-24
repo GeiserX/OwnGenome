@@ -120,10 +120,11 @@ workflow BAM_ANALYSIS {
         }
 
         // Opt-in: --hla_qc, OptiType as a second caller of HLA-A, -B and -C,
-        // on the reads of those genes; PGX_CONSENSUS passes HLA-A and HLA-B
+        // on the read pairs T1K extracted (HLA_TYPING's candidate reads, so
+        // both callers judge the same reads); PGX_CONSENSUS passes HLA-A and HLA-B
         // to PharmCAT only when it agrees with T1K at two fields
         if (params.hla_qc) {
-            HLA_QC_READS(ch_bam, T1K_BUILD.out.coord_fa)
+            HLA_QC_READS(HLA_TYPING.out.candidates)
             HLA_QC(
                 HLA_QC_READS.out.reads.map { meta, r1, r2 -> [meta.id, meta, r1, r2] }
                     .join(HLA_TYPING.out.hla_alleles.map { meta, f -> [meta.id, f] })

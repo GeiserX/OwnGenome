@@ -130,6 +130,7 @@ file	{sample}/fastq_trimmed/{sample}_R1.fastq.gz	01b	FASTP	nextflow	bin	internal
 file	{sample}/fastq_trimmed/{sample}_R2.fastq.gz	01b	FASTP	nextflow	bin	internal	-	-
 file	{sample}/fastq_trimmed/{sample}_fastp.html	01b	FASTP	both	html	stable	-	-
 file	{sample}/fastq_trimmed/{sample}_fastp.json	01b	FASTP	both	json	stable	-	-
+file	{sample}/hla/*_hla_candidate*.fq	08	HLA_TYPING	nextflow	text	internal	-	-
 file	{sample}/hla/{sample}_hla_genotype.tsv	08	HLA_TYPING	nextflow	tsv	stable	-	-
 file	{sample}/hla_optitype/{sample}_hla_concordance.tsv	08	HLA_QC	both	tsv	experimental	-	-
 file	{sample}/hla_optitype/{sample}_optitype_result.tsv	08	HLA_QC	both	tsv	experimental	-	-
