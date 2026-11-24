@@ -174,6 +174,7 @@ With `--model_type WES` the pipeline:
 - runs Manta with `--exome`;
 - skips indexcov and takes the sex check from somalier (`sample_qc`, step 33). A sex that disagrees with the samplesheet stops the run, as on a whole genome, but DeepVariant does not wait for it;
 - does not run `cnvpytor`, `roh`, `telomere_hunter`, `archaic`, `mocha` or `viral` when they are in `--tools`, nor the mtDNA copy number and large deletions of `mito_variants`. The log says "not run: exome" and names them, and the report lists them as not run. `survivor_merge` goes too when CNVpytor was one of its two callers. The NuMT filter of `mito_variants` gets the exome's median autosomal depth, 0 or close to it, so it marks little or nothing.
+- leaves the report's mean depth on mosdepth's genome-wide `total` row, so for an exome the report shows a few X. The on-target mean is the `total_region` row of `<outdir>/<sample>/coverage/<sample>.mosdepth.summary.txt`. Step 16b with `CAPTURE_BED` feeds the report the same way.
 
 The pipeline refuses `--model_type WES` without `--capture_bed`, `--capture_bed` without `--model_type WES`, and `--intervals` with `--capture_bed` (both set DeepVariant's regions: cut the capture BED to your regions instead). Delly and the ancestry projection still run when you select them; leave them out, as the table above says. `run-all.sh` runs the whole-genome steps and has no WES mode.
 
