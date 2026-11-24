@@ -1,6 +1,6 @@
 # tests/fixtures/live/demo
 
-Invented inputs of the live-site demo (`tests/demo/build_live_demo.py`), added to the invented
+Invented inputs of the live-site demo (`og live demo`), added to the invented
 sample DEMO-001 that `og dev demo-sample` writes. No real sample, person or run.
 
 - `DEMO-001/recheck/state.json`: a database re-check as `bin/og recheck` writes it: a newer
@@ -17,4 +17,4 @@ sample DEMO-001 that `og dev demo-sample` writes. No real sample, person or run.
   `compound_het.tsv` also holds a pair in KCNH2 whose first variant is the son's planted result to act on
   (`PLANTED` in `rust/crates/og-dev/src/demo/clinical_clinvar.rs`): the family page keeps the son's pairs closed until his results are opened there.
 
-The run itself is `../demo-001.weblog.jsonl`, written by `tests/demo/make_demo_events.py`.
+The run itself is `../demo-001.weblog.jsonl`, written by `og dev demo-events`.

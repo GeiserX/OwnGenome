@@ -11,6 +11,16 @@
 #   4. HLA_QC unset, then HLA_QC=false: no --hla_qc on the command line.
 # A fake nextflow stands in; a wrapper in front of it writes the two files
 # main.nf's completion handler would (run-all-kir-step.sh is the KIR twin).
+# Then step 08 itself with HLA_QC=true, through the fake docker:
+#   5. OptiType types the read pairs T1K extracted (hla_t1k/*_hla_candidate_1
+#      and _2.fq: the reads over the HLA genes and their mates, the unmapped
+#      pairs and the ALT and decoy reads that match HLA sequence), not a
+#      samtools cut of the BAM around HLA-A, -B and -C, and the step prints
+#      their number;
+#   6. a single-end BAM: T1K writes one candidate file, so OptiType does not
+#      run, and paired files an earlier run left are not typed instead.
+#   7. T1K's pairs hold class II reads only (no allele of HLA-A, -B or -C
+#      called): OptiType, with nothing to align, does not run; a no-call.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -67,5 +77,90 @@ for hq in '' false; do
   output_lacks "qc-off${hq:+-$hq}" 'OptiType checks'
 done
 
+# --- step 08 with HLA_QC=true: what OptiType reads ---------------------------------
+seed_reference "$G"
+cat > "${CASE_WORK}/hla-hook" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+. "${CASE_WORK:?}/host-path.sh"
+args=" ${*:2} "
+opt() { sed -n "s/.* $1 \([^ ]*\) .*/\1/p" <<<"$args"; }
+fq() { local i; for i in $(seq "$2"); do printf '@r%s\nACGTACGTAC\n+\nIIIIIIIIII\n' "$i"; done > "$1"; }
+case "$args" in
+  *" t1k-build.pl "*)
+    o=$(host_path "$(opt -o)")
+    mkdir -p "$o"
+    printf '>HLA-A*01:01:01:01\nACGT\n' > "${o}/hla_dna_seq.fa"
+    for g in HLA-A HLA-B HLA-C HLA-DRB1 HLA-DQB1 HLA-DPB1; do
+      printf '>%s*01:01 chr6 29942532 29945870 +\nACGT\n' "$g"
+    done > "${o}/hla_dna_coord.fa"
+    exit 0 ;;
+  *" run-t1k "*)
+    # What run-t1k leaves: its genotypes and the reads its extractor took.
+    p="$(host_path "$(opt --od)")$(opt -o)"
+    if [ "${FAKE_T1K_CLASS2:-}" = 1 ]; then
+      printf 'HLA-A\t0\t.\t0\t-1\t.\t0\t-1\t.\nHLA-DRB1\t2\tHLA-DRB1*15:01:01\t80\t60\tHLA-DRB1*03:01:01\t70\t60\t.\n'
+    else
+      printf 'HLA-A\t2\tHLA-A*01:01:01\t100\t60\tHLA-A*26:01:01\t90\t60\n'
+    fi > "${p}_genotype.tsv"
+    [ "${FAKE_T1K_NOGENO:-}" != 1 ] || rm -f "${p}_genotype.tsv"
+    if [ "${FAKE_T1K_SINGLE:-}" = 1 ]; then fq "${p}_candidate.fq" 5
+    else fq "${p}_candidate_1.fq" 7; fq "${p}_candidate_2.fq" 7; fi
+    exit 0 ;;
+  *" optitype run "*)
+    o="$(host_path "$(opt -o)")/run1"
+    mkdir -p "$o"
+    printf '\tA1\tA2\tB1\tB2\tC1\tC2\tReads\tObjective\n0\tA*01:01\tA*26:01\tB*08:01\tB*07:02\tC*07:01\tC*07:02\t7\t1.0\n' \
+      > "${o}/$(opt -p)_result.tsv"
+    exit 0 ;;
+esac
+exec "${CASE_WORK}/hook-outputs" "$@"
+HOOK
+chmod +x "${CASE_WORK}/hla-hook"
+T1K_DIR="${G}/sample1/hla_t1k"
+OT_RES="${G}/sample1/hla_optitype/sample1_optitype_result.tsv"
+
+: > "$FAKE_DOCKER_LOG"
+FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 0 step08-qc "${SCRIPTS}/08-hla-typing.sh" sample1
+docker_log_has '^run image=[^ ]*t1k.* run-t1k -b /genome/sample1/aligned/sample1_sorted\.bam ' \
+  "step08-qc: T1K did not extract the HLA reads from the BAM itself"
+docker_log_has '^run image=[^ ]*optitype.* optitype run -i /genome/sample1/hla_t1k/sample1_hla_candidate_1\.fq -i /genome/sample1/hla_t1k/sample1_hla_candidate_2\.fq ' \
+  "step08-qc: OptiType did not type the read pairs T1K extracted"
+if grep -q '^run image=[^ ]*samtools' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc: step 08 cut OptiType's reads out of the BAM with samtools: $(grep '^run image=[^ ]*samtools' "$FAKE_DOCKER_LOG" | head -n 1)"
+fi
+output_has step08-qc "^HLA read pairs T1K extracted, OptiType's input: 7$"
+grep -q $'^0\tA\\*01:01' "$OT_RES" 2>/dev/null || miss "step08-qc: no OptiType result in ${OT_RES}"
+
+# A single-end BAM, with the paired files of the run above still there.
+: > "$FAKE_DOCKER_LOG"
+FAKE_T1K_SINGLE=1 FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 0 step08-qc-single "${SCRIPTS}/08-hla-typing.sh" sample1
+[ -s "${T1K_DIR}/sample1_hla_candidate.fq" ] || miss "step08-qc-single: the fake run-t1k wrote no single-end candidate file"
+[ ! -e "${T1K_DIR}/sample1_hla_candidate_1.fq" ] || miss "step08-qc-single: the last run's paired candidate reads were left in hla_t1k/"
+if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc-single: OptiType ran without read pairs from this run"
+fi
+output_has step08-qc-single "^HLA read pairs T1K extracted, OptiType's input: 0$"
+grep -q '^# OptiType not run: no read pairs' "$OT_RES" 2>/dev/null || miss "step08-qc-single: the result file does not say OptiType was not run"
+
+# Read pairs, but T1K called no allele of HLA-A, -B or -C (class II reads only).
+: > "$FAKE_DOCKER_LOG"
+rm -f "$OT_RES"
+FAKE_T1K_CLASS2=1 FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 0 step08-qc-class2 "${SCRIPTS}/08-hla-typing.sh" sample1
+output_has step08-qc-class2 "^HLA read pairs T1K extracted, OptiType's input: 7$"
+if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc-class2: OptiType ran on reads with no HLA-A, -B or -C allele called"
+fi
+grep -q '^# OptiType not run: no read pairs' "$OT_RES" 2>/dev/null || miss "step08-qc-class2: the result file does not say OptiType was not run"
+
+# T1K left no genotype file: step 08 cannot tell if it called class I, so it
+# fails, as it did before OptiType's input came from T1K.
+: > "$FAKE_DOCKER_LOG"
+rm -f "$OT_RES"
+FAKE_T1K_NOGENO=1 FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hla-hook" HLA_QC=true run_expect 1 step08-qc-nogeno "${SCRIPTS}/08-hla-typing.sh" sample1
+if grep -q '^run image=[^ ]*optitype' "$FAKE_DOCKER_LOG"; then
+  miss "step08-qc-nogeno: OptiType ran with no T1K genotype file"
+fi
+
 [ "$MISSES" -eq 0 ] || fail "${MISSES} result(s) above are wrong"
-echo "HLA_QC=true reaches the pipeline as --hla_qc true, and step 08 counts OptiType's two processes."
+echo "HLA_QC=true reaches the pipeline as --hla_qc true, step 08 counts OptiType's two processes, and OptiType types the reads T1K extracted."
