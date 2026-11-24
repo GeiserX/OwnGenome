@@ -71,7 +71,7 @@ What it shows:
 
 - The flat 0.4 inflates the short segments. It gives 2.4 to 2.8 times as many segments as the panel, and 24% to 47% more total length.
 - HG002 has no run of 5 Mb or more with any of the three.
-- HG00096 has one run of 5 Mb or more with the panel and none with 0.4. With 0.4, bcftools roh split that stretch of chr22 into 13 segments of 1.1 Mb or less. It broke the stretch at 259 heterozygous calls. 223 of them are indels or SNVs that are not in the panel (rare in gnomAD, or not PASS there), so the panel run does not read them. Inside the stretch the genome is homozygous at 2,387 panel sites and heterozygous at 36. So the run is real: the flat 0.4 broke it at calls that are not common SNVs.
+- HG00096 has one run of 5 Mb or more with the panel and none with 0.4. With 0.4, bcftools roh split that stretch of chr22 into 13 segments of 1.1 Mb or less. The stretch holds 259 heterozygous calls. 223 of them are indels or SNVs that are not in the panel (rare in gnomAD, or not PASS there), so the panel run does not read them. The other 36 are panel sites, beside 2,387 homozygous panel sites. These counts come from the same panel markers that found the run, so they explain the difference but do not prove the run independently: read it as a candidate that the panel's markers find and the flat 0.4 splits.
 - The group's AF gives fewer and shorter segments than the global AF. The runs of 5 Mb or more are the same.
 
 ## Output
