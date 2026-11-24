@@ -94,7 +94,7 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 2. Writes a one-person ADMIXTURE input on the SNVs ADMIXTURE uses that you have a genotype for (ADMIXTURE stops on a SNV with no genotype, so a missing one is left out), projects it on each level's frequencies, then runs the bootstrap replicates.
 3. Chooses the chromosomes to paint: 100 genotyped SNVs or more spanning 5 cM or more. RFMix stops with a segmentation fault on a span of a few cM; on a whole genome every autosome spans more than 40 cM.
 4. Phases those chromosomes with Beagle against the panel (`impute=false`, `seed=1`).
-5. Paints them with RFMix against 50 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group), `--random-seed=1`. When RFMix fails on a chromosome, the step prints the last lines of its log, writes the chromosome to `work/paint/failed.txt` and goes on with the next one; the reports list it as not painted.
+5. Paints them with `og ancestry-fine paint` against 50 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group). One local-ancestry model is fitted over all the chromosomes, its proportions starting at the continental fractions of part 2, and writes `work/paint/<chrom>.msp.tsv` and `work/paint/params.tsv`. A chromosome it cannot read (its phased file, panel or map missing or broken, a panel or phased file of another chromosome, a map with no marker, or no SNV shared with the panel) goes to `work/paint/failed.txt` with the reason in the log, and the others are still painted; the reports list it as not painted.
 6. Writes the outputs below.
 
 The Nextflow module (`modules/local/ancestry_fine`) runs the same parts as six processes, one per image, and the e2e test checks that it writes the fractions of the bash step.
@@ -103,11 +103,11 @@ The Nextflow module (`modules/local/ancestry_fine`) runs the same parts as six p
 
 | File | Contents |
 |---|---|
-| `ancestry_fine/${SAMPLE}_ancestry_fine.tsv` | one row per group: `level` (`continent`, `region`, or `painting` for the share of the painted genome), `code`, `group`, `fraction`, `se` (bootstrap standard error), `low` and `high` (2.5 and 97.5 percentiles of the bootstrap). Also a `left_out` row for each group the model leaves out, and a `not_painted` row for each chromosome RFMix failed on, both with `.` in the number columns |
+| `ancestry_fine/${SAMPLE}_ancestry_fine.tsv` | one row per group: `level` (`continent`, `region`, or `painting` for the share of the painted genome), `code`, `group`, `fraction`, `se` (bootstrap standard error), `low` and `high` (2.5 and 97.5 percentiles of the bootstrap). Also a `left_out` row for each group the model leaves out, and a `not_painted` row (reason `painting failed`) for each chromosome the painting failed on, both with `.` in the number columns |
 | `ancestry_fine/${SAMPLE}_painting.bed` | the painting: chromosome, start, end, haplotype (1 or 2), continental group code |
 | `ancestry_fine/${SAMPLE}_painting.png` | chromosomes 1 to 22 to scale, two bars each, coloured by continental group; grey is not painted |
 | `ancestry_fine/${SAMPLE}_ancestry_fine.txt` | the same in plain text, with what it means |
-| `ancestry_fine/work/` | the genotypes, the phased haplotypes, ADMIXTURE's and RFMix's own files |
+| `ancestry_fine/work/` | the genotypes, the fractions and their fit, the phased haplotypes, and the painting (`paint/`) |
 
 The HTML and text reports have a section with the fractions, the painted shares and the picture.
 

@@ -422,7 +422,7 @@
 ---
   - Mosaic loss of chromosome Y or X
   - Variant calling
-  - Fine-grained ancestry (ADMIXTURE, RFMix)
+  - Fine-grained ancestry
   - Structural variants (Delly)
   - Y-STR markers (HipSTR)
   - Blood groups (predicted)

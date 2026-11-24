@@ -12,7 +12,7 @@
                               groups' frequencies, with their bootstrap, and
                               the chromosomes to paint (og ancestry-fine)
       ANCESTRY_FINE_PHASE     Beagle phasing against the panel
-      ANCESTRY_FINE_PAINT     RFMix painting with the continental groups
+      ANCESTRY_FINE_PAINT     og painting with the continental groups
       ANCESTRY_FINE_REPORT    the fractions table, the painting (BED, PNG) and
                               the text summary
 
@@ -191,7 +191,7 @@ process ANCESTRY_FINE_PAINT {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(phased, stageAs: 'in/*')
+    tuple val(meta), path(phased, stageAs: 'in/*'), path(fractions, stageAs: 'frc/*')
     path panel
 
     output:
@@ -202,36 +202,26 @@ process ANCESTRY_FINE_PAINT {
     task.ext.when == null || task.ext.when
 
     script:
-    // As scripts/26b-ancestry-fine.sh: a chromosome RFMix fails on goes to
-    // paint/failed.txt, which the report lists as not painted, and the next
-    // chromosome is still painted.
+    // As scripts/26b-ancestry-fine.sh: og ancestry-fine paint paints every
+    // phased chromosome at once, its proportions starting at the continental
+    // fractions; a chromosome it cannot read goes to paint/failed.txt, which
+    // the report lists as not painted, and the others are still painted.
     """
     set -euo pipefail
-    mkdir -p paint
-    for f in in/phase/chr*.vcf.gz; do
-        [ -e "\$f" ] || continue   # no chromosome long enough to paint
-        c=\$(basename "\$f" .vcf.gz)
-        rfmix -f "\$f" -r ${panel}/panel/\$c.vcf.gz -m ${panel}/model/paint_map.tsv -g ${panel}/maps/\$c.rfmix.map \\
-            -o paint/\$c --chromosome=\$c --n-threads=${task.cpus} --random-seed=1 > paint/\$c.log 2>&1 \\
-            || { tail -n 20 paint/\$c.log >&2; echo "\$c" >> paint/failed.txt; rm -f paint/\$c.msp.tsv; }
-    done
+    og ancestry-fine paint --phased in/phase --panel ${panel}/panel --maps ${panel}/maps --model ${panel}/model \\
+        --fractions frc/fractions --sample ${meta.id} --threads ${task.cpus} --out-dir paint
     if [ -s paint/failed.txt ]; then
-        echo "WARNING: RFMix failed on \$(echo \$(cat paint/failed.txt)); the report lists them as not painted" >&2
+        echo "WARNING: the painting failed on \$(echo \$(cat paint/failed.txt)); the report lists them as not painted" >&2
     fi
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        rfmix: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     mkdir -p paint
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        rfmix: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 

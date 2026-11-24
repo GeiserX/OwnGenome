@@ -287,7 +287,7 @@
 #  5. ANCESTRY: Where do my ancestors come from?
 ################################################################################
 
-## Fine-Grained Ancestry (ADMIXTURE, RFMix)
+## Fine-Grained Ancestry
 ---
   [partial: covers 1 of 22 autosomes]
   Continental groups (fraction, bootstrap range):
@@ -296,7 +296,7 @@
   Regional groups (fraction, bootstrap range):
     Iberia                                               60% (50% to 70%)
   Left out of the model: Oceania. The panel has fewer than 10 unrelated reference people for it, so its ancestry is spread over the groups shown.
-  Chromosome painting: none; not painted: RFMix failed on chr21
+  Chromosome painting: none; not painted: the painting failed on chr21
   Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.
 
 ## Mitochondrial Haplogroup

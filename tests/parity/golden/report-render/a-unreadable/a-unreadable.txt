@@ -280,7 +280,7 @@
 #  5. ANCESTRY: Where do my ancestors come from?
 ################################################################################
 
-## Fine-Grained Ancestry (ADMIXTURE, RFMix)
+## Fine-Grained Ancestry
 ---
   [could not be read: why: <b>&'"]
 ## Mitochondrial Haplogroup
