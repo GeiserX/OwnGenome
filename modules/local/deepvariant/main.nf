@@ -25,6 +25,17 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// The model and the regions, written once: the script passes them and the
+// stub prints them, so tests/e2e/nf-exome-1-stub.sh checks what runs.
+def deepvariant_model() {
+    return "--model_type=${params.model_type}"
+}
+
+// An exome's capture BED, else --intervals, else the whole genome ('')
+def deepvariant_regions(capture_bed) {
+    return capture_bed ? "--regions ${capture_bed}" : (params.intervals ? "--regions \"${params.intervals}\"" : '')
+}
+
 process DEEPVARIANT {
     tag "$meta.id"
     label 'process_high'
@@ -48,10 +59,10 @@ process DEEPVARIANT {
 
     script:
     def haploid = meta.sex == 'male' ? "--haploid_contigs=chrX,chrY --par_regions_bed=${par_bed}" : ''
-    def regions = capture_bed ? "--regions ${capture_bed}" : (params.intervals ? "--regions \"${params.intervals}\"" : '')
+    def regions = deepvariant_regions(capture_bed)
     """
     /opt/deepvariant/bin/run_deepvariant \\
-        --model_type=${params.model_type} \\
+        ${deepvariant_model()} \\
         --ref=${reference} \\
         --reads=${bam} \\
         --output_vcf=${meta.id}.vcf.gz \\
@@ -71,9 +82,8 @@ process DEEPVARIANT {
 
     stub:
     // The stub prints the options the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
-    def regions = capture_bed ? "--regions ${capture_bed}" : (params.intervals ? "--regions \"${params.intervals}\"" : '')
     """
-    echo "run_deepvariant options: --model_type=${params.model_type} ${regions}"
+    echo "run_deepvariant options: ${deepvariant_model()} ${deepvariant_regions(capture_bed)}"
     echo | gzip > ${meta.id}.vcf.gz
     echo | gzip > ${meta.id}.g.vcf.gz
     touch ${meta.id}.vcf.gz.tbi ${meta.id}.g.vcf.gz.tbi

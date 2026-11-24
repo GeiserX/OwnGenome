@@ -20,6 +20,13 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// mosdepth's windows, written once: the script passes them and the stub
+// prints them, so tests/e2e/nf-exome-1-stub.sh checks what runs. An exome's
+// capture BED, else 500 bp windows.
+def mosdepth_by(capture_bed) {
+    return "--by ${capture_bed ?: 500}"
+}
+
 process MOSDEPTH {
     tag "$meta.id"
     label 'process_medium'
@@ -44,10 +51,9 @@ process MOSDEPTH {
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def by     = capture_bed ?: 500
     """
     mosdepth \\
-        --by ${by} \\
+        ${mosdepth_by(capture_bed)} \\
         --fast-mode \\
         --no-per-base \\
         --threads ${task.cpus} \\
@@ -108,9 +114,8 @@ process MOSDEPTH {
     stub:
     // The stub prints the windows the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def by     = capture_bed ?: 500
     """
-    echo "mosdepth options: --by ${by}"
+    echo "mosdepth options: ${mosdepth_by(capture_bed)}"
     touch ${prefix}.mosdepth.summary.txt
     touch ${prefix}.mosdepth.global.dist.txt
     echo | gzip > ${prefix}.regions.bed.gz

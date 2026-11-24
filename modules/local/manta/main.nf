@@ -22,6 +22,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// configManta.py's options, written once: the script passes them and the
+// stub prints them, so tests/e2e/nf-exome-1-stub.sh checks what runs. A
+// whole genome's command reads as it did before --exome existed.
+def manta_config_options(call_regions) {
+    def regions_arg = call_regions ? "--callRegions ${call_regions}" : ''
+    def exome_arg   = params.model_type == 'WES' ? '--exome' : ''
+    return [regions_arg, exome_arg].findAll { a -> a }.join(' ')
+}
+
 process MANTA {
     tag "$meta.id"
     label 'process_high'
@@ -47,15 +56,12 @@ process MANTA {
     task.ext.when == null || task.ext.when
 
     script:
-    def regions_arg = call_regions ? "--callRegions ${call_regions}" : ''
-    def exome_arg   = params.model_type == 'WES' ? '--exome' : ''
     """
     # Step 1: Configure Manta
     configManta.py \\
         --bam ${bam} \\
         --referenceFasta ${reference} \\
-        ${regions_arg} \\
-        ${exome_arg} \\
+        ${manta_config_options(call_regions)} \\
         --runDir manta_run
 
     # Step 2: Run Manta workflow
@@ -87,10 +93,8 @@ process MANTA {
 
     stub:
     // The stub prints the options the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
-    def regions_arg = call_regions ? "--callRegions ${call_regions}" : ''
-    def exome_arg   = params.model_type == 'WES' ? '--exome' : ''
     """
-    echo "configManta.py options: ${regions_arg} ${exome_arg}"
+    echo "configManta.py options: ${manta_config_options(call_regions)}"
     mkdir -p results/variants
     touch results/variants/diploidSV.vcf.gz results/variants/diploidSV.vcf.gz.tbi
     touch results/variants/diploidSV.raw.vcf.gz results/variants/diploidSV.raw.vcf.gz.tbi
