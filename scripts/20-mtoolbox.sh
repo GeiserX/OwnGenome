@@ -111,10 +111,17 @@ shifted_pass() {
   run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og setup chrm-shift --fasta "${REF_FASTA_C}" \
       --out "${SHIFT_C}/chrM_shifted.fasta" --intervals "${SHIFT_C}/control.intervals" || return 1
+  # --root: BwaSpark starts Hadoop's login, which needs a passwd entry for
+  # the process's uid, and the GATK image has none for yours (a
+  # LoginException, "invalid null input: name"; HADOOP_USER_NAME and
+  # SPARK_USER do not help). The image has no other aligner. The container
+  # gives the directory back to you when it ends, so the next run can
+  # remove it. The Nextflow MITO_VARIANTS runs as root for the same reason.
   # shellcheck disable=SC2016  # expanded inside the container
-  run_in --cpus 4 --memory 8g "$GATK_IMAGE" bash -c '
+  run_in --root --cpus 4 --memory 8g "$GATK_IMAGE" bash -c '
     set -euo pipefail
     d=$1
+    trap '\''chown -R "$3" "$d" || true'\'' EXIT
     export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
     gatk CreateSequenceDictionary -R "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.dict"
     gatk BwaMemIndexImageCreator -I "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.img"
@@ -130,12 +137,22 @@ shifted_pass() {
     # BwaSpark aligns records two by two as pairs: keep both mates or neither.
     awk -F"\t" "/^@/ { print; next } \$1 == name { print prev; print; name = \"\"; next } { name = \$1; prev = \$0 }" \
       "$d/unaligned.sam" > "$d/paired.sam"
+    # Unpaired reads (single-end, HiFi or ONT) leave no pair, and Mutect2
+    # would then see few or none of the reads the linear pass saw, so the
+    # control region would lose its calls. Under 90% kept fails the pass.
+    n=$(grep -vc "^@" "$d/unaligned.sam" || true)
+    k=$(grep -vc "^@" "$d/paired.sam" || true)
+    echo "  Shifted-reference pass: ${k} of ${n} chrM reads kept as complete pairs" >&2
+    if [ "$k" -eq 0 ] || [ $((k * 10)) -lt $((n * 9)) ]; then
+      echo "  The chrM reads are not paired (under 90% kept): the rotated pass needs read pairs" >&2
+      exit 1
+    fi
     gatk --java-options -Xmx4g BwaSpark -I "$d/paired.sam" -R "$d/chrM_shifted.fasta" \
       --bwa-mem-index-image "$d/chrM_shifted.img" --spark-master "local[4]" -O "$d/aligned.bam"
     gatk SortSam -I "$d/aligned.bam" -O "$d/sorted.bam" --SORT_ORDER coordinate --CREATE_INDEX true
     gatk Mutect2 -R "$d/chrM_shifted.fasta" -I "$d/sorted.bam" -L "$d/control.intervals" \
       --mitochondria-mode --max-mnp-distance 0 -O "$d/shifted_mutect2.vcf.gz"
-  ' _ "$SHIFT_C" "/genome/${SAMPLE}/mito/${SAMPLE}_chrM.bam" || return 1
+  ' _ "$SHIFT_C" "/genome/${SAMPLE}/mito/${SAMPLE}_chrM.bam" "$(id -u):$(id -g)" || return 1
   run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og vcf shift-back --linear "$RAW_C" --shifted "${SHIFT_C}/shifted_mutect2.vcf.gz" \
       --out "${SHIFT_C}/merged_mutect2.vcf.gz" || return 1

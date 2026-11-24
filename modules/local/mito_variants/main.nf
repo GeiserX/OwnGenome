@@ -33,6 +33,22 @@
 process MITO_VARIANTS {
     tag "$meta.id"
     label 'process_medium'
+    // Root under Docker: the shifted-reference pass's BwaSpark starts
+    // Hadoop's login, which needs a passwd entry for the task's uid, and the
+    // GATK image has none for the -u of docker.runOptions (a LoginException,
+    // "invalid null input: name"; HADOOP_USER_NAME and SPARK_USER do not
+    // help). Step 20 runs that container as root too. A later --user wins,
+    // and docker.fixOwnership gives the work directory back at the end, as
+    // for CPSR and CNVPYTOR. A process's containerOptions replaces the docker
+    // profile's '--network none', so it is repeated here unless the run's
+    // docker.runOptions already sets a network (Docker refuses the flag
+    // twice). Singularity runs as you with your passwd entry, so it needs
+    // nothing.
+    containerOptions {
+        def run_options = ((nextflow.Global.session?.config?.docker as Map)?.runOptions ?: '').toString()
+        workflow.containerEngine == 'singularity' ? '' :
+            '--user 0:0 -e HOME=/root' + (run_options.contains('--net') ? '' : ' --network none')
+    }
 
     publishDir { "${params.outdir}/${meta.id}/mito" }, mode: params.publish_dir_mode
 
@@ -97,6 +113,15 @@ process MITO_VARIANTS {
             --VALIDATION_STRINGENCY LENIENT --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO || return 1
         awk -F'\\t' '/^@/ { print; next } \$1 == name { print prev; print; name = ""; next } { name = \$1; prev = \$0 }' \\
             shifted/unaligned.sam > shifted/paired.sam || return 1
+        # Unpaired reads (single-end, HiFi or ONT) leave no pair, and the
+        # control region would lose its calls: under 90% kept fails the pass.
+        n=\$(grep -vc '^@' shifted/unaligned.sam || true)
+        k=\$(grep -vc '^@' shifted/paired.sam || true)
+        echo "shifted-reference pass: \${k} of \${n} chrM reads kept as complete pairs" >&2
+        if [ "\$k" -eq 0 ] || [ \$((k * 10)) -lt \$((n * 9)) ]; then
+            echo "the chrM reads are not paired (under 90% kept): the rotated pass needs read pairs" >&2
+            return 1
+        fi
         gatk --java-options -Xmx4g BwaSpark -I shifted/paired.sam -R shifted/chrM_shifted.fasta \\
             --bwa-mem-index-image shifted/chrM_shifted.img --spark-master "local[${task.cpus}]" \\
             -O shifted/aligned.bam || return 1
