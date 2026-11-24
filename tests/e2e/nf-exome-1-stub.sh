@@ -7,8 +7,8 @@
 #      regions, mosdepth the capture BED as its windows, Manta --exome;
 #      INDEXCOV does not run and somalier (sample_qc) does, without
 #      mosdepth's regions (the capture regions are not sex-loss windows);
-#      CNVpytor, ROH, TelomereHunter, archaic, MoChA and viral do not run
-#      and the log says
+#      CNVpytor, ROH, TelomereHunter, archaic, MoChA, viral, Cyrius,
+#      Parascopy, Locityper and MEI do not run and the log says
 #      "not run: exome"; mito_variants runs, MITO_DELETIONS (the mtDNA copy
 #      number) does not;
 #      survivor_merge keeps its two callers, Manta and Delly;
@@ -17,7 +17,10 @@
 #   3. the default (WGS): the WGS model, no regions, 500 bp windows, no
 #      --exome, INDEXCOV and the whole-genome steps run;
 #   4. the stops: WES without --capture_bed, --capture_bed without WES, an
-#      unknown model, WES without sample_qc, WES with --intervals.
+#      unknown model, WES without sample_qc, WES with --intervals, a capture
+#      BED whose contigs are not the reference's (plain and bgzipped).
+# The options checked in 1 and 3 are built by one function per module that
+# both the script and the stub call, so a change to what runs shows here.
 # The stubs only touch files; nothing here needs a database or an image.
 . "$(dirname "$0")/lib.sh"
 
@@ -26,7 +29,11 @@ command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
 ST="${REPO}/assets/stub"
 BED="${CASE_TMP}/capture_regions.bed"
 printf 'chr1\t1000\t2000\tEXON1\nchr2\t5000\t5300\tEXON2\n' > "$BED"
-WES_TOOLS=mosdepth,manta,delly,survivor_merge,sample_qc,hla_typing,cnvpytor,roh,telomere_hunter,archaic,mocha,viral,mito_variants
+# The same regions named as b37 names them ('1', not 'chr1')
+NOCHR="${CASE_TMP}/capture_nochr.bed"
+printf '1\t1000\t2000\tEXON1\n2\t5000\t5300\tEXON2\n' > "$NOCHR"
+gzip -c "$NOCHR" > "${NOCHR}.gz"
+WES_TOOLS=mosdepth,manta,delly,survivor_merge,sample_qc,hla_typing,cnvpytor,roh,telomere_hunter,archaic,mocha,viral,mito_variants,cyrius,parascopy,locityper,mei
 # stub_run NAME [ARGS...]: one stub run in its own launch directory; sets RC, LOG and DIR
 stub_run() {
   local name=$1
@@ -68,11 +75,12 @@ check "WES: SAMPLE_QC gets no mosdepth regions (capture regions are not sex-loss
   test -n "$QC_SH" -a ! -e "$(dirname "${QC_SH:-/x}")/ex1.regions.bed.gz"
 L=$(exome_line)
 check "WES: the log says which steps are not run: exome" test -n "$L"
-for t in cnvpytor roh telomere_hunter archaic mocha viral; do
+for t in cnvpytor roh telomere_hunter archaic mocha viral cyrius parascopy locityper mei; do
   check "WES: the not-run line names ${t}" has "[ ,]${t}([,.]|\$)" "$L"
 done
 check "WES: survivor_merge keeps Manta and Delly, so it is not named" lacks 'survivor_merge' "$L"
-for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS INDEXCOV; do
+for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS INDEXCOV \
+         CYRIUS PARASCOPY LOCITYPER MEI_DEPTH; do
   check "WES: no ${p} task" test -z "$(grep -E "(^|[ :>])${p} " "${DIR}/run.log")"
 done
 check "WES: MITO_VARIANTS still runs" test -n "$(grep -E '[ :>]MITO_VARIANTS ' "${DIR}/run.log")"
@@ -102,7 +110,8 @@ check "WGS: indexcov runs" test -e "${DIR}/out/ex1/ex1_sex_check.tsv"
 QC_SH=$(task_sh 'sex_check_reason')
 check "WGS: SAMPLE_QC gets mosdepth's regions" test -n "$QC_SH" -a -e "$(dirname "${QC_SH:-/x}")/ex1.regions.bed.gz"
 check "WGS: no not-run line" test -z "$(exome_line)"
-for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS; do
+for p in CNVPYTOR ROH TELOMERE_HUNTER ARCHAIC_GENOTYPES MOCHA_PREP VIRAL_READS MITO_DELETIONS \
+         CYRIUS PARASCOPY LOCITYPER MEI_DEPTH; do
   check "WGS: ${p} runs" test -n "$(grep -E "[ :>]${p} " "${DIR}/run.log")"
 done
 
@@ -126,7 +135,16 @@ check "WES without sample_qc: the message says to add it" has '--model_type WES 
 stub_run intervals --model_type WES --capture_bed "$BED" --intervals chr1:1-5000 --tools mosdepth,sample_qc,hla_typing
 check "WES with --intervals: the run stops (exit ${RC})" test "$RC" -ne 0
 check "WES with --intervals: the message says why" has '--intervals and --capture_bed both set' "$LOG"
-for n in no-bed bed-only bad-model no-qc intervals; do
+
+stub_run nochr --model_type WES --capture_bed "$NOCHR" --tools mosdepth,sample_qc,hla_typing
+check "WES, a BED named 1 not chr1: the run stops (exit ${RC})" test "$RC" -ne 0
+check "WES, a BED named 1 not chr1: the message names the contigs" has "none of its contigs \\(1, 2\\) is in the reference" "$LOG"
+
+stub_run nochr-gz --model_type WES --capture_bed "${NOCHR}.gz" --tools mosdepth,sample_qc,hla_typing
+check "WES, a bgzipped BED named 1 not chr1: the run stops (exit ${RC})" test "$RC" -ne 0
+check "WES, a bgzipped BED named 1 not chr1: the message names the contigs" has "none of its contigs \\(1, 2\\) is in the reference" "$LOG"
+
+for n in no-bed bed-only bad-model no-qc intervals nochr nochr-gz; do
   check_eq "${n}: no task ran" "$(find "${CASE_TMP}/${n}/work" -name .command.run 2>/dev/null | wc -l | tr -d ' ')" 0
 done
 

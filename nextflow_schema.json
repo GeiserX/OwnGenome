@@ -64,7 +64,7 @@
                 },
                 "model_type": {
                     "type": "string",
-                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha or viral, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing (docs/wes-guide.md).",
+                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them (the report's mean depth is then the on-target one) and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha, viral, cyrius, parascopy, locityper or mei, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture, and Cyrius, Parascopy, Locityper and MEGAnE weigh a locus against depth across the genome. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing (docs/wes-guide.md).",
                     "default": "WGS",
                     "enum": ["WGS", "WES"],
                     "fa_icon": "fas fa-dna"
@@ -72,7 +72,7 @@
                 "capture_bed": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them.",
+                    "description": "BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them. Its contigs must be named as the reference names them (chr1, not 1), or the run stops before it starts.",
                     "fa_icon": "fas fa-crosshairs"
                 },
                 "sex_check": {

@@ -261,9 +261,10 @@ workflow BAM_ANALYSIS {
     //
     // MODULE 6: Parascopy (SMN1/SMN2 copy number)
     // Gates on: params.tools contains 'parascopy' (opt-in; main.nf requires
-    // --parascopy_data with it)
+    // --parascopy_data with it), and a whole genome: its background depth
+    // lies across GRCh38, where an exome has none (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('parascopy')) {
+    if (selected_tools().contains('parascopy')) {
         PARASCOPY(ch_bam, ch_reference, ch_reference_fai, ch_parascopy_data, ch_parascopy_bed)
         ch_cn_intervals    = PARASCOPY.out.intervals
         ch_cn_dosage       = PARASCOPY.out.dosage
