@@ -1,5 +1,6 @@
 //! The depth-ratio engine: the guards in their order, the estimate, its 95%
-//! interval and the call (`copy_number.assess`), and the PSV sites of a
+//! interval (read sampling, plus a measured systematic term with
+//! `interval cv:SYS`) and the call (`copy_number.assess`), and the PSV sites of a
 //! `call psv` row (`copy_number.psv_assess`). The arithmetic is the
 //! Python's step for step, with CPython 3.12's compensated `sum()` for
 //! every interpreter (Parascopy's Python 3.11 summed plainly; the two agree
@@ -377,7 +378,13 @@ pub fn assess(row: &Locus, m: &Means, q1: Option<&Means>, sex: Sex) -> Result<Bl
     if dp.ci_cv {
         let tv: Vec<f64> = tg.iter().map(|s| m[&s.name]).collect();
         let cv_c: Vec<f64> = ct.iter().map(|s| m[&s.name]).collect();
-        let rel = (cv(&tv).powi(2) / tg.len() as f64 + cv(&cv_c).powi(2) / ct.len() as f64).sqrt();
+        // Read sampling (the spread between segments) plus, with `cv:SYS`,
+        // the systematic error measured against assembled genomes, added
+        // in quadrature; SYS 0 leaves the read-sampling interval as it was.
+        let rel = (cv(&tv).powi(2) / tg.len() as f64
+            + cv(&cv_c).powi(2) / ct.len() as f64
+            + dp.ci_sys.powi(2))
+        .sqrt();
         b.ci95 = Some((
             (total * (-Z95 * rel).exp() - dp.offset).max(0.0),
             total * (Z95 * rel).exp() - dp.offset,
@@ -654,5 +661,35 @@ mod tests {
         assert_eq!(b.class, Some(Class::Low));
         let (lo, hi) = b.ci95.unwrap();
         assert!((b.estimate.unwrap() - 20.0).abs() < 1e-9 && lo <= 20.0 && hi >= 20.0);
+    }
+
+    /// Even depths have no spread between exons, so read sampling alone
+    /// gives a zero-width interval; the catalog's measured systematic term
+    /// keeps it open, at exp(+-1.96 x SYS) of N + 2, and plain `cv` keeps
+    /// the read-sampling interval.
+    #[test]
+    fn lpa_interval_carries_the_systematic_term() {
+        let cat = catalog();
+        let mut lpa = cat.loci["LPA_KIV2"].clone();
+        let sys = lpa.depth().ci_sys;
+        assert!(sys > 0.0, "LPA_KIV2 has a measured systematic term");
+        let mut m = means(&lpa, 30.0, &[]);
+        for s in &lpa.targets {
+            m.insert(s.name.clone(), 90.0);
+        }
+        let b = assess(&lpa, &m, Some(&scaled(&m, 0.1)), Sex::Unknown).unwrap();
+        let (total, (lo, hi)) = (b.total.unwrap(), b.ci95.unwrap());
+        assert!(
+            (lo - (total * (-Z95 * sys).exp() - 2.0)).abs() < 1e-9,
+            "{lo}"
+        );
+        assert!(
+            (hi - (total * (Z95 * sys).exp() - 2.0)).abs() < 1e-9,
+            "{hi}"
+        );
+        lpa.depth.as_mut().unwrap().ci_sys = 0.0;
+        let b = assess(&lpa, &m, Some(&scaled(&m, 0.1)), Sex::Unknown).unwrap();
+        let (lo, hi) = b.ci95.unwrap();
+        assert!(lo == hi && lo == b.estimate.unwrap(), "{lo} {hi}");
     }
 }

@@ -6,7 +6,7 @@
 use crate::chapters::{CHAPTERS, Failed, Sec, WriterFn, guarded, writer};
 use crate::model::{Malformed, State, Summary, py};
 use crate::notes::stale_note;
-use crate::sections::run;
+use crate::sections::{coverage, run};
 
 /// The research-only line of the HTML report ([`crate::html::RESEARCH_ONLY`]),
 /// on two lines under the text report's title, before any result.
@@ -34,7 +34,7 @@ pub fn new_since(s: &Summary, keys: &[&str]) -> Result<Option<String>, Malformed
 }
 
 /// The opening of summary key `key`'s block: its title (or `title`), a rule,
-/// the new-since mark and the state note. `None` when the step did not run,
+/// the new-since mark, state note and scope mark. `None` when the step did not run,
 /// so the block is left out.
 pub fn head(s: &Summary, key: &str, title: Option<&str>) -> Result<Option<Head>, Malformed> {
     let sec = s.section(key);
@@ -48,6 +48,9 @@ pub fn head(s: &Summary, key: &str, title: Option<&str>) -> Result<Option<Head>,
     let mut lines = vec![format!("## {title}"), "---".to_owned()];
     if let Some(line) = new_since(s, &[key])? {
         lines.push(line);
+    }
+    if let Some(partial) = coverage::partial_mark(s, &sec) {
+        lines.push(format!("  [{partial}]"));
     }
     let note = stale_note(&sec)?;
     if !note.is_empty() {

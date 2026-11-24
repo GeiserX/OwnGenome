@@ -4,6 +4,8 @@
   certified laboratory before acting on it.
   Sample: S
   Generated: 2026-01-02 03:04 UTC
+  Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
+  Runs of homozygosity: partial: covers 1 of 22 autosomes
 ================================================================================
 
 ################################################################################
@@ -294,6 +296,7 @@
 ---
 ## Runs of Homozygosity
 ---
+  [partial: covers 1 of 22 autosomes]
   Segments: 3  Total: 37.5 MB  Largest: 27.0 MB
   Autosomal ROH > 5MB: 2
     chr2:10000001-17000000  7.0MB
@@ -340,6 +343,7 @@
 
 ## Telomere content (relative, TelomereHunter)
 ---
+  [partial: covers 1 of 22 autosomes]
   Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
   Intratelomeric reads: 40 (floor 2,000 at 30.0x)
   WARNING: too few telomeric reads for a stable estimate; do not compare this value.

@@ -109,6 +109,8 @@ haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
 hla-second-caller-2-nextflow	shard	188	hla-second-caller-1-bash
+i411-callability-exons-1-mosdepth	shard	60	-
+i411-callability-exons-2-catalog	shard	40	callability-1-catalog
 i411-callability-overlap-1-mates	shard	40	-
 i411-chrm-shifted-ref-1-step20	shard	5	-
 i411-chrm-shifted-ref-2-nextflow	shard	69	-

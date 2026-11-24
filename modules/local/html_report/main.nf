@@ -123,7 +123,7 @@ process HTML_REPORT {
             ${id}_y_haplogroup.txt|${id}_y_tree.txt|${id}_y_tree_path.tsv) place y_haplogroup "\$f" ;;
             ${id}_y_str.tsv)                              place y_str "\$f" ;;
             ${id}_paraphase_copy_number.tsv|${id}_paraphase_variants.tsv|${id}_*_copy_number.tsv) place paralogs "\$f" ;;
-            ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
+            ${id}.mosdepth.summary.txt|${id}_callability.bed.gz|${id}_callability_exons.bed.gz) place coverage "\$f" ;;
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
             ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
             ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;

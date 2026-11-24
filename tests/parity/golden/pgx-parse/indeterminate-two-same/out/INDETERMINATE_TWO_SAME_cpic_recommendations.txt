@@ -1,0 +1,35 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: INDETERMINATE_TWO_SAME
+Date: 2026-11-23
+Source: PharmCAT  report (indeterminate-two-same.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+UGT1A1       *1/*80 (1 of 2 possible)       Intermediate Metabolizer [gene level Indeterminate; phenotype from PharmCAT's drug annotations]
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  UGT1A1 -- Intermediate Metabolizer [gene level Indeterminate; phenotype from PharmCAT's drug annotations]:
+    Diplotype: *1/*80 (1 of 2 possible)
+    Drugs with guidance in this PharmCAT report:
+      - atazanavir [CPIC, Strong]: Guidance for Intermediate Metabolizer.
+      Recommendation text from CPIC (https://cpicpgx.org/, CC0 1.0) via PharmCAT. PharmCAT also carries PharmGKB (ClinPGx) content under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------
