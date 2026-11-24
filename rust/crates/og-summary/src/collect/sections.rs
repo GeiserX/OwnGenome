@@ -140,15 +140,25 @@ fn kv_json(rows: &IndexMap<String, Option<String>>) -> IndexMap<String, Value> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Coverage {
-    /// The `mean` of the `total` row, the last one when there are several.
+    /// The `mean` of the `total` row, the last one when there are several;
+    /// for an exome, of the `total_region` row.
     pub mean_depth: Option<f64>,
 }
 
 impl Coverage {
-    pub fn read(path: &str) -> Result<Coverage, String> {
+    /// Reads mosdepth's summary. A whole genome's mean depth is the `total`
+    /// row. An exome's (`exome`: the run manifest's `run model_type` is
+    /// `WES`) is the `total_region` row, the mean over the capture regions
+    /// mosdepth was given: `total` spreads the reads over the whole genome,
+    /// a few X for a 100x exome, and every reader of the mean (the QC lines,
+    /// the live headline, the genome facts' depth floor) would read the
+    /// exome as too thin. An exome summary without `total_region` has no
+    /// mean depth.
+    pub fn read(path: &str, exome: bool) -> Result<Coverage, String> {
+        let row = if exome { "total_region" } else { "total" };
         let mut mean = None;
         for r in read_tsv(path)? {
-            if r.get("chrom") == Some(Some("total")) {
+            if r.get("chrom") == Some(Some(row)) {
                 mean = Some(r.get("mean").flatten().map(str::to_owned));
             }
         }

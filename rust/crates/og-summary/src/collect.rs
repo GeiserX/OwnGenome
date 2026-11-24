@@ -280,7 +280,7 @@ pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
                 Variants::read(p).map(Data::Variants)
             })
         });
-        let rest = read_rest(input, &find, &file);
+        let rest = read_rest(input, &find, &file, exome(folder));
         (
             v.join()
                 .unwrap_or_else(|_| Err("internal error: the variant reader stopped".into())),
@@ -309,6 +309,16 @@ pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
         .zip(reads)
         .map(|(spec, r): (&Spec, _)| Section::new(*spec, r, folder.run.as_ref()))
         .collect()
+}
+
+/// Whether the run was an exome: the run manifest's `run model_type` row
+/// is `WES` (Nextflow's HTML_REPORT writes it for `--model_type WES`).
+fn exome(folder: &Folder) -> bool {
+    folder
+        .manifest
+        .as_ref()
+        .and_then(|m| m.value("run", "model_type"))
+        == Some("WES")
 }
 
 /// The declared sex step 33's table records, from its section (read when
@@ -407,6 +417,7 @@ fn read_rest(
     input: &Input,
     find: &dyn Fn(&[String]) -> Option<String>,
     file: &dyn Fn(String) -> (String, String),
+    exome: bool,
 ) -> [Read; 6] {
     let s = pycompat::mtime::escape(&input.sample);
     let coverage = read_at(
@@ -415,7 +426,7 @@ fn read_rest(
             format!("coverage/{s}.mosdepth.summary.txt"),
         ])
         .map(file),
-        |p| Coverage::read(p).map(Data::Coverage),
+        |p| Coverage::read(p, exome).map(Data::Coverage),
     );
     let callability = read_at(
         find(&[
