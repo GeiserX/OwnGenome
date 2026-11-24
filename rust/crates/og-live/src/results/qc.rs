@@ -65,20 +65,19 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 if let Some(ref result) = identity {
                     out.fact("Sample identity", result);
                 }
-                let same = val(d, "same_person_as");
-                if truthy(same) {
-                    let label = if identity.is_some() {
-                        qc::POSSIBLE_MATCH
-                    } else {
-                        "The same person as"
-                    };
-                    out.fact(label, cell(same));
+                let (firm, possible) = qc::same_person(&sample)?;
+                if let Some(ref p) = firm {
+                    out.fact("The same person as", p);
+                }
+                if let Some(ref p) = possible {
+                    out.fact(qc::POSSIBLE_MATCH, p);
                 }
                 out.attention = sex_check == "mismatch"
                     || contam == "warn"
                     || contam_uncertain
                     || identity.is_some()
-                    || truthy(same);
+                    || firm.is_some()
+                    || possible.is_some();
             }
             out.lines = qc::karyotype_lines(summary)?;
             out.attention |= !out.lines.is_empty();
@@ -162,26 +161,45 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
             ))
         });
     }
-    let same = val(d, "same_person_as");
-    if truthy(same) {
+    if truthy(val(d, "same_person_as")) {
         add_row(found, "qc", Level::Trust, || {
-            let identity = qc::identity_uncertainty(&summary.section("sample_qc"))?;
-            let (label, detail) = match identity {
-                Some(detail) => (qc::POSSIBLE_MATCH, detail),
-                None => (
-                    "The same person as",
-                    "Two runs of this server hold the same genome.".to_owned(),
-                ),
+            let sample = summary.section("sample_qc");
+            let (firm, _) = qc::same_person(&sample)?;
+            let Some(firm) = firm else {
+                return Ok(None);
             };
             Ok(Some(
                 Finding::new(
                     Level::Trust,
                     "qc",
                     &["same-person"],
-                    format!("{label} {}", text(same)),
+                    format!("The same person as {firm}"),
+                    "Two runs of this server hold the same genome.",
+                )
+                .evidence("Matches", &Value::Str(firm)),
+            ))
+        });
+        add_row(found, "qc", Level::Trust, || {
+            let sample = summary.section("sample_qc");
+            let (_, possible) = qc::same_person(&sample)?;
+            let Some(possible) = possible else {
+                return Ok(None);
+            };
+            // With identity uncertain, its reason; else the pair shares
+            // too few sites.
+            let detail = qc::identity_uncertainty(&sample)?.unwrap_or_else(|| {
+                "The two samples share too few genotyped sites to call them the same person."
+                    .to_owned()
+            });
+            Ok(Some(
+                Finding::new(
+                    Level::Trust,
+                    "qc",
+                    &["possible-same-person"],
+                    format!("{} {possible}", qc::POSSIBLE_MATCH),
                     detail,
                 )
-                .evidence("Matches", same),
+                .evidence("Matches", &Value::Str(possible)),
             ))
         });
     }

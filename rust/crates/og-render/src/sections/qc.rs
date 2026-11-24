@@ -23,6 +23,42 @@ pub const SEX_CHECK_AGREE: &str = "declared and measured sex agree";
 /// The label for a similarity signal that did not settle identity.
 pub const POSSIBLE_MATCH: &str = "Possible match to";
 
+/// Why a same-person match is only possible when identity was checked on
+/// another pair: the two share fewer than og-summary's
+/// `MIN_IDENTITY_SITES` genotyped sites (a test keeps the two in step).
+pub const THIN_MATCH: &str = "on fewer than 1,000 shared sites";
+
+/// The other samples at the same-person relatedness (`same_person_as`),
+/// split into the firm matches and the possible ones, each a list joined
+/// with ", " or `None`. With identity uncertain, every match is possible
+/// and the identity line says why. Otherwise the matches step 33 names in
+/// `possible_same_person_as` (their pair shares too few sites) are
+/// possible, shown with [`THIN_MATCH`] after them, and the rest are firm.
+pub fn same_person(q: &Section<'_>) -> Result<(Option<String>, Option<String>), Malformed> {
+    let listed = |key: &str| -> Result<Vec<String>, Malformed> {
+        Ok(match q.get(key)?.filter(|v| truthy(v)) {
+            Some(v) => py(v)?
+                .split(", ")
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            None => Vec::new(),
+        })
+    };
+    let all = listed("same_person_as")?;
+    let joined = |v: Vec<String>| (!v.is_empty()).then(|| v.join(", "));
+    if identity_uncertainty(q)?.is_some() {
+        return Ok((None, joined(all)));
+    }
+    let thin = listed("possible_same_person_as")?;
+    let (possible, firm): (Vec<String>, Vec<String>) =
+        all.into_iter().partition(|p| thin.contains(p));
+    Ok((
+        joined(firm),
+        joined(possible).map(|p| format!("{p} ({THIN_MATCH})")),
+    ))
+}
+
 /// The identity verdict and the producer's reason when identity is uncertain.
 pub fn identity_uncertainty(q: &Section<'_>) -> Result<Option<String>, Malformed> {
     if !is_str(q.get("identity")?, "uncertain") {
@@ -220,19 +256,17 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
             "  Contamination (VerifyBamID2 FREEMIX): {}",
             freemix_text(&sqc)?
         ));
-        let identity = identity_uncertainty(&sqc)?;
-        if let Some(ref result) = identity {
+        if let Some(result) = identity_uncertainty(&sqc)? {
             w.push(format!("  Sample identity: {result}"));
         }
-        if let Some(p) = sqc.get("same_person_as")?.filter(|v| truthy(v)) {
-            if identity.is_some() {
-                w.push(format!("  {POSSIBLE_MATCH}: {}", py(p)?));
-            } else {
-                w.push(format!(
-                    "  ** The same person as: {} (a duplicate or a sample swap) **",
-                    py(p)?
-                ));
-            }
+        let (firm, possible) = same_person(&sqc)?;
+        if let Some(p) = firm {
+            w.push(format!(
+                "  ** The same person as: {p} (a duplicate or a sample swap) **"
+            ));
+        }
+        if let Some(p) = possible {
+            w.push(format!("  {POSSIBLE_MATCH}: {p}"));
         }
     }
     let kl = karyotype_lines(s)?;
@@ -323,18 +357,15 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
             "Contamination (FREEMIX)",
             badge(freemix_text(&sqc)?, colour),
         ));
-        let identity = identity_uncertainty(&sqc)?;
-        let uncertain = identity.is_some();
-        if let Some(result) = identity {
+        if let Some(result) = identity_uncertainty(&sqc)? {
             body.push(stat("Sample identity", badge(result, Colour::Yellow)));
         }
-        if let Some(p) = sqc.get("same_person_as")?.filter(|v| truthy(v)) {
-            let (label, colour) = if uncertain {
-                (POSSIBLE_MATCH, Colour::Yellow)
-            } else {
-                ("The same person as", Colour::Red)
-            };
-            body.push(stat(label, badge(py(p)?, colour)));
+        let (firm, possible) = same_person(&sqc)?;
+        if let Some(p) = firm {
+            body.push(stat("The same person as", badge(p, Colour::Red)));
+        }
+        if let Some(p) = possible {
+            body.push(stat(POSSIBLE_MATCH, badge(p, Colour::Yellow)));
         }
     } else {
         body.push(stat(
@@ -513,5 +544,11 @@ S\tS\t-9\t-9\t1\t-9\t-9\t30.0\t5000\t6000\t4000\t0.010\t15.0\t39\t0\t0\t39\t14.0
         for report in [&txt, &page] {
             assert!(!report.contains("The same person as"), "{report}");
         }
+    }
+
+    #[test]
+    fn the_thin_match_note_names_the_identity_floor() {
+        assert_eq!(og_summary::qc::MIN_IDENTITY_SITES, 1000);
+        assert_eq!(super::THIN_MATCH, "on fewer than 1,000 shared sites");
     }
 }

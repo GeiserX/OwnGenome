@@ -1,10 +1,12 @@
 //! A same-person relatedness from a pair that shares few sites is only a
 //! possible match, even when another pair of the run makes identity
 //! `checked`. Step 33's table lists every pair at 0.9 or more in
-//! `same_person_as`, as before, and names the ones on fewer than
-//! `MIN_IDENTITY_SITES` shared sites (or an unknown number) again in
-//! `possible_same_person_as`, a row written only when it has a name, so a
-//! run without such a pair keeps its 25 rows. Synthetic somalier tables.
+//! `same_person_as`, as before. With identity `checked`, it names the ones
+//! on fewer than `MIN_IDENTITY_SITES` shared sites (or an unknown number)
+//! again in `possible_same_person_as`, a row written only then and only
+//! when it has a name, so every other run keeps its 25 rows. With identity
+//! `uncertain`, the identity row already qualifies every match. Synthetic
+//! somalier tables.
 
 use og_summary::qc::{FREEMIX_WARN, Inputs, MIN_IDENTITY_SITES, table};
 use std::fs;
@@ -113,15 +115,22 @@ fn one_site_below_the_floor_or_an_unknown_count_is_thin() {
     );
     assert_eq!(value(&t, "identity"), Some("checked"));
     assert_eq!(value(&t, "possible_same_person_as"), Some("U (0.97)"));
-    // An older pairs table without n: no pair is known to share enough.
+    // An empty n with identity checked through V: the count is unknown.
+    let t = rows(
+        "empty-n",
+        &format!("{PAIRS}U\tS\t0.97\t0\t300\t\nS\tV\t0.1\t9\t300\t15000\n"),
+    );
+    assert_eq!(value(&t, "identity"), Some("checked"));
+    assert_eq!(value(&t, "possible_same_person_as"), Some("U (0.97)"));
+    // An older pairs table without n: no pair is known to share enough,
+    // so identity is uncertain and its row qualifies both matches; the
+    // table keeps its 25 rows.
     let t = rows(
         "no-n",
         "#sample_a\tsample_b\trelatedness\nS\tT\t0.95\nU\tS\t0.991\n",
     );
     assert_eq!(value(&t, "identity"), Some("uncertain"));
     assert_eq!(value(&t, "same_person_as"), Some("T (0.95), U (0.99)"));
-    assert_eq!(
-        value(&t, "possible_same_person_as"),
-        Some("T (0.95), U (0.99)")
-    );
+    assert_eq!(value(&t, "possible_same_person_as"), None);
+    assert_eq!(t.len(), 25);
 }
