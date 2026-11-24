@@ -6,9 +6,12 @@ The browser checks load OwnGenome's pages in a real headless Chrome and test wha
 
 ```bash
 cd rust
+cargo build --locked -p og                        # the live checks run this og (or the one OG names)
 cargo test -p og-browser                          # the driver's own tests and the ported checks
 CHROME=/path/to/chrome cargo test -p og-browser   # a Chrome that is not on PATH
 ```
+
+Without a built `og` and without `OG`, the live-site checks print `[SKIP] build og or set OG` and pass; in CI (`CI=true`) they fail instead.
 
 Which Chrome runs: `CHROME` when it is set and not empty, else the first of `google-chrome`, `google-chrome-stable`, `chromium` and `chromium-browser` on `PATH`, else `/Applications/Google Chrome.app`. An empty `CHROME` counts as unset. A `CHROME` that is not empty but names no executable means no Chrome: the driver does not fall back to another one.
 

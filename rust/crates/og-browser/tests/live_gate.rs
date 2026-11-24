@@ -766,11 +766,12 @@ impl Guards<'_> {
             }
             Guard::Handoff => {
                 // A view that asks a closed run for its files gets no answer
-                // at all, whatever it reads the body with.
+                // at all, whatever it reads the body with. An answer is
+                // stored as [its length], so an empty one counts too.
                 self.visit_child(b);
                 eval(
                     b,
-                    "window.gateRaw = null; fetch('results.json').then(function (r) { return r.text(); }).then(function (t) { window.gateRaw = t.length; }); true",
+                    "window.gateRaw = null; fetch('results.json').then(function (r) { return r.text(); }).then(function (t) { window.gateRaw = [t.length]; }); true",
                 );
                 let got = b.wait("window.gateRaw", Duration::from_secs(2));
                 (got.is_none(), got.unwrap_or(Value::Null))
@@ -937,7 +938,7 @@ impl Guards<'_> {
                         Duration::from_secs(10),
                     )
                     .unwrap_or_else(|| {
-                        b.eval("[performance.getEntriesByType('navigation')[0].type, document.body.textContent.length]")
+                        b.eval("[performance.getEntriesByType('navigation')[0].type, location.pathname, document.documentElement.dataset.pgpGated || '']")
                             .unwrap_or(Value::Null)
                     });
                 (got == s("reload"), got)
@@ -956,17 +957,23 @@ fn broke(guard: Guard, seen: &Value) -> bool {
         }
         // The closed address keeps the map query.
         Guard::Address => text(&items(seen)[0]).contains("chr=17"),
-        // The closed run's results.json reaches the view; its rows or its
-        // per-child keys reach the family view.
-        Guard::Handoff | Guard::FamilyRows => matches!(seen, Value::Int(n) if *n > 0),
+        // The closed run's results.json reaches the view.
+        Guard::Handoff => {
+            matches!(seen, Value::Array(n) if matches!(n[..], [Value::Int(len)] if len > 0))
+        }
+        // Its rows or its per-child keys reach the family view.
+        Guard::FamilyRows => matches!(seen, Value::Int(n) if *n > 0),
         // The search box keeps the query after the close.
         Guard::Cleanup => items(seen)[1] == s("KCNH2"),
         // The opening ticket is still stored.
         Guard::Ticket => items(seen)[0] != Value::Null,
         // Report attributes are left on the page.
         Guard::CloseAttrs | Guard::Pagehide => !items(seen).is_empty(),
-        // The page comes back from the back-forward cache, not reloaded.
-        Guard::Back => *seen != s("reload"),
+        // Back reaches the child's page, which comes back from the
+        // back-forward cache open, not reloaded and closed.
+        Guard::Back => {
+            matches!(&seen, Value::Array(a) if a.len() == 3 && a[0] != s("reload") && a[1] == s(CHILD_URL) && a[2] != s("true"))
+        }
     }
 }
 
@@ -1817,16 +1824,18 @@ fn gate_transparency(f: &mut Fixture, base: &str, core: &Path, source: &str) {
     files.prepare(Prep::NoAct, &f.og);
     let reference = capture(b, base, &child, &How::default(), WAIT);
     assert!(reference.is_some(), "the no-act child never drew");
-    for (what, from, to) in [
+    for (what, from, to, draws) in [
         (
             "closing an adult or no-act report",
             "ownsPage = shut(current);",
             "ownsPage = true;",
+            false,
         ),
         (
             "reading a file twice",
             "var kept = shared[requestURL];",
             "var kept = null;",
+            true,
         ),
     ] {
         fs::write(core, replace_once(source, from, to)).unwrap();
@@ -1835,6 +1844,16 @@ fn gate_transparency(f: &mut Fixture, base: &str, core: &Path, source: &str) {
             planted != reference,
             "transparency control went unnoticed: {to}"
         );
+        // A page that reads a file twice still draws: what differs is its
+        // reads, more of them than the reference made.
+        if draws {
+            let want = items(&reference.as_ref().unwrap()[4]).len();
+            let got = planted.as_ref().map(|p| items(&p[4]).len());
+            assert!(
+                got.is_some_and(|n| n > want),
+                "transparency control {what}: {got:?} reads, the reference {want}"
+            );
+        }
         let seen = match &planted {
             None => "the page never drew".to_owned(),
             Some(p) => capture_difference(reference.as_ref().unwrap(), p),
@@ -2358,7 +2377,10 @@ fn capture_live(
         b,
         &format!("({READY}) && !!document.querySelector('#rail a[href*={FAMILY}]')"),
     );
-    b.wait(MAP_SETTLED, Duration::from_secs(15));
+    assert!(
+        b.wait(MAP_SETTLED, Duration::from_secs(15)).is_some(),
+        "the map never settled: {url}"
+    );
     thread::sleep(Duration::from_secs(1));
     let got = eval(
         b,
@@ -2796,7 +2818,14 @@ fn failure_browser_checks(f: &mut Fixture, base: &str, act: &str) {
             .all(|r| runs.iter().any(|x| x == r)),
         "the live runs: {runs:?}"
     );
-    let open = member_answers(base, &runs);
+    // The runs with a result to act on, fixed while the family reads, so
+    // none can drop out of the finding-route check later.
+    let acts = act_runs(base, &runs);
+    assert!(
+        acts.iter().any(|r| r == CHILD),
+        "the runs with an act: {acts:?}"
+    );
+    let open = member_answers(base, &runs, &acts);
     assert!(
         !all_unknown(&open)
             && open
@@ -2811,7 +2840,7 @@ fn failure_browser_checks(f: &mut Fixture, base: &str, act: &str) {
         fs::File::open(&members).is_err(),
         "chmod must make the fixture unreadable"
     );
-    let unread = member_answers(base, &runs);
+    let unread = member_answers(base, &runs, &acts);
     let pages = [
         run_state(&mut f.browser, base, CHILD),
         run_state(&mut f.browser, base, OTHER),
@@ -2831,7 +2860,7 @@ fn failure_browser_checks(f: &mut Fixture, base: &str, act: &str) {
     pass(
         "while a family's members cannot be read, every run is closed (state.json, the finding route, page and tile) and its family is unknown",
     );
-    let back = member_answers(base, &runs);
+    let back = member_answers(base, &runs, &acts);
     assert_eq!(back, open, "the runs once members.tsv reads again");
     assert_eq!(text(&run_state(&mut f.browser, base, OTHER)), "open");
     pass("every run reopened once members.tsv reads");
@@ -2853,11 +2882,31 @@ fn person_runs(base: &str) -> Vec<String> {
         .collect()
 }
 
+/// The runs whose results.json holds a result to act on.
+fn act_runs(base: &str, runs: &[String]) -> Vec<String> {
+    runs.iter()
+        .filter(|run| {
+            let (status, body) = http_get(base, &format!("/runs/{run}/results.json"));
+            // A run whose results are a note alone has no findings.
+            status == 200
+                && matches!(
+                    loads(&String::from_utf8(body).unwrap()).unwrap(),
+                    Value::Object(o) if matches!(o.get("findings"), Some(Value::Array(f)) if f.iter().any(is_act))
+                )
+        })
+        .cloned()
+        .collect()
+}
+
 /// Each run's family plugin in its state.json (whether its family is
-/// unknown) and, for a run with a result to act on, what a guessed finding
-/// id answers: 200 while the run is closed, 404 while it is an adult's. A
-/// run with no such result answers 404 either way: it has nothing to hide.
-fn member_answers(base: &str, runs: &[String]) -> Vec<(String, Value, Option<u16>)> {
+/// unknown) and, for a run in `acts`, what a guessed finding id answers:
+/// 200 while the run is closed, 404 while it is an adult's. A run with no
+/// result to act on answers 404 either way: it has nothing to hide.
+fn member_answers(
+    base: &str,
+    runs: &[String],
+    acts: &[String],
+) -> Vec<(String, Value, Option<u16>)> {
     runs.iter()
         .map(|run| {
             let (status, body) = http_get(base, &format!("/runs/{run}/state.json"));
@@ -2868,15 +2917,9 @@ fn member_answers(base: &str, runs: &[String]) -> Vec<(String, Value, Option<u16
                 Value::Object(o) => o.get("unknown").cloned().unwrap_or(Value::Null),
                 _ => Value::Null,
             };
-            let (status, body) = http_get(base, &format!("/runs/{run}/results.json"));
-            // A run whose results are a note alone has no findings.
-            let acts = status == 200
-                && matches!(
-                    loads(&String::from_utf8(body).unwrap()).unwrap(),
-                    Value::Object(o) if matches!(o.get("findings"), Some(Value::Array(f)) if f.iter().any(is_act))
-                );
-            let guessed =
-                acts.then(|| http_get(base, &format!("/runs/{run}/finding/{GUESSED}/")).0);
+            let guessed = acts
+                .contains(run)
+                .then(|| http_get(base, &format!("/runs/{run}/finding/{GUESSED}/")).0);
             (run.clone(), unknown, guessed)
         })
         .collect()
