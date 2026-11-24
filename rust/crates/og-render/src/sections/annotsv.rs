@@ -75,11 +75,13 @@ const AGGREGATE: &str =
 
 /// The caveat under the AnnotSV block when a row carries step 05's
 /// per-record benign evidence or has no frequency data: the benign-set AF
-/// and the "common" count are AnnotSV's aggregate, the same-size record
-/// is the one-by-one check the two-hit and secondary-findings rules use.
+/// (and "common", read from it) is AnnotSV's aggregate, the same-size
+/// record is the one-by-one check the two-hit and secondary-findings rules
+/// use. The live card shows it too, without the report's common count, so
+/// it names no count.
 pub const BENIGN_EVIDENCE_NOTE: &str = "The benign-set AF is AnnotSV's aggregate: the highest AF of \
     every benign record of the call's type it lists, larger SVs around the call included, so it \
-    is not this SV's own frequency, and the common count uses it. Step 05 also checks the records \
+    is not this SV's own frequency, and \"common\" is read from it. Step 05 also checks the records \
     one by one: a same-size record at 1% or more is a record of the same type that covers at \
     least half of the call, and the call at least half of it, with an AF of 1% or more \
     (unknown when the evidence cannot tell); only those calls are set aside by the two-hit and \
@@ -187,22 +189,38 @@ pub fn moved_text(x: &D<'_>) -> Result<String, Malformed> {
     ))
 }
 
-/// The class 4-5 rows that carry step 05's `clinical_common`, as
-/// `Some(how many read yes)`; `None` when no row carries it (a table from
-/// before the column), so older reports keep their lines.
-pub fn same_size_common(d: &D<'_>) -> Result<Option<usize>, Malformed> {
+/// What the count of step 05's `clinical_common` is called, in both
+/// reports and on the live card.
+pub const SAME_SIZE_LABEL: &str = "Calls with a confirmed same-size benign record at 1% or more";
+
+/// The class 4-5 rows that carry step 05's `clinical_common`: how many read
+/// yes (confirmed), then `, not assessed: N` for the rows the evidence
+/// could not tell, so a 0 never reads as "none" when it is "not known".
+/// `None` when no row carries the key (a table from before the column), so
+/// older reports keep their lines.
+pub fn same_size_common(d: &D<'_>) -> Result<Option<String>, Malformed> {
     let Some(rows) = d.opt("rows")? else {
         return Ok(None);
     };
     let mut any = false;
-    let mut yes = 0;
+    let (mut yes, mut unknown) = (0, 0);
     for x in rows.items()? {
         if let Some(c) = x.opt("clinical_common")? {
             any = true;
-            yes += usize::from(c.is("yes"));
+            if c.is("yes") {
+                yes += 1;
+            } else if !c.is("no") {
+                unknown += 1;
+            }
         }
     }
-    Ok(any.then_some(yes))
+    Ok(any.then(|| {
+        if unknown > 0 {
+            format!("{yes}, not assessed: {unknown}")
+        } else {
+            yes.to_string()
+        }
+    }))
 }
 
 /// Whether the block shows [`BENIGN_EVIDENCE_NOTE`]: a class 4-5 row has
@@ -259,8 +277,8 @@ pub fn lines(d: &D<'_>) -> Result<Vec<String>, Malformed> {
     let mut out = vec![head];
     if let Some(n) = same_size_common(d)? {
         out.push(format!(
-            "With a same-size benign record at 1% or more: {n} (the common count above uses the \
-             benign-set AF, AnnotSV's aggregate)"
+            "{SAME_SIZE_LABEL}: {n} (the common count above uses the benign-set AF, AnnotSV's \
+             aggregate)"
         ));
     }
     if let Some(down) = d.opt("downgraded")? {

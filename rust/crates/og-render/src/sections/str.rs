@@ -104,20 +104,52 @@ pub fn status(l: &Value) -> Result<String, Malformed> {
     st.map_or(Ok(String::new()), py)
 }
 
+/// How a locus's alleles sit against its range of reduced penetrance: the
+/// sized counts inside it, and whether another allele may be more severe
+/// (a sized count above the range, or an allele that was not sized).
+/// `None` without the range or without a sized count inside it.
+pub fn penetrance_alleles(l: &Value) -> Result<Option<(Vec<String>, bool)>, Malformed> {
+    let Some(p) = at(l, "penetrance")?.filter(|v| truthy(v)) else {
+        return Ok(None);
+    };
+    let range = py(p)?;
+    let bound = |s: &str| s.trim().parse::<i64>().ok();
+    let Some((min, max)) = range
+        .split_once('-')
+        .and_then(|(a, b)| Some((bound(a)?, bound(b)?)))
+    else {
+        return Ok(None);
+    };
+    let sizing = text_or_empty(l, "allele_sizing")?;
+    let sizing: Vec<&str> = sizing.split('/').collect();
+    let counts = text_or_empty(l, "repeat_count")?;
+    let (mut inside, mut above) = (Vec::new(), false);
+    for (i, c) in counts.split('/').enumerate() {
+        let sized = matches!(sizing.get(i), Some(&("sized" | "unknown")));
+        match bound(c).filter(|_| sized) {
+            Some(n) if n < min => {}
+            Some(n) if n <= max => inside.push(c.trim().to_owned()),
+            _ => above = true,
+        }
+    }
+    Ok((!inside.is_empty()).then_some((inside, above)))
+}
+
 /// A locus's range of reduced penetrance, when a sized allele falls in it
-/// (`og summary collect`, `assets/str_penetrance_ranges.tsv`): `36-39:
-/// reduced penetrance (...)`. Stranger reads such a count as a plain full
-/// mutation; `None` without the key.
+/// (`og summary collect`, `assets/str_penetrance_ranges.tsv`), naming that
+/// allele: `38 repeats in 36-39: reduced penetrance (...)`, so the other
+/// allele of a pair keeps Stranger's reading. Stranger reads such a count
+/// as a plain full mutation; `None` without the key.
 pub fn penetrance_text(l: &Value) -> Result<Option<String>, Malformed> {
     let Some(p) = at(l, "penetrance")?.filter(|v| truthy(v)) else {
         return Ok(None);
     };
     let path = format!("{PATH}.loci[]");
-    Ok(Some(format!(
-        "{}: {}",
-        py(p)?,
-        py(need(l, "penetrance_label", &path)?)?
-    )))
+    let label = py(need(l, "penetrance_label", &path)?)?;
+    Ok(Some(match penetrance_alleles(l)? {
+        Some((inside, _)) => format!("{} repeats in {}: {label}", inside.join(" and "), py(p)?),
+        None => format!("{}: {label}", py(p)?),
+    }))
 }
 
 /// What the report says beside a locus: sizing, the catalog's normal

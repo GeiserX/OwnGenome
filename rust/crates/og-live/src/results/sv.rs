@@ -8,12 +8,15 @@ use pycompat::fmt::fixed;
 
 /// A class 4-5 row's benign-set AF for its finding: "no frequency data"
 /// when step 05 says AnnotSV gave none, never blank, which would read as
-/// rare. Null (no evidence line) for a row from before that marker without
-/// an AF.
+/// rare. Null (no evidence line) for a row from before step 05 wrote its
+/// per-record evidence, whatever its AF, so such a finding reads as before.
 fn frequency(x: &Value) -> Read<Value> {
     let row = D::new(x, "AnnotSV row");
     if annotsv::no_frequency(&row)? {
         return Ok(s("no frequency data (unknown, not the same as rare)"));
+    }
+    if !annotsv::has_evidence(&row)? {
+        return Ok(Value::Null);
     }
     Ok(match val(x, "population_af") {
         Value::Null => Value::Null,
@@ -21,6 +24,15 @@ fn frequency(x: &Value) -> Read<Value> {
             "{} (AnnotSV's aggregate over the benign records listed)",
             text(af)
         )),
+    })
+}
+
+/// Step 05's `Benign_match` of a row in words, as the card's checks say it
+/// ("only larger SVs around it"); null without the key.
+fn benign_records(x: &Value) -> Read<Value> {
+    Ok(match D::new(x, "AnnotSV row").opt("benign_match")? {
+        Some(m) => s(annotsv::benign_match_text(m.string()?)),
+        None => Value::Null,
     })
 }
 
@@ -112,10 +124,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 // only when a row carries them, as the report says them.
                 let d = D::new(a, "sections.annotsv.data");
                 if let Some(n) = annotsv::same_size_common(&d)? {
-                    out.fact(
-                        "With a same-size benign record at 1% or more",
-                        n.to_string(),
-                    );
+                    out.fact(annotsv::SAME_SIZE_LABEL, n);
                 }
                 if annotsv::shows_evidence_note(&d)? {
                     out.lines.push(annotsv::BENIGN_EVIDENCE_NOTE.to_owned());
@@ -441,6 +450,7 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                 .gene(gene).detail(text_or(sv, ""))
                 .evidence("Class", class).evidence("Callers", &s(&annotsv_support(summary, &D::new(x, "AnnotSV row"))?))
                 .evidence("Genotype", val(x, "gt"))
+                .evidence("Benign records", &benign_records(x)?)
                 .evidence_fields(x, &[("Same-size benign record at 1% or more", "clinical_common")])
                 .evidence("Benign-set AF", &frequency(x)?)
                 .viewer(text_or(sv, "").replace(' ', ""))))
@@ -477,12 +487,22 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
             };
             let sizing = val(l, "allele_sizing");
             // A count Stranger reads as a full mutation can sit in a range of
-            // reduced penetrance (HTT 36-39): the title and the sentence say so.
+            // reduced penetrance (HTT 36-39). Each allele is read on its own:
+            // the title follows the most severe one, so a pair with an allele
+            // above the range (or one not sized) keeps Stranger's reading,
+            // and the sentence names the allele of reduced penetrance.
+            let alleles = repeats::penetrance_alleles(l)?;
             let (title, said) = match repeats::penetrance_text(l)? {
-                Some(p) => (
+                Some(p) if matches!(alleles, Some((_, false))) => (
                     format!("{name} repeat in a reduced-penetrance range"),
                     format!(
                         "{name} has {count} repeats: Stranger reads it as \"{what}\", but {p}. {next}"
+                    ),
+                ),
+                Some(p) => (
+                    format!("{name} repeat in the {what}"),
+                    format!(
+                        "{name} has {count} repeats: Stranger reads it as \"{what}\"; {p}. {next}"
                     ),
                 ),
                 None => (
@@ -678,7 +698,7 @@ mod tests {
         );
         assert!(
             shown.facts.contains(&strings([
-                "With a same-size benign record at 1% or more",
+                "Calls with a confirmed same-size benign record at 1% or more",
                 "1"
             ])),
             "{:?}",
@@ -728,6 +748,93 @@ mod tests {
         );
     }
 
+    /// The evidence of a finding as "label: value" lines.
+    fn evidence_of(f: &Finding) -> Vec<String> {
+        f.evidence
+            .iter()
+            .map(|e| list(e).iter().map(text).collect::<Vec<_>>().join(": "))
+            .collect()
+    }
+
+    /// A legacy row (no per-record evidence, no "no frequency data" marker)
+    /// with a numeric AF gains no new evidence line: its finding reads as
+    /// before step 05 wrote the columns.
+    #[test]
+    fn live_sv_legacy_numeric_af_adds_no_evidence_line() {
+        let old = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 1, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr2:2000-2500", "acmg_class": "4", "genes": ["G1"],
+                 "caller": "manta", "support": 1, "exon_edge": "no", "population_af": 0.05,
+                 "population_source": "gnomAD-SV_v4.1", "common": true}]}}"#,
+        );
+        let found = findings_of(&old);
+        let evidence = evidence_of(&found[0]);
+        assert!(
+            !evidence
+                .iter()
+                .any(|e| e.starts_with("Benign") || e.starts_with("Same-size")),
+            "{evidence:?}"
+        );
+    }
+
+    /// A finding names step 05's Benign_match in words, as the card does:
+    /// "only larger SVs around it" is what tells a contained match with no
+    /// same-size common record from a same-size one.
+    #[test]
+    fn live_sv_finding_names_the_benign_match() {
+        let summary = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 1, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr2:2000-2500", "gt": "0/1", "length": "-500", "acmg_class": "4",
+                 "genes": ["G1"], "caller": "manta", "support": 1, "support_callers": ["manta"],
+                 "exon_edge": "no", "population_af": 0.05, "population_source": "gnomAD-SV_v4.1",
+                 "common": true, "benign_match": "contained", "clinical_common": "no"}]}}"#,
+        );
+        let evidence = evidence_of(&findings_of(&summary)[0]);
+        assert!(
+            evidence.contains(&"Benign records: only larger SVs around it".into()),
+            "{evidence:?}"
+        );
+        assert!(
+            evidence.contains(&"Same-size benign record at 1% or more: no".into()),
+            "{evidence:?}"
+        );
+    }
+
+    /// The card counts confirmed same-size matches and says how many the
+    /// evidence could not assess, so every row unknown never reads as a bare
+    /// 0; its caveat names no count the card does not show.
+    #[test]
+    fn live_sv_same_size_count_says_confirmed_and_not_assessed() {
+        let row = |sv: &str| {
+            format!(
+                r#"{{"type": "DEL", "sv": "{sv}", "acmg_class": "4", "genes": ["G1"],
+                    "caller": "manta", "support": 1, "exon_edge": "no", "population_af": 0.05,
+                    "population_source": "gnomAD-SV_v4.1", "common": true,
+                    "benign_match": "same", "clinical_common": "unknown"}}"#
+            )
+        };
+        let summary = parse(&format!(
+            r#""annotsv": {{"state": "ok", "data": {{"count": 2, "consensus": null, "rows": [{}, {}]}}}}"#,
+            row("chr1:1000-5000"),
+            row("chr3:1000-9000")
+        ));
+        let shown = card("structural-variants", &summary).unwrap();
+        assert!(
+            shown.facts.contains(&strings([
+                "Calls with a confirmed same-size benign record at 1% or more",
+                "0, not assessed: 2"
+            ])),
+            "{:?}",
+            shown.facts
+        );
+        assert_eq!(shown.lines.len(), 1, "{:?}", shown.lines);
+        assert!(
+            !shown.lines[0].contains("common count"),
+            "{:?}",
+            shown.lines
+        );
+    }
+
     /// The MEI table names the call MEGAnE flagged, beside its status, and
     /// shows a site with too few reads as not callable.
     #[test]
@@ -759,26 +866,42 @@ mod tests {
         assert!(shown.attention);
     }
 
+    /// The range of reduced penetrance `og summary collect` puts on an HTT
+    /// locus with a sized count of 36 to 39.
+    const PEN: &str = r#", "penetrance": "36-39", "penetrance_label": "reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)", "penetrance_citation": "GeneReviews""#;
+
+    /// The invented counts of a mixed HTT pair: one allele in the range of
+    /// reduced penetrance, the other above it, a full mutation.
+    const MIXED: &str = "38/42";
+
+    /// Invented controls: one count of reduced penetrance; one full
+    /// mutation (of 42, and of 40, the first count of full penetrance).
+    const REDUCED: &str = "17/38";
+    const FULL: &str = "17/42";
+    const FULL_40: &str = "17/40";
+
+    /// A summary whose only expansions locus is HTT with `counts` (sized,
+    /// flagged by Stranger as a full mutation) and `extra` keys.
+    fn htt(counts: &str, extra: &str) -> Summary {
+        let ci = counts
+            .split('/')
+            .map(|c| format!("{c}-{c}"))
+            .collect::<Vec<_>>()
+            .join("/");
+        parse(&format!(
+            r#""expansions": {{"state": "ok", "data": {{"records": 1, "stranger": true,
+                "loci": [{{"locus": "HTT", "repeat_count": "{counts}", "status": "full_mutation",
+                "normal_max": "26", "pathologic_min": "36", "ci": "{ci}", "sizing": "sized",
+                "allele_sizing": "sized/sized", "zone": ""{extra}}}], "unsized": [],
+                "intermediate": []}}}}"#
+        ))
+    }
+
     /// An HTT count of reduced penetrance says so in the table, the gauge
     /// and the finding; a count of 40 reads as before.
     #[test]
     fn live_htt_of_reduced_penetrance_says_so() {
-        let locus = |count: &str, extra: &str| {
-            format!(
-                r#"{{"locus": "HTT", "repeat_count": "{count}", "status": "full_mutation",
-                    "normal_max": "26", "pathologic_min": "36", "ci": "17-17/{count}-{count}",
-                    "sizing": "sized", "allele_sizing": "sized/sized", "zone": ""{extra}}}"#
-            )
-        };
-        let pen = r#", "penetrance": "36-39", "penetrance_label": "reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)", "penetrance_citation": "GeneReviews""#;
-        let at = |count: &str, extra: &str| {
-            parse(&format!(
-                r#""expansions": {{"state": "ok", "data": {{"records": 1, "stranger": true,
-                    "loci": [{}], "unsized": [], "intermediate": []}}}}"#,
-                locus(count, extra)
-            ))
-        };
-        let summary = at("17/38", pen);
+        let summary = htt(REDUCED, PEN);
         let shown = card("expansions", &summary).unwrap();
         let table = shown.table.unwrap();
         let Value::Array(rows) = val(&table, "rows") else {
@@ -786,8 +909,8 @@ mod tests {
         };
         assert_eq!(
             text(&list(&rows[0])[2]),
-            "\"full_mutation\"; 36-39: reduced penetrance (may or may not cause Huntington \
-             disease; full penetrance from 40)"
+            "\"full_mutation\"; 38 repeats in 36-39: reduced penetrance (may or may not cause \
+             Huntington disease; full penetrance from 40)"
         );
         let widget = shown.extra.get("widget").unwrap();
         assert_eq!(
@@ -797,17 +920,46 @@ mod tests {
         let found = findings_of(&summary);
         assert_eq!(found[0].title, "HTT repeat in a reduced-penetrance range");
         assert!(
-            found[0].text.contains("but 36-39: reduced penetrance"),
+            found[0]
+                .text
+                .contains("but 38 repeats in 36-39: reduced penetrance"),
             "{}",
             found[0].text
         );
 
-        let summary = at("17/40", "");
+        let summary = htt(FULL_40, "");
         let shown = card("expansions", &summary).unwrap();
         let widget = shown.extra.get("widget").unwrap();
         assert!(get(&list(val(widget, "loci"))[0], "penetrance").is_none());
         let found = findings_of(&summary);
         assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+    }
+
+    /// Each sized HTT allele is read on its own: in a mixed pair the
+    /// finding keeps the full-mutation reading of the allele above the
+    /// range and names the other as reduced penetrance. Controls: a pair
+    /// with only a count of reduced penetrance, and one with only a full
+    /// mutation.
+    #[test]
+    fn live_htt_mixed_pair_keeps_the_full_mutation_reading() {
+        let found = findings_of(&htt(MIXED, PEN));
+        assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+        assert!(
+            found[0].text.contains(
+                "Stranger reads it as \"full-mutation range\"; 38 repeats in 36-39: reduced \
+                 penetrance (may or may not cause Huntington disease; full penetrance from 40). \
+                 See a clinical geneticist."
+            ),
+            "{}",
+            found[0].text
+        );
+        assert!(!found[0].text.contains(", but "), "{}", found[0].text);
+
+        let found = findings_of(&htt(REDUCED, PEN));
+        assert_eq!(found[0].title, "HTT repeat in a reduced-penetrance range");
+        let found = findings_of(&htt(FULL, ""));
+        assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+        assert!(!found[0].text.contains("reduced"), "{}", found[0].text);
     }
 
     /// The KIV-2 fact and the whisker say the interval covers read sampling

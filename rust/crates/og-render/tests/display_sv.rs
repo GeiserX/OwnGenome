@@ -156,8 +156,8 @@ fn the_aggregate_af_is_told_apart_from_a_same_size_record() {
          benign-set AF 0.05 (gnomAD-SV_v4.1; the highest AF of the benign records listed, larger \
          SVs around it included), common\n         \
          benign records: one of about the same size, same-size record at 1% or more: yes\n",
-        "  With a same-size benign record at 1% or more: 1 (the common count above uses the \
-         benign-set AF, AnnotSV's aggregate)\n",
+        "  Calls with a confirmed same-size benign record at 1% or more: 1 (the common count \
+         above uses the benign-set AF, AnnotSV's aggregate)\n",
         EVIDENCE_NOTE,
     ] {
         assert!(txt.contains(want), "the text report lacks {want:?}:\n{txt}");
@@ -180,8 +180,8 @@ fn the_aggregate_af_is_told_apart_from_a_same_size_record() {
     );
     assert!(
         card.contains(&*e(
-            "With a same-size benign record at 1% or more: 1 (the common count above uses the \
-             benign-set AF, AnnotSV's aggregate)"
+            "Calls with a confirmed same-size benign record at 1% or more: 1 (the common count \
+             above uses the benign-set AF, AnnotSV's aggregate)"
         )),
         "{card}"
     );
@@ -197,6 +197,34 @@ fn the_aggregate_af_is_told_apart_from_a_same_size_record() {
         "{txt}"
     );
     assert!(!txt.contains("same-size"), "{txt}");
+}
+
+/// When every row's same-size check is unknown, the count says 0 confirmed
+/// and how many were not assessed, never a bare 0; the caveat, which the live
+/// card shares, names no count.
+#[test]
+fn an_unknown_same_size_check_is_counted_as_not_assessed() {
+    let unknown = |sv: &str| {
+        sv_row(
+            sv,
+            r#""population_af": 0.05, "population_source": "gnomAD-SV_v4.1", "common": true,
+               "benign_match": "same", "clinical_common": "unknown""#,
+        )
+    };
+    let s = annotsv(&[&unknown("chr1:1000-5000"), &unknown("chr3:1000-9000")]);
+    let (txt, page) = reports(&s);
+    let want = "Calls with a confirmed same-size benign record at 1% or more: 0, not assessed: 2 \
+                (the common count above uses the benign-set AF, AnnotSV's aggregate)";
+    assert!(txt.contains(&format!("  {want}\n")), "{txt}");
+    assert!(
+        frame(&page, "structural-variants").contains(&*e(want)),
+        "{page}"
+    );
+    let note = txt
+        .lines()
+        .find(|l| l.contains(EVIDENCE_NOTE))
+        .expect("the caveat");
+    assert!(!note.contains("count"), "{note}");
 }
 
 // --- MEI: a filtered call and a site with too few reads ---------------------------
@@ -261,8 +289,8 @@ const HTT_PENETRANCE: &str = r#", "penetrance": "36-39",
     "penetrance_label": "reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)",
     "penetrance_citation": "GeneReviews: Huntington Disease, https://www.ncbi.nlm.nih.gov/books/NBK1305/""#;
 
-const HTT_LINE: &str =
-    "36-39: reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)";
+const HTT_LINE: &str = "38 repeats in 36-39: reduced penetrance (may or may not cause Huntington \
+     disease; full penetrance from 40)";
 
 /// The invented HTT count of the row below. It is kept apart from the gene name,
 /// because the personal-data scan reads a gene name followed by two counts on
@@ -293,6 +321,35 @@ fn an_htt_count_of_reduced_penetrance_says_so() {
     let (txt, page) = reports(&htt("17/40", ""));
     assert!(!txt.contains("reduced penetrance"), "{txt}");
     assert!(!page.contains("reduced penetrance"), "{page}");
+}
+
+/// The invented counts of a mixed HTT pair: one allele in the range of
+/// reduced penetrance, the other above it, a full mutation.
+const MIXED: &str = "38/42";
+
+/// Stranger's row of the mixed pair, kept apart from the gene name for the
+/// personal-data scan.
+const MIXED_ROW: &str = "38/42  full_mutation";
+
+/// Each sized allele is read on its own: in a mixed pair the reports keep
+/// Stranger's full-mutation reading and name only the allele of 38 as
+/// reduced penetrance, never the whole locus.
+#[test]
+fn a_mixed_htt_pair_names_only_the_allele_of_reduced_penetrance() {
+    let (txt, page) = reports(&htt(MIXED, HTT_PENETRANCE));
+    assert!(
+        txt.contains(&format!("    HTT      {MIXED_ROW}\n      {HTT_LINE}\n")),
+        "{txt}"
+    );
+    let card = frame(&page, "expansions");
+    assert!(
+        card.contains(&format!("<p class=\"note\">HTT {}</p>", e(HTT_LINE))),
+        "{card}"
+    );
+    assert!(
+        !txt.contains("\n      36-39: reduced penetrance"),
+        "the whole locus reads as reduced penetrance:\n{txt}"
+    );
 }
 
 // --- Locityper: uncalibrated outside HLA and KIR -------------------------------------
