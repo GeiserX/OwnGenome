@@ -1,0 +1,26 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+##contig=<ID=chr21,length=46709983>
+##contig=<ID=chr22,length=50818468>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="SV length">
+##INFO=<ID=CT,Number=1,Type=String,Description="Connection type">
+##INFO=<ID=CHR2,Number=1,Type=String,Description="Mate contig">
+##INFO=<ID=STRANDS,Number=1,Type=String,Description="Orientation">
+##INFO=<ID=pytorP1,Number=1,Type=Float,Description="E-value">
+##INFO=<ID=pytorQ0,Number=1,Type=Float,Description="Fraction of zero mapping quality reads">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	manta
+chr20	1000000	big	N	<INS>	90	PASS	SVTYPE=INS;END=1000001;SVLEN=1000;CT=NtoN	GT	0/1
+chr20	1000200	small	N	<INS>	50	PASS	SVTYPE=INS;END=1000201;SVLEN=300;CT=NtoN	GT	0/1
+chr20	2000000	wrong-strand	N	<DEL>	91	PASS	SVTYPE=DEL;END=2001000;SVLEN=-1000;STRANDS=-+	GT	0/1
+chr20	2000900	short-strand	N	<DEL>	51	PASS	SVTYPE=DEL;END=2001000;SVLEN=-100;STRANDS=+-	GT	0/1
+chr20	3000000	diff-chrM	N	N]chr21:3001000]	92	PASS	SVTYPE=BND;CT=3to3	GT	0/1
+chr20	4000000	first	N	<DEL>	93	PASS	SVTYPE=DEL;END=4000600;SVLEN=-600	GT	0/1
+chr20	4000250	middle	N	<DEL>	53	PASS	SVTYPE=DEL;END=4000850;SVLEN=-600	GT	0/1
+chr20	5000000	discard	N	<DEL>	94	PASS	SVTYPE=DEL;END=5000100;SVLEN=-100	GT	0/1
+chr20	5000050	.	N	<DEL>	54	PASS	SVTYPE=DEL;END=5001050;SVLEN=-1000	GT	0/1
+chr20	6000000	invM	N	<INV>	95	PASS	SVTYPE=INV;END=6001000;SVLEN=1000;CT=3to3	GT	0/1
+chr20	7000000	kept-bnd	N	N]chr21:7005000]	50	PASS	SVTYPE=BND;CT=3to3	GT	0/1
+chr20	8000000	valid-insM	N	<INS>	60	PASS	SVTYPE=INS;END=8000001;SVLEN=300;CT=NtoN	GT	0/1

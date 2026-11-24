@@ -1,0 +1,11 @@
+AnnotSV_ID	ID	SV_chrom	SV_start	SV_end	SV_length	SV_type	Gene_name	ACMG_class	AnnotSV_ranking_score	Caller	Exon_edge	Exon_edge_detail	Population_AF	Population_source	Common	AnnotSV_class	Depth_support	Rule	Rule_detail	FORMAT	S1
+X_50000000_50050000_DEL_1	XDEL1	X	50000000	50050000	-50000	DEL	G20	3	0.99	delly	not checked			no frequency data	no	4	no	no_depth_support	read depth does not show the change (Delly RDCN 1)	GT:RDCN	1/1:1
+X_51000000_51050000_DEL_1	XDEL0	X	51000000	51050000	-50000	DEL	G21	4	0.99	delly	not checked			no frequency data	no	4	yes			GT:RDCN	1/1:0
+X_52000000_52050000_DUP_1	XDUP2	X	52000000	52050000	50000	DUP	G22	4	0.99	delly	.			no frequency data	no	4	yes			GT:RDCN	0/1:2
+X_1000000_1050000_DUP_1	PARDUP2	X	1000000	1050000	50000	DUP	G23	3	0.99	delly	.			no frequency data	no	4	no	no_depth_support	read depth does not show the change (Delly RDCN 2)	GT:RDCN	0/1:2
+X_1000000_1050000_DEL_1	PARDEL1	X	1000000	1050000	-50000	DEL	G24	4	0.99	delly	not checked			no frequency data	no	4	yes			GT:RDCN	0/1:1
+Y_20000000_20050000_DEL_1	YDEL1	Y	20000000	20050000	-50000	DEL	G25	3	0.99	delly	not checked			no frequency data	no	4	no	no_depth_support	read depth does not show the change (Delly RDCN 1)	GT:RDCN	1/1:1
+Y_21000000_21050000_DUP_1	YDUP2	Y	21000000	21050000	50000	DUP	G26	4	0.99	delly	.			no frequency data	no	4	yes			GT:RDCN	0/1:2
+X_2781479_2831479_DUP_1	PAREDGE_IN	X	2781479	2831479	50000	DUP	G27	3	0.99	delly	.			no frequency data	no	4	no	no_depth_support	read depth does not show the change (Delly RDCN 2)	GT:RDCN	0/1:2
+X_2781480_2831480_DUP_1	PAREDGE_OUT	X	2781480	2831480	50000	DUP	G28	4	0.99	delly	.			no frequency data	no	4	yes			GT:RDCN	0/1:2
+20_48000000_48050000_DUP_1	BIGDUP	20	48000000	48050000	50000	DUP	G29	4	0.99	delly	.			no frequency data	no	4	yes			GT:RDCN	0/1:1000000

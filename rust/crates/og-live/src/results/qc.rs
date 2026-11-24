@@ -65,20 +65,19 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 if let Some(ref result) = identity {
                     out.fact("Sample identity", result);
                 }
-                let same = val(d, "same_person_as");
-                if truthy(same) {
-                    let label = if identity.is_some() {
-                        qc::POSSIBLE_MATCH
-                    } else {
-                        "The same person as"
-                    };
-                    out.fact(label, cell(same));
+                let (firm, possible) = qc::same_person(&sample)?;
+                if let Some(ref p) = firm {
+                    out.fact("The same person as", p);
+                }
+                if let Some(ref p) = possible {
+                    out.fact(qc::POSSIBLE_MATCH, p);
                 }
                 out.attention = sex_check == "mismatch"
                     || contam == "warn"
                     || contam_uncertain
                     || identity.is_some()
-                    || truthy(same);
+                    || firm.is_some()
+                    || possible.is_some();
             }
             out.lines = qc::karyotype_lines(summary)?;
             out.attention |= !out.lines.is_empty();
@@ -162,26 +161,45 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
             ))
         });
     }
-    let same = val(d, "same_person_as");
-    if truthy(same) {
+    if truthy(val(d, "same_person_as")) {
         add_row(found, "qc", Level::Trust, || {
-            let identity = qc::identity_uncertainty(&summary.section("sample_qc"))?;
-            let (label, detail) = match identity {
-                Some(detail) => (qc::POSSIBLE_MATCH, detail),
-                None => (
-                    "The same person as",
-                    "Two runs of this server hold the same genome.".to_owned(),
-                ),
+            let sample = summary.section("sample_qc");
+            let (firm, _) = qc::same_person(&sample)?;
+            let Some(firm) = firm else {
+                return Ok(None);
             };
             Ok(Some(
                 Finding::new(
                     Level::Trust,
                     "qc",
                     &["same-person"],
-                    format!("{label} {}", text(same)),
+                    format!("The same person as {firm}"),
+                    "Two runs of this server hold the same genome.",
+                )
+                .evidence("Matches", &Value::Str(firm)),
+            ))
+        });
+        add_row(found, "qc", Level::Trust, || {
+            let sample = summary.section("sample_qc");
+            let (_, possible) = qc::same_person(&sample)?;
+            let Some(possible) = possible else {
+                return Ok(None);
+            };
+            // With identity uncertain, its reason; else the pair shares
+            // too few sites.
+            let detail = qc::identity_uncertainty(&sample)?.unwrap_or_else(|| {
+                "The two samples share too few genotyped sites to call them the same person."
+                    .to_owned()
+            });
+            Ok(Some(
+                Finding::new(
+                    Level::Trust,
+                    "qc",
+                    &["possible-same-person"],
+                    format!("{} {possible}", qc::POSSIBLE_MATCH),
                     detail,
                 )
-                .evidence("Matches", same),
+                .evidence("Matches", &Value::Str(possible)),
             ))
         });
     }
@@ -227,5 +245,100 @@ mod tests {
         )
         .unwrap();
         assert!(card("qc", &summary).unwrap().attention);
+    }
+
+    /// Step 33's own table for S with these pairs, as a summary with only
+    /// the `sample_qc` identity rows.
+    fn from_step_33(tag: &str, pairs: &str) -> Summary {
+        use og_summary::qc::{FREEMIX_WARN, Inputs, table};
+        let d = std::env::temp_dir().join(format!("og-live-thin-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let (sp, pp) = (d.join("s.samples.tsv"), d.join("s.pairs.tsv"));
+        std::fs::write(
+            &sp,
+            "#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\t\
+original_pedigree_sex\tgt_depth_mean\tn_hom_ref\tn_het\tn_hom_alt\tp_middling_ab\t\
+X_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n\
+S\tS\t-9\t-9\t1\t-9\t-9\t30.0\t5000\t6000\t4000\t0.010\t15.0\t39\t0\t0\t39\t14.0\t5\n",
+        )
+        .unwrap();
+        std::fs::write(&pp, pairs).unwrap();
+        let rows = table(&Inputs {
+            sample: "S",
+            samples_tsv: sp.to_str().unwrap(),
+            pairs_tsv: pp.to_str(),
+            freemix_warn: FREEMIX_WARN,
+            ..Inputs::default()
+        })
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        let data = rows
+            .iter()
+            .filter(|(k, _)| k.contains("identity") || k.contains("same_person"))
+            .map(|(k, v)| format!("\"{k}\": \"{v}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Summary::parse(&format!(
+            r#"{{"sections":{{"sample_qc":{{"state":"ok","data":{{{data}}}}}}}}}"#
+        ))
+        .unwrap()
+    }
+
+    fn titles(summary: &Summary) -> Vec<(String, String)> {
+        let mut found = Vec::new();
+        findings(summary, &mut found);
+        found.into_iter().map(|f| (f.id, f.title)).collect()
+    }
+
+    #[test]
+    fn live_qc_shows_a_thin_pair_as_a_possible_match_beside_a_firm_one() {
+        // T: the same person on 12,000 shared sites; U: 0.97 on 300; V:
+        // unrelated on 15,000. Identity is `checked`.
+        let summary = from_step_33(
+            "mixed",
+            "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n\
+             S\tT\t0.99\t0\t300\t12000\nU\tS\t0.97\t0\t300\t300\nS\tV\t0.1\t9\t300\t15000\n",
+        );
+        let shown = card("qc", &summary).unwrap();
+        let tail = &shown.facts[shown.facts.len() - 2..];
+        assert_eq!(
+            tail,
+            [
+                strings(["The same person as", "T (0.99)"]),
+                strings([
+                    "Possible match to",
+                    "U (0.97) (on fewer than 1,000 shared sites)"
+                ]),
+            ]
+        );
+        assert!(shown.attention);
+        let t = titles(&summary);
+        assert_eq!(
+            t.iter()
+                .map(|(_, title)| title.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "The same person as T (0.99)",
+                "Possible match to U (0.97) (on fewer than 1,000 shared sites)"
+            ],
+            "{t:?}"
+        );
+        assert_ne!(t[0].0, t[1].0, "two findings, two ids: {t:?}");
+
+        // Both pairs on enough sites: one firm finding, no possible one.
+        let summary = from_step_33(
+            "firm",
+            "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n\
+             S\tT\t0.99\t0\t300\t12000\nU\tS\t0.95\t0\t300\t1000\n",
+        );
+        let shown = card("qc", &summary).unwrap();
+        assert_eq!(
+            shown.facts.last(),
+            Some(&strings(["The same person as", "T (0.99), U (0.95)"]))
+        );
+        let t = titles(&summary);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(t[0].1, "The same person as T (0.99), U (0.95)");
     }
 }

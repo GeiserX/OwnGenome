@@ -14,15 +14,21 @@
 //! - `-2` (chrX looks female, chrY has reads) is reported even with no
 //!   declared sex.
 //! - FREEMIX above `--freemix-warn` (default 0.03) warns.
-//! - A relatedness of 0.9 or more is the same person (a duplicate or a swap).
+//! - A relatedness of 0.9 or more is the same person (a duplicate or a swap),
+//!   listed in `same_person_as`. A pair that shares fewer than
+//!   [`MIN_IDENTITY_SITES`] genotyped sites (or an unknown number) is only a
+//!   possible match. With identity `uncertain` that holds for every match;
+//!   with identity `checked` through another pair, such a match is named
+//!   again in `possible_same_person_as`, and the reports show it as one.
 //! - FREEMIX is `uncertain` when VerifyBamID2 skipped its marker check or
 //!   kept fewer than [`MIN_CONTAMINATION_MARKERS`] markers.
 //! - Identity is `uncertain` below [`MIN_IDENTITY_SITES`] informative sites,
 //!   and `not_checked` when no other sample was there to compare with.
 //!
-//! The table is `key\tvalue` with 25 rows in a fixed order; `og qc
-//! sex-loss` appends its `mosaic_*` rows afterwards. Each row is echoed on
-//! stdout as `  key: value`.
+//! The table is `key\tvalue` with 25 rows in a fixed order, plus
+//! `possible_same_person_as` right after `same_person_as` when identity is
+//! `checked` and it has a name; `og qc sex-loss` appends its `mosaic_*`
+//! rows afterwards. Each row is echoed on stdout as `  key: value`.
 
 use crate::args::{self, Kind, Opt};
 use crate::{basename, finish, float, text_lines, trunc, write_file};
@@ -322,7 +328,9 @@ pub fn table(i: &Inputs) -> Result<Vec<(&'static str, String)>, String> {
         ("panel_markers", markers),
         ("verifybamid2_marker_check", i.marker_check.to_owned()),
     ]);
-    let mut same = Vec::new();
+    // Every other sample at the same-person relatedness, and those of them
+    // that share too few sites for that to be more than a possible match.
+    let (mut same, mut possible) = (Vec::new(), Vec::new());
     // Other samples compared on enough shared sites, and on too few.
     let (mut compared, mut thin) = (0usize, 0usize);
     if let Some(pairs) = i.pairs_tsv.filter(|s| !s.is_empty()) {
@@ -333,20 +341,36 @@ pub fn table(i: &Inputs) -> Result<Vec<(&'static str, String)>, String> {
                 // `n`: the sites both samples have a genotype at. A pair
                 // with fewer, with no `n` column, or with no relatedness
                 // (nan: they share no site) is no comparison.
-                match (rel, num(cell(&r, "n"))) {
-                    (Some(_), Some(n)) if n >= MIN_IDENTITY_SITES as f64 => compared += 1,
-                    _ => thin += 1,
+                let enough = match (rel, num(cell(&r, "n"))) {
+                    (Some(_), Some(n)) => n >= MIN_IDENTITY_SITES as f64,
+                    _ => false,
+                };
+                if enough {
+                    compared += 1;
+                } else {
+                    thin += 1;
                 }
                 if let Some(rel) = rel.filter(|&x| x >= SAME_PERSON) {
                     let other = if a == Some(sid) { b } else { a };
-                    same.push(format!("{} ({})", other.unwrap_or("None"), fixed(rel, 2)));
+                    let named = format!("{} ({})", other.unwrap_or("None"), fixed(rel, 2));
+                    if !enough {
+                        possible.push(named.clone());
+                    }
+                    same.push(named);
                 }
             }
         }
     }
-    out.push(("same_person_as", same.join(", ")));
-    let (confidence, confidence_why) = contamination_confidence(freemix, i.marker_check, i.markers);
     let (identity, identity_why) = identity(sites, compared, thin);
+    out.push(("same_person_as", same.join(", ")));
+    // With identity uncertain its row already says every match rests on
+    // too few sites. With identity checked through another pair, this row
+    // names the matches that do; only then and only when there is one, so
+    // the table of any other run keeps its 25 rows.
+    if identity == "checked" && !possible.is_empty() {
+        out.push(("possible_same_person_as", possible.join(", ")));
+    }
+    let (confidence, confidence_why) = contamination_confidence(freemix, i.marker_check, i.markers);
     out.extend([
         (
             "verifybamid2_markers",
