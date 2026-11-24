@@ -28,12 +28,15 @@ Format: Allele|Consequence|IMPACT|SYMBOL|Feature|CANONICAL|MANE_SELECT|MAX_AF\">
 const OK: (&str, &str) = ("GT:GQ:DP:AD", "0/1:50:30:15,15");
 
 // GRCh38 positions: PCSK9, BRCA2, LMNA, TGFBR2 and MUTYH inside their
-// genes; TTN in an A-band exon (exon 300 of ENST00000589042 lies near
-// 178.60 Mb) and in the I-band (178.65 Mb).
+// genes; TTN in an A-band exon (near exon 300 of ENST00000589042, 178.60
+// Mb), in the M-band exons (178.53 Mb) and in the I-band between the runs
+// of exons with high PSI (178.65 Mb), where cardiodb gives every exon a low
+// PSI.
 const PCSK9: (&str, i128) = ("chr1", 55_051_215);
 const BRCA2: (&str, i128) = ("chr13", 32_340_300);
 const TTN_A: (&str, i128) = ("chr2", 178_600_000);
-const TTN_I: (&str, i128) = ("chr2", 178_650_000);
+const TTN_M: (&str, i128) = ("chr2", 178_533_000);
+const TTN_LOW: (&str, i128) = ("chr2", 178_650_000);
 const LMNA: (&str, i128) = ("chr1", 156_130_000);
 const TGFBR2: (&str, i128) = ("chr3", 30_650_000);
 const MUTYH_A: (&str, i128) = ("chr1", 45_331_556);
@@ -211,32 +214,68 @@ fn a_call_with_no_gq_dp_or_ad_is_unverified() {
 }
 
 #[test]
-fn ttn_counts_a_truncating_variant_in_its_a_band_exons_only() {
-    let v = tier(Vec::new(), Some(&[stop(TTN_I, "TTN")]));
+fn ttn_counts_a_truncating_variant_in_its_exons_with_high_psi_only() {
+    // A low-PSI I-band exon: no finding, set apart with the reason.
+    let v = tier(Vec::new(), Some(&[stop(TTN_LOW, "TTN")]));
     assert!(of(&v, "high_impact", "TTN").is_empty(), "{v:?}");
     let r = s(of(&v, "not_reported", "TTN")[0], "reason").to_owned();
-    assert!(r.contains("footnote f") && r.contains("outside"), "{r}");
+    assert!(
+        r.contains("footnote f") && r.contains("PSI") && r.contains("outside"),
+        "{r}"
+    );
 
-    let v = tier(Vec::new(), Some(&[stop(TTN_A, "TTN")]));
-    assert_eq!(of(&v, "high_impact", "TTN").len(), 1, "{v:?}");
-    assert!(of(&v, "not_reported", "TTN").is_empty());
+    // The A-band and the M-band exons have high PSI: both count.
+    for at in [TTN_A, TTN_M] {
+        let v = tier(Vec::new(), Some(&[stop(at, "TTN")]));
+        assert_eq!(of(&v, "high_impact", "TTN").len(), 1, "{at:?}: {v:?}");
+        assert!(of(&v, "not_reported", "TTN").is_empty(), "{at:?}");
+    }
 
-    // A ClinVar hit in the A-band counts when its record in the clinical
-    // VCF truncates, not when it is a missense one.
+    // Each edge of the shipped regions: the first and last base of a run
+    // of exons with high PSI (splice sites included) count, the next base
+    // out does not. Exon 243 (PSI 59%) lies between the first two runs.
+    for (pos, counts) in [
+        (178_525_986, false),
+        (178_525_987, true),
+        (178_622_769, true),
+        (178_622_770, false),
+        (178_625_270, false),
+        (178_625_271, true),
+    ] {
+        let v = tier(Vec::new(), Some(&[stop(("chr2", pos), "TTN")]));
+        let (rep, apart) = (
+            of(&v, "high_impact", "TTN").len(),
+            of(&v, "not_reported", "TTN").len(),
+        );
+        assert_eq!((rep, apart), if counts { (1, 0) } else { (0, 1) }, "{pos}");
+    }
+
+    // A ClinVar hit counts when its record in the clinical VCF truncates,
+    // and is set apart when that record is a missense one.
     let missense = record(TTN_A, "missense_variant", "MODERATE", "TTN", "0.0001", OK);
     let v = tier(vec![hit(TTN_A, "TTN")], Some(&[missense]));
     assert!(of(&v, "clinvar_hits", "TTN").is_empty(), "{v:?}");
     let r = s(of(&v, "not_reported", "TTN")[0], "reason").to_owned();
-    assert!(r.contains("no truncating call"), "{r}");
+    assert!(r.contains("does not truncate"), "{r}");
     let v = tier(vec![hit(TTN_A, "TTN")], Some(&[stop(TTN_A, "TTN")]));
     let rep = of(&v, "clinvar_hits", "TTN");
     assert_eq!(rep.len(), 1, "{v:?}");
     assert!(!rep[0].contains_key("rule_condition"));
-    // Outside the A-band a ClinVar hit is no finding either.
-    let v = tier(vec![hit(TTN_I, "TTN")], Some(&[stop(TTN_I, "TTN")]));
+    // Outside the exons with high PSI a ClinVar hit is no finding either.
+    let v = tier(vec![hit(TTN_LOW, "TTN")], Some(&[stop(TTN_LOW, "TTN")]));
     assert!(of(&v, "clinvar_hits", "TTN").is_empty(), "{v:?}");
-    // With no clinical VCF the consequence is not known: reported, with the
-    // condition to check.
+    // A hit the clinical VCF does not hold (its record written another
+    // way, or not kept) is not known to be missense: reported, with the
+    // condition to check. So is one with no clinical VCF at all.
+    let v = tier(vec![hit(TTN_A, "TTN")], Some(&[]));
+    let rep = of(&v, "clinvar_hits", "TTN");
+    assert_eq!(rep.len(), 1, "{v:?}");
+    let c = s(rep[0], "rule_condition");
+    assert!(
+        c.contains("holds no record") && c.contains("not known here"),
+        "{c}"
+    );
+    assert!(of(&v, "not_reported", "TTN").is_empty(), "{v:?}");
     let v = tier(vec![hit(TTN_A, "TTN")], None);
     let rep = of(&v, "clinvar_hits", "TTN");
     assert_eq!(rep.len(), 1, "{v:?}");
@@ -294,6 +333,8 @@ fn a_weak_call_never_completes_a_recessive_pair() {
         ("GT:GQ:DP:AD", "0/1:8:30:15,15"),
     );
     let v = tier(vec![hit(MUTYH_A, "MUTYH")], Some(&[weak]));
+    // The hit is reported, so the loop below has a row to check.
+    assert_eq!(of(&v, "clinvar_hits", "MUTYH").len(), 1, "{v:?}");
     for m in of(&v, "clinvar_hits", "MUTYH") {
         assert_eq!(
             s(m, "pair"),
@@ -301,4 +342,29 @@ fn a_weak_call_never_completes_a_recessive_pair() {
             "{m:?}"
         );
     }
+}
+
+/// Truncating variants are a main cause of arrhythmogenic right ventricular
+/// cardiomyopathy in DSG2 and DSC2, though ClinGen scores their whole-gene
+/// loss 2 and 1: a stop-gain is a finding. RBM20's is counted with a mark,
+/// and DES (a dominant-negative gene ClinGen has not scored) sets it apart.
+#[test]
+fn the_hand_rows_decide_where_the_score_says_too_little() {
+    for (at, gene) in [
+        (("chr18", 31_520_000), "DSG2"),
+        (("chr18", 31_530_000), "DSC2"),
+    ] {
+        let v = tier(Vec::new(), Some(&[stop(at, gene)]));
+        let rep = of(&v, "high_impact", gene);
+        assert_eq!(rep.len(), 1, "{gene}: {v:?}");
+        assert!(!rep[0].contains_key("mechanism_note"), "{gene}");
+        assert!(of(&v, "not_reported", gene).is_empty(), "{gene}");
+    }
+    let v = tier(Vec::new(), Some(&[stop(("chr10", 110_700_000), "RBM20")]));
+    let rep = of(&v, "high_impact", "RBM20");
+    assert_eq!(rep.len(), 1, "{v:?}");
+    assert!(s(rep[0], "mechanism_note").contains("less certain"));
+    let v = tier(Vec::new(), Some(&[stop(("chr2", 219_420_000), "DES")]));
+    assert!(of(&v, "high_impact", "DES").is_empty(), "{v:?}");
+    assert_eq!(of(&v, "not_reported", "DES").len(), 1, "{v:?}");
 }

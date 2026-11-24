@@ -113,6 +113,7 @@ i411-callability-exons-1-mosdepth	shard	60	-
 i411-callability-exons-2-catalog	shard	40	callability-1-catalog
 i411-callability-overlap-1-mates	shard	40	-
 i411-nf-vcfanno-ops-1-score-tiers	shard	37	-
+i411-sf-mechanism-1-acmg-lof	shard	40	-
 ibd-segments-1	shard	239	-
 live-server-1-weblog	shard	18	-
 lpa-1	shard	42	-
