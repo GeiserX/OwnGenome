@@ -107,6 +107,10 @@ case "$1 $2" in
   "clinvar deep-intronic")
     cat > /dev/null
     printf 'chrom\tpos\tref\talt\tgenotype\n' ;;
+  "clinvar conflicting-hits")
+    # Step 06 always writes this table: "not checked" with --skip, else the rows of stdin.
+    case " $* " in *" --skip "*) printf "# not checked: %s\\n" "${*##*--skip }" ;; *) cat > /dev/null ;; esac
+    printf 'chrom\tpos\tref\talt\tgenotype\n' ;;
   "cdna check"|"cdna scan")
     while [ $# -gt 0 ]; do
       if [ "$1" = --out ]; then printf 'header\n' > "$2"; fi
