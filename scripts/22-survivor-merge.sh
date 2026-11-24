@@ -9,13 +9,20 @@
 # carries SUPP (how many callers) and SUPP_VEC (which: one digit per caller,
 # in the order of sv_files.txt).
 #
+# SURVIVOR's 1 kb rule alone pairs two deletions of 100 bp that start 900 bp
+# apart and share no base, and on some inputs a deletion with a duplication at
+# the same place. og sv consensus-check then reads each merged record's calls
+# from the VCFs SURVIVOR read. It keeps groups with the same type, the same
+# strands and reciprocal overlap of at least 0.5. Insertions start within 1 kb and
+# the shorter is at least half the longer. A record that fails is split by
+# event, each with its POS, END, SVLEN, CIPOS and CIEND from its own calls,
+# and a part with fewer than 2 callers is dropped.
+#
 # Inputs, each used when it exists (two or more are needed): Manta (step 04),
 # Delly (19), CNVpytor (18), TIDDIT (04a) and Sniffles2 (04c). GRIDSS (04b) is
 # left out: it reports every event as a pair of breakends (SVTYPE=BND), and
-# nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 counts BND
-# as the same type as INV and TRA, so its breakends would pair with the other
-# callers' inversions and translocations and count as votes for an event GRIDSS
-# never typed.
+# nothing here turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 treats
+# same-contig BND calls as INV and intercontig BND calls as TRA.
 #
 # A caller votes only with the calls it makes: og sv survivor-prep drops a
 # record whose FILTER or sample FT is not PASS, or whose genotype is reference
@@ -134,9 +141,10 @@ if [ "${#USED[@]}" -lt 2 ]; then
   exit 1
 fi
 
-echo "[1/2] SURVIVOR merge of ${USED[*]}: breakpoints within 1,000 bp, same type and strands, >= 50 bp, 2+ callers..."
-MERGED="${OUTDIR}/${SAMPLE}_sv_merged.vcf"
-rm -f "$MERGED"
+echo "[1/3] SURVIVOR merge of ${USED[*]}: breakpoints within 1,000 bp, same type and strands, >= 50 bp, 2+ callers..."
+MERGED="${OUTDIR}/${SAMPLE}_sv_survivor.vcf"
+CHECKED="${OUTDIR}/${SAMPLE}_sv_merged.vcf"
+rm -f "$MERGED" "$CHECKED"
 run_in --cpus 1 --memory 4g "$SURVIVOR_IMAGE" \
   SURVIVOR merge "$(cpath "${IN_DIR}/sv_files.txt")" 1000 2 1 1 0 50 "$(cpath "$MERGED")"
 # SURVIVOR exits 0 when it cannot open an input, so its output is the check.
@@ -145,12 +153,18 @@ if ! wrote_vcf "$MERGED"; then
   exit 1
 fi
 
-echo "[2/2] Sorting, compressing and indexing..."
+echo "[2/3] Checking that each merged record is one event (og sv consensus-check)..."
+run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" \
+  /pgp-bin/og sv consensus-check --callers "$(cpath "${IN_DIR}/sv_files.txt")" \
+    "$(cpath "$MERGED")" "$(cpath "$CHECKED")"
+rm -f "$MERGED"
+
+echo "[3/3] Sorting, compressing and indexing..."
 rm -f "${OUT}.tbi"
 run_in --cpus 2 --memory 2g "$BCFTOOLS_IMAGE" bash -euo pipefail -c \
   'bcftools sort "$1" -Oz -o "$2.tmp" && mv "$2.tmp" "$2" && bcftools index -f -t "$2"' \
-  _ "$(cpath "$MERGED")" "$(cpath "$OUT")"
-rm -f "$MERGED"
+  _ "$(cpath "$CHECKED")" "$(cpath "$OUT")"
+rm -f "$CHECKED"
 
 COUNT=$(run_in "$BCFTOOLS_IMAGE" bcftools view -H "$(cpath "$OUT")" | wc -l | tr -d ' ')
 echo ""
