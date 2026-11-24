@@ -400,7 +400,12 @@ mod tests {
                 name: "the A-band".into()
             }
         );
-        for bad in ["truncating_in chr2:20-10 x", "truncating_in chr2 x", "truncating", "odd"] {
+        for bad in [
+            "truncating_in chr2:20-10 x",
+            "truncating_in chr2 x",
+            "truncating",
+            "odd",
+        ] {
             assert!(parse_limit(Some(bad)).is_err(), "{bad}");
         }
     }

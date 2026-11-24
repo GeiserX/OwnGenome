@@ -88,15 +88,21 @@ pub fn clingen_scores(path: &Path) -> Result<IndexMap<String, String>, BuildErro
             continue;
         }
         let (g, s) = cols.ok_or_else(|| {
-            BuildError::Input(format!("{name}: a gene row comes before the #Gene Symbol line"))
+            BuildError::Input(format!(
+                "{name}: a gene row comes before the #Gene Symbol line"
+            ))
         })?;
         let f: Vec<&str> = line.split('\t').collect();
         let (Some(gene), Some(score)) = (f.get(g), f.get(s)) else {
-            return Err(BuildError::Input(format!("{name}: a row has too few columns: {line:?}")));
+            return Err(BuildError::Input(format!(
+                "{name}: a row has too few columns: {line:?}"
+            )));
         };
         let score = score.trim();
         if gene.is_empty() {
-            return Err(BuildError::Input(format!("{name}: a row has no gene symbol")));
+            return Err(BuildError::Input(format!(
+                "{name}: a row has no gene symbol"
+            )));
         }
         let score = if score.is_empty() { "." } else { score };
         if out.insert((*gene).to_owned(), score.to_owned()).is_some() {
@@ -129,11 +135,17 @@ pub fn rebuild(
         let mut cells: Vec<String> = body.split('\t').map(str::to_owned).collect();
         let Some([g, inh, hi, lf]) = header else {
             let at = |c: &str| {
-                cells.iter().position(|x| x == c).ok_or_else(|| {
-                    BuildError::Input(format!("acmg_sf.tsv has no {c} column"))
-                })
+                cells
+                    .iter()
+                    .position(|x| x == c)
+                    .ok_or_else(|| BuildError::Input(format!("acmg_sf.tsv has no {c} column")))
             };
-            header = Some([at("gene")?, at("inheritance")?, at("clingen_hi")?, at("lof")?]);
+            header = Some([
+                at("gene")?,
+                at("inheritance")?,
+                at("clingen_hi")?,
+                at("lof")?,
+            ]);
             out.push_str(line);
             continue;
         };
@@ -241,8 +253,12 @@ BRCA2\tAD\t.\t\t\t.\nPCSK9\tAD\t.\t\t\t.\nMUTYH\tAR\t.\t\t\t.\nMYH7\tAD\t.\t\t\t
 APOB\tAD\t.\t\t\t.\nRET\tAD\t.\t\t\t.\nTGFBR1\tAD\t.\t\t\t.\nTGFBR2\tAD\t.\t\t\t.\n\
 TTN\tAD\t.\t\t\t.\nGAA\tAR\t.\t\t\t.\nDES\tAD\t.\t\t\t.\n";
 
+    // Each call gets its own folder: the tests run in parallel in one process.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn scores() -> IndexMap<String, String> {
-        let d = std::env::temp_dir().join(format!("og-acmg-lof-{}", std::process::id()));
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let d = std::env::temp_dir().join(format!("og-acmg-lof-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let p = d.join("clingen.tsv");
         std::fs::write(&p, CLINGEN).unwrap();

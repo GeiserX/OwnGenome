@@ -41,7 +41,14 @@ const MUTYH_B: (&str, i128) = ("chr1", 45_332_803);
 
 /// One clinical VCF record: `cons|impact|gene` on the MANE transcript with
 /// `max_af` (empty: unknown frequency), and the call.
-fn record(at: (&str, i128), cons: &str, impact: &str, gene: &str, max_af: &str, call: (&str, &str)) -> String {
+fn record(
+    at: (&str, i128),
+    cons: &str,
+    impact: &str,
+    gene: &str,
+    max_af: &str,
+    call: (&str, &str),
+) -> String {
     format!(
         "{}\t{}\t.\tC\tT\t50\tPASS\tCSQ=T|{cons}|{impact}|{gene}|ENST1|YES|NM_1|{max_af}\t{}\t{}\n",
         at.0, at.1, call.0, call.1
@@ -153,7 +160,10 @@ fn a_pcsk9_stop_gain_is_no_secondary_finding() {
     let apart = of(&v, "not_reported", "PCSK9");
     assert_eq!(apart.len(), 1, "{v:?}");
     let r = s(apart[0], "reason");
-    assert!(r.contains("does not count in PCSK9") && r.contains("ClinVar P/LP"), "{r}");
+    assert!(
+        r.contains("does not count in PCSK9") && r.contains("ClinVar P/LP"),
+        "{r}"
+    );
     assert_eq!(s(apart[0], "source"), "HIGH impact");
     assert_eq!(int(&v, "high_impact_rare"), Some(0));
     // A ClinVar P/LP variant of PCSK9 still counts: only the predicted
@@ -178,11 +188,22 @@ fn a_call_with_no_gq_dp_or_ad_is_unverified() {
     for call in [("GT", "0/1"), ("GT:GQ:DP:AD", "0/1:.:.:.")] {
         let v = tier(
             Vec::new(),
-            Some(&[record(BRCA2, "stop_gained", "HIGH", "BRCA2", "0.0001", call)]),
+            Some(&[record(
+                BRCA2,
+                "stop_gained",
+                "HIGH",
+                "BRCA2",
+                "0.0001",
+                call,
+            )]),
         );
         let rep = of(&v, "high_impact", "BRCA2");
         assert_eq!(rep.len(), 1, "{call:?}: {v:?}");
-        assert_eq!(rep[0].get("call_unverified"), Some(&Value::Bool(true)), "{call:?}");
+        assert_eq!(
+            rep[0].get("call_unverified"),
+            Some(&Value::Bool(true)),
+            "{call:?}"
+        );
         assert_eq!(rep[0].get("weak_call"), Some(&Value::Bool(false)));
         assert_eq!(int(&v, "high_impact_rare"), Some(0), "{call:?}");
         assert_eq!(int(&v, "high_impact_unverified"), Some(1), "{call:?}");
@@ -264,9 +285,20 @@ fn a_pair_that_needs_a_call_of_unknown_frequency_says_so() {
 
 #[test]
 fn a_weak_call_never_completes_a_recessive_pair() {
-    let weak = record(MUTYH_B, "stop_gained", "HIGH", "MUTYH", "0.0001", ("GT:GQ:DP:AD", "0/1:8:30:15,15"));
+    let weak = record(
+        MUTYH_B,
+        "stop_gained",
+        "HIGH",
+        "MUTYH",
+        "0.0001",
+        ("GT:GQ:DP:AD", "0/1:8:30:15,15"),
+    );
     let v = tier(vec![hit(MUTYH_A, "MUTYH")], Some(&[weak]));
     for m in of(&v, "clinvar_hits", "MUTYH") {
-        assert_eq!(s(m, "pair"), "possibly biallelic (low-confidence call)", "{m:?}");
+        assert_eq!(
+            s(m, "pair"),
+            "possibly biallelic (low-confidence call)",
+            "{m:?}"
+        );
     }
 }

@@ -578,8 +578,10 @@ impl Cand {
     /// the call by: it counts, but a pair that needs it carries a note.
     fn unsure(&self) -> bool {
         self.kind == Kind::High
-            && (matches!(self.fields.get("frequency_unknown"), Some(Value::Bool(true)))
-                || matches!(self.fields.get("call_unverified"), Some(Value::Bool(true))))
+            && (matches!(
+                self.fields.get("frequency_unknown"),
+                Some(Value::Bool(true))
+            ) || matches!(self.fields.get("call_unverified"), Some(Value::Bool(true))))
     }
 }
 
@@ -1645,10 +1647,7 @@ fn tier(i: &Inputs) -> Result<Result<Value, String>, String> {
         .count();
     // A HIGH-impact call with nothing to judge it by is counted apart, and
     // only a run that has one gets the count.
-    let mut tail = vec![(
-        "high_impact_frequency_unknown",
-        Value::Int(unknown as i128),
-    )];
+    let mut tail = vec![("high_impact_frequency_unknown", Value::Int(unknown as i128))];
     if unverified > 0 {
         tail.push(("high_impact_unverified", Value::Int(unverified as i128)));
     }
@@ -1824,7 +1823,10 @@ mod tests {
         let k = |chrom: &str, pos| (chrom.to_owned(), pos, "C".to_owned(), "T".to_owned());
         let no = rule(Lof::No, Limit::None);
         assert!(gate("PCSK9", &no, &k("chr1", 5), true, Some("stop_gained"), true).is_err());
-        assert_eq!(gate("PCSK9", &no, &k("chr1", 5), false, None, true), Ok(None));
+        assert_eq!(
+            gate("PCSK9", &no, &k("chr1", 5), false, None, true),
+            Ok(None)
+        );
         let ttn = rule(
             Lof::Yes,
             Limit::TruncatingIn {
@@ -1834,20 +1836,54 @@ mod tests {
                 name: "the A-band exons".into(),
             },
         );
-        assert_eq!(gate("TTN", &ttn, &k("2", 150), true, Some("frameshift_variant"), true), Ok(None));
+        assert_eq!(
+            gate(
+                "TTN",
+                &ttn,
+                &k("2", 150),
+                true,
+                Some("frameshift_variant"),
+                true
+            ),
+            Ok(None)
+        );
         let out = gate("TTN", &ttn, &k("chr2", 99), true, Some("stop_gained"), true);
         assert!(out.unwrap_err().contains("outside"));
         assert!(gate("TTN", &ttn, &k("chr2", 150), true, Some("start_lost"), true).is_err());
         assert!(gate("TTN", &ttn, &k("chr2", 150), false, None, true).is_err());
         assert_eq!(
-            gate("TTN", &ttn, &k("chr2", 150), false, Some("stop_gained,splice_region_variant"), true),
+            gate(
+                "TTN",
+                &ttn,
+                &k("chr2", 150),
+                false,
+                Some("stop_gained,splice_region_variant"),
+                true
+            ),
             Ok(None)
         );
-        assert!(matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, false), Ok(Some(c)) if c.contains("not known")));
+        assert!(
+            matches!(gate("TTN", &ttn, &k("chr2", 150), false, None, false), Ok(Some(c)) if c.contains("not known"))
+        );
         let lmna = rule(Lof::Yes, Limit::MissenseNeedsCaseEvidence);
-        assert!(matches!(gate("LMNA", &lmna, &k("chr1", 1), false, None, true), Ok(Some(c)) if c.contains("footnote e")));
-        assert_eq!(gate("LMNA", &lmna, &k("chr1", 1), false, Some("stop_gained"), true), Ok(None));
-        assert_eq!(gate("LMNA", &lmna, &k("chr1", 1), true, Some("start_lost"), true), Ok(None));
+        assert!(
+            matches!(gate("LMNA", &lmna, &k("chr1", 1), false, None, true), Ok(Some(c)) if c.contains("footnote e"))
+        );
+        assert_eq!(
+            gate(
+                "LMNA",
+                &lmna,
+                &k("chr1", 1),
+                false,
+                Some("stop_gained"),
+                true
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            gate("LMNA", &lmna, &k("chr1", 1), true, Some("start_lost"), true),
+            Ok(None)
+        );
     }
 
     #[test]
