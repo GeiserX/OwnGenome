@@ -33,6 +33,7 @@ workflow PGX {
     ch_reference_fai  // channel: val(path) — reference FASTA index
     ch_clinvar        // channel: val(path) — ClinVar VCF or []
     ch_clinvar_index  // channel: val(path) — ClinVar VCF index or []
+    ch_clinvar_conflicting // channel: val([vcf, tbi]) — the conflicting subset (--clinvar_conflicting), or [[], []]
     ch_bam            // channel: [meta, bam, bai]
     ch_pypgx_bundle   // channel: val(path) — pypgx-bundle directory
     ch_gvcf           // channel: [meta, gvcf, gvcf_index] — DEEPVARIANT's, or the samplesheet's gvcf column
@@ -69,6 +70,7 @@ workflow PGX {
                 .map { row -> tuple(row[1], row[2], row[3], row[4] ? row[4][0] : [], row[4] ? row[4][1] : []) },
             ch_clinvar,
             ch_clinvar_index,
+            ch_clinvar_conflicting,
             ch_reference,
             ch_reference_fai,
             Channel.value(file("${projectDir}/assets/deep_intronic_sites.tsv", checkIfExists: true))
