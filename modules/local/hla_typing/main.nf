@@ -7,7 +7,8 @@
 
     The index (allele sequences and their GRCh38 coordinates) comes from
     T1K_BUILD, built once per run for every sample; this process types one
-    BAM against it.
+    BAM against it. T1K's candidate reads (the reads it extracted for the
+    HLA genes) go to HLA_QC_READS, not to the results folder.
 
     Equivalent to: step 2 of scripts/08-hla-typing.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -17,7 +18,8 @@ process HLA_TYPING {
     tag "$meta.id"
     label 'process_medium'
 
-    publishDir { "${params.outdir}/${meta.id}/hla" }, mode: params.publish_dir_mode
+    publishDir { "${params.outdir}/${meta.id}/hla" }, mode: params.publish_dir_mode,
+        saveAs: { f -> f.endsWith('.fq') ? null : f }
 
     input:
     tuple val(meta), path(bam), path(bai)
@@ -25,8 +27,9 @@ process HLA_TYPING {
     path(coord_fa)  // T1K_BUILD: their GRCh38 coordinates
 
     output:
-    tuple val(meta), path("*_hla_genotype.tsv"), emit: hla_alleles
-    path "versions.yml",                         emit: versions
+    tuple val(meta), path("*_hla_genotype.tsv"),  emit: hla_alleles
+    tuple val(meta), path("*_hla_candidate*.fq"), emit: candidates  // _1.fq and _2.fq, or one .fq for single-end reads
+    path "versions.yml",                          emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -52,7 +55,7 @@ process HLA_TYPING {
     stub:
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
-    touch ${prefix}_hla_genotype.tsv
+    touch ${prefix}_hla_genotype.tsv ${prefix}_hla_candidate_1.fq ${prefix}_hla_candidate_2.fq
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -204,14 +207,16 @@ process KIR_TYPING {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     HLA_QC_READS and HLA_QC — OptiType, a second HLA caller (opt-in: --hla_qc)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    HLA_QC_READS takes the read pairs of HLA-A, HLA-B and HLA-C from the BAM:
-    each gene's span in T1K_BUILD's coordinate file, 1 kb either side.
+    HLA_QC_READS takes the read pairs HLA_TYPING's T1K extracted: the reads
+    over the HLA genes and their mates, wherever the mates map, plus the
+    unmapped pairs and the reads on ALT, decoy and other unplaced contigs
+    that match HLA sequence. So OptiType and T1K judge the same reads.
     HLA_QC types them with OptiType against the HLA sequences bundled in its
-    image and writes the two-field concordance of T1K and OptiType
-    (og pgx hla-concordance). PGX_CONSENSUS passes HLA-A and
-    HLA-B to PharmCAT only when the two agree. A BAM with no read pairs
-    there gets a result file that says so, which PGX_CONSENSUS reads as no
-    OptiType call.
+    image (it keeps the reads that match its class I sequences) and writes
+    the two-field concordance of T1K and OptiType (og pgx hla-concordance).
+    PGX_CONSENSUS passes HLA-A and HLA-B to PharmCAT only when the two
+    agree. A BAM with no HLA read pairs (or single-end reads) gets a result
+    file that says so, which PGX_CONSENSUS reads as no OptiType call.
 
     Equivalent to: the HLA_QC=true pass of scripts/08-hla-typing.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -222,8 +227,7 @@ process HLA_QC_READS {
     label 'process_low'
 
     input:
-    tuple val(meta), path(bam), path(bai)
-    path(coord_fa)  // T1K_BUILD: the GRCh38 coordinates of the allele sequences
+    tuple val(meta), path(candidates)  // HLA_TYPING: T1K's candidate reads
 
     output:
     tuple val(meta), path("${meta.id}_hla_R1.fq"), path("${meta.id}_hla_R2.fq"), emit: reads
@@ -234,18 +238,16 @@ process HLA_QC_READS {
 
     script:
     """
-    awk '/^>HLA-[ABC]\\*/ && \$3 > 0 {g = substr(\$1, 2); sub(/\\*.*/, "", g)
-        if (!(g in lo) || \$3 < lo[g]) lo[g] = \$3; if (\$4 > hi[g]) hi[g] = \$4; c[g] = \$2}
-      END {for (g in lo) printf "%s:%d-%d\\n", c[g], (lo[g] > 1000 ? lo[g] - 1000 : 1), hi[g] + 1000}' ${coord_fa} | sort > regions.txt
-    if [ "\$(wc -l < regions.txt)" -ne 3 ]; then
-        echo "ERROR: ${coord_fa} gives no GRCh38 span for each of HLA-A, HLA-B and HLA-C: \$(tr '\\n' ' ' < regions.txt)" >&2
-        exit 1
+    r1=""
+    for f in *_hla_candidate_1.fq; do [ ! -e "\$f" ] || r1=\$f; done
+    if [ -n "\$r1" ] && [ -e "\${r1%_1.fq}_2.fq" ]; then
+        cp "\$r1" ${meta.id}_hla_R1.fq
+        cp "\${r1%_1.fq}_2.fq" ${meta.id}_hla_R2.fq
+    else
+        : > ${meta.id}_hla_R1.fq
+        : > ${meta.id}_hla_R2.fq
     fi
-    mkdir -p tmp
-    samtools view -u -F 0x900 ${bam} \$(cat regions.txt) \\
-        | samtools collate -u -O - tmp/collate \\
-        | samtools fastq -n -1 ${meta.id}_hla_R1.fq -2 ${meta.id}_hla_R2.fq -0 /dev/null -s /dev/null -
-    echo "read pairs at HLA-A, HLA-B and HLA-C: \$(( \$(wc -l < ${meta.id}_hla_R1.fq) / 4 ))"
+    echo "HLA read pairs T1K extracted, OptiType's input: \$(( \$(wc -l < ${meta.id}_hla_R1.fq) / 4 ))"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

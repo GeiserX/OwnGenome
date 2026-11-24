@@ -22,11 +22,14 @@
 # too few KIR reads gets a genotype file that says so.
 #
 # HLA_QC=true adds an opt-in second HLA caller: OptiType (OPTITYPE_IMAGE) on
-# the reads of HLA-A, HLA-B and HLA-C, and a two-field concordance table of
-# T1K against OptiType, in hla_optitype/. Step 36 then passes HLA-A and HLA-B
-# to PharmCAT only when the two agree. The read regions are each gene's span
-# in T1K's coordinate file, 1 kb either side. OptiType types against the HLA
-# sequences bundled in its image, not HLA_DB_RELEASE.
+# the read pairs T1K extracted, and a two-field concordance table of T1K
+# against OptiType, in hla_optitype/. Step 36 then passes HLA-A and HLA-B to
+# PharmCAT only when the two agree. T1K's extraction is the reads over the HLA
+# genes and their mates, wherever the mates map, plus the unmapped pairs and
+# the reads on ALT, decoy and other unplaced contigs that match HLA sequence;
+# OptiType gets exactly those, so both callers judge the same reads.
+# OptiType types against the HLA sequences bundled in its image, not
+# HLA_DB_RELEASE.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -143,6 +146,10 @@ fi
 
 # Step 2: Run HLA typing
 echo "Running T1K genotyping..."
+# T1K's candidate reads (OptiType's input below): an earlier run's must not
+# stand in for this one's, for instance a paired file left beside a
+# single-end run's.
+rm -f "${OUTPUT_DIR}/${SAMPLE}_hla_candidate"*.fq
 run_in \
   --cpus "${THREADS}" --memory 8g \
   "${T1K_IMAGE}" \
@@ -173,26 +180,17 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
   echo ""
   echo "=== OptiType (second HLA caller): ${SAMPLE} ==="
   mkdir -p "$QC_DIR"
-  # Each class I gene's GRCh38 span, from the coordinates T1K types by.
-  REGIONS=$(awk '/^>HLA-[ABC]\*/ && $3 > 0 {g = substr($1, 2); sub(/\*.*/, "", g)
-      if (!(g in lo) || $3 < lo[g]) lo[g] = $3; if ($4 > hi[g]) hi[g] = $4; c[g] = $2}
-    END {for (g in lo) printf "%s:%d-%d\n", c[g], (lo[g] > 1000 ? lo[g] - 1000 : 1), hi[g] + 1000}' "$COORD_FA" | sort)
-  if [ "$(wc -l <<< "$REGIONS")" -ne 3 ]; then
-    echo "ERROR: ${COORD_FA} gives no GRCh38 span for each of HLA-A, HLA-B and HLA-C: ${REGIONS//$'\n'/ }" >&2
-    exit 1
+  # The read pairs T1K extracted for the HLA genes (run-t1k keeps them).
+  # OptiType keeps the ones that match its class I sequences.
+  R1="${OUTPUT_DIR}/${SAMPLE}_hla_candidate_1.fq"
+  R2="${OUTPUT_DIR}/${SAMPLE}_hla_candidate_2.fq"
+  PAIRS=0
+  if [ -f "$R1" ] && [ -f "$R2" ]; then
+    PAIRS=$(( $(wc -l < "$R1") / 4 ))
   fi
-  echo "Reads of: ${REGIONS//$'\n'/ }"
   rm -rf "${QC_DIR}/work"
   mkdir -p "${QC_DIR}/work"
-  # shellcheck disable=SC2016  # $1 to $3 are the inner shell's; $2 splits into one region per word
-  run_in --cpus 2 --memory 2g "${SAMTOOLS_IMAGE}" sh -c '
-    samtools view -u -F 0x900 "$1" $2 \
-      | samtools collate -u -O - "$3/collate" \
-      | samtools fastq -n -1 "$3/hla_R1.fq" -2 "$3/hla_R2.fq" -0 /dev/null -s /dev/null -' sh \
-    "/genome/${SAMPLE}/${ALIGN_DIR}/${SAMPLE}_sorted.bam" "$(tr '\n' ' ' <<< "$REGIONS")" \
-    "/genome/${SAMPLE}/hla_optitype/work"
-  PAIRS=$(( $(wc -l < "${QC_DIR}/work/hla_R1.fq") / 4 ))
-  echo "Read pairs at HLA-A, HLA-B and HLA-C: ${PAIRS}"
+  echo "HLA read pairs T1K extracted, OptiType's input: ${PAIRS}"
   if [ "$PAIRS" -eq 0 ]; then
     # Step 36 reads this as no OptiType call and passes neither gene on.
     printf '# OptiType not run: no read pairs at HLA-A, HLA-B or HLA-C in this BAM\n' > "$OT_RESULT"
@@ -201,8 +199,8 @@ if [[ "${HLA_QC:-false}" =~ ^(true|1)$ ]]; then
     RC=0
     run_in --cpus "${THREADS}" --memory 8g "${OPTITYPE_IMAGE}" \
       optitype run \
-        -i "/genome/${SAMPLE}/hla_optitype/work/hla_R1.fq" \
-        -i "/genome/${SAMPLE}/hla_optitype/work/hla_R2.fq" \
+        -i "/genome/${SAMPLE}/hla_t1k/${SAMPLE}_hla_candidate_1.fq" \
+        -i "/genome/${SAMPLE}/hla_t1k/${SAMPLE}_hla_candidate_2.fq" \
         --dna --solver glpk --threads "${THREADS}" \
         -o "/genome/${SAMPLE}/hla_optitype/work/out" -p "${SAMPLE}" || RC=$?
     OUT=$(find "${QC_DIR}/work/out" -name "*_result.tsv" 2>/dev/null | head -n 1)
