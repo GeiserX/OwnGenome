@@ -7,6 +7,12 @@
 #       GATK Mutect2 in mitochondrial mode is the standard alternative; the file
 #       name is historical.
 #
+# chrM is circular but GRCh38 writes it as a line, so reads across its origin
+# (m.16569 joined to m.1) align poorly. As Broad's mitochondria pipeline does,
+# the control region (m.16025-16569 and m.1-575) is called a second time on
+# chrM rotated by 8000 bp, and those calls replace the linear ones there
+# (og setup chrm-shift, og vcf shift-back; mito/shifted/).
+#
 # NuMTs (nuclear copies of mitochondrial DNA) put reads on chrM that come from
 # the autosomes. GATK's NuMTFilterTool marks an allele as possible_numt when
 # its depth is what such copies could explain at the sample's median autosomal
@@ -87,12 +93,66 @@ run_in --cpus 4 --memory 8g \
     --max-mnp-distance 0 \
     -O "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_mutect2.vcf.gz"
 
+# The control region again on chrM rotated by 8000 bp, where the origin
+# (m.16569 joined to m.1) lies mid-sequence, so reads across it align in
+# full: og setup chrm-shift writes the rotated chrM, GATK's BwaSpark realigns
+# the chrM reads to it (local Spark; the GATK image has no bwa binary), and
+# Mutect2 calls its control region. og vcf shift-back maps those calls back
+# and merges them with the linear calls outside the control region, with a
+# '##og_shifted_pass=' header line. The filters below then run on the merged
+# calls with the linear pass's stats. Should any part fail, the step warns
+# and filters the linear calls alone, as before; the summary then keeps the
+# origin_edge flag. The large intermediate files are removed.
+SHIFT_DIR="${OUTPUT_DIR}/shifted"
+SHIFT_C="/genome/${SAMPLE}/mito/shifted"
+RAW_C="/genome/${SAMPLE}/mito/${SAMPLE}_chrM_mutect2.vcf.gz"
+shifted_pass() {
+  rm -rf "$SHIFT_DIR" && mkdir -p "$SHIFT_DIR" || return 1
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
+    /pgp-bin/og setup chrm-shift --fasta "${REF_FASTA_C}" \
+      --out "${SHIFT_C}/chrM_shifted.fasta" --intervals "${SHIFT_C}/control.intervals" || return 1
+  # shellcheck disable=SC2016  # expanded inside the container
+  run_in --cpus 4 --memory 8g "$GATK_IMAGE" bash -c '
+    set -euo pipefail
+    d=$1
+    export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
+    gatk CreateSequenceDictionary -R "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.dict"
+    gatk BwaMemIndexImageCreator -I "$d/chrM_shifted.fasta" -O "$d/chrM_shifted.img"
+    # The reads Mutect2 counts on the linear chrM, without their alignment.
+    gatk PrintReads -I "$2" -L chrM -O "$d/reads.bam" \
+      --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \
+      --read-filter NotSupplementaryAlignmentReadFilter --read-filter MateOnSameContigOrNoMappedMateReadFilter
+    gatk RevertSam -I "$d/reads.bam" -O "$d/unaligned.bam" --SANITIZE true --SORT_ORDER queryname \
+      --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false --VALIDATION_STRINGENCY LENIENT \
+      --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO
+    gatk --java-options -Xmx4g BwaSpark -I "$d/unaligned.bam" -R "$d/chrM_shifted.fasta" \
+      --bwa-mem-index-image "$d/chrM_shifted.img" --spark-master "local[4]" -O "$d/aligned.bam"
+    gatk SortSam -I "$d/aligned.bam" -O "$d/sorted.bam" --SORT_ORDER coordinate --CREATE_INDEX true
+    gatk Mutect2 -R "$d/chrM_shifted.fasta" -I "$d/sorted.bam" -L "$d/control.intervals" \
+      --mitochondria-mode --max-mnp-distance 0 -O "$d/shifted_mutect2.vcf.gz"
+  ' _ "$SHIFT_C" "/genome/${SAMPLE}/mito/${SAMPLE}_chrM.bam" || return 1
+  run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
+    /pgp-bin/og vcf shift-back --linear "$RAW_C" --shifted "${SHIFT_C}/shifted_mutect2.vcf.gz" \
+      --out "${SHIFT_C}/merged_mutect2.vcf.gz" || return 1
+  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.img
+}
+echo "  Shifted-reference pass: the control region again on chrM rotated by 8000 bp..."
+FILTER_IN="$RAW_C"
+if shifted_pass; then
+  FILTER_IN="${SHIFT_C}/merged_mutect2.vcf.gz"
+else
+  echo "  WARNING: the shifted-reference pass failed (see above): the control region keeps the"
+  echo "  linear calls alone, and calls at its ends keep the origin_edge flag."
+  rm -f "$SHIFT_DIR"/*.bam "$SHIFT_DIR"/*.bai "$SHIFT_DIR"/*.sbi "$SHIFT_DIR"/*.img
+fi
+
 echo "[4/8] Filtering variants..."
 run_in --cpus 2 --memory 4g \
   "$GATK_IMAGE" \
   gatk FilterMutectCalls \
     -R "${REF_FASTA_C}" \
-    -V "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_mutect2.vcf.gz" \
+    -V "$FILTER_IN" \
+    --stats "${RAW_C}.stats" \
     --mitochondria-mode \
     -O "/genome/${SAMPLE}/mito/${SAMPLE}_chrM_mutect2_filtered.vcf.gz"
 
@@ -179,14 +239,17 @@ else
 fi
 
 echo "=== Mitochondrial analysis complete ==="
-echo "Raw calls: ${OUTPUT_DIR}/${SAMPLE}_chrM_mutect2.vcf.gz"
+echo "Raw calls: ${OUTPUT_DIR}/${SAMPLE}_chrM_mutect2.vcf.gz (linear chrM)"
+if [ "$FILTER_IN" != "$RAW_C" ]; then
+  echo "Shifted-reference pass: ${SHIFT_DIR}/shifted_mutect2.vcf.gz (rotated positions), merged: ${SHIFT_DIR}/merged_mutect2.vcf.gz"
+fi
 echo "Filtered (FilterMutectCalls, then possible_numt): ${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz"
 echo "ClinVar and gnomAD per allele: ${OUTPUT_DIR}/${SAMPLE}_chrM_annotated.tsv"
 echo "mtDNA copy number: ${OUTPUT_DIR}/${SAMPLE}_mtdna_copies.tsv"
 echo "Large deletions (eKLIPse): ${OUTPUT_DIR}/${SAMPLE}_chrM_deletions.tsv (eKLIPse's own files and plot: ${EK_DIR}/out)"
 echo ""
-echo "PASS variants below AF 0.95 (possible heteroplasmy; calls near the ends of the"
-echo "control region, chrM:1-500 and 16000-16569, are less reliable, and length"
-echo "variants in the D-loop poly-C tracts m.303-315 and m.16184-16193 are common and"
-echo "usually technical, so the reports count them apart):"
+echo "PASS variants below AF 0.95 (possible heteroplasmy; without the shifted-reference"
+echo "pass, calls near the ends of the control region, chrM:1-500 and 16000-16569, are"
+echo "less reliable, and length variants in the D-loop poly-C tracts m.303-315 and"
+echo "m.16184-16193 are common and usually technical, so the reports count them apart):"
 echo "  bcftools query -f '%POS\t%REF\t%ALT\t[%AF]\n' -i 'FILTER=\"PASS\"' ${OUTPUT_DIR}/${SAMPLE}_chrM_filtered.vcf.gz | awk '\$4 < 0.95'"

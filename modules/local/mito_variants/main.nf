@@ -8,7 +8,12 @@
     Four steps:
     1. Extract chrM reads from the BAM (GATK PrintReads; step 20 uses
        samtools view for the same reads)
-    2. Run Mutect2 --mitochondria-mode
+    2. Run Mutect2 --mitochondria-mode, then the shifted-reference pass:
+       the control region (m.16025-16569 and m.1-575) again on chrM rotated
+       by 8000 bp (og setup chrm-shift; GATK's BwaSpark realigns the reads,
+       as the image has no bwa binary), mapped back and merged with the
+       linear calls outside it (og vcf shift-back). Reads across the origin
+       align in full there. A failure leaves the linear calls alone.
     3. Filter variants with FilterMutectCalls --mitochondria-mode
     4. Mark possible NuMTs (nuclear copies of chrM) with NuMTFilterTool at
        the median autosomal depth, read from MOSDEPTH's summary and
@@ -70,10 +75,46 @@ process MITO_VARIANTS {
         --max-mnp-distance 0 \\
         -O ${prefix}_chrM_mutect2.vcf.gz
 
-    # Step 3: Filter variants
+    # Step 2b: The shifted-reference pass (scripts/20-mtoolbox.sh): the control
+    # region again on chrM rotated by 8000 bp, its calls mapped back and merged
+    # with the linear ones outside it. A failure leaves the linear calls alone.
+    shifted_pass() {
+        rm -rf shifted && mkdir shifted || return 1
+        og setup chrm-shift --fasta ${reference} \\
+            --out shifted/chrM_shifted.fasta --intervals shifted/control.intervals || return 1
+        export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
+        gatk CreateSequenceDictionary -R shifted/chrM_shifted.fasta -O shifted/chrM_shifted.dict || return 1
+        gatk BwaMemIndexImageCreator -I shifted/chrM_shifted.fasta -O shifted/chrM_shifted.img || return 1
+        gatk PrintReads -I ${prefix}_chrM.bam -L chrM -O shifted/reads.bam \\
+            --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \\
+            --read-filter NotSupplementaryAlignmentReadFilter \\
+            --read-filter MateOnSameContigOrNoMappedMateReadFilter || return 1
+        gatk RevertSam -I shifted/reads.bam -O shifted/unaligned.bam --SANITIZE true \\
+            --SORT_ORDER queryname --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false \\
+            --VALIDATION_STRINGENCY LENIENT --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO || return 1
+        gatk --java-options -Xmx4g BwaSpark -I shifted/unaligned.bam -R shifted/chrM_shifted.fasta \\
+            --bwa-mem-index-image shifted/chrM_shifted.img --spark-master "local[${task.cpus}]" \\
+            -O shifted/aligned.bam || return 1
+        gatk SortSam -I shifted/aligned.bam -O shifted/sorted.bam --SORT_ORDER coordinate \\
+            --CREATE_INDEX true || return 1
+        gatk Mutect2 -R shifted/chrM_shifted.fasta -I shifted/sorted.bam -L shifted/control.intervals \\
+            --mitochondria-mode --max-mnp-distance 0 -O shifted/shifted_mutect2.vcf.gz || return 1
+        og vcf shift-back --linear ${prefix}_chrM_mutect2.vcf.gz \\
+            --shifted shifted/shifted_mutect2.vcf.gz --out shifted/merged_mutect2.vcf.gz || return 1
+    }
+    FILTER_IN=${prefix}_chrM_mutect2.vcf.gz
+    if shifted_pass; then
+        FILTER_IN=shifted/merged_mutect2.vcf.gz
+    else
+        echo "WARNING: the shifted-reference pass failed: the control region keeps the linear calls alone" >&2
+    fi
+    rm -f shifted/*.bam shifted/*.bai shifted/*.sbi shifted/*.img
+
+    # Step 3: Filter variants (the stats are the linear pass's, over all of chrM)
     gatk FilterMutectCalls \\
         -R ${reference} \\
-        -V ${prefix}_chrM_mutect2.vcf.gz \\
+        -V \${FILTER_IN} \\
+        --stats ${prefix}_chrM_mutect2.vcf.gz.stats \\
         --mitochondria-mode \\
         -O ${prefix}_chrM_mutect2_filtered.vcf.gz
 
