@@ -65,10 +65,13 @@ While a VEP cache installs, the tarball and the unpacked tree are on disk togeth
 |---|---|---|
 | Fine-grained ancestry panel (gnomAD HGDP + 1000 Genomes, phased) | ~19 GB read, a few GB kept | step 26b, `setup.sh --ancestry-fine-panel` |
 | T1K HLA index (built from IPD-IMGT/HLA) | ~0.05 GB | step 8, built on first run |
-| CNVpytor GC/mask files | ~0.09 GB | step 18 |
-| pypgx bundle | ~0.4 GB | step 32 |
-| Somatic resources (gnomAD AF-only VCF, panel of normals) | ~3 GB | step 29 |
+| CNVpytor GC/mask files | ~0.09 GB | step 18, `setup.sh --cnvpytor-data` |
+| PyPGx bundle | ~0.4 GB | step 32, `setup.sh --pypgx-data` |
+| GATK somatic resources and indexes | ~3 GiB | steps 29 and 49, `setup.sh --somatic-data` |
+| Classic BWA index | Built locally, ~5 GB on disk and ~5.4 GB RAM during the build | step 04b, `setup.sh --bwa-index` |
 | AADR ancient panel, 1240K (7.1 GB `.geno`; 1.05 GiB kept, 9.6 GiB of extra disk at the peak while it builds) | ~7.1 GB (the `.geno`) plus three small files | step 44, `setup.sh --ancient-panel` |
+
+Use `setup.sh --everything` to install the full set of [optional step resources](00-reference-setup.md#install-data-for-an-everything-run). Reserve space for both the installed resources and the largest installer’s temporary files.
 
 ### Annotation Databases (Optional, for Steps 30-31)
 

@@ -15,7 +15,7 @@
 #      text each one shows: DEMO-001 and no private term;
 #   5. `og dev pictures check` runs its self-test, then checks that each
 #      picture holds image chunks only;
-#   6. tests/demo/build_live_demo.py builds the live-site demo as the docs
+#   6. og live demo builds the live-site demo as the docs
 #      workflow does, into <work_dir>/live-demo, and `og dev pictures
 #      same-sample` stops when its DEMO-001 report and the pictured one
 #      differ in Total variants: the docs call them the same sample.
@@ -42,7 +42,6 @@ set -euo pipefail
 WORK=${1:?Usage: $0 <work_dir> [<pictures_dir>]}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 SAMPLE="DEMO-001"
-DEMO="${REPO}/tests/demo"
 mkdir -p "$WORK"
 WORK=$(cd "$WORK" && pwd)
 OUT=${2:-${WORK}/pictures}
@@ -111,7 +110,7 @@ echo "=== 5. Checks"
 echo "=== 6. The same sample as the live-site demo?"
 LIVE="${WORK}/live-demo"
 rm -rf "$LIVE"
-env OG="$OG" python3 "${DEMO}/build_live_demo.py" --out "$LIVE" --og "$OG"
+"$OG" live demo --repo "$REPO" --out "$LIVE" --records "${DEMO_RECORDS:-20000}"
 "$OG" dev pictures same-sample "${GENOME_DIR}/${SAMPLE}/${SAMPLE}_report.html" "${LIVE}/runs/${SAMPLE}/report.html"
 
 echo ""

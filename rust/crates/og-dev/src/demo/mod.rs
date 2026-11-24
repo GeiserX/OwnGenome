@@ -59,6 +59,8 @@ pub mod qc;
 pub mod sv;
 pub mod traits;
 
+pub use clinical_clinvar::INVENTED_GENES;
+
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::fs;
@@ -587,7 +589,7 @@ const PARTS: &[Part] = &[
 
 /// The repository holding `assets/` and `versions.env`: the current folder
 /// or one above it.
-fn find_repo() -> Option<PathBuf> {
+pub fn find_repo() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
         if dir.join("assets").join("steps.tsv").is_file() && dir.join("versions.env").is_file() {

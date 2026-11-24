@@ -52,56 +52,19 @@ Already used in step 20 (mitochondrial analysis). No additional download needed.
 
 These resources are optional but **strongly recommended**. Without them, the output will contain far more false positive somatic calls.
 
-#### gnomAD AF-Only VCF (~6.5 GB)
-
-Contains population allele frequencies from gnomAD. Mutect2 uses this to flag likely germline variants (high AF in the population = probably not somatic).
-
 ```bash
-mkdir -p ${GENOME_DIR}/somatic
-
-# Download via gsutil (if installed)
-gsutil cp gs://gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz \
-  ${GENOME_DIR}/somatic/
-gsutil cp gs://gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz.tbi \
-  ${GENOME_DIR}/somatic/
-
-# Alternative: direct HTTPS download
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz \
-  -O ${GENOME_DIR}/somatic/af-only-gnomad.hg38.vcf.gz
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz.tbi \
-  -O ${GENOME_DIR}/somatic/af-only-gnomad.hg38.vcf.gz.tbi
+./scripts/setup.sh --somatic-data "$GENOME_DIR"
 ```
 
-#### Panel of Normals (PoN, ~1 GB)
+Setup downloads about 3 GiB and verifies each file against `versions.env`. It installs three datasets with their Tabix indexes under `somatic/`.
 
-Built from 1000 Genomes data. Contains technical artifacts and recurrent sequencing errors seen across many normal samples. Mutect2 uses this to filter out variants that are likely noise rather than real somatic events.
+| Dataset | How Mutect2 uses it |
+|---|---|
+| gnomAD AF-only | Estimates whether a variant is inherited from its population frequency. |
+| 1000 Genomes panel of normals | Filters recurrent technical artifacts. |
+| ExAC common sites | Estimates contamination with GetPileupSummaries and CalculateContamination. |
 
-```bash
-# Download via gsutil (if installed)
-gsutil cp gs://gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz \
-  ${GENOME_DIR}/somatic/
-gsutil cp gs://gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz.tbi \
-  ${GENOME_DIR}/somatic/
-
-# Alternative: direct HTTPS download
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz \
-  -O ${GENOME_DIR}/somatic/1000g_pon.hg38.vcf.gz
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz.tbi \
-  -O ${GENOME_DIR}/somatic/1000g_pon.hg38.vcf.gz.tbi
-```
-
-#### Common-sites VCF (contamination estimate, ~1 MB)
-
-Common biallelic SNPs from ExAC. With it, the script runs GetPileupSummaries and CalculateContamination and passes the contamination and segmentation tables to FilterMutectCalls; without it, that part is skipped and the log says so.
-
-```bash
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/small_exac_common_3.hg38.vcf.gz \
-  -O ${GENOME_DIR}/somatic/small_exac_common_3.hg38.vcf.gz
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/small_exac_common_3.hg38.vcf.gz.tbi \
-  -O ${GENOME_DIR}/somatic/small_exac_common_3.hg38.vcf.gz.tbi
-```
-
-> **Note:** `gsutil` is part of the Google Cloud SDK. If you do not have it installed, use the `wget` alternative URLs above (same files, just accessed over HTTPS instead of the gs:// protocol).
+Step 49 uses the same files.
 
 ## Command
 
