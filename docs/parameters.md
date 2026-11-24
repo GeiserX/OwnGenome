@@ -35,6 +35,7 @@ Paths to reference files required by the pipeline.
 | `--reference` | none | Path to the GRCh38 reference FASTA the BAMs were aligned to: the no-ALT analysis set that scripts/setup.sh installs as reference/GRCh38_no_alt_analysis_set.fasta. |
 | `--clinvar` | none | Path to ClinVar pathogenic VCF (bgzipped). Optional — skip ClinVar screen if not provided. |
 | `--clinvar_index` | none | Path to ClinVar pathogenic VCF tabix index (.tbi). |
+| `--clinvar_conflicting` | none | The conflicting ClinVar subset, its .tbi beside it, which scripts/setup.sh installs as clinvar/clinvar_conflicting_plp_chr.vcf.gz: the records ClinVar labels Conflicting classifications of pathogenicity where at least one lab submitted Pathogenic or Likely_pathogenic. With clinvar, CLINVAR_SCREEN lists the ones the sample carries in &lt;id&gt;_clinvar_conflicting.tsv, apart from the hits: they never enter the hit counts, the ACMG card, the carrier list or the couple screen. Without it that table says not checked. |
 
 ## Tool selection
 
