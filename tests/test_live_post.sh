@@ -46,9 +46,18 @@ free_port() {
   done
   fail "no free port on 127.0.0.1"
 }
+# og live serve reads assets/ and steps.tsv from the checkout its binary sits in.
+# An OG outside the checkout (unit-tests sets one) runs as a copy in a folder
+# that links to this checkout's assets/.
+SERVE=$OG
+case "$(cd "$(dirname "$OG")" && pwd -P)/" in
+  "$(cd "$REPO" && pwd -P)/"*) ;;
+  *) mkdir -p "${WORK}/checkout/bin"; ln -s "${REPO}/assets" "${WORK}/checkout/assets"
+     cp "$OG" "${WORK}/checkout/bin/og"; SERVE="${WORK}/checkout/bin/og" ;;
+esac
 WEB=$(free_port) ING=$(free_port)
 mkdir -p "${WORK}/genome"
-"$OG" live serve --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
+"$SERVE" live serve --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
   --ingest-port "$ING" --quiet 2> "${WORK}/server.err" &
 PID=$!
 for _ in $(seq 50); do [ -s "${WORK}/state/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${ING}/" && break; sleep 0.1; done
