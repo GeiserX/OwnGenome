@@ -308,11 +308,12 @@ jobs:
   # The Chrome tests run beside it in the chrome job, and the musl builds
   # with the checks that run bin/og in the og-musl job. With all three in
   # one job it took 30 to 45 minutes on a cold fork runner and hit its
-  # 45-minute limit three times in November 2026. The limit stops a hung
-  # job, not a slow one.
+  # 45-minute limit three times in November 2026. Alone it took 18 minutes
+  # cold on 2026-11-24, and the slower runners run its tests about twice as
+  # long, so the limit is 40: it stops a hung job, not a slow one.
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: rust
@@ -943,7 +944,9 @@ jobs:
   # guard, og dev schema, the og-leg tests, the fake-docker case
   # cn-engine-calls, og dev remnants and everything-check, and nextflow run
   # on a stale og. None of them needs what the rust job builds or tests, so
-  # they run beside it and build og here, in the builder image.
+  # they run beside it and build og here, in the builder image. It took 17
+  # minutes on a cold fork runner on 2026-11-24, 14.5 of them in the musl
+  # builds, so the limit is 35.
   og-musl:
     runs-on: ubuntu-latest
     timeout-minutes: 35
