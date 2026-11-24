@@ -41,88 +41,97 @@
 #                   the citation above. "(See text)" points to the paper's section on the dilated
 #                   cardiomyopathy (DCM) genes
 #   note            what Table 1's footnotes add, in our own words, shown with the finding; "."
-gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note
-APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.
-RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.
-BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.
-BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.
-PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.
-SDHD	HGNC:10683	AD	any	.	no	.	.	1.0	All P and LP	.
-SDHAF2	HGNC:26034	AD	any	.	no	.	.	1.0	All P and LP	.
-SDHC	HGNC:10682	AD	any	.	no	.	.	1.0	All P and LP	.
-SDHB	HGNC:10681	AD	any	.	no	.	.	1.0	All P and LP	.
-MAX	HGNC:6913	AD	any	.	no	.	.	3.0	All P and LP	.
-TMEM127	HGNC:26038	AD	any	.	no	.	.	3.0	All P and LP	.
-BMPR1A	HGNC:1076	AD	any	.	no	.	.	2.0	All P and LP	.
-SMAD4	HGNC:6770	AD	any	.	no	.	.	2.0	All P and LP	.
-TP53	HGNC:11998	AD	any	.	no	.	.	1.0	All P and LP	.
-MLH1	HGNC:7127	AD	any	.	yes	.	.	1.0	All P and LP	.
-MSH2	HGNC:7325	AD	any	.	yes	chr2:47385166-47387020 EPCAM exons 8 and 9, the 3' end (ENST00000263735)	.	1.0	All P and LP	A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
-MSH6	HGNC:7329	AD	any	.	no	.	.	1.0	All P and LP	.
-PMS2	HGNC:9122	AD	any	.	no	.	.	1.0	All P and LP	.
-MEN1	HGNC:7010	AD	any	.	no	.	.	1.0	All P and LP	.
-MUTYH	HGNC:7527	AR	biallelic	.	no	.	.	1.0	P and LP (2 variants)	.
-NF2	HGNC:7773	AD	any	.	no	.	.	1.0	All P and LP	.
-STK11	HGNC:11389	AD	any	.	no	.	.	1.0	All P and LP	.
-PTEN	HGNC:9588	AD	any	.	no	.	.	1.0	All P and LP	.
-RB1	HGNC:9884	AD	any	.	no	.	.	1.0	All P and LP	.
-TSC1	HGNC:12362	AD	any	.	no	.	.	1.0	All P and LP	.
-TSC2	HGNC:12363	AD	any	.	no	.	.	1.0	All P and LP	.
-VHL	HGNC:12687	AD	any	.	no	.	.	1.0	All P and LP	.
-WT1	HGNC:12796	AD	any	.	no	.	.	1.0	All P and LP	.
-FBN1	HGNC:3603	AD	any	.	no	.	.	1.0	All P and LP	.
-TGFBR1	HGNC:11772	AD	any	.	no	.	.	1.0	All P and LP	.
-TGFBR2	HGNC:11773	AD	any	.	no	.	.	1.0	All P and LP	.
-SMAD3	HGNC:6769	AD	any	.	no	.	.	1.0	All P and LP	.
-ACTA2	HGNC:130	AD	any	.	no	.	.	1.0	All P and LP	.
-MYH11	HGNC:7569	AD	any	.	no	.	.	1.0	All P and LP	.
-PKP2	HGNC:9024	AD	any	.	no	.	.	1.0	All P and LP	.
-DSP	HGNC:3052	AD	any	.	no	.	.	1.0	All P and LP	.
-DSC2	HGNC:3036	AD	any	.	no	.	.	1.0	All P and LP	.
-TMEM43	HGNC:28472	AD	any	.	no	.	.	1.0	All P and LP	.
-DSG2	HGNC:3049	AD	any	.	no	.	.	1.0	All P and LP	.
-RYR2	HGNC:10484	AD	any	.	no	.	.	1.0	All P and LP	.
-CASQ2	HGNC:1513	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.
-TRDN	HGNC:12261	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.
-TNNT2	HGNC:11949	AD	any	.	no	.	.	1.0	All P and LP (See text)	.
-LMNA	HGNC:6636	AD	any	.	no	.	.	1.0	All P and LP (See text)	SF v3.3 footnote e: report a P/LP missense variant only with case evidence of cardiac disease; not applied here.
-FLNC	HGNC:3756	AD	any	.	no	.	.	3.0	All P and LP (See text)	.
-TTN	HGNC:12403	AD	any	.	no	.	.	3.0	All P and LP (See text)	SF v3.3 footnote f: only truncating TTN variants are reported; check that the variant truncates the protein.
-BAG3	HGNC:939	AD	any	.	no	.	.	3.1	All P and LP (See text)	.
-DES	HGNC:2770	AD	any	.	no	.	.	3.1	All P and LP (See text)	.
-RBM20	HGNC:27424	AD	any	.	no	.	.	3.1	All P and LP (See text)	.
-TNNC1	HGNC:11943	AD	any	.	no	.	.	3.1	All P and LP (See text)	.
-PLN	HGNC:9080	AD	any	.	no	.	.	3.3	All P and LP (See text)	.
-COL3A1	HGNC:2201	AD	any	.	no	.	.	1.0	All P and LP	.
-LDLR	HGNC:6547	SD	any	.	yes	.	.	1.0	All P and LP	.
-APOB	HGNC:603	AD	any	.	no	.	.	1.0	All P and LP	.
-PCSK9	HGNC:20001	AD	any	.	no	.	.	1.0	All P and LP	.
-MYH7	HGNC:7577	AD	any	.	no	.	.	1.0	All P and LP	.
-MYBPC3	HGNC:7551	AD	any	.	no	.	.	1.0	All P and LP	.
-TNNI3	HGNC:11947	AD	any	.	no	.	.	1.0	All P and LP	.
-TPM1	HGNC:12010	AD	any	.	no	.	.	1.0	All P and LP	.
-MYL3	HGNC:7584	AD	any	.	no	.	.	1.0	All P and LP	.
-ACTC1	HGNC:143	AD	any	.	no	.	.	1.0	All P and LP	.
-PRKAG2	HGNC:9386	AD	any	.	no	.	.	1.0	All P and LP	.
-MYL2	HGNC:7583	AD	any	.	no	.	.	1.0	All P and LP	.
-KCNQ1	HGNC:6294	AD	any	.	no	.	.	1.0	All P and LP	.
-KCNH2	HGNC:6251	AD	any	.	no	.	.	1.0	All P and LP	.
-SCN5A	HGNC:10593	AD	any	.	no	.	.	1.0	All P and LP	.
-CALM1	HGNC:1442	AD	any	.	no	.	.	3.2	All P and LP	.
-CALM2	HGNC:1445	AD	any	.	no	.	.	3.2	All P and LP	.
-CALM3	HGNC:1449	AD	any	.	no	.	.	3.2	All P and LP	.
-BTD	HGNC:1122	AR	biallelic	.	no	.	hypomorph chr3:15645186:G:C p.Asp444His (p.Asp424His on NM_001370658.1), partial biotinidase deficiency	3.0	P and LP (2 variants)	.
-CYP27A1	HGNC:2605	AR	biallelic	.	no	.	.	3.3	P and LP (2 variants)	.
-GLA	HGNC:4296	XL	het_female_too	.	no	.	.	1.0	All hemi, het, homozygous P and LP	.
-HFE	HGNC:4886	AR	hom_variant	chr6:26092913:G:A p.Cys282Tyr (NM_000410.4 c.845G>A)	no	.	.	3.0	HFE p.C282Y homozygotes only	.
-OTC	HGNC:8512	XL	het_female_too	.	no	.	.	2.0	All hemi, het, homozygous P and LP	.
-GAA	HGNC:4065	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.
-ABCD1	HGNC:61	XL	hemizygous	.	no	.	.	3.3	All hemi, homozygous or two het. P and/or LP	SF v3.3 footnote k: a single heterozygous P/LP variant is not reported.
-ACVRL1	HGNC:175	AD	any	.	no	.	.	3.0	All P and LP	.
-ENG	HGNC:3349	AD	any	.	no	.	.	3.0	All P and LP	.
-TTR	HGNC:12405	AD	any	.	no	.	.	3.1	All P and LP	.
-RYR1	HGNC:10483	AD	any	.	no	.	.	1.0	All P and LP	.
-CACNA1S	HGNC:1397	AD	any	.	no	.	.	1.0	All P and LP	.
-HNF1A	HGNC:11621	AD	any	.	no	.	.	3.0	All P and LP	.
-RPE65	HGNC:10294	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.
-ATP7B	HGNC:870	AR	biallelic	.	no	.	.	2.0	P and LP (2 variants)	.
+#   phenotype       the disease Table 1 lists the gene for (its Disease column), as a plain name
+#   phenotype_keys  what a ClinVar condition of a hit (CLNDN, CLNDISDB) is matched against, separated by
+#                   ";": database ids (OMIM:, MedGen:, MONDO:, Orphanet:), first Table 1's MIM disorder
+#                   numbers, then phrases that must start a word of ClinVar's condition name (case, commas
+#                   and dashes ignored). A hit whose every named condition matches no key is marked
+#                   condition_not_acmg in summary.json and still reported; "not provided", "not
+#                   specified", panel names such as "Hereditary cancer-predisposing syndrome" and a name
+#                   that only names the hit's own gene ("RYR1-related disorder" on a RYR1 hit) never
+#                   set the mark
+gene	hgnc_id	inheritance	report_if	variants	sv_cn	sv_regions	severity	sf_version	table_text	note	phenotype	phenotype_keys
+APC	HGNC:583	AD	any	.	no	.	.	1.0	All P and LP	.	familial adenomatous polyposis	OMIM:175100; familial adenomatous polyposis; adenomatous polyposis coli; gardner syndrome; familial multiple polyposis; carcinoma of colon; colorectal cancer; colon cancer
+RET	HGNC:9967	AD	any	.	no	.	.	1.0	All P and LP	.	familial medullary thyroid cancer, multiple endocrine neoplasia type 2	OMIM:155240; OMIM:171400; OMIM:162300; multiple endocrine neoplasia type 2; multiple endocrine neoplasia 2; men2; medullary thyroid; pheochromocytoma
+BRCA1	HGNC:1100	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:604370; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
+BRCA2	HGNC:1101	AD	any	.	yes	.	.	1.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:612555; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
+PALB2	HGNC:26144	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary breast and ovarian cancer	OMIM:114480; breast ovarian cancer; breast and ovarian cancer; breast cancer; cancer of breast; ovarian cancer; pancreatic cancer; prostate cancer; malignant tumor of breast; breast carcinoma; ovarian neoplasm; neoplasm of ovary; breast neoplasm; carcinoma of breast
+SDHD	HGNC:10683	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:168000; paraganglioma; pheochromocytoma
+SDHAF2	HGNC:26034	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:601650; paraganglioma; pheochromocytoma
+SDHC	HGNC:10682	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:605373; paraganglioma; pheochromocytoma
+SDHB	HGNC:10681	AD	any	.	no	.	.	1.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:115310; paraganglioma; pheochromocytoma
+MAX	HGNC:6913	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:171300; paraganglioma; pheochromocytoma
+TMEM127	HGNC:26038	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary paraganglioma-pheochromocytoma syndrome	OMIM:171300; paraganglioma; pheochromocytoma
+BMPR1A	HGNC:1076	AD	any	.	no	.	.	2.0	All P and LP	.	juvenile polyposis syndrome	OMIM:174900; juvenile polyposis
+SMAD4	HGNC:6770	AD	any	.	no	.	.	2.0	All P and LP	.	juvenile polyposis syndrome, hereditary hemorrhagic telangiectasia	OMIM:175050; juvenile polyposis; hemorrhagic telangiectasia; telangiectasia hereditary hemorrhagic
+TP53	HGNC:11998	AD	any	.	no	.	.	1.0	All P and LP	.	Li-Fraumeni syndrome	OMIM:151623; li fraumeni; adrenocortical carcinoma
+MLH1	HGNC:7127	AD	any	.	yes	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:609310; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+MSH2	HGNC:7325	AD	any	.	yes	chr2:47385166-47387020 EPCAM exons 8 and 9, the 3' end (ENST00000263735)	.	1.0	All P and LP	A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.	Lynch syndrome	OMIM:120435; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+MSH6	HGNC:7329	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614350; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+PMS2	HGNC:9122	AD	any	.	no	.	.	1.0	All P and LP	.	Lynch syndrome	OMIM:614337; lynch syndrome; hereditary nonpolyposis; hereditary non polyposis; muir torre; lynch like; carcinoma of colon; colorectal cancer; colon cancer; endometrial carcinoma; endometrial cancer
+MEN1	HGNC:7010	AD	any	.	no	.	.	1.0	All P and LP	.	multiple endocrine neoplasia type 1	OMIM:131100; multiple endocrine neoplasia type 1; multiple endocrine neoplasia 1; men1
+MUTYH	HGNC:7527	AR	biallelic	.	no	.	.	1.0	P and LP (2 variants)	.	MUTYH-associated polyposis	OMIM:608456; mutyh associated polyposis; familial adenomatous polyposis 2; adenomatous polyposis
+NF2	HGNC:7773	AD	any	.	no	.	.	1.0	All P and LP	.	NF2-related schwannomatosis	OMIM:101000; neurofibromatosis type 2; neurofibromatosis 2; schwannomatosis
+STK11	HGNC:11389	AD	any	.	no	.	.	1.0	All P and LP	.	Peutz-Jeghers syndrome	OMIM:175200; peutz jeghers
+PTEN	HGNC:9588	AD	any	.	no	.	.	1.0	All P and LP	.	PTEN hamartoma tumor syndrome	OMIM:158350; pten hamartoma; cowden; bannayan; proteus
+RB1	HGNC:9884	AD	any	.	no	.	.	1.0	All P and LP	.	retinoblastoma	OMIM:180200; retinoblastoma
+TSC1	HGNC:12362	AD	any	.	no	.	.	1.0	All P and LP	.	tuberous sclerosis complex	OMIM:191100; tuberous sclerosis
+TSC2	HGNC:12363	AD	any	.	no	.	.	1.0	All P and LP	.	tuberous sclerosis complex	OMIM:613254; tuberous sclerosis
+VHL	HGNC:12687	AD	any	.	no	.	.	1.0	All P and LP	.	von Hippel-Lindau syndrome	OMIM:193300; von hippel lindau
+WT1	HGNC:12796	AD	any	.	no	.	.	1.0	All P and LP	.	WT1-related Wilms tumor	OMIM:194070; wilms; nephroblastoma
+FBN1	HGNC:3603	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Marfan syndrome)	OMIM:154700; marfan; aortic aneurysm; thoracic aortic; aortic dissection; loeys dietz; aortopathy
+TGFBR1	HGNC:11772	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:609192; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+TGFBR2	HGNC:11773	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:610168; loeys dietz; marfan; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+SMAD3	HGNC:6769	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (Loeys-Dietz syndrome)	OMIM:613795; loeys dietz; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+ACTA2	HGNC:130	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:611788; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+MYH11	HGNC:7569	AD	any	.	no	.	.	1.0	All P and LP	.	aortopathy (familial thoracic aortic aneurysm)	OMIM:132900; aortic aneurysm; thoracic aortic; aortic dissection; aortopathy
+PKP2	HGNC:9024	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:609040; arrhythmogenic; cardiomyopathy
+DSP	HGNC:3052	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:607450; arrhythmogenic; cardiomyopathy
+DSC2	HGNC:3036	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610476; arrhythmogenic; cardiomyopathy
+TMEM43	HGNC:28472	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:604400; arrhythmogenic; cardiomyopathy
+DSG2	HGNC:3049	AD	any	.	no	.	.	1.0	All P and LP	.	arrhythmogenic right ventricular cardiomyopathy	OMIM:610193; arrhythmogenic; cardiomyopathy
+RYR2	HGNC:10484	AD	any	.	no	.	.	1.0	All P and LP	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:604772; catecholaminergic polymorphic ventricular tachycardia; cpvt
+CASQ2	HGNC:1513	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:611938; catecholaminergic polymorphic ventricular tachycardia; cpvt
+TRDN	HGNC:12261	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	catecholaminergic polymorphic ventricular tachycardia	OMIM:615441; catecholaminergic polymorphic ventricular tachycardia; cpvt
+TNNT2	HGNC:11949	AD	any	.	no	.	.	1.0	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:601494; cardiomyopathy; ventricular noncompaction
+LMNA	HGNC:6636	AD	any	.	no	.	.	1.0	All P and LP (See text)	SF v3.3 footnote e: report a P/LP missense variant only with case evidence of cardiac disease; not applied here.	dilated cardiomyopathy	OMIM:115200; cardiomyopathy
+FLNC	HGNC:3756	AD	any	.	no	.	.	3.0	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:617047; cardiomyopathy
+TTN	HGNC:12403	AD	any	.	no	.	.	3.0	All P and LP (See text)	SF v3.3 footnote f: only truncating TTN variants are reported; check that the variant truncates the protein.	dilated cardiomyopathy	OMIM:604145; cardiomyopathy
+BAG3	HGNC:939	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613881; cardiomyopathy
+DES	HGNC:2770	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:604765; cardiomyopathy
+RBM20	HGNC:27424	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:613172; cardiomyopathy
+TNNC1	HGNC:11943	AD	any	.	no	.	.	3.1	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:611879; cardiomyopathy
+PLN	HGNC:9080	AD	any	.	no	.	.	3.3	All P and LP (See text)	.	dilated cardiomyopathy	OMIM:609909; cardiomyopathy
+COL3A1	HGNC:2201	AD	any	.	no	.	.	1.0	All P and LP	.	Ehlers-Danlos syndrome, vascular type	OMIM:130050; ehlers danlos; thoracic aortic; aortic aneurysm; aortic dissection; aortopathy
+LDLR	HGNC:6547	SD	any	.	yes	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:143890; hypercholesterolemia; hypercholesterolaemia
+APOB	HGNC:603	AD	any	.	no	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:144010; hypercholesterolemia; hypercholesterolaemia
+PCSK9	HGNC:20001	AD	any	.	no	.	.	1.0	All P and LP	.	familial hypercholesterolemia	OMIM:603776; hypercholesterolemia; hypercholesterolaemia
+MYH7	HGNC:7577	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:192600; cardiomyopathy; ventricular noncompaction
+MYBPC3	HGNC:7551	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:115197; cardiomyopathy; ventricular noncompaction
+TNNI3	HGNC:11947	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:613690; cardiomyopathy; ventricular noncompaction
+TPM1	HGNC:12010	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:115196; cardiomyopathy; ventricular noncompaction
+MYL3	HGNC:7584	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:608751; cardiomyopathy; ventricular noncompaction
+ACTC1	HGNC:143	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:612098; cardiomyopathy; ventricular noncompaction
+PRKAG2	HGNC:9386	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:600858; cardiomyopathy; ventricular noncompaction; wolff parkinson white
+MYL2	HGNC:7583	AD	any	.	no	.	.	1.0	All P and LP	.	hypertrophic cardiomyopathy	OMIM:608758; cardiomyopathy; ventricular noncompaction
+KCNQ1	HGNC:6294	AD	any	.	no	.	.	1.0	All P and LP	.	long QT syndrome type 1	OMIM:192500; long qt; romano ward
+KCNH2	HGNC:6251	AD	any	.	no	.	.	1.0	All P and LP	.	long QT syndrome type 2	OMIM:613688; long qt; romano ward
+SCN5A	HGNC:10593	AD	any	.	no	.	.	1.0	All P and LP	.	long QT syndrome type 3, Brugada syndrome	OMIM:603830; OMIM:601144; long qt; brugada; romano ward
+CALM1	HGNC:1442	AD	any	.	no	.	.	3.2	All P and LP	.	long QT syndrome type 14	OMIM:616247; long qt
+CALM2	HGNC:1445	AD	any	.	no	.	.	3.2	All P and LP	.	long QT syndrome type 15	OMIM:616249; long qt
+CALM3	HGNC:1449	AD	any	.	no	.	.	3.2	All P and LP	.	long QT syndrome type 16	OMIM:618782; long qt
+BTD	HGNC:1122	AR	biallelic	.	no	.	hypomorph chr3:15645186:G:C p.Asp444His (p.Asp424His on NM_001370658.1), partial biotinidase deficiency	3.0	P and LP (2 variants)	.	biotinidase deficiency	OMIM:253260; biotinidase deficiency
+CYP27A1	HGNC:2605	AR	biallelic	.	no	.	.	3.3	P and LP (2 variants)	.	cerebrotendinous xanthomatosis	OMIM:213700; cerebrotendinous xanthomatosis
+GLA	HGNC:4296	XL	het_female_too	.	no	.	.	1.0	All hemi, het, homozygous P and LP	.	Fabry disease	OMIM:301500; fabry
+HFE	HGNC:4886	AR	hom_variant	chr6:26092913:G:A p.Cys282Tyr (NM_000410.4 c.845G>A)	no	.	.	3.0	HFE p.C282Y homozygotes only	.	hereditary hemochromatosis	OMIM:235200; hemochromatosis; haemochromatosis
+OTC	HGNC:8512	XL	het_female_too	.	no	.	.	2.0	All hemi, het, homozygous P and LP	.	ornithine transcarbamylase deficiency	OMIM:311250; ornithine transcarbamylase deficiency; ornithine carbamoyltransferase deficiency
+GAA	HGNC:4065	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	Pompe disease	OMIM:232300; pompe; glycogen storage disease type ii; glycogen storage disease ii; acid maltase deficiency; acid alpha glucosidase deficiency
+ABCD1	HGNC:61	XL	hemizygous	.	no	.	.	3.3	All hemi, homozygous or two het. P and/or LP	SF v3.3 footnote k: a single heterozygous P/LP variant is not reported.	X-linked adrenoleukodystrophy	OMIM:300100; adrenoleukodystrophy; adrenomyeloneuropathy
+ACVRL1	HGNC:175	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary hemorrhagic telangiectasia	OMIM:600376; hemorrhagic telangiectasia; telangiectasia hereditary hemorrhagic; osler
+ENG	HGNC:3349	AD	any	.	no	.	.	3.0	All P and LP	.	hereditary hemorrhagic telangiectasia	OMIM:187300; hemorrhagic telangiectasia; telangiectasia hereditary hemorrhagic; osler
+TTR	HGNC:12405	AD	any	.	no	.	.	3.1	All P and LP	.	hereditary transthyretin amyloidosis	OMIM:105210; amyloid
+RYR1	HGNC:10483	AD	any	.	no	.	.	1.0	All P and LP	.	malignant hyperthermia	OMIM:145600; malignant hyperthermia
+CACNA1S	HGNC:1397	AD	any	.	no	.	.	1.0	All P and LP	.	malignant hyperthermia	OMIM:601887; malignant hyperthermia
+HNF1A	HGNC:11621	AD	any	.	no	.	.	3.0	All P and LP	.	maturity-onset diabetes of the young	OMIM:600496; maturity onset diabetes of the young; mody; monogenic diabetes
+RPE65	HGNC:10294	AR	biallelic	.	no	.	.	3.0	P and LP (2 variants)	.	RPE65-related retinopathy	OMIM:204100; OMIM:613794; retinitis pigmentosa; leber congenital amaurosis; retinal dystrophy; retinopathy
+ATP7B	HGNC:870	AR	biallelic	.	no	.	.	2.0	P and LP (2 variants)	.	Wilson disease	OMIM:277900; wilson disease; hepatolenticular degeneration

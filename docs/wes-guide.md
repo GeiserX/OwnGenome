@@ -74,7 +74,7 @@ These steps operate on VCF data and do not depend on genome-wide BAM coverage. T
 | **12** | Mito Haplogroup | Works if your capture kit includes mitochondrial targets (most clinical kits do) |
 | **13** | VEP Annotation | Annotates whatever variants you supply |
 | **17** | CPSR | Cancer predisposition screening on your VCF. All ACMG SF v3.2 genes are coding |
-| **25** | PRS | Matches scoring file variants against your VCF. Expect ~5-15% variant matching (vs ~28% from WGS) because most PRS scoring files include non-coding variants |
+| **25** | PRS | Matches scoring file variants against your VCF. Expect ~5-15% variant matching (far fewer than from WGS) because most PRS scoring files include non-coding variants |
 
 ### Runs, but Some Answers Are Incomplete
 
@@ -260,7 +260,7 @@ Most clinical and research WES providers use one of a few standard capture kits.
 
 2. **No telomere or repeat expansion analysis.** These require reads from non-coding regions that WES does not capture.
 
-3. **Reduced PRS accuracy.** Most polygenic risk scoring files include many non-coding variants. WES typically matches only 5-15% of a scoring file's variants (vs ~28% from WGS). Imputation from exome data does not help much because the target regions are too sparse for accurate imputation of flanking non-coding variants.
+3. **Reduced PRS accuracy.** Most polygenic risk scoring files include many non-coding variants. WES typically matches only 5-15% of a scoring file's variants, far fewer than WGS. Imputation from exome data does not help much because the target regions are too sparse for accurate imputation of flanking non-coding variants.
 
 4. **ROH detection is less precise.** Runs of homozygosity analysis on WES data detects large ROH segments (>5 Mb) reasonably well because exome targets are spread across all chromosomes. Smaller ROH segments may be missed due to gaps between captured regions.
 
