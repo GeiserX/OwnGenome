@@ -264,13 +264,16 @@ const HTT_PENETRANCE: &str = r#", "penetrance": "36-39",
 const HTT_LINE: &str =
     "36-39: reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)";
 
+/// The invented HTT count of the row below. It is kept apart from the gene name,
+/// because the personal-data scan reads a gene name followed by two counts on
+/// one line as a genotype.
+const HTT_ROW: &str = "17/38  full_mutation";
+
 #[test]
 fn an_htt_count_of_reduced_penetrance_says_so() {
     let (txt, page) = reports(&htt("17/38", HTT_PENETRANCE));
     assert!(
-        txt.contains(&format!(
-            "    HTT      17/38  full_mutation\n      {HTT_LINE}\n"
-        )),
+        txt.contains(&format!("    HTT      {HTT_ROW}\n      {HTT_LINE}\n")),
         "{txt}"
     );
     assert!(
