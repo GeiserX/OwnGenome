@@ -1192,6 +1192,7 @@ workflow {
         .join(PGX.out.clinvar_cdna.map            { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_cdna_scan.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_deep_intronic.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(PGX.out.clinvar_conflicting.map     { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_json.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_html.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_phenotypes.map         { meta, f -> [meta.id, f] }, remainder: true)

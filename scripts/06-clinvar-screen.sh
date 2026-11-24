@@ -405,10 +405,10 @@ echo "cDNA scan of every exon: ${SCAN_TSV}"
 echo "Known deep intronic sites, always reported: ${DEEP_TSV}"
 awk -F'\t' 'NR > 1 {printf "  %s %s %s:%s %s>%s: %s%s\n", $5, $6, $1, $2, $3, $4, $8, ($9 != "" ? ", " $9 : "")}' "$DEEP_TSV"
 echo "Count: ${HIT_COUNT} pathogenic hits"
-if grep -q '^# not checked' "$CONFLICTING_TSV"; then
-  echo "Conflicting records some labs call pathogenic: not checked: run setup.sh --refresh clinvar"
+if grep -q '^# not checked: ' "$CONFLICTING_TSV"; then
+  echo "Conflicting records some labs call pathogenic: $(sed -n '1s/^# //p' "$CONFLICTING_TSV")"
 else
-  echo "Conflicting records some labs call pathogenic (review with a clinician; not hits, not counted above): $(awk 'NR > 1' "$CONFLICTING_TSV" | grep -c . || true) in ${CONFLICTING_TSV}"
+  echo "Conflicting records some labs call pathogenic (review with a clinician; not hits): $(awk 'NR > 1' "$CONFLICTING_TSV" | grep -c . || true) in ${CONFLICTING_TSV}"
 fi
 if [ "$HIT_COUNT" -gt 0 ]; then
   HIT_ROWS=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" /pgp-bin/og clinvar hits "$(cpath "$HITS")")

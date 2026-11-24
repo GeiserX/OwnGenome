@@ -53,6 +53,7 @@ workflow PGX {
     ch_clinvar_cdna = Channel.empty()
     ch_clinvar_scan = Channel.empty()
     ch_clinvar_deep = Channel.empty()
+    ch_clinvar_conf = Channel.empty()
     def tools = params.tools ? params.tools.split(',').collect { it.trim() } : []
 
     //
@@ -78,6 +79,7 @@ workflow PGX {
         ch_clinvar_dir = CLINVAR_SCREEN.out.isec_dir
         ch_clinvar_hits = CLINVAR_SCREEN.out.hits_tsv
         ch_clinvar_deep = CLINVAR_SCREEN.out.deep_intronic
+        ch_clinvar_conf = CLINVAR_SCREEN.out.conflicting
         ch_versions    = ch_versions.mix(CLINVAR_SCREEN.out.versions)
 
         // Step 06's cDNA read check: each sample's hits with its BAM, or []
@@ -243,6 +245,7 @@ workflow PGX {
     clinvar_cdna         = ch_clinvar_cdna        // [meta, <id>_clinvar_cdna_check.tsv]
     clinvar_cdna_scan    = ch_clinvar_scan        // [meta, <id>_clinvar_cdna_scan.tsv]
     clinvar_deep_intronic = ch_clinvar_deep       // [meta, <id>_clinvar_deep_intronic.tsv]
+    clinvar_conflicting  = ch_clinvar_conf        // [meta, <id>_clinvar_conflicting.tsv]
     pharmcat_html        = ch_pharmcat_html
     pharmcat_json        = ch_pharmcat_json
     pypgx_results        = ch_pypgx_results

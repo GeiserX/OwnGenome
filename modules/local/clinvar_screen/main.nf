@@ -245,10 +245,10 @@ process CLINVAR_SCREEN {
         og clinvar conflicting-hits --skip 'no --clinvar_conflicting; run setup.sh --refresh clinvar and pass clinvar/clinvar_conflicting_plp_chr.vcf.gz' \\
             > ${meta.id}_clinvar_conflicting.tsv
     fi
-    if grep -q '^# not checked' ${meta.id}_clinvar_conflicting.tsv; then
-        echo "Conflicting records some labs call pathogenic: not checked (no --clinvar_conflicting)"
+    if grep -q '^# not checked: ' ${meta.id}_clinvar_conflicting.tsv; then
+        echo "Conflicting records some labs call pathogenic: \$(sed -n '1s/^# //p' ${meta.id}_clinvar_conflicting.tsv)"
     else
-        echo "Conflicting records some labs call pathogenic (review with a clinician; not hits): \$(awk 'NR > 1' ${meta.id}_clinvar_conflicting.tsv | grep -c . || true)"
+        echo "Conflicting records some labs call pathogenic (review with a clinician; not hits): \$(awk 'NR > 1' ${meta.id}_clinvar_conflicting.tsv | grep -c . || true) in ${meta.id}_clinvar_conflicting.tsv"
     fi
 
     # Step 3b: the always-report list, as scripts/06 builds it: each site's
