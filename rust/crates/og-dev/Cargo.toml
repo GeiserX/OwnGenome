@@ -14,6 +14,7 @@ planted-ci-reader = []
 pycompat.workspace = true
 og-io.workspace = true
 og-nf.workspace = true
+og-runlog.workspace = true
 og-intervals.workspace = true
 og-browser.workspace = true
 flate2.workspace = true

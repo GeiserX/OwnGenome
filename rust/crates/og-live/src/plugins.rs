@@ -77,20 +77,33 @@ pub fn valid_finding_id(id: &str) -> bool {
 /// plugins' names.
 pub fn state_hooks(
     live: &Live,
-    run: &Run,
+    _run: &Run,
     d: &Path,
     st: &State<'_>,
     _v: &Value,
     events: &[Value],
 ) -> Value {
-    let mut o = IndexMap::new();
-    o.insert("charts".into(), crate::charts::state(d));
-    o.insert("family".into(), family_hook(live, d));
-    o.insert("ops".into(), ops_hook(live, d, st, events));
-    o.insert("recheck".into(), crate::recheck::state(d));
-    o.insert("search".into(), crate::search::state(d));
-    let _ = run;
-    Value::Object(o)
+    state_hooks_with(live, d, || ops_hook(live, d, st, events))
+}
+
+/// The plugin keys written to run state, in order of plugin name.
+pub const STATE_HOOK_NAMES: [&str; 5] = ["charts", "family", "ops", "recheck", "search"];
+
+pub(crate) fn state_hooks_with(live: &Live, d: &Path, ops: impl FnOnce() -> Value) -> Value {
+    let values: [_; STATE_HOOK_NAMES.len()] = [
+        crate::charts::state(d),
+        family_hook(live, d),
+        ops(),
+        crate::recheck::state(d),
+        crate::search::state(d),
+    ];
+    Value::Object(
+        STATE_HOOK_NAMES
+            .into_iter()
+            .map(str::to_owned)
+            .zip(values)
+            .collect(),
+    )
 }
 
 /// `plugins.ops`: the run health card, or the line it shows instead.
@@ -372,7 +385,7 @@ fn family_json(req: &mut Req<'_>, name: &str) -> io::Result<()> {
     }
 }
 
-fn family_page(live: &Live, name: &str, d: &Path) -> Result<Value, String> {
+pub(crate) fn family_page(live: &Live, name: &str, d: &Path) -> Result<Value, String> {
     let st = family::family_state(name, d).map_err(|e| e.0)?;
     let listed = live.runs();
     let (mut runs_o, mut candidates, mut summaries) =
