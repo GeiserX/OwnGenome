@@ -1,9 +1,10 @@
 name: Rust
 
 # The og binary in the images the tasks run, and the long pycompat streams.
-# Guard's rust job holds the checks every pull request needs (format, lint,
-# tests, pycompat at 100000 cases per operation, the musl builds and the
-# stale-binary guard); this workflow holds the slow ones (docs/rust.md):
+# Guard holds the checks every pull request needs: its rust job (format,
+# lint, tests, pycompat at 100000 cases per operation), chrome job and
+# og-musl job (the musl builds and the stale-binary guard). This workflow
+# holds the slow ones (docs/rust.md):
 #
 #   images   on a pull request that touches the Rust code, the shim or the
 #            images: builds og with scripts/setup.sh --og, cold and then

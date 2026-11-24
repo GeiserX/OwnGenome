@@ -421,9 +421,9 @@ jobs:
   # og for the legs (rust/, docs/rust.md): built once, as scripts/setup.sh
   # --og builds it, and handed to each leg as the artifact og-e2e, so no leg
   # pulls the build image or compiles. This job builds og-linux-x86_64 for
-  # the runners (OG_ARCHES, rust/og.sh). Guard's og-musl job builds both
-  # Linux architectures. The Rust workflow's images job also builds both
-  # on pull requests that change rust/. The base leg sets up while this
+  # the runners (OG_ARCHES, rust/og.sh). Guard's og-musl job builds all
+  # four (both musl builds and the macOS pair), and so does the Rust
+  # workflow's images job on pull requests that change rust/. The base leg sets up while this
   # builds and waits for the artifact only before its first case.
   og:
     needs: e2e-scope
