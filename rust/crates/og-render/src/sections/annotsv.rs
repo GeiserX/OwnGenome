@@ -60,6 +60,56 @@ pub fn genes_text(x: &D<'_>) -> Result<String, Malformed> {
     Ok(out)
 }
 
+/// What step 05 writes in `Population_source` when AnnotSV gave no
+/// benign-set AF: the frequency is unknown, which is not the same as rare.
+pub const NO_FREQUENCY: &str = "no frequency data";
+
+/// What the reports say of an SV whose benign-set AF AnnotSV left blank.
+pub const NO_FREQUENCY_TEXT: &str =
+    "benign-set AF: no frequency data (unknown, not the same as rare)";
+
+/// Where the benign-set AF comes from, said beside it on a row that also
+/// carries step 05's per-record evidence.
+const AGGREGATE: &str =
+    "the highest AF of the benign records listed, larger SVs around it included";
+
+/// The caveat under the AnnotSV block when a row carries step 05's
+/// per-record benign evidence or has no frequency data: the benign-set AF
+/// and the "common" count are AnnotSV's aggregate, the same-size record
+/// is the one-by-one check the two-hit and secondary-findings rules use.
+pub const BENIGN_EVIDENCE_NOTE: &str = "The benign-set AF is AnnotSV's aggregate: the highest AF of \
+    every benign record of the call's type it lists, larger SVs around the call included, so it \
+    is not this SV's own frequency, and the common count uses it. Step 05 also checks the records \
+    one by one: a same-size record at 1% or more is a record of the same type that covers at \
+    least half of the call, and the call at least half of it, with an AF of 1% or more \
+    (unknown when the evidence cannot tell); only those calls are set aside by the two-hit and \
+    secondary-findings rules. No frequency data means AnnotSV gave no AF: the frequency is \
+    unknown, which is not the same as rare (docs/05-annotsv.md).";
+
+/// Step 05's `Benign_match` in words.
+pub fn benign_match_text(v: &str) -> &str {
+    match v {
+        "same" => "one of about the same size",
+        "contained" => "only larger SVs around it",
+        "none" => "none listed",
+        "." => "no benign set for this SV type",
+        other => other,
+    }
+}
+
+/// Whether the row carries step 05's per-record benign evidence
+/// (`benign_match` or `clinical_common`, from tables that have the columns).
+pub fn has_evidence(x: &D<'_>) -> Result<bool, Malformed> {
+    Ok(x.opt("benign_match")?.is_some() || x.opt("clinical_common")?.is_some())
+}
+
+/// Whether AnnotSV gave the row no benign-set AF, as step 05 marks it.
+pub fn no_frequency(x: &D<'_>) -> Result<bool, Malformed> {
+    Ok(x.get("population_af")?.is_none_or(|v| v.is_none())
+        && x.get("population_source")?
+            .is_some_and(|v| v.is(NO_FREQUENCY)))
+}
+
 /// The exon-edge, benign-set and rule flags of one class 4-5 SV.
 pub fn flags(x: &D<'_>) -> Result<Vec<String>, Malformed> {
     let mut out = Vec::new();
@@ -72,17 +122,36 @@ pub fn flags(x: &D<'_>) -> Result<Vec<String>, Malformed> {
     } else if edge.is("not checked") {
         out.push("exon edges not checked".to_owned());
     }
+    let evidence = has_evidence(x)?;
     let af = x.at("population_af")?;
     if !af.is_none() {
         let mut f = format!("benign-set AF {}", general(af.num()?, 6));
         let src = x.at("population_source")?;
-        if src.truthy() {
-            f += &format!(" ({})", src.text()?);
+        match (src.truthy(), evidence) {
+            (true, false) => f += &format!(" ({})", src.text()?),
+            (true, true) => f += &format!(" ({}; {AGGREGATE})", src.text()?),
+            (false, true) => f += &format!(" ({AGGREGATE})"),
+            (false, false) => {}
         }
         if x.at("common")?.truthy() {
             f += ", common";
         }
         out.push(f);
+    } else if no_frequency(x)? {
+        out.push(NO_FREQUENCY_TEXT.to_owned());
+    }
+    let mut parts = Vec::new();
+    if let Some(m) = x.opt("benign_match")? {
+        parts.push(format!(
+            "benign records: {}",
+            benign_match_text(m.string()?)
+        ));
+    }
+    if let Some(c) = x.opt("clinical_common")? {
+        parts.push(format!("same-size record at 1% or more: {}", c.text()?));
+    }
+    if !parts.is_empty() {
+        out.push(parts.join(", "));
     }
     if let Some(detail) = x.opt("rule_detail")? {
         let class = x.s("acmg_class")?;
@@ -116,6 +185,38 @@ pub fn moved_text(x: &D<'_>) -> Result<String, Malformed> {
         or_text(x, "rule", "rule not named")?,
         or_text(x, "rule_detail", "no detail")?
     ))
+}
+
+/// The class 4-5 rows that carry step 05's `clinical_common`, as
+/// `Some(how many read yes)`; `None` when no row carries it (a table from
+/// before the column), so older reports keep their lines.
+pub fn same_size_common(d: &D<'_>) -> Result<Option<usize>, Malformed> {
+    let Some(rows) = d.opt("rows")? else {
+        return Ok(None);
+    };
+    let mut any = false;
+    let mut yes = 0;
+    for x in rows.items()? {
+        if let Some(c) = x.opt("clinical_common")? {
+            any = true;
+            yes += usize::from(c.is("yes"));
+        }
+    }
+    Ok(any.then_some(yes))
+}
+
+/// Whether the block shows [`BENIGN_EVIDENCE_NOTE`]: a class 4-5 row has
+/// per-record evidence or no frequency data.
+pub fn shows_evidence_note(d: &D<'_>) -> Result<bool, Malformed> {
+    let Some(rows) = d.opt("rows")? else {
+        return Ok(false);
+    };
+    for x in rows.items()? {
+        if has_evidence(&x)? || no_frequency(&x)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The class 4-5 lines, the same in both reports.
@@ -156,6 +257,12 @@ pub fn lines(d: &D<'_>) -> Result<Vec<String>, Malformed> {
         );
     }
     let mut out = vec![head];
+    if let Some(n) = same_size_common(d)? {
+        out.push(format!(
+            "With a same-size benign record at 1% or more: {n} (the common count above uses the \
+             benign-set AF, AnnotSV's aggregate)"
+        ));
+    }
     if let Some(down) = d.opt("downgraded")? {
         out.push(format!(
             "Moved to class 3 by step 05's rules, not counted above: {}",
@@ -210,6 +317,9 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
     }
     if d.at("count")?.truthy() || down.is_some() {
         w.push(format!("  {ANNOTSV_NOTE}"));
+    }
+    if shows_evidence_note(&d)? {
+        w.push(format!("  {BENIGN_EVIDENCE_NOTE}"));
     }
     w.push(String::new());
     Ok(w)
@@ -298,6 +408,9 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     if rows.is_some() || down.is_some() {
         body.push(Line::ViewerNote);
         caveats.push(ANNOTSV_NOTE);
+    }
+    if d.truthy() && shows_evidence_note(&d)? {
+        caveats.push(BENIGN_EVIDENCE_NOTE);
     }
     let card = html::card(
         &sec,
@@ -397,6 +510,19 @@ mod tests {
         );
         // Red control: an unescaped gene would not match the row.
         assert!(!p.contains("A<B"));
+    }
+
+    #[test]
+    fn every_benign_match_reads_in_words() {
+        for (value, words) in [
+            ("same", "one of about the same size"),
+            ("contained", "only larger SVs around it"),
+            ("none", "none listed"),
+            (".", "no benign set for this SV type"),
+            ("not checked", "not checked"),
+        ] {
+            assert_eq!(super::benign_match_text(value), words);
+        }
     }
 
     #[test]
