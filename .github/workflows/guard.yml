@@ -303,13 +303,9 @@ jobs:
 
           run_tests tests "$SHARD" "$SHARDS"
 
-  # OwnGenome's Rust code (rust/, docs/rust.md), in a job of its own:
-  # unit-tests is close to its 10 minutes. Format, lint, unit tests with a
-  # planted failure that must go red, pycompat against CPython, then the two
-  # musl builds as scripts/setup.sh --og makes them and the stale-binary
-  # guard on the real binaries. It took 15 to 18 minutes on a free runner and
-  # 23 on main on 2026-11-18, and the same tree on the geiresx fork ran past
-  # 30 twice, so the limit is 45: it stops a hung job, not a slow one.
+  # OwnGenome's Rust checks (rust/, docs/rust.md): format, lint, tests
+  # with planted failures, the CPython comparison, and both musl builds.
+  # The Chrome tests run in parallel in the chrome job.
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -552,8 +548,31 @@ jobs:
           restore_roh
           trap - EXIT
 
-      - name: cargo test
-        run: cargo test --workspace --locked --no-fail-fast
+      - name: cargo test (workspace except the two crates with Chrome tests)
+        run: cargo test --workspace --locked --no-fail-fast --exclude og-browser --exclude og-live
+
+      # Run og-live's library and all its other integration tests here.
+      # Cargo lists the targets so new non-browser tests are picked up.
+      - name: cargo test (og-live without Chrome)
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          OG_LIVE_CHROME_TARGETS: &og_live_chrome_targets port_live_auth_ingest_browser port_live_server_browser port_viewer
+        run: |
+          read -ra chrome_targets <<< "$OG_LIVE_CHROME_TARGETS"
+          live_tests=$(cargo metadata --locked --no-deps --format-version 1 |
+            jq -er --args '
+              .packages[] | select(.name == "og-live") | .targets[]
+              | select(.kind == ["test"] and .test)
+              | .name | select(. as $target | $ARGS.positional | index($target) | not)
+            ' "${chrome_targets[@]}")
+          tests=()
+          while IFS= read -r target; do tests+=(--test "$target"); done <<< "$live_tests"
+          cargo test --locked --no-fail-fast -p og-live --lib "${tests[@]}"
+
+      - name: cargo test (og-live documentation)
+        if: ${{ !cancelled() }}
+        run: cargo test --locked --no-fail-fast -p og-live --doc
 
       # The output contract keeps every stable row of the newest 1.x release
       # (docs/output-contract.md, "How CI holds it"). Release tags live on the
@@ -589,38 +608,6 @@ jobs:
           git show "FETCH_HEAD:assets/output_contract.tsv" > "$base"
           echo "Baseline: the contract of ${tag}"
           cargo run --locked -q -p og -- dev contract --contract "$contract" --baseline "$base"
-
-      # The browser checks of og-browser (tests/browser/README.md) ran in
-      # cargo test above, in the runner's Chrome. Two controls: a page error
-      # planted in the clean page must fail its test, and with no Chrome the
-      # tests must fail in CI and only skip outside it.
-      - name: The browser checks fail on a planted page error, and without Chrome in CI
-        if: ${{ !cancelled() }}
-        run: |
-          log="${RUNNER_TEMP}/og-browser-red.log"
-          if cargo test --locked --no-fail-fast -p og-browser --features planted-page-error --test cdp > "$log" 2>&1; then
-            cat "$log"
-            echo "ERROR: the clean page's test passed with a planted page error"
-            exit 1
-          fi
-          cat "$log"
-          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
-          grep -E "TypeError: .*\bplanted\b" "$log"
-          echo "Control: a planted page error failed the clean page's test."
-          if CHROME=/nonexistent cargo test --locked --no-fail-fast -p og-browser --test cdp > "$log" 2>&1; then
-            cat "$log"
-            echo "ERROR: the browser checks passed in CI without Chrome"
-            exit 1
-          fi
-          cat "$log"
-          grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
-          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
-          grep -E 'test a_planted_exception_and_console_error_are_reported \.\.\. FAILED' "$log"
-          echo "Control: without Chrome the browser checks fail in CI."
-          CHROME=/nonexistent CI='' cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
-          cat "$log"
-          test "$(grep -c -F '[SKIP] no Chrome or Chromium to load the test page' "$log")" -eq 2
-          echo "Outside CI, without Chrome the browser checks skip."
 
       # og-io's root test (tests/atomic_root_owner.rs) skips unless it runs as
       # root: run it with sudo, then plant a writer that never reads NXF_OWNER
@@ -999,6 +986,71 @@ jobs:
           fi
           echo "Refused, as it must (exit ${rc}): $(grep 'og is stale' <<< "$out")"
 
+  # Run every og-browser target, so new browser targets are picked up.
+  # Some tests need the debug og that the workspace test used to build.
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - name: Build og for the browser tests
+        run: |
+          cargo build --locked -p og
+          echo "OG=${PWD}/target/debug/og" >> "$GITHUB_ENV"
+
+      - name: cargo test (og-browser)
+        run: cargo test --locked --no-fail-fast -p og-browser
+
+      - name: cargo test (og-live Chrome targets)
+        if: ${{ !cancelled() }}
+        env:
+          OG_LIVE_CHROME_TARGETS: *og_live_chrome_targets
+        run: |
+          read -ra chrome_targets <<< "$OG_LIVE_CHROME_TARGETS"
+          tests=()
+          for target in "${chrome_targets[@]}"; do tests+=(--test "$target"); done
+          cargo test --locked --no-fail-fast -p og-live "${tests[@]}"
+
+      # Keep the Chrome controls beside the browser tests. A planted page
+      # error must fail, and missing Chrome must fail in CI and skip locally.
+      - name: The browser checks fail on a planted page error, and without Chrome in CI
+        if: ${{ !cancelled() }}
+        run: |
+          log="${RUNNER_TEMP}/og-browser-red.log"
+          if cargo test --locked --no-fail-fast -p og-browser --features planted-page-error --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the clean page's test passed with a planted page error"
+            exit 1
+          fi
+          cat "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -E "TypeError: .*\bplanted\b" "$log"
+          echo "Control: a planted page error failed the clean page's test."
+          if CHROME=/nonexistent cargo test --locked --no-fail-fast -p og-browser --test cdp > "$log" 2>&1; then
+            cat "$log"
+            echo "ERROR: the browser checks passed in CI without Chrome"
+            exit 1
+          fi
+          cat "$log"
+          grep -F "[FAIL] no Chrome or Chromium to load the test page" "$log"
+          grep -E 'test a_clean_page_loads_with_no_page_error \.\.\. FAILED' "$log"
+          grep -E 'test a_planted_exception_and_console_error_are_reported \.\.\. FAILED' "$log"
+          echo "Control: without Chrome the browser checks fail in CI."
+          CHROME=/nonexistent CI='' cargo test --locked -p og-browser --test cdp -- --nocapture > "$log" 2>&1 || { cat "$log"; exit 1; }
+          cat "$log"
+          test "$(grep -c -F '[SKIP] no Chrome or Chromium to load the test page' "$log")" -eq 2
+          echo "Outside CI, without Chrome the browser checks skip."
+
   # The parity harness (tests/parity/README.md): every og port against the
   # Python it replaced, by meaning. First the harness's own self-test (each
   # planted kind of difference must be reported, by oracle-diff.sh, by
@@ -1040,7 +1092,7 @@ jobs:
   # job above failed or was skipped, and fails unless every one succeeded.
   ci-ok:
     if: always()
-    needs: [image-vars, images, coupled-versions, mito-workdir, fake-docker, helper-binaries, og, unit-tests, rust, parity]
+    needs: [image-vars, images, coupled-versions, mito-workdir, fake-docker, helper-binaries, og, unit-tests, rust, chrome, parity]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
