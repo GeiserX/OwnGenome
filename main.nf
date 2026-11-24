@@ -49,6 +49,7 @@ include { EXOMISER_PREPARE; EXOMISER; EXOMISER_REPORT } from './modules/local/ex
 include { CHIP_PREPARE; CHIP_MUTECT2; CHIP_ANNOTATE; CHIP_REPORT } from './modules/local/chip/main'
 include { MEI_DEPTH; MEI; MEI_REPORT } from './modules/local/mei/main'
 include { MOCHA_PREP; MOCHA_PHASE; MOCHA_CALL; MOCHA_REPORT } from './modules/local/mocha/main'
+include { exome_dropped } from './workflows/exome'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,6 +162,43 @@ workflow {
         if (!(params.exomiser_assembly in ['hg38', 'hg19'])) {
             error "--exomiser_assembly must be hg38 or hg19, got '${params.exomiser_assembly}'."
         }
+    }
+
+    // ─── Exome (--model_type WES) ───────────────────────────────────────
+    // As scripts/03's MODEL_TYPE=WES and scripts/16b's CAPTURE_BED:
+    // DeepVariant's exome model on the capture regions, and mosdepth's
+    // coverage over them; Manta runs with --exome. The steps that read
+    // whole-genome depth, or variants spread over the genome, are not run
+    // (workflows/exome.nf). The sex check is somalier's (sample_qc): indexcov
+    // reads depth along the whole genome from the BAM index, and an exome has
+    // none outside its capture.
+    if (!(params.model_type in ['WGS', 'WES'])) {
+        error "--model_type must be WGS (a whole genome) or WES (an exome), got '${params.model_type}'. " +
+              "It picks DeepVariant's model; the pipeline takes paired short reads."
+    }
+    if (params.model_type == 'WES') {
+        if (!params.capture_bed) {
+            error "--model_type WES needs --capture_bed, the BED of the capture kit's target regions " +
+                  "(docs/wes-guide.md): DeepVariant calls those regions and mosdepth measures them."
+        }
+        if (params.intervals) {
+            error "--intervals and --capture_bed both set DeepVariant's regions. Give one BED: the capture " +
+                  "regions cut to the regions you want (bedtools intersect), as --capture_bed."
+        }
+        if (!tools_list.contains('sample_qc')) {
+            error "--model_type WES takes the sex check from somalier: add sample_qc to --tools, with " +
+                  "--somalier_sites and --verifybamid2_panel (scripts/setup.sh --sample-qc-data). indexcov, " +
+                  "the whole-genome check, reads depth an exome does not have."
+        }
+        def dropped = exome_dropped(tools_list)
+        if (dropped) {
+            log.warn "--model_type WES: not run: exome: ${dropped.join(', ')}. These steps read depth along " +
+                     "the whole genome or variants spread over it, which an exome does not have (docs/wes-guide.md)."
+            tools_list = tools_list - dropped
+        }
+    } else if (params.capture_bed) {
+        error "--capture_bed holds the capture regions of an exome: add --model_type WES, or leave it out " +
+              "for a whole genome."
     }
 
     // Fail-fast: stop when enabled tools lack required databases
@@ -556,6 +594,7 @@ workflow {
         )
 
     // Every BAM, given or aligned here, once INDEXCOV has checked its sex
+    // (an exome's: SAMPLE_QC's somalier check, in BAM_ANALYSIS)
     ch_bam = UPSTREAM.out.bam
 
     // ─── Sequence dictionary ────────────────────────────────────────────

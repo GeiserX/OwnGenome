@@ -10,9 +10,15 @@
     and nothing downstream sees a BAM before its sex check passed: a sample
     whose declared sex disagrees with the sex indexcov infers stops the run
     here (--sex_check warn logs it and goes on), before DeepVariant or
-    ExpansionHunter use the declared sex.
+    ExpansionHunter use the declared sex. An exome (--model_type WES) skips
+    INDEXCOV: indexcov reads depth along the whole genome from the BAM index,
+    and an exome has none outside its capture. Its sex check is somalier's,
+    from the reads (sample_qc, which main.nf requires with WES), in
+    BAM_ANALYSIS: as with steps 03 and 33, DeepVariant does not wait for it.
 
     DEEPVARIANT calls the FASTQ and BAM-only rows; a VCF+BAM row keeps its VCF.
+    With --model_type WES it runs the exome model on the regions of
+    --capture_bed.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
@@ -69,50 +75,57 @@ workflow UPSTREAM {
     ch_all_bam = ch_to_call.mix(ch_bam_given)
 
     //
-    // Sex check: every BAM waits for it
+    // Sex check: every BAM of a whole genome waits for it
     //
-    INDEXCOV(ch_all_bam)
-    ch_versions = ch_versions.mix(INDEXCOV.out.versions)
+    ch_bam      = ch_all_bam      // an exome's BAMs go on here unchecked
+    ch_indexcov = Channel.empty()
+    if (params.model_type != 'WES') {
+        INDEXCOV(ch_all_bam)
+        ch_indexcov = INDEXCOV.out.indexcov
+        ch_versions = ch_versions.mix(INDEXCOV.out.versions)
 
-    ch_sex_checked = INDEXCOV.out.sex.map { meta, tsv ->
-        def fields   = tsv.text.readLines()[1].split('\t')
-        def inferred = fields[0]
-        def cn       = "CNchrX=${fields[1]}, CNchrY=${fields[2]}"
-        if (meta.sex && inferred != meta.sex) {
-            def msg = "Sample '${meta.id}': the samplesheet says sex ${meta.sex}, but indexcov infers ${inferred} " +
-                      "from the BAM index (${cn}). Either the sample is not the one you think, the declared sex " +
-                      "is wrong, or the sample has a sex-chromosome aneuploidy. DeepVariant's chrX/chrY ploidy, " +
-                      "ExpansionHunter and Delly take the declared sex."
-            if (params.sex_check == 'warn') {
-                log.warn "${msg} --sex_check warn is set: going on with ${meta.sex}."
+        ch_sex_checked = INDEXCOV.out.sex.map { meta, tsv ->
+            def fields   = tsv.text.readLines()[1].split('\t')
+            def inferred = fields[0]
+            def cn       = "CNchrX=${fields[1]}, CNchrY=${fields[2]}"
+            if (meta.sex && inferred != meta.sex) {
+                def msg = "Sample '${meta.id}': the samplesheet says sex ${meta.sex}, but indexcov infers ${inferred} " +
+                          "from the BAM index (${cn}). Either the sample is not the one you think, the declared sex " +
+                          "is wrong, or the sample has a sex-chromosome aneuploidy. DeepVariant's chrX/chrY ploidy, " +
+                          "ExpansionHunter and Delly take the declared sex."
+                if (params.sex_check == 'warn') {
+                    log.warn "${msg} --sex_check warn is set: going on with ${meta.sex}."
+                } else {
+                    error "${msg} Correct the sex column, or rerun with --sex_check warn to go on with the declared sex."
+                }
             } else {
-                error "${msg} Correct the sex column, or rerun with --sex_check warn to go on with the declared sex."
+                log.info "Sample '${meta.id}': indexcov infers ${inferred} (${cn}); declared ${meta.sex ?: 'nothing'}."
             }
-        } else {
-            log.info "Sample '${meta.id}': indexcov infers ${inferred} (${cn}); declared ${meta.sex ?: 'nothing'}."
+            [meta.id, inferred]
         }
-        [meta.id, inferred]
+
+        ch_bam = ch_all_bam
+            .map { meta, bam, bai -> [meta.id, meta, bam, bai] }
+            .join(ch_sex_checked)
+            .map { _id, meta, bam, bai, _inferred -> [meta, bam, bai] }
     }
 
-    ch_bam = ch_all_bam
-        .map { meta, bam, bai -> [meta.id, meta, bam, bai] }
-        .join(ch_sex_checked)
-        .map { _id, meta, bam, bai, _inferred -> [meta, bam, bai] }
-
     //
-    // Small variant calling, on the checked BAMs of the rows that need it
+    // Small variant calling, on the checked BAMs of the rows that need it;
+    // an exome on its capture regions ([] for a whole genome)
     //
     ch_call = ch_bam
         .map { meta, bam, bai -> [meta.id, meta, bam, bai] }
         .join(ch_to_call.map { meta, _bam, _bai -> [meta.id, true] })
         .map { _id, meta, bam, bai, _call -> [meta, bam, bai] }
+    ch_capture_bed = Channel.value(params.capture_bed ? file(params.capture_bed, checkIfExists: true) : [])
 
-    DEEPVARIANT(ch_call, ch_reference, ch_reference_fai, ch_par_bed)
+    DEEPVARIANT(ch_call, ch_reference, ch_reference_fai, ch_par_bed, ch_capture_bed)
     ch_versions = ch_versions.mix(DEEPVARIANT.out.versions)
 
     emit:
-    bam        = ch_bam                  // [meta, bam, bai]: every BAM, after the sex check
-    indexcov   = INDEXCOV.out.indexcov   // [meta, indexcov/]: goleft's folder, for the report's sex check
+    bam        = ch_bam                  // [meta, bam, bai]: every BAM, after the sex check (an exome's: none here)
+    indexcov   = ch_indexcov             // [meta, indexcov/]: goleft's folder, for the report's sex check (none for an exome)
     read_count = ALIGN_MINIMAP2.out.read_count // [meta, <id>_read_count.tsv]: the FASTQ rows only, for the report
     vcf        = DEEPVARIANT.out.vcf     // [meta, vcf, tbi]
     gvcf       = DEEPVARIANT.out.gvcf    // [meta, g.vcf.gz, tbi]

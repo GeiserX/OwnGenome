@@ -62,9 +62,22 @@
                     "description": "Space-separated regions DeepVariant calls (its --regions, INTERVALS in scripts/03-deepvariant.sh). Unset calls the whole genome.",
                     "fa_icon": "fas fa-map"
                 },
+                "model_type": {
+                    "type": "string",
+                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha or viral, nor the NuMT depth and mtDNA copy number of mito_variants: an exome has no depth outside its capture (docs/wes-guide.md).",
+                    "default": "WGS",
+                    "enum": ["WGS", "WES"],
+                    "fa_icon": "fas fa-dna"
+                },
+                "capture_bed": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them.",
+                    "fa_icon": "fas fa-crosshairs"
+                },
                 "sex_check": {
                     "type": "string",
-                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM, before any BAM step) or by somalier (with sample_qc): fail stops the run; warn logs it and goes on with the declared sex.",
+                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM of a whole genome, before any BAM step) or by somalier (with sample_qc; an exome's only check): fail stops the run; warn logs it and goes on with the declared sex.",
                     "default": "fail",
                     "enum": ["fail", "warn"],
                     "fa_icon": "fas fa-venus-mars"

@@ -3,7 +3,10 @@
     MOSDEPTH — Fast per-base and per-region coverage statistics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Computes precise per-base depth from actual alignments (not just the index).
-    Outputs coverage distributions, threshold summaries, and region BED files.
+    Outputs coverage distributions, threshold summaries, and region BED files:
+    500 bp windows for a whole genome, or, with --capture_bed (--model_type
+    WES), the capture regions, so an exome's summary gives its on-target
+    depth (the script's CAPTURE_BED).
 
     A second pass over the genes of assets/callability_genes.tsv counts, per
     gene on chr1-22, X and Y, the bases with 10 or more reads of MAPQ 20 or
@@ -26,6 +29,7 @@ process MOSDEPTH {
     input:
     tuple val(meta), path(bam), path(bai)
     path(callability_tables)  // assets/callability_genes.tsv, and assets/callability_exons.tsv when exons are measured
+    path(capture_bed)         // --capture_bed with --model_type WES, or []
 
     output:
     tuple val(meta), path("*.mosdepth.summary.txt"),     emit: summary
@@ -40,9 +44,10 @@ process MOSDEPTH {
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def by     = capture_bed ?: 500
     """
     mosdepth \\
-        --by 500 \\
+        --by ${by} \\
         --fast-mode \\
         --no-per-base \\
         --threads ${task.cpus} \\
@@ -101,8 +106,11 @@ process MOSDEPTH {
     """
 
     stub:
+    // The stub prints the windows the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def by     = capture_bed ?: 500
     """
+    echo "mosdepth options: --by ${by}"
     touch ${prefix}.mosdepth.summary.txt
     touch ${prefix}.mosdepth.global.dist.txt
     echo | gzip > ${prefix}_callability.bed.gz

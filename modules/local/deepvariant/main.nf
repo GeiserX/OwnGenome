@@ -2,19 +2,24 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     DEEPVARIANT — Small variants from the BAM: a VCF and a gVCF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    run_deepvariant with the flags of scripts/03-deepvariant.sh: the WGS
-    model, the sample name from the samplesheet, one shard per CPU, and a
-    gVCF beside the VCF. The gVCF also records where the sample matches the
+    run_deepvariant with the flags of scripts/03-deepvariant.sh: the model
+    of --model_type (WGS, or WES for an exome, as the script's MODEL_TYPE),
+    the sample name from the samplesheet, one shard per CPU, and a gVCF
+    beside the VCF. The gVCF also records where the sample matches the
     reference; PRS and PharmCAT read their hom-ref genotypes from it.
 
     Sex: for a male sample chrX and chrY are called haploid outside the
     pseudoautosomal regions (assets/par_grch38.bed), so no impossible
     heterozygous call is made there. A female sample is diploid everywhere.
-    main.nf requires the sex on every row this process calls, and INDEXCOV
-    has checked it against the BAM before this runs.
+    main.nf requires the sex on every row this process calls. INDEXCOV has
+    checked it against the BAM before this runs; an exome's check is
+    somalier's (SAMPLE_QC), which runs beside this.
 
     --intervals (the script's INTERVALS) limits calling to space-separated
-    regions, passed to --regions.
+    regions, passed to --regions. An exome is called on the regions of
+    --capture_bed instead (main.nf refuses both): reads outside the capture
+    are off-target strays, and DeepVariant's exome model is trained on the
+    targets.
 
     Equivalent to: scripts/03-deepvariant.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -31,6 +36,7 @@ process DEEPVARIANT {
     path(reference)
     path(reference_fai)  // staged beside the FASTA
     path(par_bed)
+    path(capture_bed)    // --capture_bed with --model_type WES, or []
 
     output:
     tuple val(meta), path("${meta.id}.vcf.gz"), path("${meta.id}.vcf.gz.tbi"),     emit: vcf
@@ -42,10 +48,10 @@ process DEEPVARIANT {
 
     script:
     def haploid = meta.sex == 'male' ? "--haploid_contigs=chrX,chrY --par_regions_bed=${par_bed}" : ''
-    def regions = params.intervals ? "--regions \"${params.intervals}\"" : ''
+    def regions = capture_bed ? "--regions ${capture_bed}" : (params.intervals ? "--regions \"${params.intervals}\"" : '')
     """
     /opt/deepvariant/bin/run_deepvariant \\
-        --model_type=WGS \\
+        --model_type=${params.model_type} \\
         --ref=${reference} \\
         --reads=${bam} \\
         --output_vcf=${meta.id}.vcf.gz \\
@@ -64,7 +70,10 @@ process DEEPVARIANT {
     """
 
     stub:
+    // The stub prints the options the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
+    def regions = capture_bed ? "--regions ${capture_bed}" : (params.intervals ? "--regions \"${params.intervals}\"" : '')
     """
+    echo "run_deepvariant options: --model_type=${params.model_type} ${regions}"
     echo | gzip > ${meta.id}.vcf.gz
     echo | gzip > ${meta.id}.g.vcf.gz
     touch ${meta.id}.vcf.gz.tbi ${meta.id}.g.vcf.gz.tbi
