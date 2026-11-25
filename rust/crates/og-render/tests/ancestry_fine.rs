@@ -1,6 +1,6 @@
 //! Both reports of step 26b's table (`og ancestry-fine report` writes it):
 //! the groups with their bootstrap range, the group the model leaves out,
-//! the chromosome RFMix failed on, the painted shares and the painting.
+//! the chromosome the painting failed on, the painted shares and the painting.
 //! It replaces the render part of `tests/test_ancestry_fine_report.py`;
 //! og-ancestry's own tests check the table the report command writes.
 
@@ -25,7 +25,7 @@ painting\tWEA\tWest Eurasia (Europe, Middle East, North Africa)\t0.7000\t.\t.\t.
 painting\tAFR\tAfrica\t0.3000\t.\t.\t.
 left_out\tOCE\tOceania (continental group)\t.\t.\t.\t.
 left_out\tOCE\tOceania (regional group)\t.\t.\t.\t.
-not_painted\tchr19\tRFMix failed\t.\t.\t.\t.
+not_painted\tchr19\tpainting failed\t.\t.\t.\t.
 ";
 
 /// A scratch folder that is removed when the test ends, also when it fails.
@@ -121,9 +121,12 @@ fn both_reports_name_the_group_left_out_and_the_chromosome_not_painted() {
             ),
             "{doc}"
         );
-        assert!(doc.contains("not painted: RFMix failed on chr19"), "{doc}");
+        assert!(
+            doc.contains("not painted: the painting failed on chr19"),
+            "{doc}"
+        );
     }
-    assert!(txt.contains("Fine-Grained Ancestry (ADMIXTURE, RFMix)"));
+    assert!(txt.contains("## Fine-Grained Ancestry\n"));
     assert!(
         txt.contains("    West Eurasia (Europe, Middle East, North Africa)     90% (80% to 90%)"),
         "{txt}"
@@ -131,7 +134,7 @@ fn both_reports_name_the_group_left_out_and_the_chromosome_not_painted() {
     assert!(
         txt.contains(
             "  Chromosome painting, share of the painted genome: West Eurasia (Europe, Middle \
-             East, North Africa) 70%, Africa 30%; not painted: RFMix failed on chr19"
+             East, North Africa) 70%, Africa 30%; not painted: the painting failed on chr19"
         ),
         "{txt}"
     );

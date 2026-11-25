@@ -13338,7 +13338,7 @@
    }
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "missing",
    "source": null,
@@ -14330,7 +14330,7 @@
  "not_run": [
   "Mosaic loss of chromosome Y or X",
   "Variant calling",
-  "Fine-grained ancestry (ADMIXTURE, RFMix)",
+  "Fine-grained ancestry",
   "Structural variants (Delly)",
   "Y-STR markers (HipSTR)",
   "Blood groups (predicted)",

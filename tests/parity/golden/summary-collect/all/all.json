@@ -13776,7 +13776,7 @@
    "partial": "partial: covers 1 of 22 autosomes"
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "ok",
    "source": "ancestry_fine/S_ancestry_fine.tsv",

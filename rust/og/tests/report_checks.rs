@@ -1158,7 +1158,7 @@ fn the_prs_card_and_the_fine_ancestry_section_in_both_reports() {
         "26b: both reports still render with the PRS card beside this one"
     );
     assert!(
-        txt.contains("## Fine-Grained Ancestry (ADMIXTURE, RFMix)")
+        txt.contains("## Fine-Grained Ancestry\n")
             && txt
                 .contains("West Eurasia (Europe, Middle East, North Africa)     82% (76% to 88%)"),
         "26b: the text section has the group, its fraction and its bootstrap range:\n{txt}"

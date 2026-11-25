@@ -192,7 +192,7 @@
    "data": {}
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "missing",
    "source": null,
@@ -488,7 +488,7 @@
   "Paralog genes (Paraphase, PacBio HiFi)",
   "HLA typing (T1K)",
   "Polygenic risk scores",
-  "Fine-grained ancestry (ADMIXTURE, RFMix)",
+  "Fine-grained ancestry",
   "Structural variants (Manta)",
   "Structural variants (Delly)",
   "Copy number (CNVpytor)",

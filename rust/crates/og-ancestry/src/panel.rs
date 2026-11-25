@@ -4,8 +4,8 @@
 //! continental and regional group (`-` when in none), whether the person
 //! is a reference (unrelated, in a group, and the regional group has
 //! [`MIN_REFERENCES`] unrelated people), and whether it is one of the
-//! painting references (at most N per continental group, taken in turn from
-//! each population).
+//! painting references (at most N per continental group, `--paint-per-group`,
+//! 200 by default, taken in turn from each population).
 
 use crate::{Args, Fail, Level, MIN_REFERENCES, Pending, Result, Spec, groups_of, label};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -331,7 +331,7 @@ pub(crate) fn panel_map_main(a: &Args, out: &mut dyn Write) -> Result<()> {
             unknown.into_iter().collect::<Vec<_>>().join(", ")
         )));
     }
-    let paint_per_group = a.int("--paint-per-group", 100).unwrap_or(100);
+    let paint_per_group = a.int("--paint-per-group", 200).unwrap_or(200);
     let rows = panel_map(&meta, &samples, &exclude, paint_per_group, MIN_REFERENCES)?;
     let mut text = String::new();
     text.push_str(&HEADER.join("\t"));

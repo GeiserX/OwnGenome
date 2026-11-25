@@ -70,7 +70,7 @@
   - Paralog genes (Paraphase, PacBio HiFi)
   - HLA typing (T1K)
   - Polygenic risk scores
-  - Fine-grained ancestry (ADMIXTURE, RFMix)
+  - Fine-grained ancestry
   - Structural variants (Manta)
   - Structural variants (Delly)
   - Copy number (CNVpytor)

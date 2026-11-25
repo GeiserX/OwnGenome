@@ -1254,7 +1254,7 @@ install_fine_maps() {
 # case uses both, for the fixture's slices and the two people of its
 # synthetic mix. ANCESTRY_FINE_THIN (default 2kb) is the window that keeps
 # one SNV (the e2e case keeps more of its few megabases with 200bp), and
-# ANCESTRY_FINE_PAINT_PER_GROUP (default 50, at least 10) caps the painting
+# ANCESTRY_FINE_PAINT_PER_GROUP (default 200, at least 10) caps the painting
 # references of each continental group.
 install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
@@ -1263,7 +1263,7 @@ install_ancestry_fine_panel() {
   local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
-  echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
+  echo "  Step 26b finds the fractions and paints the chromosomes with og. The RFMix image is still pulled; RFMix is free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
@@ -1331,7 +1331,7 @@ install_ancestry_fine_panel() {
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
-          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
+          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-200}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
     echo "[WARN] Could not write the panel's sample table"
     return 1

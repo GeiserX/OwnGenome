@@ -16,16 +16,10 @@ Step 26b skipped: no fine-grained ancestry panel at <genome_dir>/reference/ances
 
 ## Tools
 
-Each choice is the tool with a maintained, pinned BioContainers image that fits a GitHub runner on a reduced panel.
+- **Beagle** 5.5 (Browning et al., AJHG 2021) phases your genotypes against the panel.
+- **og ancestry-fine**, OwnGenome's Rust tool, builds the model, projects the fractions, paints the phased chromosomes, and writes the report. `scripts/setup.sh --og` installs it. The bootstrap resamples 5 cM blocks and reference people.
 
-- **ADMIXTURE** 1.3.0 (Alexander et al., Genome Research 2009) for the fractions. Your genome is projected (`-P`) on each group's allele frequencies, which the install counts from the panel's reference people with `og ancestry-fine freqs`. That count is the exact maximum a supervised ADMIXTURE run (every reference person's group given) climbs to, so the install needs no ADMIXTURE run and no plink2. SCOPE, the faster alternative, has no BioContainers image.
-- **Beagle** 5.5 (Browning et al., AJHG 2021; GPL-3.0) phases your genotypes against the panel, since the painting needs the two copies apart.
-- **RFMix** 2.03 (Maples et al., AJHG 2013) for the painting. FLARE, the other candidate, has no BioContainers image.
-- **og ancestry-fine**, OwnGenome's Rust binary (`rust/crates/og-ancestry`), writes the panel's sample table, each group's allele frequencies, ADMIXTURE's input, the bootstrap script and the outputs. `scripts/setup.sh` builds it (`--og` builds only it).
-
-**Licences: ADMIXTURE is free for academic use, and RFMix for academic research use only.** [RFMix's notice](https://github.com/slowkoni/rfmix) says that commercial users and non-profits whose use is not academic research need a separate licence from Stanford's Office of Technology Licensing, so a personal analysis is not covered by it either; the program prints "licensed for non-commercial academic research use only" when it starts. ADMIXTURE's licence, as its Bioconda recipe gives it, is "Free for Academic Use". Check both before you run the step.
-
-ADMIXTURE's own bootstrap (`-B`) crashes with a segmentation fault when it is combined with projection (`-P`) in this build. The spread comes instead from a block bootstrap run by the step: each of 100 replicates draws 100 blocks of neighbouring SNVs with replacement and projects them again.
+Step 26b uses og for painting. RFMix is licensed for academic research and appears in the benchmark for comparison. [RFMix licence notice](https://github.com/slowkoni/rfmix)
 
 ## The Reference Panel
 
@@ -91,38 +85,50 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 ## What the Script Does Internally
 
 1. Genotypes the panel's SNVs from the gVCF (`bcftools convert --gvcf2vcf`, as step 25 does) and keeps a record only with the panel's two alleles. Both gVCF and VCF inputs keep only `FILTER=PASS` or `.`. LowQual, RefCall and other filtered records stay missing. Unfiltered reference blocks still count as reference. This can lower the genotype and reference counts. The VCF rule requiring one reference call in five uses those filtered counts.
-2. Writes a one-person ADMIXTURE input on the SNVs ADMIXTURE uses that you have a genotype for (ADMIXTURE stops on a SNV with no genotype, so a missing one is left out), projects it on each level's frequencies, then runs the bootstrap replicates.
-3. Chooses the chromosomes to paint: 100 genotyped SNVs or more spanning 5 cM or more. RFMix stops with a segmentation fault on a span of a few cM; on a whole genome every autosome spans more than 40 cM.
+2. Projects your genotypes on each level's reference frequencies with `og ancestry-fine project` and runs the bootstrap replicates.
+3. Chooses chromosomes with at least 100 genotyped SNVs spanning at least 5 cM.
 4. Phases those chromosomes with Beagle against the panel (`impute=false`, `seed=1`).
-5. Paints them with RFMix against 50 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group), `--random-seed=1`. When RFMix fails on a chromosome, the step prints the last lines of its log, writes the chromosome to `work/paint/failed.txt` and goes on with the next one; the reports list it as not painted.
+5. Paints them with `og ancestry-fine paint` against 200 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group). The model has two levels. First, for each continental group alone, a copying model over that group's reference haplotypes (Li and Stephens, as FLARE uses it) gives each site's evidence for the group, read both ways along the chromosome. Then an ancestry model over the groups calls each site's group from that evidence, weighted by 0.2, since neighbouring sites copied from one reference haplotype are not independent evidence. Its proportions stay at the continental fractions of part 2, and only the rate of ancestry changes is fitted, over all the chromosomes. It writes `work/paint/<chrom>.msp.tsv` and `work/paint/params.tsv`. A chromosome it cannot read (its phased file, panel or map missing or broken, a panel or phased file of another chromosome, a map with no marker, or no SNV shared with the panel) goes to `work/paint/failed.txt` with the reason in the log, and the others are still painted; the reports list it as not painted.
 6. Writes the outputs below.
 
-The Nextflow module (`modules/local/ancestry_fine`) runs the same parts as six processes, one per image, and the e2e test checks that it writes the fractions of the bash step.
+The Nextflow module (`modules/local/ancestry_fine`) runs five processes. The end-to-end case compares its fractions and painting with the Bash step.
 
 ## Output
 
 | File | Contents |
 |---|---|
-| `ancestry_fine/${SAMPLE}_ancestry_fine.tsv` | one row per group: `level` (`continent`, `region`, or `painting` for the share of the painted genome), `code`, `group`, `fraction`, `se` (bootstrap standard error), `low` and `high` (2.5 and 97.5 percentiles of the bootstrap). Also a `left_out` row for each group the model leaves out, and a `not_painted` row for each chromosome RFMix failed on, both with `.` in the number columns |
+| `ancestry_fine/${SAMPLE}_ancestry_fine.tsv` | one row per group: `level` (`continent`, `region`, or `painting` for the share of the painted genome), `code`, `group`, `fraction`, `se` (bootstrap standard error), `low` and `high` (2.5 and 97.5 percentiles of the bootstrap). Also a `left_out` row for each group the model leaves out, and a `not_painted` row (reason `painting failed`) for each chromosome the painting failed on, both with `.` in the number columns |
 | `ancestry_fine/${SAMPLE}_painting.bed` | the painting: chromosome, start, end, haplotype (1 or 2), continental group code |
 | `ancestry_fine/${SAMPLE}_painting.png` | chromosomes 1 to 22 to scale, two bars each, coloured by continental group; grey is not painted |
 | `ancestry_fine/${SAMPLE}_ancestry_fine.txt` | the same in plain text, with what it means |
-| `ancestry_fine/work/` | the genotypes, the phased haplotypes, ADMIXTURE's and RFMix's own files |
+| `ancestry_fine/work/` | the genotypes, the fractions and their fit, the phased haplotypes, and the painting (`paint/`) |
 
 The HTML and text reports have a section with the fractions, the painted shares and the picture.
 
 ## Runtime
 
-Measured in CI only, on the e2e job's reduced panel: the fixture's slices plus chr22:20-35 Mb, 4 CPUs.
+Historical end-to-end timings in CI on the reduced panel: the fixture's slices plus chr22:20-35 Mb, 4 CPUs.
 
 | Part | Time | Notes |
 |---|---|---|
 | `setup.sh --ancestry-fine-panel` on that panel | 1 min 43 s | 154 MB on disk, 7,789 SNVs of 4,089 people, 1,003 of them for ADMIXTURE |
 | The step on the fixture's slices from a gVCF (no chromosome long enough to paint) | 4 s | 2,136 panel SNVs genotyped |
-| The step with the painting of chr22:20-35 Mb | 1 min 19 s | 100 bootstrap replicates, 236 painting references (235 since Oceania left the model) |
-| The same through the Nextflow pipeline, with the HTML report | 1 min 38 s | six processes |
+| The step with the painting of chr22:20-35 Mb | 1 min 19 s | 100 bootstrap replicates, 236 painting references (235 since Oceania left the model), measured at the earlier cap of 50 per group |
+| The same through the Nextflow pipeline, with the HTML report | 1 min 38 s | earlier engine |
 
-A whole genome has not been run here. Expected, scaled from those numbers: the install reads about 19 GB from gnomAD's bucket and decodes every person's genotypes, a few hours on a fast connection; the step itself is dominated by RFMix, which grows with the number of SNVs and painting references.
+### Painting accuracy and runtime
+
+The benchmark used five simulated genomes per scenario, covering chromosomes 9, 15, and 21. Both engines painted with the same references from a panel capped at 200 per group. The simulator used a fixed set of 19 held-out people who each project at least 99% to their own continental group. Three are Karitiana or Surui references for the Americas, and each of the other groups contributes four. The held-out people were removed from the phasing panel, painting map, and frequency model.
+
+| Scenario | og accuracy | RFMix accuracy | og dosage R² | RFMix dosage R² | og seconds | RFMix seconds | og peak MiB | RFMix peak MiB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| S0 | 0.9981 | 0.9927 | 0.9988 | 0.9954 | 14 | 2663 | 140 | 1280 |
+| S1 | 0.9614 | 0.9657 | 0.9704 | 0.9738 | 17 | 2850 | 207 | 1287 |
+| S2 | 0.8764 | 0.8983 | 0.8829 | 0.9004 | 22 | 2779 | 216 | 1309 |
+| S3 | 0.7227 | 0.6267 | 0.7469 | 0.6618 | 15 | 2123 | 182 | 1272 |
+| S4 | 0.7817 | 0.6622 | 0.8049 | 0.6899 | 9 | 2880 | 206 | 1280 |
+
+In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9981 vs 0.9927) and on S3 (0.7227 vs 0.6267) and S4 (0.7817 vs 0.6622). og was slightly behind on recent two-way admixture (S1, 0.9614 vs 0.9657) and behind on recent three-way admixture (S2, 0.8764 vs 0.8983). For the recent mixes (S1 and S2), painting took about 20 seconds per genome and peaked at about 200 MB for og, compared with about 47 minutes and 1.3 GB for RFMix. Across all five scenarios, the range was 9 to 22 seconds and 140 to 216 MiB for og, and 35 to 48 minutes and 1,272 to 1,309 MiB for RFMix. The 1.1 follow-up will work on the gap in recent three-way admixture. See `docs/research/ancestry-engine-benchmark.md` in the repository for the simulation and scoring details.
 
 ## Interpreting Results
 
@@ -143,7 +149,7 @@ A whole genome has not been run here. Expected, scaled from those numbers: the i
 
 ## Notes
 
-- The e2e case (`tests/e2e/ancestry-fine-grained-1.sh`) checks HG002 from its gVCF, HG002's GIAB genotypes on chr22:20-35 Mb, and a planted person whose first half comes from a Yoruba and second half from a Han Chinese person (both left out of the panel): the planted person must come out near half and half with a painting that switches at the junction. A red control in the same case moves every reference person's label to the next group and checks that the HG002 checks then fail. The case also checks that Oceania is left out and named, and that RFMix's log of chr22 has no zero-size allocation; its red control runs RFMix on the same input with one Oceanian put back as its own group and finds that allocation in the log. A two-sample gVCF must stop the step and the Nextflow module with the reason and no fractions.
+- The e2e case (`tests/e2e/ancestry-fine-grained-1.sh`) checks HG002 from its gVCF, HG002's GIAB genotypes on chr22:20-35 Mb, and a planted person whose first half comes from a Yoruba and second half from a Han Chinese person (both left out of the panel): the planted person must come out near half and half with a painting that switches at the junction. A red control in the same case moves every reference person's label to the next group and checks that the HG002 checks then fail. The case also checks that Oceania is left out and named, and that og writes its fitted painting parameters for chr22. A two-sample gVCF must stop the step and the Nextflow module with the reason and no fractions.
 
 ## Links
 

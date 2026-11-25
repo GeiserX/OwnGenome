@@ -14,12 +14,12 @@ Regional groups (projection on the frequencies of 4 groups, 7 bootstrap replicat
   Iberia                                               60%  (55% to 67%)
   Italy                                                39%  (32% to 44%)
 
-Chromosome painting (RFMix, continental groups) of chr2, chr20, chrX: share of the 546.0 Mb painted on the two haplotypes
+Chromosome painting (og, continental groups) of chr2, chr20, chrX: share of the 546.0 Mb painted on the two haplotypes
   West Eurasia (Europe, Middle East, North Africa)     59%
   East Asia                                            18%
   Oceania                                              18%
   Africa                                                5%
-  Not painted: RFMix failed on chr3, chr19 (the step's log has its last lines).
+  Not painted: the painting failed on chr3, chr19 (the step's log says why).
 
 What this means: each name is a group of reference populations we put together and named,
 not a nationality. The fractions say which groups your genome is most similar to; the range
