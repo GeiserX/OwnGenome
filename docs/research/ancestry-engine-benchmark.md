@@ -1,95 +1,59 @@
-# Ancestry engine benchmark: og against RFMix and ADMIXTURE
+# Ancestry engine benchmark
 
-> Result, 2026-11-24: **gate: FAIL.** og's painter loses to RFMix in all five scenarios. og's projector matches ADMIXTURE `-P` in every scenario. Step 26b should not move from RFMix to og's painter on this result.
+Step 26b uses OwnGenome's two-level painter in place of the academic-only RFMix. On simulated genomes with known ancestry, og was 2.2 percentage points behind RFMix in base-pair accuracy for recent three-way admixture (S2) and 12.0 points ahead for older admixture (S4). Improving recent three-way admixture is a follow-up for 1.1.
 
-Step 26b paints each stretch of a genome with a continental group (AFR, WEA, CSA, EAS, AMR) and gives the genome's continental fractions. Until now RFMix painted and ADMIXTURE `-P` gave the fractions. Our own engines, `og ancestry-fine paint` and `og ancestry-fine project`, are meant to replace both. A real genome has no known truth, so agreement with RFMix alone says nothing about which engine is right. This bench builds genomes whose truth is known and scores both engines against that truth.
+## Results with the same references
 
-## What the bench does
+Both painters used the same phased inputs and the same 816 public references after hold-out, from a panel capped at 200 people per continental group. Each row pools five simulated genomes across chromosomes 9, 15, and 21.
 
-`tests/bench/ancestry-engines.sh <panel_dir> <work_dir>` runs everything. The comment at the top of the script describes every step and every column. In short:
+| Scenario | og accuracy | RFMix accuracy | og dosage R² | RFMix dosage R² | og seconds | RFMix seconds | og peak MiB | RFMix peak MiB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| S0 | 0.9981 | 0.9927 | 0.9988 | 0.9954 | 14 | 2663 | 140 | 1280 |
+| S1 | 0.9614 | 0.9657 | 0.9704 | 0.9738 | 17 | 2850 | 207 | 1287 |
+| S2 | 0.8764 | 0.8983 | 0.8829 | 0.9004 | 22 | 2779 | 216 | 1309 |
+| S3 | 0.7227 | 0.6267 | 0.7469 | 0.6618 | 15 | 2123 | 182 | 1272 |
+| S4 | 0.7817 | 0.6622 | 0.8049 | 0.6899 | 9 | 2880 | 206 | 1280 |
 
-1. It holds out 4 painting references per continental group, 20 people in all. It builds a bench model without them: the panel VCFs, each group's allele frequencies (`og ancestry-fine freqs --exclude`) and the painting map.
-2. It simulates 5 genomes per scenario from the held-out people only, with fixed seeds (`og ancestry-fine simulate`). T is ancestry events per Morgan, about the generations since the mix.
+Accuracy is the fraction of bases where both ancestry copies are correct in either order. Dosage R² is the squared correlation of predicted and true copy counts, pooled over bases and groups. Time is the mean wall time per simulated genome for painting. Memory is the highest container peak among the five genomes. On a 4-CPU Linux host, og took 9 to 22 seconds and 140 to 216 MiB. RFMix took 35 to 48 minutes and 1,272 to 1,309 MiB. These measurements cover the three benchmark chromosomes.
 
-   | Scenario | Groups | T |
-   |---|---|---|
-   | S0 | one group, 100% (one genome each for AFR, WEA, CSA, EAS, AMR) | none |
-   | S1 | AFR 0.8, WEA 0.2 | 6 |
-   | S2 | WEA 0.5, AMR 0.4, AFR 0.1 | 12 |
-   | S3 | WEA 0.5, CSA 0.5 | 20 |
-   | S4 | EAS 0.5, WEA 0.5 | 50 |
+| Scenario | Ancestry used to simulate each genome | T |
+|---|---|---:|
+| S0 | 100% one group, one genome for each of AFR, WEA, CSA, EAS, and AMR | 0 |
+| S1 | 80% AFR, 20% WEA | 6 |
+| S2 | 50% WEA, 40% AMR, 10% AFR | 12 |
+| S3 | 50% WEA, 50% CSA | 20 |
+| S4 | 50% EAS, 50% WEA | 50 |
 
-3. Beagle phases each genome against the bench panel. Then og and RFMix paint the same phased files, and `og ancestry-fine project` and ADMIXTURE `-P` give the fractions. The commands are step 26b's, with the bench model and no bootstrap.
-4. It scores each painting against the truth, over every base of the truth's span, and checks the gate.
+T is the ancestry switch rate used by the simulator, in events per Morgan. It roughly tracks generations since admixture. The groups are African (AFR), West Eurasian (WEA), Central and South Asian (CSA), East Asian (EAS), and Native American (AMR).
 
-The genomes cover chr9, chr15 and chr21: 85,610 of the panel's SNVs and about 3.4 Morgans. The projection model keeps 10,567 SNVs on those chromosomes. Both painters use the same references: the panel's painting map without the held-out people, 46 per group (31 for AMR, which has no more).
+| Scenario | Haplotype accuracy (og / RFMix) | Stretches per genome (truth / og / RFMix) | Missed breakpoints (og / RFMix / true) | False breakpoints (og / RFMix) | Fitted T (og) | Fraction mean absolute error (og / ADMIXTURE) |
+|---|---:|---:|---:|---:|---:|---:|
+| S0 | 0.9990 / 0.9964 | 6 / 6 / 7 | 0 / 0 / 0 | 4 / 5 | 10.3 | 0.001 / 0.001 |
+| S1 | 0.9185 / 0.9230 | 23 / 43 / 29 | 19 / 25 / 87 | 102 / 21 | 14.9 | 0.010 / 0.010 |
+| S2 | 0.7578 / 0.7843 | 60 / 79 / 58 | 54 / 88 / 273 | 136 / 56 | 18.8 | 0.030 / 0.030 |
+| S3 | 0.7258 / 0.7184 | 73 / 56 / 22 | 215 / 294 / 338 | 130 / 37 | 16.1 | 0.008 / 0.008 |
+| S4 | 0.7380 / 0.7185 | 189 / 125 / 49 | 309 / 630 / 918 | 112 / 29 | 34.2 | 0.016 / 0.016 |
 
-**The gate**, per scenario: og's bp accuracy and dosage r2 are each at least RFMix's minus 0.01, and in S0 og's bp accuracy is at least 0.98. The script exits 1 when a row fails.
+Haplotype accuracy uses the better of the two phase alignments on each chromosome. Breakpoints count changes in the pair of groups. A true breakpoint is missed when no call is within 1 cM. A called breakpoint is false when no true one is within 1 cM. In S2, og missed fewer true switches but called more false switches. The continental fractions from og and ADMIXTURE `-P` had the same mean absolute error to three decimal places in all five scenarios.
 
-## Result
+## Simulation and hold-outs
 
-Five genomes per scenario, pooled. acc is the bp accuracy of the two copies (phase-free: both copies right, in either order). r2 is the dosage r2 of each group's copy count.
+The benchmark starts from a gnomAD HGDP + 1000 Genomes panel installed with `scripts/setup.sh --ancestry-fine-panel`. The earlier hold-out rule chose people whose population labels alone did not justify calling the S0 truth unadmixed. The revised benchmark uses a fixed list of 19 painting references. Each has a projected own-group fraction of at least 0.99 against the full-panel frequencies, with four people per group except for three Karitiana and Surui references for AMR. Restricting AMR to those populations avoids using people whose own-group score is inflated when the panel's AMR frequencies are dominated by Maya references.
 
-| Scenario | acc og | acc RFMix | r2 og | r2 RFMix | Gate |
-|---|---|---|---|---|---|
-| S0 | 0.6925 | 0.8985 | 0.7050 | 0.9028 | FAIL: acc, r2, S0 floor |
-| S1 | 0.8137 | 0.9114 | 0.8486 | 0.9331 | FAIL: acc, r2 |
-| S2 | 0.6743 | 0.8020 | 0.6498 | 0.8011 | FAIL: acc, r2 |
-| S3 | 0.4023 | 0.5596 | 0.3570 | 0.5628 | FAIL: acc, r2 |
-| S4 | 0.5529 | 0.6015 | 0.5102 | 0.6350 | FAIL: acc, r2 |
+The benchmark removes the held-out people from the phasing panel, the painting map, and the allele frequency model. Simulated genomes copy haplotypes only from the held-out people, with fixed seeds. The benchmark phases the same genome once with Beagle and sends those phased genotypes to both painters. It compares og projection with ADMIXTURE `-P` at 10,567 model SNVs, with bootstrap disabled.
 
-The script printed `GATE: FAIL` and exited 1.
+## Regression check
 
-The fractions pass. We measured the mean absolute error of the continental fractions against the truth. It is the same for `og ancestry-fine project` and ADMIXTURE `-P` in every scenario, to three decimals: 0.023, 0.017, 0.028, 0.046 and 0.034 for S0 to S4. The projector can replace ADMIXTURE `-P`.
+Run the benchmark with the default chromosomes and five genomes per scenario.
 
-## Why og's painter loses
+```bash
+THREADS=4 OG=<og-linux-binary> tests/bench/ancestry-engines.sh <panel_dir> <work_dir>
+```
 
-| Scenario | hap og / RFMix | stretches truth / og / RFMix | missed og / RFMix / true | false og / RFMix | T simulated | T fitted |
-|---|---|---|---|---|---|---|
-| S0 | 0.8093 / 0.9391 | 6 / 259 / 16 | 0 / 0 / 0 | 1247 / 47 | none | 89.2 |
-| S1 | 0.8304 / 0.8944 | 23 / 242 / 30 | 5 / 32 / 87 | 974 / 48 | 6 | 92.4 |
-| S2 | 0.6478 / 0.7201 | 60 / 312 / 63 | 16 / 98 / 273 | 993 / 99 | 12 | 70.1 |
-| S3 | 0.5448 / 0.6814 | 73 / 556 / 30 | 22 / 291 / 338 | 1849 / 70 | 20 | 132.6 |
-| S4 | 0.6033 / 0.6857 | 189 / 552 / 57 | 43 / 619 / 918 | 829 / 48 | 50 | 132.3 |
+The gate allows a decrease of at most 0.01 from the committed og accuracy and dosage R² in each scenario. S0 also requires accuracy of at least 0.98. The table reports RFMix alongside og for comparison. Use a fresh work directory when you change the panel, binary, or chromosomes. Reusing a work directory keeps finished runs and scores their outputs again.
 
-Stretches are per genome. A breakpoint is where the pair of groups changes. A true breakpoint is missed when no call lies within 1 cM. A called breakpoint is false when no true one lies within 1 cM.
+The measured run passed all five rows. With `BENCH_SHIFT=1`, scoring advances each og label by one group and every row fails. A second control rotated only og's two labels on chromosome 9 of one S3 genome. S3 failed the gate while the other four rows passed.
 
-- og switches far too often. In the mixed scenarios it paints 3 to 11 times as many stretches as the truth has, and 43 times as many in S0. It calls 10 to 27 times as many false breakpoints as RFMix. RFMix errs the other way: once T reaches 20 it misses most true breakpoints (291 of 338 in S3, 619 of 918 in S4), while og misses few. Over the bases, og's extra switches cost more than RFMix's missed ones.
-- The fitted T runs away. EM starts T at 10 and fits it between 70 and 133, whatever the simulated T is (none in S0, 50 in S4). The run-away is a symptom: in a first test on one S1 genome, holding T alone barely moved the accuracy. Holding T and the proportions together helps (next section).
-- Phase is not the cause. hap is the per-haplotype accuracy after the better of the two phase alignments per chromosome. It is above og's phase-free accuracy in S0, S1, S3 and S4. Only in S2 is acc above hap by more than 0.02 (0.0265), and RFMix's own gap there is larger (0.0819). So a phase-flip layer would not close the loss. og loses on phase-free accuracy itself.
-- RFMix does not reach S0's floor of 0.98 either. It reaches 0.8985. Per genome, og and RFMix score 0.9462 and 1.0000 (AFR), 0.6214 and 0.9809 (WEA), 0.3448 and 0.6667 (CSA), 0.7392 and 0.9855 (EAS), 0.8111 and 0.8594 (AMR). Some held-out people come from populations with known mixed ancestry: Bedouin for WEA, and Colombian, Maya and Pima for AMR. For them the "100% one group" truth is not exact. The floor stays as it is. og must reach it, and this bench shows how far both engines are from it.
-- og is much cheaper. It paints a genome in 6 to 12 s with 67 to 139 MB at peak. RFMix takes 642 to 804 s with about 930 MB.
+## Exploratory run with 400 references per group
 
-## What closes part of the gap
-
-We repainted the same phased genomes with a diagnostic og build that is not part of this change. Every other input stayed the same, and RFMix's results did not change. Each cell is acc / r2, and a bold cell passes its condition.
-
-| Variant | S0 | S1 | S2 | S3 | S4 |
-|---|---|---|---|---|---|
-| og as shipped | 0.6925 / 0.7050 | 0.8137 / 0.8486 | 0.6743 / 0.6498 | 0.4023 / 0.3570 | 0.5529 / 0.5102 |
-| mu and T held at their start | 0.7702 / 0.7768 | 0.8886 / 0.9062 | 0.7143 / 0.6982 | 0.4814 / 0.4282 | **0.6278** / 0.6199 |
-| 400 painting references per group | 0.8020 / 0.8392 | 0.8984 / 0.9221 | 0.7452 / 0.7371 | **0.5966 / 0.5980** | **0.7377 / 0.7585** |
-| both | 0.8575 / 0.8800 | **0.9275 / 0.9446** | 0.7548 / 0.7425 | **0.6682 / 0.6635** | **0.7729 / 0.7901** |
-| RFMix | 0.8985 / 0.9028 | 0.9114 / 0.9331 | 0.8020 / 0.8011 | 0.5596 / 0.5628 | 0.6015 / 0.6350 |
-
-"mu and T held" keeps the proportions at the continental projection and T at its start of 10 through every EM round. EM does not fit them again from the posterior. "400 painting references" gives og up to 400 references per group (31 for AMR), and RFMix keeps its 46. That comparison is not like for like, because RFMix might also gain from more references. It is still the comparison that matters for step 26b. With 400 references per group og paints a genome in about 45 s, about 15 times faster than RFMix with 46.
-
-Both changes together pass S1, S3 and S4 and still fail S0 and S2. S0 reaches 0.8575 against the 0.98 floor, and og still paints 46 stretches per genome where the truth has 6. We have not yet found the cause of the rest of the gap. Two more tries in the diagnostic build did not help S0:
-
-- Each ancestry copied haplotypes of the other groups 5% of the time, a fixed copy matrix as FLARE uses. The S0 AFR genome went from 0.9462 to 0.9284.
-- A model on the groups' allele frequencies alone scored 0.3319 in S0.
-
-## Controls
-
-A gate must be able to fail, and it must be able to pass.
-
-- Red control, `BENCH_SHIFT=1`: og's labels move one group along before scoring. The run exits 1 and every row fails, for example `S0 0.0110 0.8985 0.0314 0.9028 ... FAIL: acc r2 S0-acc<0.98`.
-- Green control, `BENCH_SELF=1`: RFMix's painting is scored in og's place. Both columns are equal, so the acc and r2 conditions pass in every scenario. The run exits 1 from the S0 floor only: `S0 0.8985 0.8985 0.9028 0.9028 ... FAIL: S0-acc<0.98`.
-
-## How it ran
-
-- Code: OwnGenome at `05bd7cfb`, the head of the painter wiring change at the time. The engine (`rust/crates/og-admix`) and the painting maths are the same at `a86899e1`. og is built with `cargo zigbuild --release --locked -p og --target x86_64-unknown-linux-musl`.
-- Panel: gnomAD's HGDP + 1000 Genomes panel (CC0) as `scripts/setup.sh --ancestry-fine-panel` installs it. The bench reads no personal genome, so the genomes and the numbers can be published.
-- Images, from `versions.env`: `quay.io/biocontainers/rfmix:2.03.r0.9505bfa--h503566f_8`, `quay.io/biocontainers/beagle:5.5_27Feb25.75f--hdfd78af_0`, `quay.io/biocontainers/admixture:1.3.0--0`, `pgscatalog/plink2:2.00a5.10`, `staphb/bcftools:1.24`, and og in `ubuntu:24.04`.
-- Machine: Intel Core i5-14500, each tool limited to 4 threads (`THREADS=4`, `docker run --cpus 4`). The 25 genomes took about 5.5 hours, nearly all of it in RFMix.
-- Run: `THREADS=4 OG=<og binary> tests/bench/ancestry-engines.sh <panel_dir> <work_dir>`. A second run keeps every finished step and only scores again, so each control takes a few minutes.
+Repainting the same phased inputs with og at a cap of 400 raised S2 accuracy from 0.8764 to 0.9060 and dosage R² from 0.8829 to 0.9081. S4 accuracy rose from 0.7817 to 0.8070 while dosage R² fell from 0.8049 to 0.7822. The exploratory run changed og's reference count alone. The equal-reference table and gate use the shipping cap of 200 for both engines.

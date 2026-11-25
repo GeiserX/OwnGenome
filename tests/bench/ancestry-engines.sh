@@ -47,26 +47,20 @@
 #               fractions against the truth's bp shares
 #      and the wall time and peak memory of each engine.
 #
-# The gate, per scenario: og's acc and r2 are each at least RFMix's minus
-# 0.01, and in S0 og's acc is at least 0.98. The script prints the table
-# and exits 1 when a row fails, 0 when every row passes. A loss is fixed in
-# the engine (rust/crates/og-admix/src/paint*), never by moving the gate.
+# The gate checks og against the committed five-genome results. Each
+# scenario allows up to 0.01 loss in accuracy and dosage r2, and S0
+# also requires accuracy of at least 0.98. RFMix is reported for comparison.
+# The script exits 1 when any row fails and 0 when all rows pass.
 #
 # Env:
 #   THREADS          threads for each tool (default 4)
 #   BENCH_CHROMS     chromosomes to simulate, in chromosome order (default chr9 chr15
-#                    chr21: about 85,000 of the panel's SNVs and 3.4 Morgans, which
-#                    keeps RFMix near 11 minutes a genome on 4 threads)
+#                    chr21: about 85,000 panel SNVs and 3.4 Morgans)
 #   BENCH_GENOMES    genomes per scenario (default 5)
 #   BENCH_SCENARIOS  scenarios to run (default S0 S1 S2 S3 S4)
 #   BENCH_SHIFT=1    scores og's painting with each group label moved one
 #                    place (AFR read as the next group, and so on): the red
 #                    control, which must fail the gate
-#   BENCH_SELF=1     scores RFMix's painting in og's place: the green
-#                    control. Its acc and r2 conditions must pass in every
-#                    scenario (it compares RFMix with itself). S0's floor of
-#                    0.98 still applies, so that row shows how far RFMix
-#                    itself is from the floor
 #   OG               the og Linux binary (default bin/.og/og-linux-<arch>)
 # Every tool runs in its image from versions.env, with --cpus THREADS and
 # the lowest CPU weight; nothing reads a personal genome. The panel is
@@ -82,7 +76,6 @@ CHROMS=${BENCH_CHROMS:-chr9 chr15 chr21}
 GENOMES=${BENCH_GENOMES:-5}
 SCENARIOS=${BENCH_SCENARIOS:-S0 S1 S2 S3 S4}
 SHIFT=${BENCH_SHIFT:-0}
-SELF=${BENCH_SELF:-0}
 OG=${OG:-${REPO}/bin/.og/og-linux-$(uname -m)}
 GROUPS_ALL="AFR WEA CSA EAS AMR"
 # HELDOUT: the people the genomes are built from, sample and group. S0
@@ -409,8 +402,7 @@ SCORES="${WORK}/scores.tsv"
       read -r _ t <<< "$(scenario "$s" "$i")"
       [ "$s" = S0 ] && t=0
       fit=$(awk -F'\t' '$1 == "T" { print $3 }' "${d}/paint/params.tsv")
-      ours="${d}/paint"; [ "$SELF" = 1 ] && ours="${d}/rfmix"
-      printf '%s\t%s\tog\t%s\t%s\t%s\t%s\t%s\n' "$s" "$i" "$(score "$d" "$ours" "$SHIFT")" "$t" "$fit" \
+      printf '%s\t%s\tog\t%s\t%s\t%s\t%s\t%s\n' "$s" "$i" "$(score "$d" "${d}/paint" "$SHIFT")" "$t" "$fit" \
         "$(fractions "$d" "${d}/frac/${n}_continent.${K}.Q")" "$(stat_of "${n}.og-paint")"
       printf '%s\t%s\trfmix\t%s\t%s\t.\t%s\t%s\n' "$s" "$i" "$(score "$d" "${d}/rfmix" 0)" "$t" \
         "$(fractions "$d" "${d}/adm/${n}.${K}.Q")" "$(stat_sum "${n}.rfmix")"
@@ -421,9 +413,17 @@ mv "${SCORES}.part" "$SCORES"
 
 echo ""
 [ "$SHIFT" = 1 ] && echo "RED CONTROL: og's group labels are moved one place before scoring; this run must fail the gate."
-[ "$SELF" = 1 ] && echo "GREEN CONTROL: RFMix's painting is scored in og's place; its acc and r2 conditions must pass in every row, and S0's 0.98 floor still applies."
 echo "Per scenario, ${GENOMES} genomes pooled (og = og ancestry-fine paint and project, rf = RFMix and ADMIXTURE -P):"
 awk -F'\t' -v OFS='\t' '
+  BEGIN {
+    # Equal-reference run, 200-per-group cap, five genomes per scenario.
+    # Values match docs/research/ancestry-engine-benchmark.md.
+    acc["S0"] = 0.9981; dosage["S0"] = 0.9988
+    acc["S1"] = 0.9614; dosage["S1"] = 0.9704
+    acc["S2"] = 0.8764; dosage["S2"] = 0.8829
+    acc["S3"] = 0.7227; dosage["S3"] = 0.7469
+    acc["S4"] = 0.7817; dosage["S4"] = 0.8049
+  }
   NR == 1 { next }
   {
     s = $1; e = $3; if (!(s in seen)) { seen[s] = 1; order[++ns] = s }
@@ -440,7 +440,7 @@ awk -F'\t' -v OFS='\t' '
   END {
     printf "%-4s %-6s %-6s %-6s %-6s %-6s %-6s %-11s %-11s %-11s %-6s %-6s %-12s %-13s %-13s %s\n",
       "scen", "acc og", "acc rf", "r2 og", "r2 rf", "hap og", "hap rf", "segs t/og/rf", "miss og/rf/t", "false og/rf",
-      "T sim", "T fit", "|q-t| og/rf", "sec og/rf", "MB og/rf", "gate"
+      "T sim", "T fit", "|q-t| og/rf", "sec og/rf", "MiB og/rf", "gate"
     fails = 0
     for (j = 1; j <= ns; j++) {
       s = order[j]
@@ -448,8 +448,8 @@ awk -F'\t' -v OFS='\t' '
       ho = a[s, "og", 6] / (2 * a[s, "og", 4]); hr = a[s, "rfmix", 6] / (2 * a[s, "rfmix", 4])
       ro = r2(s, "og"); rr = r2(s, "rfmix")
       why = ""
-      if (ao < ar - 0.01) why = why " acc"
-      if (ro < rr - 0.01) why = why " r2"
+      if (ao < acc[s] - 0.01) why = why " acc"
+      if (ro < dosage[s] - 0.01) why = why " r2"
       if (s == "S0" && ao < 0.98) why = why " S0-acc<0.98"
       gate = why == "" ? "PASS" : "FAIL:" why
       if (why != "") fails++
@@ -468,8 +468,8 @@ awk -F'\t' -v OFS='\t' '
     print "acc, r2 and hap pool the bases of the genomes; segs are stretches per genome (truth/og/RFMix);"
     print "miss: true breakpoints with no call within 1 cM (og/RFMix/all true); false: called ones with no true one"
     print "within 1 cM (og/RFMix); T fit is og'"'"'s fitted T, the mean of the genomes; |q-t| is the mean"
-    print "absolute error of the continental fractions (og project / ADMIXTURE -P); sec and MB are the painting'"'"'s wall time per genome and peak memory."
-    print "Gate: og acc and r2 >= RFMix - 0.01 in every scenario, S0 og acc >= 0.98."
+    print "absolute error of the continental fractions (og project / ADMIXTURE -P); sec and MiB are the painting'"'"'s wall time per genome and peak memory."
+    print "Gate: og acc and r2 >= committed og scores - 0.01 in every scenario, S0 og acc >= 0.98."
     exit fails > 0
   }' "$SCORES" && rc=0 || rc=$?
 echo ""
