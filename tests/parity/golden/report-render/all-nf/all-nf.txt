@@ -67,12 +67,12 @@
 ## Clinical Variant Filter
 ---
   Clinical variants: 6
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
-    MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s), 1 with no GQ, DP or AD to judge the call), 0 class 4/5 SV(s), 3 not reported by the gene's rule
+    MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
-    MUTYH    chr1:45332000 G>A  het  stop_gained
-    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant
+    MUTYH    chr1:45332000 G>A  het  stop_gained; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)
+    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant; no GQ, DP or AD to judge the call, not counted as rare
     MSH2     chr2:47414000 A>AT  het  frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
     HFE chr6:26092913 G>A het (ClinVar): not reported, HFE is reported only for: HFE p.C282Y homozygotes only
     BTD chr3:15645186 G>C het (ClinVar): not reported, one heterozygous variant; BTD is reported with P and LP (2 variants)
@@ -154,25 +154,7 @@
 
 ## Repeat Expansions (ExpansionHunter)
 ---
-  Loci in output: 3
-  Stranger's result is older than ExpansionHunter's: rerun step 9b. No locus is marked as normal or expanded.
-  CFTR intron 9 (legacy IVS8) TG and poly-T tract: TG12-5T/TG12-5T
-    5T: 2 copys with the 5T poly-T tract, TG12 on the 5T copies. 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the 5T copy is not known. (Deignan et al. 2020, PMID 32404922)
-  UGT1A1 promoter TA repeat: *28/TA9
-    *28/TA9 (TA7/TA9, 8/10 TA units as ExpansionHunter counts them): a TA length outside TA5 to TA8 is not a named allele here, so its function is not read and it is not compared with PharmCAT (step 7). (Gammal et al. 2016, PMID 26417955)
-  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
-    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
-  Every locus (key loci first): repeat count, Stranger status, notes
-    HTT      not in output -
-    FMR1     not in output -
-    C9ORF72  not in output -
-    ATXN1    not in output -
-    DMPK     not in output -
-    CFTR_T   5/5        -
-    CFTR_TG  12/12      -
-    UGT1A1   8/10       -
-  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
-
+  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/str_intermediate_ranges.tsv']
 ## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)
 ---
   Result: not assessed
@@ -228,8 +210,8 @@
   Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside
   MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C>T het, ClinVar Pathogenic
   HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G>A het, ClinVar Pathogenic
-  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic
-  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic
+  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic; low-confidence call: check the reads
+  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic; low-confidence call: check the reads
   BRCA1 (Fanconi anemia; AR): chr17:43057100 C>T het, ClinVar Pathogenic
   HBA1 (Alpha-thalassemia; AR): chr16:176700 G>A het, ClinVar Pathogenic
   GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier
@@ -306,42 +288,15 @@
 
 ## HLA Typing (T1K)
 ---
-    HLA-DQA1 DQA1*03:01 (quality 0) / DQA1*01:01 (quality 30); low confidence (T1K quality 0 or below)
-    HLA-DQB1 DQB1*02:01 (quality 40)
-    HLA-DRB1 DRB1*04:01 (quality 40) / DRB1*07:01 (quality 40)
-  Coeliac DQ: not determined (HLA-DQA1 low confidence)
-  DQB1*02 copies: 2
-  DRB1*04:01 present: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  DQB1*06:02 absent: narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)
-  DRB1*15:01 absent: multiple sclerosis (Barcellos 2003, Am J Hum Genet)
-  DRB1*01:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  DRB1*04:04 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  DRB1*04:05 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  DRB1*04:08 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  DRB1*14:02 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
-  A*31:01 not determined (HLA-A not typed): carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)
-  B*15:02 not determined (HLA-B not typed): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)
-  B*57:01 not determined (HLA-B not typed): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)
-  B*58:01 not determined (HLA-B not typed): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)
-  B*27 not determined (HLA-B not typed): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)
-  C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006, Am J Hum Genet)
-  Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.
-  HLA database: unknown
-  HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).
-  OptiType check (HLA_QC=true, two fields):
-    not compared: OptiType did not run: no class I reads
-  KIR genes (T1K, KIR=true):
-    too few KIR reads
-  KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.
-
+  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/hla_alleles.tsv']
 ## Locityper Second Opinion at Hard Loci (step 53)
 ---
   [STALE: from an earlier run (2019-06-01 12:30 UTC); step 53 was skipped in the run of 2020-01-01 00:00 UTC]
   Loci called: 3 of 3; passing the authors' filter: 3
   HLA-DRB1  Locityper: h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)
-            primary:   T1K (step 08): DRB1*04:01/DRB1*07:01
+            primary:   T1K (step 08) did not run
   HLA-DQB1  Locityper: h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)
-            primary:   T1K (step 08): DQB1*02:01
+            primary:   T1K (step 08) did not run
   CYP2D6    Locityper: h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)
             primary:   pypgx (step 32): *1/*2; Cyrius (step 21): *1/*2 (not usable: Filter LowQ)
   A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (<sample>.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors' HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/<sample>_locityper.tsv.
