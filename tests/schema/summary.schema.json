@@ -675,6 +675,30 @@
              "total"
             ]
            }
+          },
+          "skipped": {
+           "description": "Scores of assets/pgs_scores.tsv free for academic research use only that this run did not score (og prs format leaves them out without --academic); written only when there is one.",
+           "type": "array",
+           "minItems": 1,
+           "items": {
+            "type": "object",
+            "required": [
+             "pgs_id",
+             "condition",
+             "reason"
+            ],
+            "properties": {
+             "pgs_id": {
+              "type": "string"
+             },
+             "condition": {
+              "type": "string"
+             },
+             "reason": {
+              "type": "string"
+             }
+            }
+           }
           }
          }
         }
