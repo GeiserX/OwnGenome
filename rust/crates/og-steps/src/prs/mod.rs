@@ -56,7 +56,8 @@ pub const EVALS_FILE: &str = "score_evaluations.tsv";
 const USAGE: &str = "usage: og prs format --scores DIR [--ids A,B] [--labels TSV] --out DIR --alleles F\n                     [--keep-x] [--keep-ambiguous --reference FASTA] [--academic]\n";
 
 /// Why a score was left out without `--academic`.
-pub const ACADEMIC_REASON: &str = "academic-only licence (PRS_ACADEMIC=true to include)";
+pub const ACADEMIC_REASON: &str =
+    "academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)";
 
 // Keep the shipped restrictions when the standalone CLI has no licence
 // labels. The formatter tests compare this behaviour to assets/pgs_scores.tsv.

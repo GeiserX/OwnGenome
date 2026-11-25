@@ -45,7 +45,7 @@ The list is [`assets/pgs_scores.tsv`](https://github.com/GeiserX/OwnGenome/blob/
 
 The four scores marked `academic-research` cover type 2 diabetes (PGS000014), atrial fibrillation (PGS000016), inflammatory bowel disease (PGS000017) and body mass index (PGS000027). The catalog makes them freely available to the academic community for research use. To include them, run `./scripts/setup.sh --prs-academic /path/to/genome_dir` and set `PRS_ACADEMIC=true` for step 25 or `scripts/run-all.sh`. In Nextflow, pass `--pgs_academic true`. The everything installer and run profiles enable this option. Coronary artery disease (PGS000018) is one of the 11 default scores.
 
-By default, the formatter leaves out the four scores even if an earlier setup installed them or the caller omits `--labels`. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason. The text and HTML reports print the reason alongside each skipped trait.
+By default, the formatter leaves out the four scores even if an earlier setup installed them or the caller omits `--labels`. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason, `academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)`. The text and HTML reports print the reason alongside each skipped trait.
 
 | Condition (PGS Catalog trait) | PGS ID | Variants | Publication |
 |---|---|---|---|
@@ -97,7 +97,7 @@ The other eight have none (checked on 2026-11-03). BMI, blood pressure, the lipi
 
 There is no schizophrenia score yet. An earlier version listed PGS000738 as schizophrenia, but that score is for vitiligo; a schizophrenia row comes back only once a score is chosen from the catalog and checked against the API.
 
-To add a score, record the Catalog's label and licence in `assets/pgs_scores.tsv`. Set `applies_to` to `female` or `male` for a sex-specific score, and add any evaluations the report uses. Use `og dev pgs licence` to get the required `licence` value from the API response. If the result is `academic-research`, add the ID to `SHIPPED_ACADEMIC_IDS` in `rust/crates/og-steps/src/prs/mod.rs` so the opt-in also applies when `--labels` is omitted.
+To add a score, record the Catalog's label and licence in `assets/pgs_scores.tsv`. Set `applies_to` to `female` or `male` for a sex-specific score, and add any evaluations the report uses. Use `og dev pgs licence` to get the required `licence` value from the API response. If the result is `academic-research`, add the ID to `SHIPPED_ACADEMIC_IDS` in `rust/crates/og-steps/src/prs/mod.rs` so the opt-in also applies when `--labels` is omitted. The list and the licence column change together, both when you add a restricted score and when the catalog lifts a restriction: a score whose licence becomes `author` must also leave `SHIPPED_ACADEMIC_IDS`, or the formatter keeps skipping it while the summary names no reason. The og-steps academic tests fail until both agree.
 
 ```bash
 curl -fsS https://www.pgscatalog.org/rest/score/PGS000017 > score.json

@@ -1541,7 +1541,7 @@ fn both_reports_name_each_academic_score_left_out() {
                     "Atrial fibrillation (PGS000016) skipped: academic-only licence",
                     "Inflammatory bowel disease (PGS000017) skipped: academic-only licence",
                     "Body mass index (BMI) (PGS000027) skipped: academic-only licence",
-                    "(PRS_ACADEMIC=true to include)",
+                    "(setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)",
                 ],
             );
         }
