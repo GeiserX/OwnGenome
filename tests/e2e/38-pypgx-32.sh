@@ -7,7 +7,8 @@ BUNDLE="${GENOME_DIR}/reference/pypgx-bundle"
 PYPGX_VERSION="${PYPGX_IMAGE##*:}"
 PYPGX_VERSION="${PYPGX_VERSION%%--*}"
 if [ ! -d "$BUNDLE" ]; then
-  git clone -q --branch "$PYPGX_VERSION" --depth 1 https://github.com/sbslee/pypgx-bundle.git "$BUNDLE"
+  clone_shallow_with_retry "$PYPGX_VERSION" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
+    || { fail "the pypgx bundle clone"; finish; }
 fi
 
 run_step 32-pypgx.sh "$SAMPLE"
