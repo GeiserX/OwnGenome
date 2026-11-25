@@ -580,7 +580,9 @@ mod tests {
             .collect();
         assert_eq!(
             map_problems(&nopaint, MIN_REFERENCES),
-            ["continental group AFR has no painting reference; the painter needs at least one in each group"]
+            [
+                "continental group AFR has no painting reference; the painter needs at least one in each group"
+            ]
         );
         // One painting reference is enough: the painter copies from its two
         // haplotypes.
