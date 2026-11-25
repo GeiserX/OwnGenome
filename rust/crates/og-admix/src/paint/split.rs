@@ -163,3 +163,168 @@ pub fn ancestry_fb(ell: &[f64], cm: &[f64], params: &Params, lambda: f64, na: us
     }
     Fb { posterior, stats }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::Range;
+
+    const CM: [f64; 5] = [0.0, 0.4, 0.4, 2.6, 3.1];
+    const GROUPS: usize = 3;
+
+    fn paths(states: usize, sites: usize) -> impl Iterator<Item = Vec<usize>> {
+        (0..states.pow(sites as u32)).map(move |mut code| {
+            (0..sites)
+                .map(|_| {
+                    let state = code % states;
+                    code /= states;
+                    state
+                })
+                .collect()
+        })
+    }
+
+    fn distance(site: usize) -> f64 {
+        (CM[site] - CM[site - 1]) / 100.0
+    }
+
+    // Enumerate all copying paths on an interval with a uniform initial copy.
+    // The copying transition is symmetric, so a suffix has the same joint
+    // probability whether its states are visited from the left or the right.
+    fn copy_likelihood(
+        panel: &RefPanel,
+        target: &Bits,
+        params: &Params,
+        group: usize,
+        sites: Range<usize>,
+    ) -> f64 {
+        let haps: Vec<_> = (0..panel.haplotypes())
+            .filter(|&hap| panel.group_of(hap) == group)
+            .collect();
+        if sites.is_empty() {
+            return 1.0;
+        }
+
+        let n = haps.len() as f64;
+        paths(haps.len(), sites.len())
+            .map(|path| {
+                let mut probability = 1.0 / n;
+                for (i, site) in sites.clone().enumerate() {
+                    if i > 0 {
+                        let stay = (-params.rho[group] * distance(site)).exp();
+                        let retain = if path[i - 1] == path[i] { stay } else { 0.0 };
+                        probability *= retain + (1.0 - stay) / n;
+                    }
+                    probability *= if target.get(site) == panel.allele(site, haps[path[i]]) {
+                        1.0 - params.epsilon
+                    } else {
+                        params.epsilon
+                    };
+                }
+                probability
+            })
+            .sum()
+    }
+
+    struct Exact {
+        evidence: Vec<f64>,
+        posterior: Vec<f64>,
+        loglik: f64,
+        events: f64,
+    }
+
+    fn enumerate_painting(panel: &RefPanel, target: &Bits, params: &Params) -> Exact {
+        let mut evidence = Vec::new();
+        for site in 0..CM.len() {
+            for group in 0..GROUPS {
+                let likelihood = |sites| copy_likelihood(panel, target, params, group, sites);
+                let forward = likelihood(0..site + 1) / likelihood(0..site);
+                let backward = likelihood(site..CM.len()) / likelihood(site + 1..CM.len());
+                evidence.push((forward * backward).sqrt().ln());
+            }
+        }
+
+        let mut posterior = vec![0.0; evidence.len()];
+        let mut likelihood = 0.0;
+        let mut events = 0.0;
+        for path in paths(GROUPS, CM.len()) {
+            // Each bit says whether the model redraws at that boundary.
+            // A redraw can keep the same group and still counts as an event.
+            for redraws in 0u32..1 << (CM.len() - 1) {
+                let mut weight = params.mu[path[0]];
+                for (site, &group) in path.iter().enumerate() {
+                    if site > 0 {
+                        let stay = (-params.generations * distance(site)).exp();
+                        weight *= if redraws & (1 << (site - 1)) != 0 {
+                            (1.0 - stay) * params.mu[group]
+                        } else if path[site - 1] == group {
+                            stay
+                        } else {
+                            0.0
+                        };
+                    }
+                    weight *= (0.2 * evidence[site * GROUPS + group]).exp();
+                }
+                likelihood += weight;
+                events += weight * f64::from(redraws.count_ones());
+                for (site, &group) in path.iter().enumerate() {
+                    posterior[site * GROUPS + group] += weight;
+                }
+            }
+        }
+        for value in &mut posterior {
+            *value /= likelihood;
+        }
+        Exact {
+            evidence,
+            posterior,
+            loglik: likelihood.ln(),
+            events: events / likelihood,
+        }
+    }
+
+    fn tiny_painting() -> (Vec<f64>, Fb, Exact) {
+        let mut panel = RefPanel::new(vec![0, 1, 2, 0, 2, 1, 2], GROUPS).unwrap();
+        for row in [0b001_0101, 0b111_0010, 0b011_1010, 0b110_0101, 0b100_0011] {
+            panel.push_site(&[row]);
+        }
+        let target = Bits::from_alleles(&[1, 0, 1, 1, 0]);
+        let params = Params {
+            mu: vec![0.2, 0.3, 0.5],
+            generations: 35.0,
+            epsilon: 0.07,
+            rho: vec![20.0, 70.0, 160.0],
+        };
+        let expected = enumerate_painting(&panel, &target, &params);
+        let evidence = local_evidence(&panel, &CM, &target, &params);
+        let fb = ancestry_fb(&evidence, &CM, &params, LAMBDA, GROUPS);
+        (evidence, fb, expected)
+    }
+
+    fn close(label: &str, actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() <= 1e-9,
+            "{label}: got {actual}, expected {expected}"
+        );
+    }
+
+    #[test]
+    fn split_posteriors_match_enumerated_paths() {
+        let (evidence, fb, expected) = tiny_painting();
+        assert_eq!(fb.posterior.len(), expected.posterior.len());
+        assert_eq!(evidence.len(), expected.evidence.len());
+        for (i, (actual, want)) in fb.posterior.iter().zip(expected.posterior).enumerate() {
+            close(&format!("ancestry posterior {i}"), *actual, want);
+        }
+        for (i, (actual, want)) in evidence.iter().zip(expected.evidence).enumerate() {
+            close(&format!("bidirectional copy evidence {i}"), *actual, want);
+        }
+    }
+
+    #[test]
+    fn split_likelihood_and_events_match_enumerated_paths() {
+        let (_, fb, expected) = tiny_painting();
+        close("ancestry redraws", fb.stats.events, expected.events);
+        close("tempered log likelihood", fb.stats.loglik, expected.loglik);
+    }
+}

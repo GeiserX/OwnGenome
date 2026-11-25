@@ -47,10 +47,12 @@
 #               fractions against the truth's bp shares
 #      and the wall time and peak memory of each engine.
 #
-# The gate checks og against the committed five-genome results. Each
-# scenario allows up to 0.01 loss in accuracy and dosage r2, and S0
-# also requires accuracy of at least 0.98. RFMix is reported for comparison.
-# The script exits 1 when any row fails and 0 when all rows pass.
+# With the default settings and the benchmark panel, the gate checks og
+# against the committed five-genome results. Each scenario allows up to
+# 0.01 loss in accuracy and dosage r2, and S0 requires accuracy of at
+# least 0.98. The gate exits 1 when any row fails and 0 when all rows pass.
+# Other settings report scores for both engines without applying floors.
+# BENCH_SHIFT=1 can test the gate on the default settings and panel.
 #
 # Env:
 #   THREADS          threads for each tool (default 4)
@@ -71,10 +73,14 @@ set -euo pipefail
 PANEL_IN=${1:?Usage: $0 <panel_dir> <work_dir>}
 WORK_IN=${2:?Usage: $0 <panel_dir> <work_dir>}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-THREADS=${THREADS:-4}
-CHROMS=${BENCH_CHROMS:-chr9 chr15 chr21}
-GENOMES=${BENCH_GENOMES:-5}
-SCENARIOS=${BENCH_SCENARIOS:-S0 S1 S2 S3 S4}
+DEFAULT_THREADS=4
+DEFAULT_CHROMS="chr9 chr15 chr21"
+DEFAULT_GENOMES=5
+DEFAULT_SCENARIOS="S0 S1 S2 S3 S4"
+THREADS=${THREADS:-$DEFAULT_THREADS}
+CHROMS=${BENCH_CHROMS:-$DEFAULT_CHROMS}
+GENOMES=${BENCH_GENOMES:-$DEFAULT_GENOMES}
+SCENARIOS=${BENCH_SCENARIOS:-$DEFAULT_SCENARIOS}
 SHIFT=${BENCH_SHIFT:-0}
 OG=${OG:-${REPO}/bin/.og/og-linux-$(uname -m)}
 GROUPS_ALL="AFR WEA CSA EAS AMR"
@@ -209,6 +215,21 @@ echo "    model: $(wc -l < "${WORK}/model/ref.bim" | tr -d ' ') SNVs, continenta
 for g in $GROUPS_ALL; do
   case ",${CODES}," in *",${g},"*) ;; *) echo "ERROR: the model has no group ${g}" >&2; exit 1 ;; esac
 done
+
+# Pin the painting references and model markers used for the floors in both
+# the input panel and the prepared model, which may come from a cached run.
+GATED=0
+if [[ "$CHROMS" == "$DEFAULT_CHROMS" && "$GENOMES" == "$DEFAULT_GENOMES" &&
+      "$SCENARIOS" == "$DEFAULT_SCENARIOS" && "$THREADS" == "$DEFAULT_THREADS" &&
+      ( "$SHIFT" == 0 || "$SHIFT" == 1 ) &&
+      $(cksum < "${PANEL}/model/paint_map.tsv") == "2775196785 11436" &&
+      $(cksum < "${PANEL}/model/ref.bim") == "1310136243 3254674" &&
+      $(cksum < "${WORK}/model/paint_map.tsv") == "166177856 11188" &&
+      $(cksum < "${WORK}/model/ref.bim") == "1786942341 309260" ]]; then
+  GATED=1
+else
+  echo "floors not applicable, ungated run (requires default settings and the benchmark panel and model)"
+fi
 
 # --- 2. and 3. Genomes and engines ---------------------------------------------------
 # scenario <S> <i>: "MU T" of genome i of scenario S.
@@ -412,9 +433,9 @@ SCORES="${WORK}/scores.tsv"
 mv "${SCORES}.part" "$SCORES"
 
 echo ""
-[ "$SHIFT" = 1 ] && echo "RED CONTROL: og's group labels are moved one place before scoring; this run must fail the gate."
+[ "$SHIFT" = 1 ] && echo "RED CONTROL: og's group labels are moved one place before scoring."
 echo "Per scenario, ${GENOMES} genomes pooled (og = og ancestry-fine paint and project, rf = RFMix and ADMIXTURE -P):"
-awk -F'\t' -v OFS='\t' '
+awk -F'\t' -v OFS='\t' -v gated="$GATED" '
   BEGIN {
     # Equal-reference run, 200-per-group cap, five genomes per scenario.
     # Values match docs/research/ancestry-engine-benchmark.md.
@@ -447,12 +468,15 @@ awk -F'\t' -v OFS='\t' '
       ao = a[s, "og", 5] / a[s, "og", 4]; ar = a[s, "rfmix", 5] / a[s, "rfmix", 4]
       ho = a[s, "og", 6] / (2 * a[s, "og", 4]); hr = a[s, "rfmix", 6] / (2 * a[s, "rfmix", 4])
       ro = r2(s, "og"); rr = r2(s, "rfmix")
-      why = ""
-      if (ao < acc[s] - 0.01) why = why " acc"
-      if (ro < dosage[s] - 0.01) why = why " r2"
-      if (s == "S0" && ao < 0.98) why = why " S0-acc<0.98"
-      gate = why == "" ? "PASS" : "FAIL:" why
-      if (why != "") fails++
+      gate = "UNGATED"
+      if (gated) {
+        why = ""
+        if (ao < acc[s] - 0.01) why = why " acc"
+        if (ro < dosage[s] - 0.01) why = why " r2"
+        if (s == "S0" && ao < 0.98) why = why " S0-acc<0.98"
+        gate = why == "" ? "PASS" : "FAIL:" why
+        if (why != "") fails++
+      }
       g = ng[s, "og"]
       printf "%-4s %-6.4f %-6.4f %-6.4f %-6.4f %-6.4f %-6.4f %-11s %-11s %-11s %-6s %-6.1f %-12s %-13s %-13s %s\n",
         s, ao, ar, ro, rr, ho, hr,
@@ -469,11 +493,12 @@ awk -F'\t' -v OFS='\t' '
     print "miss: true breakpoints with no call within 1 cM (og/RFMix/all true); false: called ones with no true one"
     print "within 1 cM (og/RFMix); T fit is og'"'"'s fitted T, the mean of the genomes; |q-t| is the mean"
     print "absolute error of the continental fractions (og project / ADMIXTURE -P); sec and MiB are the painting'"'"'s wall time per genome and peak memory."
-    print "Gate: og acc and r2 >= committed og scores - 0.01 in every scenario, S0 og acc >= 0.98."
+    if (gated) print "Gate: og acc and r2 >= committed og scores - 0.01 in every scenario, S0 og acc >= 0.98."
     exit fails > 0
   }' "$SCORES" && rc=0 || rc=$?
 echo ""
 echo "Scores per genome: ${SCORES}"
+[ "$GATED" -eq 1 ] || exit "$rc"
 if [ "$rc" -ne 0 ]; then
   echo "GATE: FAIL"
   exit 1

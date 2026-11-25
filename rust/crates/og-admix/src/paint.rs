@@ -33,8 +33,9 @@
 //! better buy an ancestry switch, and EM then raises T to explain them.
 //!
 //! Memory: the reference haplotypes take M H / 8 bytes over all M sites of
-//! the genome, the level-1 evidence 8 A bytes per site and haplotype, and
-//! each running haplotype 24 A bytes per site of its chromosome.
+//! the genome. The level-1 evidence and retained posteriors each take 8 A
+//! bytes per site for every target haplotype. Each running haplotype uses
+//! up to 24 A bytes per site of its chromosome for the ancestry pass.
 
 pub mod bits;
 pub mod hmm;

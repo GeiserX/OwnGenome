@@ -1,6 +1,6 @@
 # Ancestry engine benchmark
 
-Step 26b uses OwnGenome's two-level painter in place of the academic-only RFMix. On simulated genomes with known ancestry, og was 2.2 percentage points behind RFMix in base-pair accuracy for recent three-way admixture (S2) and 12.0 points ahead for older admixture (S4). Improving recent three-way admixture is a follow-up for 1.1.
+Step 26b uses OwnGenome's two-level painter in place of the academic-only RFMix. In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9981 vs 0.9927) and on S3 (0.7227 vs 0.6267) and S4 (0.7817 vs 0.6622). og was slightly behind on recent two-way admixture (S1, 0.9614 vs 0.9657) and behind on recent three-way admixture (S2, 0.8764 vs 0.8983). For the recent mixes (S1 and S2), painting took about 20 seconds per genome and peaked at about 200 MB for og, compared with about 47 minutes and 1.3 GB for RFMix. Improving recent three-way admixture is a follow-up for 1.1.
 
 ## Results with the same references
 
@@ -50,7 +50,7 @@ Run the benchmark with the default chromosomes and five genomes per scenario.
 THREADS=4 OG=<og-linux-binary> tests/bench/ancestry-engines.sh <panel_dir> <work_dir>
 ```
 
-The gate allows a decrease of at most 0.01 from the committed og accuracy and dosage R² in each scenario. S0 also requires accuracy of at least 0.98. The table reports RFMix alongside og for comparison. Use a fresh work directory when you change the panel, binary, or chromosomes. Reusing a work directory keeps finished runs and scores their outputs again.
+The gate applies to the benchmark panel and model at the default chromosome list, genome count, scenario list, and thread count. It allows a decrease of at most 0.01 from the committed og accuracy and dosage R² in each scenario. S0 also requires accuracy of at least 0.98. Other configurations print `floors not applicable, ungated run` and report scores for both engines. Use a fresh work directory when you change the panel, binary, or chromosomes. Reusing a work directory keeps finished runs and scores their outputs again.
 
 The measured run passed all five rows. With `BENCH_SHIFT=1`, scoring advances each og label by one group and every row fails. A second control rotated only og's two labels on chromosome 9 of one S3 genome. S3 failed the gate while the other four rows passed.
 

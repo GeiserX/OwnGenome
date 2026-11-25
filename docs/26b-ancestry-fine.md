@@ -128,7 +128,7 @@ The benchmark used five simulated genomes per scenario, covering chromosomes 9, 
 | S3 | 0.7227 | 0.6267 | 0.7469 | 0.6618 | 15 | 2123 | 182 | 1272 |
 | S4 | 0.7817 | 0.6622 | 0.8049 | 0.6899 | 9 | 2880 | 206 | 1280 |
 
-S0 is unadmixed. S1 and S3 are two-way mixes at different ages. For recent three-way admixture (S2), og was about 2 percentage points behind RFMix in accuracy. For older admixture (S4), og was about 12 points ahead. The comparison ran on a 4-CPU Linux host and measures the painting step per simulated genome. The 1.1 follow-up will work on the gap in recent three-way admixture. See `docs/research/ancestry-engine-benchmark.md` in the repository for the simulation and scoring details.
+In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9981 vs 0.9927) and on S3 (0.7227 vs 0.6267) and S4 (0.7817 vs 0.6622). og was slightly behind on recent two-way admixture (S1, 0.9614 vs 0.9657) and behind on recent three-way admixture (S2, 0.8764 vs 0.8983). For the recent mixes (S1 and S2), painting took about 20 seconds per genome and peaked at about 200 MB for og, compared with about 47 minutes and 1.3 GB for RFMix. Across all five scenarios, the range was 9 to 22 seconds and 140 to 216 MiB for og, and 35 to 48 minutes and 1,272 to 1,309 MiB for RFMix. The 1.1 follow-up will work on the gap in recent three-way admixture. See `docs/research/ancestry-engine-benchmark.md` in the repository for the simulation and scoring details.
 
 ## Interpreting Results
 
