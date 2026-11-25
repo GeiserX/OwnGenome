@@ -198,4 +198,4 @@ rust-z2e-readers	bin/og tests/e2e/lib.sh scripts/ci/image-smoke.sh scripts/ci/nf
 rust-c2b-traits	assets/traits.tsv assets/genotype_rules.tsv bin/og modules/local/traits/* scripts/42-traits.sh
 qc-3-cram-checksum	modules/local/cram_archive/* scripts/34-cram-archive.sh scripts/lib/common.sh
 gvcf-pass-gate	scripts/26b-ancestry-fine.sh modules/local/ancestry_fine/main.nf scripts/44-ancient.sh modules/local/ancient/main.nf scripts/25-prs.sh modules/local/prs/main.nf bin/og
-roh-af-dflt-1-planted	docs/11-roh-analysis.md scripts/11-roh-analysis.sh scripts/ci/fake-docker/lib.sh bin/og
+roh-af-dflt-1-planted	scripts/11-roh-analysis.sh scripts/ci/fake-docker/lib.sh bin/og
