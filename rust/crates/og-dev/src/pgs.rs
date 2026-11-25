@@ -6,6 +6,7 @@
 //! og dev pgs trait --id PGS000018 < score.json
 //! og dev pgs label-match LABEL TRAIT
 //! og dev pgs metric-match --id PGS --ppm PPM --ancestry GROUP --effect "OR 1.61" < performance.json
+//! og dev pgs licence --id PGS000014 < score.json
 //! ```
 //!
 //! - `trait` prints the score's `trait_reported`, or exits 1 when the
@@ -18,6 +19,13 @@
 //!   score, was measured only in samples of that ancestry group and reports
 //!   that odds or hazard ratio; 1 when it does not; 2 when the answer is not
 //!   an evaluation with that id.
+//! - `licence` prints the score's `license` as the `licence` column of
+//!   `assets/pgs_scores.tsv` names it: `author` for the catalog's default
+//!   text (cite the score, use it as its authors allow) and
+//!   `academic-research` for "Freely available to the academic community for
+//!   research use". It exits 1 for any other text, or an answer that is not
+//!   for that id: a licence the catalog adds or changes needs a person to
+//!   read it, so the check fails closed.
 //!
 //! Where it differs from the Python on purpose: a JSON `true` is never the
 //! number 1, so `"estimate": true` no longer matches `OR 1`; and an answer
@@ -32,7 +40,39 @@ use pycompat::json::{Value, loads};
 use pycompat::value::{py_str, truthy};
 use regex::Regex;
 
-const USAGE: &str = "usage: og dev pgs trait --id PGS_ID < ANSWER\n       og dev pgs label-match LABEL TRAIT\n       og dev pgs metric-match --id PGS_ID --ppm PPM_ID --ancestry GROUP --effect 'OR|HR N' < ANSWER\n";
+const USAGE: &str = "usage: og dev pgs trait --id PGS_ID < ANSWER\n       og dev pgs label-match LABEL TRAIT\n       og dev pgs metric-match --id PGS_ID --ppm PPM_ID --ancestry GROUP --effect 'OR|HR N' < ANSWER\n       og dev pgs licence --id PGS_ID < ANSWER\n";
+
+/// The PGS Catalog's default `license` text: no restriction beyond the
+/// authors' own.
+const AUTHOR_TERMS: &str = "PGS obtained from the Catalog should be cited appropriately, and used in accordance with any licensing restrictions set by the authors. See EBI Terms of Use (https://www.ebi.ac.uk/about/terms-of-use/) for additional details.";
+/// How an academic-only `license` text starts.
+const ACADEMIC_TERMS: &str = "Freely available to the academic community for research use.";
+
+/// `text` with its runs of white space made one space, ends trimmed.
+fn squeeze(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The `licence` column value of score `id` in `body`: `author`,
+/// `academic-research`, or None for an answer for another id, one with no
+/// licence, or a licence text the check does not know.
+pub fn licence_of(body: &str, id: &str) -> Option<&'static str> {
+    let d = loads(body).ok()?;
+    if !matches!(d, Value::Object(_)) || !is_str(field(&d, "id"), id) {
+        return None;
+    }
+    let Some(Value::Str(text)) = field(&d, "license") else {
+        return None;
+    };
+    let text = squeeze(text);
+    if text == AUTHOR_TERMS {
+        Some("author")
+    } else if text.starts_with(ACADEMIC_TERMS) {
+        Some("academic-research")
+    } else {
+        None
+    }
+}
 
 /// The PGS Catalog `ancestry_broad` terms of each 1000 Genomes group
 /// pgsc_calc reports (its ancestry_distribution uses the same codes).
@@ -233,6 +273,18 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             match stdin().ok().and_then(|b| trait_of(&b, v[0])) {
                 Some(t) => {
                     let _ = writeln!(out, "{t}");
+                    0
+                }
+                None => 1,
+            }
+        }
+        Some("licence") => {
+            let Some(v) = opts(&args[1..], &["--id"]) else {
+                return usage(err);
+            };
+            match stdin().ok().and_then(|b| licence_of(&b, v[0])) {
+                Some(l) => {
+                    let _ = writeln!(out, "{l}");
                     0
                 }
                 None => 1,
