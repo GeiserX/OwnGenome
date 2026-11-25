@@ -661,8 +661,8 @@ fn every_caveat_is_the_reports_own() {
     }
     assert_eq!(note_literals(&src), Vec::<String>::new());
     // Red control: a copied caveat is caught.
-    let copied = format!("{src}\nconst X: &str = \"{}\";\n", notes::ROH_NOTE);
-    assert_eq!(note_literals(&copied), ["ROH_NOTE"]);
+    let copied = format!("{src}\nconst X: &str = \"{}\";\n", notes::MCA_NOTE);
+    assert_eq!(note_literals(&copied), ["MCA_NOTE"]);
 }
 
 #[test]

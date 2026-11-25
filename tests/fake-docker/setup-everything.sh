@@ -77,6 +77,9 @@ printf 'dict\n' > "${G}/reference/GRCh38_no_alt_analysis_set.dict"
 mkdir -p "${G}/gnomad_mito"
 printf 'fixture\n' > "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
 printf 'GNOMAD_MITO_SHA256="%s"\n' "$(sha256sum "${G}/gnomad_mito/${GNOMAD_MITO_URL##*/}" | awk '{print $1}')" >> "${COPY}/versions.env"
+mkdir -p "${G}/roh_af"
+printf 'fixture\n' > "${G}/roh_af/${ROH_AF_PANEL_URL##*/}"
+printf 'ROH_AF_PANEL_SHA256="%s"\n' "$(sha256sum "${G}/roh_af/${ROH_AF_PANEL_URL##*/}" | awk '{print $1}')" >> "${COPY}/versions.env"
 
 # Reuse the paths the unmodified base setup checks. Each file is a preinstalled fixture.
 # shellcheck disable=SC2016  # the inner Bash resolves the installed paths

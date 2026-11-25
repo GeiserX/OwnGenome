@@ -322,6 +322,7 @@ param	hla_genes	-	-	-	-	stable	-	-
 param	gencode_exons	-	-	-	-	stable	-	-
 param	mito_clinvar	-	-	-	-	stable	-	-
 param	gnomad_mito	-	-	-	-	stable	-	-
+param	roh_af_panel	-	-	-	-	stable	-	-
 param	kir	-	-	-	-	experimental	-	-
 param	kir_dat	-	-	-	-	experimental	-	-
 param	hla_qc	-	-	-	-	experimental	-	-

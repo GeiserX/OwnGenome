@@ -274,7 +274,13 @@ fn card(section: &Sec, chapter: &str, summary: &Summary, files: Option<&BTreeSet
     let mut flagged = false;
     let caveats: Vec<_> = notes::section_notes(section.id)
         .iter()
-        .filter_map(|name| notes::text(name))
+        .filter_map(|name| {
+            let name = match *name {
+                "ROH_NOTE" => notes::roh_note_key(get(summary.section("roh").data, "af_used")),
+                name => name,
+            };
+            notes::text(name)
+        })
         .collect();
     for sec in sections {
         let raw = get(raw_sections, sec.key);

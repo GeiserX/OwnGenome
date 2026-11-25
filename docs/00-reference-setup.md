@@ -162,11 +162,44 @@ It downloads the new file under `clinvar/.refresh/`, checks the md5, builds both
 | `reference/gencode.v50.basic.genes.gtf` | the gene lines of GENCODE 50's basic annotation (md5 checked) | step 8 (gene positions for T1K) | step 8 is skipped |
 | `reference/gencode.v50.basic.exons.bed` | the exon intervals of the same GENCODE 50 basic annotation, written from the same download as the gene lines (md5 checked) | steps 6 and 17 and Nextflow `--gencode_exons` with `clinvar` (cDNA read check); step 39 and `--gencode_exons` with `--pedigree` (deletions over an exon) | steps 6 and 17 and `CLINVAR_CDNA_CHECK` write every hit as `not_checked`; step 39 does not use deletions |
 | `gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz` | gnomAD v3.1's mitochondrial sites, about 5 MB (`GNOMAD_MITO_URL`, sha256 `GNOMAD_MITO_SHA256` in `versions.env`, checked by `setup.sh` and `validate-setup.sh`) | step 20 (gnomAD AF_hom, AF_het and max_hl beside each chrM call) | step 20 writes its annotation table with the gnomAD columns empty, and `validate-setup.sh` warns (it fails on a file whose sha256 is not the pinned one) |
+| `roh_af/roh_af_gnomad_v4.1.tsv.gz` and its `.tbi` | step 11's allele-frequency panel: the 7,439,999 biallelic PASS SNVs of chr1 to chr22 with a global AF of 0.01 to 0.99 in gnomAD v4.1 genomes (CC0), with the global AF and five continental group AFs, about 208 MB. A release asset of this repository built by `og dev build roh-af` ([below](#roh-allele-frequency-panel)); `ROH_AF_PANEL_URL`, sha256 `ROH_AF_PANEL_SHA256` in `versions.env`, checked by `setup.sh`, which then indexes it with `tabix` | step 11 and Nextflow `--roh_af_panel` (`bcftools roh --AF-file`) | step 11 gives every site an allele frequency of 0.4 (`--AF-dflt 0.4`) and says so; `validate-setup.sh` does not check it |
 | `reference/GRCh38_AllTandemRepeats.bed.gz` and its unpacked copy `reference/GRCh38_AllTandemRepeats.bed` | every GRCh38 tandem repeat of GIAB's genome stratifications v3.6 (TRF and RepeatMasker simple repeats, 5 bp added on each side), about 9 MB, NIST data free to reuse (`TANDEM_REPEATS_URL`, sha256 `TANDEM_REPEATS_SHA256` in `versions.env`, checked by `setup.sh`). Sniffles2 reads a plain BED only, so setup keeps the unpacked copy beside the download | step 04c (`sniffles --tandem-repeats`, long reads only) | step 04c prints a note and runs Sniffles2 without it: SVs inside repeats get less precise breakpoints and merging |
 | `reference/somalier/sites.hg38.vcf.gz` | somalier's GRCh38 sites, 17,766 SNPs (sha256 checked, also when the file is already there: one with another sha256 gets a warning and is downloaded again) | step 33 (`somalier extract`), Nextflow `--somalier_sites` | step 33 stops and says to install it |
 | `reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{UD,mu,bed}` | VerifyBamID2's 1000 Genomes panel of 100,000 markers, from the VerifyBamID v2.0.3 release (sha256 checked, also when a file is already there, as for the sites) | step 33 (`verifybamid2`), Nextflow `--verifybamid2_panel` | step 33 stops and says to install it |
 
 `setup.sh` also writes the reference's sequence dictionary (`GRCh38_no_alt_analysis_set.dict`), which GATK, Picard and `chip-to-vcf.sh` need. It holds the MD5 of each sequence, which `validate-setup.sh` compares with the pinned values ([above](#grch38-reference-genome)).
+
+## ROH allele-frequency panel
+
+Step 11 (`bcftools roh`) needs each site's population allele frequency: see [Allele frequencies](11-roh-analysis.md#allele-frequencies). gnomAD publishes them in its genome sites VCFs, 563 GB for chr1 to chr22, far more than step 11 needs. `og dev build roh-af` keeps the biallelic PASS SNVs of chr1 to chr22 whose global AF is 0.01 to 0.99, with the global AF and the AFs of the African (`afr`), admixed American (`amr`), East Asian (`eas`), non-Finnish European (`nfe`) and South Asian (`sas`) groups, copied as gnomAD writes them (`.` where a group has no allele number). A site is biallelic when gnomAD saw one alternate allele at its position (`n_alt_alleles=1`). The result is one tab-separated file, `CHROM POS REF,ALT AF AF_afr AF_amr AF_eas AF_nfe AF_sas`, in BGZF; its first four columns are the `--AF-file` format of `bcftools roh`, which reads column 4 only.
+
+`setup.sh` downloads the published file (`ROH_AF_PANEL_URL`), checks its sha256 and writes its index with `tabix -s1 -b2 -e2` from `GATK_IMAGE`. To build it again from gnomAD, byte for byte, with `og` built from this checkout: each VCF streams through `og` and is not kept, and each stream's MD5 is compared with the one gnomAD's bucket lists for the file (a stream cut short makes `og` stop with "the gzip input ends inside a member").
+
+```bash
+#!/usr/bin/env bash
+# A failed download, a failed og run or an MD5 that differs stops the build
+# before the panel is joined.
+set -euo pipefail
+mkdir -p rows
+for c in $(seq 1 22); do
+  f=gnomad.genomes.v4.1.sites.chr${c}.vcf.bgz
+  want=$(curl -sS --fail "https://storage.googleapis.com/storage/v1/b/gcp-public-data--gnomad/o/release%2F4.1%2Fvcf%2Fgenomes%2F${f}?fields=md5Hash" \
+    | sed -n 's/.*"md5Hash": *"\([^"]*\)".*/\1/p')
+  curl -sS --fail "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes/${f}" | tee >(openssl dgst -md5 -binary | base64 > "rows/chr${c}.md5") \
+    | bin/og dev build roh-af rows --vcf - --out "rows/chr${c}.tsv"
+  sleep 2
+  if [ -z "$want" ] || [ "$(cat "rows/chr${c}.md5")" != "$want" ]; then
+    echo "chr${c}: MD5 differs from gnomAD's, build it again" >&2
+    exit 1
+  fi
+done
+bin/og dev build roh-af panel --rows $(printf 'rows/chr%s.tsv ' $(seq 1 22)) --out roh_af_gnomad_v4.1.tsv.gz
+sha256sum roh_af_gnomad_v4.1.tsv.gz   # ROH_AF_PANEL_SHA256
+```
+
+Run it as a script, not pasted into a shell: `exit 1` stops it. `og dev build roh-af rows` also fails on an input with no `#CHROM` line, such as an empty download.
+
+`og dev build roh-af panel ... --check` compares a panel with what the rows give and exits 1 when they differ. The published panel was built this way, three chromosomes at a time, in 1 h 45 min. That is 563 GB read at about 90 MB/s. It holds 7,439,999 sites and is 207,888,195 bytes. It is published as a release asset of the tag `data-roh-af-gnomad-v4.1`, the file `ROH_AF_PANEL_URL` names.
 
 ## AnnotSV Annotations (~5 GB)
 
