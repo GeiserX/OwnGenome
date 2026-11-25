@@ -1369,6 +1369,52 @@ fn the_switches_a_replay_may_set_are_the_ones_run_all_records() {
 }
 
 #[test]
+fn a_replay_of_an_academic_prs_run_keeps_the_opt_in() {
+    // run-all.sh records PRS_ACADEMIC=true like any other switch. A replay
+    // that refused or dropped it would leave out the four academic scores.
+    let g = genome("academic-replay", Opt::default());
+    let launch = g.root.parent().unwrap().join("launch");
+    let script = launch.join("scripts/run-all.sh");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    let seen = g.root.parent().unwrap().join("seen.txt");
+    fs::write(
+        &script,
+        format!(
+            "printf '%s\\n' \"${{PRS_ACADEMIC-unset}}\" > '{}'\n",
+            s(&seen)
+        ),
+    )
+    .unwrap();
+    chmod_x(&script);
+    let q = |p: &Path| s(p).replace(' ', "\\ ");
+    let cmd = format!(
+        "cd {} && PRS_ACADEMIC=true {} S1 male",
+        q(&launch),
+        q(&script)
+    );
+    let st = fs::read_to_string(g.status())
+        .unwrap()
+        .replace("echo replayed", &cmd)
+        .replace(
+            "switches\tGENOME_DIR TOOLS",
+            "switches\tGENOME_DIR TOOLS PRS_ACADEMIC",
+        );
+    fs::write(g.status(), st).unwrap();
+    let off = fix("offline.json");
+    let (rc, out, err) = cli(&[
+        "--sample",
+        "S1",
+        "--genome-dir",
+        s(&g.root),
+        "--offline",
+        s(&off),
+        "--rerun",
+    ]);
+    assert_eq!(rc, 0, "{out}{err}");
+    assert_eq!(fs::read_to_string(&seen).unwrap(), "true\n");
+}
+
+#[test]
 fn rerun_refuses_a_command_that_is_not_a_run_all_call_and_runs_nothing() {
     let off = fix("offline.json");
     let base = tmp("inject");
