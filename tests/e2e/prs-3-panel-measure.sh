@@ -43,9 +43,15 @@ if [ "${1:-}" = --download ]; then
   mkdir -p "$DIR"
   t0=$(date +%s)
   url="${RES}/${PGSC_PANEL}.tar.zst"
-  size=$(curl -fsSIL "$url" | tr -d '\r' | awk 'tolower($1) == "content-length:" {n = $2} END {print n}')
-  want=$(curl -fsSL "${RES}/md5s.txt" | awk -v f="${PGSC_PANEL}.tar.zst" '$2 == f {print $1}')
-  if [ -z "$size" ] || [ -z "$want" ]; then echo "fail no-size-or-md5" > "$STATUS"; exit 1; fi
+  if ! size=$(curl -fsSIL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+      -o /dev/null -w '%header{content-length}' "$url") \
+    || ! curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+      -o "${CASE_TMP}/md5s.txt" "${RES}/md5s.txt" \
+    || ! want=$(awk -v f="${PGSC_PANEL}.tar.zst" '$2 == f {print $1}' "${CASE_TMP}/md5s.txt") \
+    || [ -z "$size" ] || [ -z "$want" ]; then
+    echo "fail no-size-or-md5" > "$STATUS"
+    exit 1
+  fi
   n=8 chunk=$(( (size + 7) / 8 ))
   pids=()
   for i in $(seq 0 $((n - 1))); do
@@ -114,12 +120,16 @@ check_ge "GRCh38 SNVs in the site list" "${N_SITES:-0}" 100000
 G="${CASE_TMP}/genomewide"
 rm -rf "$G"
 mkdir -p "$G"
-curl -fsSL -o "${G}/target.tar.zst" "${RES}/GRCh38_HAPNEST_target.tar.zst"
+curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+  -o "${G}/target.tar.zst" "${RES}/GRCh38_HAPNEST_target.tar.zst" \
+  || { fail "the HAPNEST target download"; finish; }
 tar -C "$G" --zstd -xf "${G}/target.tar.zst" && rm -f "${G}/target.tar.zst"
 PREFIX=$(find "$G" -name '*.pgen' | head -1); PREFIX=${PREFIX%.pgen}
 check "the HAPNEST target is unpacked" test -s "${PREFIX}.pgen"
-curl -fsSL -o "${G}/PGS000018_hmPOS_GRCh38.txt.gz" \
-  https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000018/ScoringFiles/Harmonized/PGS000018_hmPOS_GRCh38.txt.gz
+curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+  -o "${G}/PGS000018_hmPOS_GRCh38.txt.gz" \
+  https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000018/ScoringFiles/Harmonized/PGS000018_hmPOS_GRCh38.txt.gz \
+  || { fail "the PGS000018 score download"; finish; }
 printf 'sampleset,path_prefix,chrom,format\ntest,%s,,pfile\n' "$PREFIX" > "${G}/samplesheet.csv"
 t0=$(date +%s)
 ( cd "$G" && timeout -k 60 2100 nextflow -log "${G}/nextflow.log" run "${CALC}/main.nf" -profile docker -ansi-log false -work-dir "${G}/work" \
