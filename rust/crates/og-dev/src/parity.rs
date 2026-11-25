@@ -1,5 +1,5 @@
 //! `og dev parity-compare KIND ORACLE NEW`: compares a file the Python
-//! oracle wrote with the one its port wrote, by meaning.
+//! goldens record with the one og writes, by meaning.
 //!
 //! Exit 0 when they are the same, 1 when they differ (the first difference
 //! on stdout), 2 when the kind is unknown or a file cannot be read.
@@ -25,7 +25,7 @@ use og_io::{Lines, Utf8};
 use pycompat::json::{self, Value};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{BufRead, Read};
+use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
 /// A comparison kind with its options.
@@ -123,7 +123,7 @@ impl Kind {
 /// differ, `Err` when one cannot be read as `kind` says.
 pub type Outcome = Result<Option<String>, String>;
 
-/// Compares `oracle` with `new` as `kind` says.
+/// Compares the expected file with the actual one as the kind says.
 pub fn compare(kind: &Kind, oracle: &Path, new: &Path) -> Outcome {
     match kind {
         Kind::Bytes => bytes(&mut open_raw(oracle)?, &mut open_raw(new)?),
@@ -189,13 +189,7 @@ pub fn compare(kind: &Kind, oracle: &Path, new: &Path) -> Outcome {
         Kind::Mask(re) => {
             let mark = |ls: Vec<String>| -> Vec<String> {
                 ls.into_iter()
-                    .map(|l| {
-                        if re.is_match(&l) {
-                            "\u{0}masked".to_owned()
-                        } else {
-                            l
-                        }
-                    })
+                    .map(|l| masked_line(re, &l).to_owned())
                     .collect()
             };
             Ok(list(&mark(lines(oracle)?), &mark(lines(new)?), "line"))
@@ -236,6 +230,93 @@ fn lines(p: &Path) -> Result<Vec<String>, String> {
         out.push(l.strip_suffix('\n').unwrap_or(&l).to_owned());
     }
     Ok(out)
+}
+
+fn masked_line<'a>(pattern: &regex::Regex, line: &'a str) -> &'a str {
+    if pattern.is_match(line) {
+        "\u{0}masked"
+    } else {
+        line
+    }
+}
+
+/// The canonical byte stream has one representation for files that compare
+/// equal. The harness hashes this stream for files over its golden size cap.
+fn canonical(kind: &str, path: &Path, out: impl Write) -> Result<(), String> {
+    let mut out = io::BufWriter::new(out);
+    let write = |e: io::Error| e.to_string();
+    match Kind::parse(kind)? {
+        Kind::Bytes => {
+            io::copy(&mut open_raw(path)?, &mut out).map_err(write)?;
+        }
+        Kind::GzContent | Kind::Content => {
+            let mut raw = open_raw(path)?;
+            let gzip = raw
+                .fill_buf()
+                .map_err(|e| err(path, e))?
+                .starts_with(&[0x1f, 0x8b]);
+            if kind == "gz-content" && !gzip {
+                return Err(err(path, "not gzip"));
+            }
+            out.write_all(&[u8::from(gzip)]).map_err(write)?;
+            if gzip {
+                io::copy(&mut open_text(path)?, &mut out).map_err(write)?;
+            } else {
+                io::copy(&mut raw, &mut out).map_err(write)?;
+            }
+        }
+        Kind::ZipContent => {
+            for (name, content) in zip::members(&read(path)?)? {
+                canonical_field(&mut out, name.as_bytes()).map_err(write)?;
+                canonical_field(&mut out, &content).map_err(write)?;
+            }
+        }
+        Kind::Mask(pattern) => {
+            let mut rows = Lines::new(open_text(path)?, Utf8::Strict);
+            let mut row = String::new();
+            while rows.read_line(&mut row).map_err(|e| err(path, e))? {
+                let line = row.strip_suffix('\n').unwrap_or(&row);
+                writeln!(out, "{}", masked_line(&pattern, line)).map_err(write)?;
+            }
+        }
+        Kind::Tsv {
+            keys: None,
+            unordered: false,
+        } => canonical_tsv(path, &mut out)?,
+        _ => return Err(format!("canonical output is unavailable for kind {kind}")),
+    }
+    out.flush().map_err(write)
+}
+
+fn canonical_field(out: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+    out.write_all(&(bytes.len() as u64).to_le_bytes())?;
+    out.write_all(bytes)
+}
+
+fn canonical_tsv(path: &Path, mut out: impl Write) -> Result<(), String> {
+    let mut rows = Lines::new(open_text(path)?, Utf8::Strict);
+    let mut row = String::new();
+    let mut comments = Vec::new();
+    let write = |e: io::Error| e.to_string();
+    while rows.read_line(&mut row).map_err(|e| err(path, e))? {
+        let line = row.strip_suffix('\n').unwrap_or(&row);
+        if line.starts_with('#') {
+            comments.push(line.to_owned());
+            continue;
+        }
+        let cells = line.split('\t');
+        out.write_all(b"R").map_err(write)?;
+        out.write_all(&(cells.clone().count() as u64).to_le_bytes())
+            .map_err(write)?;
+        for cell in cells {
+            canonical_field(&mut out, unquote(cell).as_bytes()).map_err(write)?;
+        }
+    }
+    out.write_all(b"C").map_err(write)?;
+    for comment in comments {
+        canonical_field(&mut out, comment.as_bytes()).map_err(write)?;
+    }
+    Ok(())
 }
 
 /// Streams both readers; the first differing byte, with its line.
@@ -579,6 +660,15 @@ fn json_diff(a: &Value, b: &Value, here: &str, tol: Option<f64>) -> Option<Strin
 pub fn cli(args: &[String]) -> u8 {
     match args {
         [flag] if flag == "--self-test" => crate::parity::self_test::run(),
+        [flag, kind, path] if flag == "--canonical" => {
+            match canonical(kind, Path::new(path), io::stdout().lock()) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("og dev parity-compare: {e}");
+                    2
+                }
+            }
+        }
         [kind, oracle, new] => {
             let kind = match Kind::parse(kind) {
                 Ok(k) => k,
@@ -601,7 +691,7 @@ pub fn cli(args: &[String]) -> u8 {
         }
         _ => {
             eprintln!(
-                "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test"
+                "usage: og dev parity-compare KIND EXPECTED ACTUAL\n       og dev parity-compare --canonical KIND FILE\n       og dev parity-compare --self-test"
             );
             2
         }
