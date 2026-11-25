@@ -89,7 +89,8 @@ D="${SAMPLE}dup"
 BUNDLE="${G}/reference/pypgx-bundle"
 if [ ! -d "$BUNDLE" ]; then
   V="${PYPGX_IMAGE##*:}"
-  git clone -q --branch "${V%%--*}" --depth 1 https://github.com/sbslee/pypgx-bundle.git "$BUNDLE"
+  clone_shallow_with_retry "${V%%--*}" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
+    || { fail "the pypgx bundle clone"; finish; }
 fi
 DUP_ID="$D" EXTRA_TOOLS=pypgx,pharmcat,cpic nf_run male male --sex_check warn --pypgx_bundle "$BUNDLE"
 check_eq "declared male, --sex_check warn: the run exits 0" "$RC" 0
