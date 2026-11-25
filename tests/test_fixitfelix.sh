@@ -72,9 +72,9 @@ if grep -qx built <<< "$GOT"; then
 else fail "setup.sh masks without making sure og is built"; fi
 if grep -qx nopy <<< "$GOT"; then pass "the masking program before og (MASK_FASTA_PY) is gone from setup.sh"
 else fail "the masking program before og (MASK_FASTA_PY) is still in setup.sh"; fi
-# control: the same checks on setup.sh as it was before og (the commit
-# tests/parity/oracle.ref names), cut to the lines that matter, with the
-# program's interpreter and text left out
+# Control: check the relevant lines of setup.sh from before og
+# (23a028d37fbceb465ae4de8a263f5da6c9ec8e80).
+# See tests/parity/golden/setup-mask-fasta for the frozen masking outputs.
 cat > "${WORK}/old-setup.sh" <<'OLD'
 install_masked_reference() {
   local src=$REF_FASTA dest bed want got dir log
