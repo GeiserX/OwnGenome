@@ -5,9 +5,8 @@
   panel-map    a group of fewer than 10 unrelated people (one Oceanian, three
                San) is no reference and no painting reference, and the
                install log names it as left out
-  check-map    panel-map's table passes; one Oceanian put back as reference
-               and painting reference, a short row, a flag other than 0 or 1
-               and a table with no reference person each stop it
+  check-map    panel-map's table passes; a short row, a flag other than 0
+               or 1 and a table with no reference person each stop it
   chroms       a chromosome is painted only with 100 SNVs spanning 5 cM
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
