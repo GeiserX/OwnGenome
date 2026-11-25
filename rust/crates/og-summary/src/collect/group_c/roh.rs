@@ -474,6 +474,111 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
     crate::finish(run(), err)
 }
 
+// --- og roh af-file ------------------------------------------------------------
+
+const AF_FILE_USAGE: &str = "usage: og roh af-file --panel PANEL --group GROUP --out OUT\n";
+
+/// Step 11's allele frequencies of one gnomAD group: each row of the
+/// panel (`roh_af/` of setup.sh, `og dev build roh-af`) whose `AF_<group>`
+/// column reads as a number of 0.01 to 0.99, the global panel's range, as
+/// CHROM, POS, REF,ALT and that AF, the 4 columns `bcftools roh --AF-file`
+/// reads. A `.` (no allele number in the group) is left out. The number is
+/// read as awk reads one, and written as it stands in the panel. Returns
+/// the rows written; a panel with no `AF_<group>` column is an error.
+pub fn af_rows(
+    panel: &mut dyn std::io::BufRead,
+    group: &str,
+    out: &mut dyn Write,
+) -> Result<u64, String> {
+    let want = format!("AF_{group}");
+    let (mut col, mut kept, mut line) = (None, 0u64, Vec::new());
+    loop {
+        line.clear();
+        match panel.read_until(b'\n', &mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => return Err(e.to_string()),
+        }
+        if line.last() == Some(&b'\n') {
+            line.pop();
+        }
+        if let Some(head) = line.strip_prefix(b"#CHROM\t") {
+            col = head
+                .split(|&c| c == b'\t')
+                .position(|h| h == want.as_bytes())
+                .map(|i| i + 1);
+            continue;
+        }
+        if line.first() == Some(&b'#') {
+            continue;
+        }
+        let Some(c) = col else {
+            return Err(format!(
+                "no #CHROM line naming a {want} column before the first row"
+            ));
+        };
+        let f: Vec<&[u8]> = line.split(|&b| b == b'\t').collect();
+        let Some(&af) = f.get(c).filter(|_| f.len() >= 3) else {
+            continue;
+        };
+        if !(0.01..=0.99).contains(&awk_num(&String::from_utf8_lossy(af))) {
+            continue;
+        }
+        let mut row = [f[0], f[1], f[2], af].join(&b"\t"[..]);
+        row.push(b'\n');
+        out.write_all(&row).map_err(|e| e.to_string())?;
+        kept += 1;
+    }
+    if col.is_none() {
+        return Err(format!("no #CHROM line naming a {want} column"));
+    }
+    Ok(kept)
+}
+
+/// `og roh af-file`: [`af_rows`] of `--panel` (BGZF or plain), written to
+/// `--out` as BGZF with the index `tabix -s1 -b2 -e2` writes beside it,
+/// `OUT.tbi`, for step 11 and the ROH module alike. Exit 0 when written; 1
+/// when the panel cannot be read, has no such group or keeps no row, or an
+/// output cannot be written; 2 for a command line it cannot read.
+pub fn af_file_cli(argv: &[String], err: &mut impl Write) -> u8 {
+    use crate::args::{Kind, Opt, parse};
+    use og_io::{AtomicFile, bgzf, tabix_write};
+    use std::num::NonZero;
+    const OPTS: &[Opt] = &[
+        Opt("--panel", Kind::Value, true),
+        Opt("--group", Kind::Value, true),
+        Opt("--out", Kind::Value, true),
+    ];
+    let a = match parse(argv, OPTS) {
+        Ok(a) => a,
+        Err(e) => {
+            let _ = write!(err, "{AF_FILE_USAGE}");
+            let _ = writeln!(err, "og roh af-file: error: {e}");
+            return 2;
+        }
+    };
+    let (panel, group, path) = (a.text("--panel"), a.text("--group"), a.text("--out"));
+    let run = || -> Result<(), String> {
+        let mut input = og_io::open(panel).map_err(|e| format!("cannot read {panel}: {e}"))?;
+        let cannot = |e: std::io::Error| format!("cannot write {path}: {e}");
+        let two = NonZero::new(2).expect("2 is not 0");
+        let mut w =
+            bgzf::Writer::new(AtomicFile::create(path).map_err(cannot)?, two).map_err(cannot)?;
+        let kept = af_rows(&mut input, group, &mut w).map_err(|e| format!("{panel}: {e}"))?;
+        if kept == 0 {
+            return Err(format!("{panel}: no row has an AF_{group} of 0.01 to 0.99"));
+        }
+        w.finish().and_then(AtomicFile::commit).map_err(cannot)?;
+        let index = std::fs::File::open(path)
+            .and_then(tabix_write::build_positions)
+            .map_err(|e| format!("cannot index {path}: {e}"))?;
+        index
+            .write_tbi(std::path::Path::new(&format!("{path}.tbi")), true)
+            .map_err(|e| format!("cannot write {path}.tbi: {e}"))
+    };
+    crate::finish(run(), err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,5 +659,90 @@ mod tests {
             1
         );
         assert_eq!(cli(&argv(&["--roh", "x"]), &mut out, &mut err), 2);
+    }
+
+    const PANEL: &str = "# a panel\n\
+        #CHROM\tPOS\tREF,ALT\tAF\tAF_afr\tAF_amr\tAF_eas\tAF_nfe\tAF_sas\n\
+        chr1\t10\tA,G\t0.5\t0.5\t0.5\t0.5\t0.4\t.\n\
+        chr1\t20\tA,G\t0.5\t0.5\t0.5\t0.5\t.\t0.2\n\
+        chr1\t30\tC,T\t0.5\t0.5\t0.5\t0.5\t0.00999\t0.2\n\
+        chr1\t40\tC,T\t0.5\t0.5\t0.5\t0.5\t0.01\t0.2\n\
+        chr2\t5\tG,A\t0.5\t0.5\t0.5\t0.5\t0.99\t0.2\n\
+        chr2\t6\tG,A\t0.5\t0.5\t0.5\t0.5\t0.9901\t0.2\n\
+        chr2\t7\tG,A\t0.5\t0.5\t0.5\t0.5\t2.5e-01\t0.2\n\
+        chr2\t8\tG,A\t0.5\n";
+
+    /// The rows the awk of step 11 kept:
+    /// `$1 !~ /^#/ && $c != "." && $c + 0 >= 0.01 && $c + 0 <= 0.99 {print $1, $2, $3, $c}`.
+    #[test]
+    fn af_rows_keep_the_group_rows_awk_kept() {
+        let mut out = Vec::new();
+        let n = af_rows(&mut PANEL.as_bytes(), "nfe", &mut out).unwrap();
+        assert_eq!(n, 4);
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "chr1\t10\tA,G\t0.4\nchr1\t40\tC,T\t0.01\nchr2\t5\tG,A\t0.99\nchr2\t7\tG,A\t2.5e-01\n"
+        );
+        let mut out = Vec::new();
+        assert_eq!(af_rows(&mut PANEL.as_bytes(), "sas", &mut out).unwrap(), 6);
+        let e = af_rows(&mut PANEL.as_bytes(), "fin", &mut Vec::new()).unwrap_err();
+        assert!(e.contains("AF_fin"), "{e}");
+        let e = af_rows(
+            &mut "chr1\t10\tA,G\t0.5\n".as_bytes(),
+            "nfe",
+            &mut Vec::new(),
+        )
+        .unwrap_err();
+        assert!(e.contains("before the first row"), "{e}");
+    }
+
+    /// The verb writes the rows as BGZF and the `-s1 -b2 -e2` index of
+    /// them beside it; a group with no row in range writes nothing.
+    #[test]
+    fn af_file_writes_bgzf_and_its_positions_index() {
+        let d = Dir::new("roh-af-file");
+        let panel = d.put_gz("panel.tsv.gz", PANEL);
+        let out = d.path("s_roh_af.tsv.gz");
+        let argv = |g: &str| {
+            ["--panel", &panel, "--group", g, "--out", &out]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect::<Vec<_>>()
+        };
+        let mut err = Vec::new();
+        assert_eq!(
+            af_file_cli(&argv("nfe"), &mut err),
+            0,
+            "{}",
+            String::from_utf8_lossy(&err)
+        );
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!(&bytes[..4], [0x1f, 0x8b, 8, 4], "BGZF");
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut og_io::open(&out).unwrap(), &mut text).unwrap();
+        assert!(
+            text.starts_with("chr1\t10\tA,G\t0.4\n") && text.lines().count() == 4,
+            "{text}"
+        );
+        let want = og_io::tabix_write::build_positions(&bytes[..])
+            .unwrap()
+            .into_bytes();
+        let mut tbi = Vec::new();
+        std::io::Read::read_to_end(&mut og_io::open(format!("{out}.tbi")).unwrap(), &mut tbi)
+            .unwrap();
+        assert_eq!(tbi, want);
+        assert_eq!(&tbi[..4], b"TBI\x01");
+
+        std::fs::remove_file(&out).unwrap();
+        std::fs::remove_file(format!("{out}.tbi")).unwrap();
+        d.put_gz(
+            "panel.tsv.gz",
+            "#CHROM\tPOS\tREF,ALT\tAF\tAF_nfe\nchr1\t1\tA,G\t0.5\t.\n",
+        );
+        let mut err = Vec::new();
+        assert_eq!(af_file_cli(&argv("nfe"), &mut err), 1);
+        assert!(String::from_utf8_lossy(&err).contains("no row has an AF_nfe"));
+        assert!(!std::path::Path::new(&out).exists(), "nothing written");
+        assert_eq!(af_file_cli(&argv("nfe")[..4], &mut Vec::new()), 2);
     }
 }
