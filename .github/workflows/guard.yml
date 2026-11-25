@@ -233,10 +233,9 @@ jobs:
 
   # Three shards: one job ran every test file in about 9.5 of its 10 minutes,
   # so each new browser test pushed it over. File i runs in shard i % 3, so
-  # every file runs in exactly one shard. The limit is 25 minutes: the shard
-  # that holds the browser tests of the live page takes about 13, and
-  # test_live_demo.py alone takes about 12 of those, so no split of files
-  # between shards brings it under 15.
+  # every file runs in exactly one shard. The limit is 25 minutes, set when
+  # the shard that held the live page's Python browser tests took about 13;
+  # those tests run in Rust now, in the chrome job.
   unit-tests:
     needs: og
     runs-on: ubuntu-latest
@@ -892,11 +891,12 @@ jobs:
   # The tests that start Chrome: the whole og-browser crate, so a new
   # browser target lands here, and og-live's targets that call
   # chrome_or_skip. Some read the debug og that the workspace test used to
-  # build. It took 6.4 to 6.6 minutes on a cold fork runner (2026-11-24),
-  # so the limit is 20: it stops a hung job, not a slow one.
+  # build. With every live browser check in Rust it took about 13 minutes
+  # on a fork runner (2026-11-24); a runner 1.5 times slower would need
+  # about 20. So the limit is 30: it stops a hung job, not a slow one.
   chrome:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: rust

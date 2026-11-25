@@ -950,6 +950,26 @@ where
     })
 }
 
+/// `path` for the request line on stderr, each part shaped like an ingest
+/// token (43 URL-safe characters) written `<token>`: a post meant for the
+/// ingest port that reached this one must not print the token.
+pub fn shown_path(path: &str) -> String {
+    path.split('/')
+        .map(|part| {
+            if part.len() == 43
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            {
+                "<token>"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Reads one request from `reader` and answers it on `out`.
 fn serve_io(live: &Live, peer: &str, reader: &mut dyn BufRead, out: &mut dyn Write) {
     let Some((method, target, headers)) = read_head(reader) else {
@@ -965,7 +985,7 @@ fn serve_io(live: &Live, peer: &str, reader: &mut dyn BufRead, out: &mut dyn Wri
     };
     let path = path.split('#').next().unwrap_or("").to_owned();
     if !live.cfg.quiet {
-        eprintln!("og live serve: {method} {path}");
+        eprintln!("og live serve: {method} {}", shown_path(&path));
     }
     let (m, head_only) = match method.as_str() {
         "GET" => ("GET", false),
@@ -1580,7 +1600,7 @@ pub fn serve_cli(cfg: Config, err: &mut dyn Write) -> u8 {
     if let (Some(p), Some((ib, _))) = (srv.ingest_port(), &srv.live().cfg.ingest) {
         let _ = write!(
             err,
-            " ; ingest http://{}:{p}/<token>/ingest/<run> (the token is in {})",
+            " ; ingest http://{}:{p}/ingest/<run> (the token, the HTTP Basic password of user og, is in {})",
             url_host(ib),
             srv.live().cfg.state_dir.join("ingest-token").display()
         );

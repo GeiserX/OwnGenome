@@ -281,6 +281,14 @@ fn io(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -
     ))
 }
 
+/// Runs a server verb. Its request threads print to stderr themselves (the
+/// access log, a summary.json it cannot read), so no lock on stdout or
+/// stderr is held for the whole command: a held lock would block each of
+/// those prints, and the request with it, for good.
+fn serve(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -> ExitCode {
+    ExitCode::from(f(args, &mut std::io::stdout(), &mut std::io::stderr()))
+}
+
 /// A BAM tool called on a build without the `bam` feature (the macOS build
 /// for a live host, rust/og.sh): it says so and exits 2, before any input
 /// is read, so a caller never mistakes it for a result.
@@ -560,7 +568,7 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: report tool"),
         },
         "live" => match rest.first().map(String::as_str) {
-            Some("serve") => io(og_live::server::cli, &rest[1..]),
+            Some("serve") => serve(og_live::server::cli, &rest[1..]),
             Some("results") => io(og_live::results::cli, &rest[1..]),
             Some("family") => io(og_live::family::cli, &rest[1..]),
             Some("demo") => io(og_live::demo::cli, &rest[1..]),
@@ -568,7 +576,7 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: live tool"),
         },
         "view" => match rest.first().map(String::as_str) {
-            Some("serve") => io(og_live::viewer::cli, &rest[1..]),
+            Some("serve") => serve(og_live::viewer::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown view tool '{other}'")),
             None => usage_error("the following arguments are required: view tool"),
         },

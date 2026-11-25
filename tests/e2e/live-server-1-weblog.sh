@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# The live site (bin/owngenome_live.py) on a real Nextflow run: the pinned Nextflow
+# The live site (og live serve) on a real Nextflow run: the pinned Nextflow
 # loads the nf-weblog plugin from the config run-all.sh writes when
 # OWNGENOME_LIVE_URL is set (the same text, the pin read from versions.env), posts each
 # task to the site's ingest port, and the site stores the messages and shows
 # step 11 (ROH) done in state.json. A control reads state.json before the run:
-# step 11 is 'not planned' then, so the state check can fail.
+# step 11 is 'not planned' then, so the state check can fail. The token goes as
+# the weblog's HTTP Basic password, which Nextflow reads from
+# OWNGENOME_LIVE_TOKEN: the plugin names its URL in .nextflow.log on every
+# post (the check that the log has those lines is the control), and neither
+# that log, a rotated one nor live.config holds the token.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
@@ -16,11 +20,14 @@ ROOT="${CASE_TMP}/root" STATE="${CASE_TMP}/state"
 mkdir -p "${ROOT}/${SAMPLE}/nextflow"   # a run folder the site lists (it has nextflow/)
 port() { "${REPO}/bin/og" dev fixture free-port; }
 WEB=$(port) ING=$(port)
-python3 "${REPO}/bin/owngenome_live.py" --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
+"${REPO}/bin/og" live serve --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
   2> "${CASE_TMP}/site.err" &
 SITE=$!
 trap 'kill "$SITE" 2>/dev/null' EXIT
-for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
+for _ in $(seq 50); do [ -s "${STATE}/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
+# og live serve takes a message only with its token (docs/live-site.md).
+TOK=$(cat "${STATE}/ingest-token")
+check "the site made a token of 43 characters" has '^[A-Za-z0-9_-]{43}$' "$TOK"
 state11() { curl -s "http://127.0.0.1:${WEB}/runs/${SAMPLE}/state.json" \
   | jq -er 'first(.steps[] | select(.step == "11") | .state // empty)' 2>/dev/null \
   || echo "no state.json"; }
@@ -29,16 +36,22 @@ check_eq "control: before the run, step 11 is not planned" "$(state11)" "not pla
 SHEET="${CASE_TMP}/samplesheet.csv"
 printf 'sample,vcf,vcf_index\n%s,%s,%s\n' "$SAMPLE" "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" \
   "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz.tbi" > "$SHEET"
-printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$PLUGIN" \
-  "http://127.0.0.1:${ING}/ingest/${SAMPLE}" > "${CASE_TMP}/live.config"
+(umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n%s}\n" "$PLUGIN" \
+  "http://127.0.0.1:${ING}/ingest/${SAMPLE}" "    basicToken = \"og:\${env('OWNGENOME_LIVE_TOKEN')}\""$'\n' > "${CASE_TMP}/live.config")
 echo "+ nextflow run main.nf --tools roh -c live.config"
 (
-  cd "$CASE_TMP" && nextflow run "${REPO}/main.nf" -profile docker -ansi-log false -c "${CASE_TMP}/live.config" \
+  cd "$CASE_TMP" && OWNGENOME_LIVE_TOKEN="$TOK" nextflow run "${REPO}/main.nf" -profile docker -ansi-log false -c "${CASE_TMP}/live.config" \
     -work-dir "${CASE_TMP}/work" --input "$SHEET" --reference "${G}/reference/GRCh38_no_alt_analysis_set.fasta" \
     --tools roh --outdir "${CASE_TMP}/out" --max_cpus 2 --max_memory 6.GB
 ) 2>&1 | tee "$STEP_LOG"
 check_eq "nextflow run exits 0" "${PIPESTATUS[0]}" 0
 check "the run loaded the plugin" grep -q "nf-weblog" "${CASE_TMP}/.nextflow.log"
+# Control: the plugin logs the URL of each post it sent, so the scan below reads lines that name it.
+check "control: .nextflow.log names the URL of a post the site took" \
+  grep -qF "Successfully sent message to http://127.0.0.1:${ING}/ingest/${SAMPLE}" "${CASE_TMP}/.nextflow.log"
+for f in "${CASE_TMP}"/.nextflow.log* "${CASE_TMP}/live.config"; do
+  check "$(basename "$f") does not hold the ingest token" lacks "$TOK" "$(cat "$f")"
+done
 
 EV="${STATE}/runs/${SAMPLE}/events.jsonl"
 # count EVENT PROCESS_SUFFIX: the stored messages of that event (and process, unless "").

@@ -60,6 +60,22 @@ SAMPLE=${1:-} SEX=${2:-}
   [ -z "$SEX" ] || echo "ERROR: sex must be 'male' or 'female', got '${SEX}'."; } >&2; exit 2; }
 ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404)) || { echo "ERROR: run-all.sh needs bash 4.4 or later (this is ${BASH_VERSION}); on macOS: brew install bash" >&2; exit 2; }
 shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
+# The live site's ingest port (og live serve, docs/live-site.md), checked before anything is recorded. It speaks plain
+# HTTP and takes /ingest/<run> with its token (STATE_DIR/ingest-token) as the HTTP Basic password: https or another path
+# would lose every post. A URL that holds the token (http://host:port/<token>) is split here: the token goes to
+# OWNGENOME_LIVE_TOKEN, and OWNGENOME_LIVE_URL keeps http://host:port, the only form the recorded command, the output,
+# live.config and every curl argument hold. The value is never printed: it may hold the token.
+# The host and token patterns sit in variables, so the download URL check (scripts/ci/check-links.sh) does not read
+# the pattern as a URL to fetch.
+LIVE_HOST='[A-Za-z0-9.:_-]+' LIVE_TOKEN_RE='[A-Za-z0-9_-]{43}'
+if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
+  [[ "$OWNGENOME_LIVE_URL" =~ ^(http://${LIVE_HOST})(/(${LIVE_TOKEN_RE}))?/?$ ]] \
+    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, or http://host:port/<token> (the value is not printed: it may hold the token)" >&2; exit 2; }
+  OWNGENOME_LIVE_URL=${BASH_REMATCH[1]}
+  [ -z "${BASH_REMATCH[3]}" ] || export OWNGENOME_LIVE_TOKEN=${BASH_REMATCH[3]}
+fi
+[ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || [[ "$OWNGENOME_LIVE_TOKEN" =~ ^${LIVE_TOKEN_RE}$ ]] \
+  || { echo "ERROR: OWNGENOME_LIVE_TOKEN is not an ingest token (43 letters, digits, '-' or '_'; the value is not printed)" >&2; exit 2; }
 # This command as given, for bin/og recheck --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
@@ -67,12 +83,25 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 SWITCHES=(GENOME_DIR INPUT SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS TIDDIT IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
-  FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION EVERYTHING NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
+  FAMILIES OWNGENOME_LIVE_URL OWNGENOME_LIVE_STATE_DIR LOCITYPER_DATA LOCITYPER_BG_REGION EVERYTHING NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
 RERUN_CMD="cd $(printf '%q' "$PWD") && "; for v in "${SWITCHES[@]}"; do [ -z "${!v+x}" ] || RERUN_CMD+="${v}=$(printf '%q' "${!v}") "; done
 RERUN_CMD+=$(printf '%q ' "${SCRIPT_DIR}/run-all.sh" "$SAMPLE" "$SEX" "$@"); RERUN_CMD=${RERUN_CMD% }
 # With -bg nextflow returns at once, and the steps would be recorded and the reports written before the run ends.
 for a in "$@"; do [ "$a" != -bg ] || { echo "ERROR: run-all.sh does not take -bg: it waits for the pipeline to record each step and write the reports. Run it inside tmux or screen, or with nohup." >&2; exit 2; }; done
 export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
+# Without a token, the one of the site's state folder (OWNGENOME_LIVE_STATE_DIR, else GENOME_DIR/.owngenome-live), when
+# this account can read it. It is read here, before the first post, and never written anywhere: a replay (og recheck
+# --rerun) reads it again, or takes OWNGENOME_LIVE_TOKEN from its environment.
+if [ -n "${OWNGENOME_LIVE_URL:-}" ] && [ -z "${OWNGENOME_LIVE_TOKEN:-}" ]; then
+  TF="${OWNGENOME_LIVE_STATE_DIR:-${GENOME_DIR}/.owngenome-live}/ingest-token" TOK=""
+  if [ -r "$TF" ]; then IFS= read -r TOK < "$TF" || true; fi
+  if [[ "$TOK" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
+    export OWNGENOME_LIVE_TOKEN=$TOK
+  else
+    echo "WARNING: no ingest token for the live site: ${TF} cannot be read, so og live serve refuses every post; set OWNGENOME_LIVE_URL=${OWNGENOME_LIVE_URL}/<token>, or OWNGENOME_LIVE_STATE_DIR to the site's state folder" >&2
+  fi
+  unset TF TOK
+fi
 # shellcheck source=lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 validate_sample "$SAMPLE"
@@ -158,13 +187,13 @@ if [ -n "${FAMILIES:-}" ]; then
 fi
 mkdir -p "${S}/nextflow" "$LOG_DIR"
 GENOME_DIR="$G" bash "${PGP_ROOT}/bin/write_manifest.sh" "$SAMPLE" run-all.sh "$SEX" || echo "WARNING: could not write ${S}/run_manifest.tsv"
-STATUS="${LOG_DIR}/run_status.tsv"  # bin/collect_summary.py marks results older than this run stale
+STATUS="${LOG_DIR}/run_status.tsv"  # og summary collect marks results older than this run stale
 # EVERYTHING=true can still refuse before Nextflow: keep the last run's status to put back then.
 [ -z "$EV" ] || [ ! -f "$STATUS" ] || cp "$STATUS" "${STATUS}.prev"
 printf '# run-all.sh: when this run started and how each step ended\nmeta\tstarted_epoch\t%s\nmeta\tstarted_utc\t%s\nmeta\tdeclared_sex\t%s\nmeta\tcommand\t%s\nmeta\tswitches\t%s\n' \
   "$(date +%s)" "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" "$SEX" "$RERUN_CMD" "${SWITCHES[*]}" > "$STATUS"
 # As run-all.sh ends, however it ends: a step still 'planned' did not finish, and the time is recorded
-# (bin/run_state.py reads both). A planned row gives way to the step's result, so each step keeps one row.
+# (og run state reads both). A planned row gives way to the step's result, so each step keeps one row.
 finish_status() {
   local rc=$?
   live_post "$SAMPLE" "{\"event\":\"pgp_run_finished\",\"exit\":${rc},\"utcTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
@@ -469,14 +498,17 @@ export NXF_VER=${NXF_VER:-$NEXTFLOW_VERSION}
 # a config names it, so the block lives in a config of this run's own, passed only when OWNGENOME_LIVE_URL is set: a run
 # without it neither downloads the plugin nor warns about an unknown weblog scope. The pin is NF_WEBLOG_PLUGIN in versions.env.
 if [ -n "${OWNGENOME_LIVE_URL:-}" ]; then
-  # The ingest listener speaks plain HTTP and serves /ingest/<run> at its root, so https or a path would lose every post.
-  [[ "$OWNGENOME_LIVE_URL" =~ ^http://[A-Za-z0-9.:_-]+/?$ ]] \
-    || { echo "ERROR: OWNGENOME_LIVE_URL must be a plain http://host:port URL, got '${OWNGENOME_LIVE_URL}'" >&2; OWNGENOME_LIVE_URL=""; exit 2; }
-  export OWNGENOME_LIVE_RUN=$SAMPLE
-  printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n}\n" "$NF_WEBLOG_PLUGIN" \
-    "${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE}" > "${S}/nextflow/live.config"
+  export OWNGENOME_LIVE_URL OWNGENOME_LIVE_RUN=$SAMPLE
+  # The weblog sends the token as its HTTP Basic password, read by Nextflow from OWNGENOME_LIVE_TOKEN as it starts: the
+  # config and the plugin's log line (which names its URL) hold no token.
+  LC="${S}/nextflow/live.config" BT=""
+  [ -z "${OWNGENOME_LIVE_TOKEN:-}" ] || BT="    basicToken = \"og:\${env('OWNGENOME_LIVE_TOKEN')}\""$'\n'
+  rm -f "$LC"
+  (umask 077; printf "plugins {\n    id '%s'\n}\nweblog {\n    enabled = true\n    url     = '%s'\n%s}\n" "$NF_WEBLOG_PLUGIN" \
+    "${OWNGENOME_LIVE_URL}/ingest/${SAMPLE}" "$BT" > "$LC")
+  unset LC BT
   NF+=(-c "${S}/nextflow/live.config")
-  echo "Live site: messages go to ${OWNGENOME_LIVE_URL%/}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
+  echo "Live site: messages go to ${OWNGENOME_LIVE_URL}/ingest/${SAMPLE} (${NF_WEBLOG_PLUGIN}, downloaded by Nextflow on first use)"
   # The address the browser opens (the site's own, not the ingest port), when the launcher knows it.
   [ -z "${OWNGENOME_LIVE_PAGE_URL:-}" ] || echo "Live site: this run's page is ${OWNGENOME_LIVE_PAGE_URL%/}/runs/${SAMPLE}/"
 else
@@ -485,7 +517,7 @@ fi
 live_step() { live_post "$SAMPLE" "{\"event\":\"pgp_step\",\"step\":\"$1\",\"state\":\"$2\",\"utcTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"; }
 echo "[Nextflow ${NXF_VER}] launch directory ${S}/nextflow: .nextflow.log, and every task's files under work/"
 FT="${S}/nextflow/failed_tasks.tsv" PT="${S}/nextflow/process_status.tsv"; rm -f "$FT" "$PT"  # main.nf writes both as the run ends
-# Every step that will run, before it starts: 'planned' until its result row (bin/run_state.py shows the run as it goes).
+# Every step that will run, before it starts: 'planned' until its result row (og run state shows the run as it goes).
 for n in "${RUNS[@]}" "${OPTIN[@]}"; do n=${n%%-*}; [[ "$n" != [0-9]* ]] || printf 'step\t%s\tplanned\n' "$n" >> "$STATUS"; done
 # An earlier run's OwnHealth file goes before any result changes, so a run cut short never leaves it beside new results.
 rm -f "${S}/facts/${SAMPLE}_genome_facts.json"
