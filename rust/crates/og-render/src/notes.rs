@@ -2,9 +2,8 @@
 //!
 //! A caveat (`*_NOTE`) states the limit of the method behind a number. Each
 //! card declares the caveats it shows, and the HTML writer prints them under
-//! the card's title; the text report prints them in the card's lines. The
-//! sentences are byte for byte those of `bin/render_report.py`, which the
-//! live site still reads until its own port.
+//! the card's title. The text report prints them in the card's lines. The
+//! registry also supplies the same caveats to charts and the live site.
 
 use crate::model::{Malformed, Section, State, py};
 
@@ -185,10 +184,55 @@ pub const MCA_NOTE: &str = "Large gains, losses and copy-neutral losses of heter
     diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is \
     reported, and an event above it can still be missed. Every MoChA call, with the reason \
     it was or was not reported: mosaic/<sample>_mocha.tsv.";
-pub const ROH_NOTE: &str = "Autosomes only: chrX and chrY are left out, and so is the part of a segment in a \
-    centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few \
-    markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): \
-    read the total and the short segments as rough; the long segments are the signal.";
+macro_rules! roh_note {
+    (group $group:literal) => {
+        roh_note!(concat!(
+            "Allele frequencies came from the panel's ",
+            $group,
+            " group."
+        ))
+    };
+    ($af:expr) => {
+        concat!(
+            "Autosomes only: chrX and chrY are left out, and so is the part of a segment in a \
+            centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few \
+            markers map. ",
+            $af
+        )
+    };
+}
+
+pub const ROH_NOTE: &str = roh_note!(
+    "No population allele frequencies were used (bcftools roh --AF-dflt 0.4): \
+    read the total and the short segments as rough; the long segments are the signal."
+);
+const ROH_GLOBAL_NOTE: &str = roh_note!("Allele frequencies came from the global panel.");
+const ROH_AFR_NOTE: &str = roh_note!(group "afr");
+const ROH_AMR_NOTE: &str = roh_note!(group "amr");
+const ROH_EAS_NOTE: &str = roh_note!(group "eas");
+const ROH_NFE_NOTE: &str = roh_note!(group "nfe");
+const ROH_SAS_NOTE: &str = roh_note!(group "sas");
+const ROH_UNKNOWN_AF_NOTE: &str =
+    roh_note!("The ROH file names an unrecognized allele-frequency mode.");
+
+/// The ROH caveat identified by the first word of the step's AF header.
+/// The flat-AF run has no header, as in summaries from before the panel.
+pub fn roh_note_key(af_used: Option<&pycompat::json::Value>) -> &'static str {
+    use pycompat::json::Value;
+    let Some(Value::Str(af)) = af_used else {
+        return "ROH_NOTE";
+    };
+    match af.split_whitespace().next() {
+        Some("global") => "ROH_GLOBAL_NOTE",
+        Some("afr") => "ROH_AFR_NOTE",
+        Some("amr") => "ROH_AMR_NOTE",
+        Some("eas") => "ROH_EAS_NOTE",
+        Some("nfe") => "ROH_NFE_NOTE",
+        Some("sas") => "ROH_SAS_NOTE",
+        Some("0.4") => "ROH_NOTE",
+        _ => "ROH_UNKNOWN_AF_NOTE",
+    }
+}
 pub const CNVPYTOR_NOTE: &str = "Filtered: e-value below 0.01, under half of the reads with mapping quality 0 (q0) and \
     under half N bases (pN), no overlap with a centromere or heterochromatin band, and no \
     chrY call when the declared sex is female.";
@@ -229,8 +273,8 @@ pub const CONSUMER_NOTE: &str = "These files stay on this machine. Uploading one
     it, and with the relatives it matches you to: docs/40-export-consumer.md says what to \
     weigh first.";
 
-/// Every `*_NOTE` sentence, by name, in the order the Python defined them.
-pub const NOTES: [(&str, &str); 56] = [
+/// Report caveats by name, including the ROH allele-frequency modes.
+pub const NOTES: [(&str, &str); 63] = [
     ("CLINVAR_FREQ_NOTE", CLINVAR_FREQ_NOTE),
     ("CALLABILITY_NOTE", CALLABILITY_NOTE),
     ("HLA_NOTE", HLA_NOTE),
@@ -275,6 +319,13 @@ pub const NOTES: [(&str, &str); 56] = [
     ("MEI_NOTE", MEI_NOTE),
     ("MCA_NOTE", MCA_NOTE),
     ("ROH_NOTE", ROH_NOTE),
+    ("ROH_GLOBAL_NOTE", ROH_GLOBAL_NOTE),
+    ("ROH_AFR_NOTE", ROH_AFR_NOTE),
+    ("ROH_AMR_NOTE", ROH_AMR_NOTE),
+    ("ROH_EAS_NOTE", ROH_EAS_NOTE),
+    ("ROH_NFE_NOTE", ROH_NFE_NOTE),
+    ("ROH_SAS_NOTE", ROH_SAS_NOTE),
+    ("ROH_UNKNOWN_AF_NOTE", ROH_UNKNOWN_AF_NOTE),
     ("CNVPYTOR_NOTE", CNVPYTOR_NOTE),
     ("MITO_POLYC_NOTE", MITO_POLYC_NOTE),
     ("MITO_NOTE", MITO_NOTE),

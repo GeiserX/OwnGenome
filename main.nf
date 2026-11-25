@@ -759,6 +759,12 @@ workflow {
     ch_mito_clinvar       = Channel.value(params.mito_clinvar ? file(params.mito_clinvar, checkIfExists: true) : [])
     ch_mito_clinvar_index = Channel.value(params.mito_clinvar ? file("${params.mito_clinvar}.tbi", checkIfExists: true) : [])
     ch_gnomad_mito        = Channel.value(params.gnomad_mito ? file(params.gnomad_mito, checkIfExists: true) : [])
+    // Step 11's allele-frequency panel (ROH): the file setup.sh installs under
+    // roh_af/ with its .tbi beside it. Without it bcftools roh uses 0.4 at
+    // every site.
+    ch_roh_af_panel = Channel.value(params.roh_af_panel
+        ? [file(params.roh_af_panel, checkIfExists: true), file("${params.roh_af_panel}.tbi", checkIfExists: true)]
+        : [[], []])
 
     // ═══════════════════════════════════════════════════════════════════
     // WORKFLOW 1: BAM_ANALYSIS — HLA (and KIR), STR, telomere, coverage,
@@ -864,7 +870,8 @@ workflow {
         ch_ancestry_fine_panel,
         ch_bam,
         ch_gencode_exons,
-        ch_prs_score_sets
+        ch_prs_score_sets,
+        ch_roh_af_panel
     )
 
     // ─── Traits panel (traits, step 42) ─────────────────────────────────

@@ -23,6 +23,12 @@
 //!   that go back on one sequence, and a record past 2^29 (a `.tbi` cannot
 //!   hold it).
 //!
+//! [`build_positions`] indexes a tab-separated file with one base per
+//! line, as `tabix -s1 -b2 -e2` does: the sequence in column 1, the 1-based
+//! position in column 2 (read as C's `strtoll` with base 0), each line over
+//! that one base. A POS of 0 or below is placed at the first base, lines
+//! that start with `#` are headers, and the same files are refused.
+//!
 //! It reads the file once, one BGZF block at a time: memory is one block,
 //! one line and the index itself.
 
@@ -55,6 +61,9 @@ const UNSET: u64 = u64::MAX;
 /// The tabix header of the `vcf` preset: VCF, sequence in column 1, begin
 /// in column 2, no end column, `#` for headers, no lines skipped.
 const VCF_CONF: [i32; 6] = [2, 1, 2, 0, b'#' as i32, 0];
+/// The tabix header of `tabix -s1 -b2 -e2`: a generic file, sequence in
+/// column 1, begin and end in column 2, `#` for headers, no lines skipped.
+const POSITIONS_CONF: [i32; 6] = [0, 1, 2, 2, b'#' as i32, 0];
 
 /// A chunk: the virtual offsets of its first byte and of the byte after it.
 type Chunk = (u64, u64);
@@ -659,12 +668,16 @@ struct Builder {
     off_beg: u64,
     last_coor: i64,
     n_mapped: u64,
+    /// The tabix header the index is written with.
+    conf: [i32; 6],
 }
 
 impl Builder {
-    /// `hts_idx_init`: the first record starts at `offset`.
-    fn new(offset: u64) -> Self {
+    /// `hts_idx_init`: the first record starts at `offset`; `conf` is the
+    /// tabix header.
+    fn new(offset: u64, conf: [i32; 6]) -> Self {
         Builder {
+            conf,
             save_off: offset,
             last_off: offset,
             off_beg: offset,
@@ -779,7 +792,7 @@ impl Builder {
         };
         out.write_all(b"TBI\x01")?;
         int(out, self.seqs.len())?;
-        for v in VCF_CONF {
+        for v in self.conf {
             out.write_all(&v.to_le_bytes())?;
         }
         int(out, self.names.iter().map(|n| n.len() + 1).sum())?;
@@ -816,7 +829,7 @@ impl Builder {
     }
 }
 
-/// An index read from a VCF, not yet written.
+/// An index read from a VCF or a positions file, not yet written.
 #[derive(Debug)]
 pub struct Index {
     builder: Builder,
@@ -868,6 +881,30 @@ impl Index {
 
 /// Reads the BGZF VCF `input` and builds its index.
 pub fn build(input: impl Read) -> io::Result<Index> {
+    build_as(input, VCF_CONF)
+}
+
+/// Reads the BGZF tab-separated `input`, one base per line (sequence in
+/// column 1, 1-based position in column 2), and builds the index
+/// `tabix -s1 -b2 -e2` writes for it.
+pub fn build_positions(input: impl Read) -> io::Result<Index> {
+    build_as(input, POSITIONS_CONF)
+}
+
+/// A line's sequence name and 0-based `[beg, end)` under `-s1 -b2 -e2`, by
+/// htslib's `tbx_parse1`: with the begin and end in one column, the end is
+/// POS and the begin one before it; a begin below 0 moves to 0 (the flag),
+/// an end below 1 to 1. `None` for a line it cannot place.
+fn parse_position(line: &[u8]) -> Option<(&[u8], i64, i64, bool)> {
+    let mut cols = line.split(|&c| c == b'\t' || c == 0);
+    let name = cols.next()?;
+    let pos = strtoll(cols.next()?, true)?;
+    let beg = pos.saturating_sub(1);
+    Some((name, beg.max(0), pos.max(1), beg < 0))
+}
+
+/// [`build`] with the tabix header `conf`, which also picks the parser.
+fn build_as(input: impl Read, conf: [i32; 6]) -> io::Result<Index> {
     let mut lines = Lines::new(input);
     let mut line = Vec::new();
     let mut sv = Vec::new();
@@ -881,8 +918,13 @@ pub fn build(input: impl Read) -> io::Result<Index> {
             header_end = lines.tell();
             continue;
         }
-        let b = builder.get_or_insert_with(|| Builder::new(header_end));
-        let Some((name, beg, end, low)) = parse(&line, &mut sv) else {
+        let b = builder.get_or_insert_with(|| Builder::new(header_end, conf));
+        let parsed = if conf == VCF_CONF {
+            parse(&line, &mut sv)
+        } else {
+            parse_position(&line)
+        };
+        let Some((name, beg, end, low)) = parsed else {
             let shown = String::from_utf8_lossy(&line[..line.len().min(60)]).into_owned();
             return Err(invalid(format!(
                 "line {lineno} has no position to read: {shown:?}"
@@ -894,7 +936,7 @@ pub fn build(input: impl Read) -> io::Result<Index> {
             .map_err(|e| invalid(format!("line {lineno}: {e}")))?;
     }
     Ok(Index {
-        builder: builder.unwrap_or_else(|| Builder::new(header_end)),
+        builder: builder.unwrap_or_else(|| Builder::new(header_end, conf)),
         end: lines.tell(),
         clamped,
     })
@@ -1508,6 +1550,79 @@ mod tests {
         let index = build(BufReader::new(File::open(&src).unwrap())).unwrap();
         index.write_tbi(&tbi, true).unwrap();
         assert_ne!(std::fs::read(&tbi).unwrap(), b"another writer");
+    }
+
+    /// A positions file like step 11's allele-frequency files: a header,
+    /// a POS of 0, repeated positions, gaps up to 40 kb, three sequences,
+    /// split at odd places.
+    fn positions(seed: u64) -> Vec<u8> {
+        let mut rng = Rng(seed);
+        let mut t = b"#CHROM\tPOS\tREF,ALT\tAF\nchr1\t0\tA,C\t0.5\n".to_vec();
+        for seq in ["chr1", "chr2", "chr22"] {
+            let mut pos = 1;
+            for _ in 0..20_000 {
+                pos += match rng.below(100) {
+                    0 => 40_000,
+                    1..=9 => 0,
+                    _ => rng.below(3000),
+                };
+                t.extend(format!("{seq}\t{pos}\tA,G\t0.{}\n", rng.below(99)).bytes());
+            }
+        }
+        let (a, b) = (t.len() / 3, t.len() / 3 + 12_345);
+        bgzip(&[&t[..a], &t[a..b], &t[b..]])
+    }
+
+    #[test]
+    fn a_position_line_covers_its_one_base() {
+        let c = b"c".as_slice();
+        assert_eq!(parse_position(b"c\t10\tA,G\t0.5"), Some((c, 9, 10, false)));
+        assert_eq!(parse_position(b"c\t0\tA,G"), Some((c, 0, 1, true)));
+        assert_eq!(parse_position(b"c\t0x10"), Some((c, 15, 16, false)));
+        assert_eq!(parse_position(b"c\tx\tA,G"), None);
+        assert_eq!(parse_position(b"c"), None);
+        // The header says generic, sequence 1, begin 2, end 2, `#`, no skip.
+        let gz = bgzip(&[b"#h\nc\t5\tA,G\t0.5\n"]);
+        let tbi = build_positions(&gz[..]).unwrap().into_bytes();
+        let conf: Vec<u8> = [0i32, 1, 2, 2, 35, 0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        assert_eq!(&tbi[8..32], &conf[..]);
+    }
+
+    /// htslib's own `tabix -s1 -b2 -e2`, in the pipeline's bcftools image,
+    /// writes the index [`build_positions`] writes (inflated). In CI this
+    /// must run; elsewhere, with no Docker, it says so and passes.
+    #[test]
+    fn htslib_tabix_writes_the_same_positions_index() {
+        let docker = Command::new("docker")
+            .arg("version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !docker {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI must run the htslib comparison, and Docker is missing"
+            );
+            eprintln!("no Docker here: the htslib comparison runs in CI");
+            return;
+        }
+        let gz = positions(5);
+        let ours = build_positions(&gz[..]).unwrap().into_bytes();
+        let htslib = in_image(
+            &[("x.tsv.gz", &gz[..])],
+            "tabix -s1 -b2 -e2 x.tsv.gz && cat x.tsv.gz.tbi",
+        );
+        let mut want = Vec::new();
+        crate::reader(io::Cursor::new(htslib))
+            .unwrap()
+            .read_to_end(&mut want)
+            .unwrap();
+        assert!(ours.len() > 1000, "a {} byte index", ours.len());
+        assert!(ours == want, "tabix -s1 -b2 -e2 writes another index");
     }
 
     /// The image the pipeline runs bcftools and tabix from.
