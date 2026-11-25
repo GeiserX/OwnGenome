@@ -84,7 +84,9 @@
 #      MANE Select transcript list
 #   6. Step 25: the PGS Catalog scores of assets/pgs_scores.tsv (~400 MB), a
 #      checkout of pgsc_calc and the Nextflow plugin it needs, so step 25 and
-#      the PRS process run without the network
+#      the PRS process run without the network. The four scores free for
+#      academic research use only (licence academic-research) are left out:
+#      --prs-academic installs them (PRS_ACADEMIC=true scores them)
 #
 #   7. VEP 116, PCGR/CPSR data and VEP 115 (~57 GB download, ~65 GB unpacked).
 #      --no-clinical-data skips them; --clinical-data installs only these three.
@@ -115,6 +117,12 @@ PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
 ANNOTSV_TERMS="AnnotSV's annotation bundle includes third-party data with their own terms."
 EXOMISER_TERMS="Exomiser's hg38 and phenotype bundles include third-party data with their own terms."
 CYRIUS_TERMS="Cyrius: PolyForm Strict 1.0.0, non-commercial use only."
+PRS_ACADEMIC_TERMS=(
+  'PGS000014: freely available to the academic community for research use.'
+  'PGS000016: freely available to the academic community for research use.'
+  'PGS000017: freely available to the academic community for research use.'
+  'PGS000027: freely available to the academic community for research use.'
+)
 UCSC_CHAIN_TERMS="UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence."
 
 # The usage text below names data releases, so read them before it prints.
@@ -133,7 +141,7 @@ case "${1:-}" in
     shift ;;
   --og)
     exec "$(dirname "$0")/../rust/og.sh" install ;;
-  --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--annotation-scores|--somatic-data|--bwa-index|--cnvpytor-data|--pypgx-data|--archaic)
+  --cyrius|--prs-academic|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--annotation-scores|--somatic-data|--bwa-index|--cnvpytor-data|--pypgx-data|--archaic)
     OPT_IN=${1#--}
     shift ;;
   --clinical-data)
@@ -169,7 +177,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
   echo "       $0 --sample-qc-data <genome_dir>"
-  echo "       $0 --cyrius | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
+  echo "       $0 --cyrius | --prs-academic | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
   echo ""
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
@@ -191,6 +199,9 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "                Install only somalier's sites and VerifyBamID2's panel (step 33) and exit."
   echo "  --cyrius      Install Cyrius for the opt-in step 21 (PyPI, hash-locked) and exit."
   echo "                Cyrius is under the PolyForm Strict licence: non-commercial use only."
+  echo "  --prs-academic"
+  echo "                Install the four PGS Catalog scores of step 25 that are free for academic research use only"
+  echo "                (PGS000014, PGS000016, PGS000017, PGS000027; PRS_ACADEMIC=true scores them) and exit."
   echo "  --parascopy-data"
   echo "                Install Parascopy's GRCh38 homology table and models (step 35, ~50 MB), pull its image and exit."
   echo "  --kir-data    Install the IPD-KIR ${KIR_DB_RELEASE:-} database (KIR=true in step 08, ~40 MB) and exit."
@@ -1044,14 +1055,17 @@ install_pgsc_calc() {
   mv "${dir}.part" "$dir"
 }
 
-# install_prs: the GRCh38-harmonised file of every score in
-# assets/pgs_scores.tsv (each checked against the md5 the PGS Catalog
-# publishes beside it), pgsc_calc PGSC_CALC_VERSION in tools/, and the
-# nf-schema plugin its nextflow.config names. With them
-# step 25 and the PRS process need no network. A failure is a warning: step
-# 25 fetches what is missing the first time it runs.
-install_prs() {
-  local id url dest rc=0 calc="${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}"
+# fetch_prs_scores LICENCE: the GRCh38-harmonised file of every score of
+# assets/pgs_scores.tsv whose licence column is LICENCE (an empty cell counts
+# as author), each checked against the md5 the PGS Catalog publishes beside
+# it. Exit 1 when one download failed.
+fetch_prs_scores() {
+  local id url dest rc=0 list="${PGP_ROOT}/assets/pgs_scores.tsv"
+  if [ ! -r "$list" ]; then
+    echo "[WARN] Could not read the PGS score list ${list}"
+    return 1
+  fi
+  mkdir -p "${GENOME_DIR}/prs_scores" || return 1
   while read -r id; do
     dest="${GENOME_DIR}/prs_scores/${id}.txt.gz"
     [ -s "$dest" ] && continue
@@ -1060,7 +1074,20 @@ install_prs() {
       echo "[WARN] Could not download ${id} (step 25 tries again when it runs): ${url}"
       rc=1
     fi
-  done < <(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${PGP_ROOT}/assets/pgs_scores.tsv")
+  done < <(awk -F'\t' -v want="$1" '!h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+    h && $1 ~ /^PGS[0-9]+$/ { l = c["licence"] ? $c["licence"] : ""; if (l == "") l = "author"; if (l == want) print $1 }' "$list")
+  return "$rc"
+}
+
+# install_prs: the scores of assets/pgs_scores.tsv under the PGS Catalog's
+# default terms (licence author; the four free for academic research use
+# only come with --prs-academic), pgsc_calc PGSC_CALC_VERSION in tools/, and
+# the nf-schema plugin its nextflow.config names. With them
+# step 25 and the PRS process need no network. A failure is a warning: step
+# 25 fetches what is missing the first time it runs.
+install_prs() {
+  local rc=0 calc="${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}"
+  fetch_prs_scores author || rc=1
   [ "$rc" -eq 0 ] && echo "[OK] PGS Catalog scores (step 25): ${GENOME_DIR}/prs_scores/"
   if [ -f "${calc}/main.nf" ]; then
     echo "[OK] pgsc_calc ${PGSC_CALC_VERSION} (step 25) already present."
@@ -2438,11 +2465,7 @@ install_everything() {
   echo '=== Download and use terms (docs/00-reference-setup.md) ==='
   annotation_score_terms
   printf '  %s\n' "$CYRIUS_TERMS"
-  printf '  %s\n' \
-    'PGS000014: freely available to the academic community for research use.' \
-    'PGS000016: freely available to the academic community for research use.' \
-    'PGS000017: freely available to the academic community for research use.' \
-    'PGS000027: freely available to the academic community for research use.' \
+  printf '  %s\n' "${PRS_ACADEMIC_TERMS[@]}" \
     'PyPGx bundle: upstream publishes no licence terms for the data bundle.'
 
   echo '=== Everything base setup ==='
@@ -2476,7 +2499,21 @@ install_everything() {
   return "$SETUP_PARTIAL_EXIT"
 }
 
+# install_prs_academic: the four scores of assets/pgs_scores.tsv free for
+# academic research use only (licence academic-research), which step 25 and
+# the PRS process score with PRS_ACADEMIC=true (Nextflow --pgs_academic true).
+install_prs_academic() {
+  if fetch_prs_scores academic-research; then
+    echo "[OK] Academic-only PGS Catalog scores (step 25 with PRS_ACADEMIC=true): ${GENOME_DIR}/prs_scores/"
+  else
+    return 1
+  fi
+}
+
 case "$OPT_IN" in
+  prs-academic)
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then printf '  %s\n' "${PRS_ACADEMIC_TERMS[@]}"; fi
+    install_prs_academic; exit $? ;;
   annotation-scores)
     if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then annotation_score_terms; fi
     install_annotation_scores; exit $? ;;

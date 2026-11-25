@@ -315,6 +315,7 @@ param	ancestry_fine_panel	-	-	-	-	experimental	-	-
 param	ancient_panel	-	-	-	-	experimental	-	-
 param	pgsc_calc	-	-	-	-	stable	-	-
 param	prs_keep_ambiguous	-	-	-	-	stable	-	-
+param	pgs_academic	-	-	-	-	stable	-	-
 param	expansion_catalog	-	-	-	-	stable	-	-
 param	hla_dat	-	-	-	-	stable	-	-
 param	hla_genes	-	-	-	-	stable	-	-
@@ -419,6 +420,7 @@ switch	ALIGN_DIR	-	-	-	-	stable	-	-
 switch	TOOLS	-	-	-	-	stable	-	-
 switch	KIR	-	-	-	-	experimental	-	-
 switch	HLA_QC	-	-	-	-	experimental	-	-
+switch	PRS_ACADEMIC	-	-	-	-	stable	-	-
 switch	HPO	-	-	-	-	experimental	-	-
 switch	CPSR_SECONDARY_FINDINGS	-	-	-	-	stable	-	-
 switch	REF_FASTA	-	-	-	-	stable	-	-

@@ -24,8 +24,9 @@
     assets/callability_genes.tsv (the hard-to-read genes) come in the same list
     and go to assets/, which --assets names, as do assets/mito_confirmed.tsv
     (the confirmed mtDNA variants step 20's section names), the paralog
-    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv, and
-    assets/steps.tsv (the step catalogue). Every
+    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv,
+    assets/steps.tsv (the step catalogue) and assets/pgs_scores.tsv (the PGS
+    score list, which names the academic-only scores a run left out). Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
     do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv,
     <id>_cyp21a2_psv.tsv and <id>_smn1_marker.tsv; step 46's <id>_lpa_kiv2.tsv
@@ -169,7 +170,7 @@ process HTML_REPORT {
             ${id}_mei.tsv|${id}_mei_sites.tsv)            place mei "\$f" ;;
             ${id}_mocha.tsv|${id}_mocha_summary.tsv)      place mosaic "\$f" ;;
             ${id}_couple_carrier.tsv)                     place couple "\$f" ;;
-            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv|steps.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
+            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv|steps.tsv|pgs_scores.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
             *) echo "ERROR: HTML_REPORT got an input it has no place for: \$(basename "\$f")" >&2; exit 1 ;;
         esac
     done

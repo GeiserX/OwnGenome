@@ -93,6 +93,10 @@ workflow {
     if (!(params.prs_keep_ambiguous.toString() in ['true', 'false'])) {
         error "--prs_keep_ambiguous takes no value (or true / false), got '${params.prs_keep_ambiguous}'."
     }
+    // PRS_PREPARE reads it: true passes --academic to og prs format.
+    if (!(params.pgs_academic.toString() in ['true', 'false'])) {
+        error "--pgs_academic takes no value (or true / false), got '${params.pgs_academic}'."
+    }
     if (params.reference.endsWith('.gz')) {
         error "--reference ${params.reference} is compressed. The tools here need a plain FASTA with a .fai index: " +
               "decompress it (gunzip, or bgzip -d) and run 'samtools faidx' on the result."
@@ -1244,11 +1248,12 @@ workflow {
     // for every selected step it shows, the SV consensus merge included.
     // The ACMG SF rules, the carrier list, the gene callability table, the
     // confirmed mtDNA variants and the two paralog catalogs (step 35's loci,
-    // step 35b's regions) the report applies, and the step catalogue, which
-    // maps each --tools name to its sections (bin/ is the only repository
-    // folder a task sees).
+    // step 35b's regions) the report applies, the step catalogue, which
+    // maps each --tools name to its sections, and the PGS score list, whose
+    // licence column names the academic-only scores a run left out (bin/ is
+    // the only repository folder a task sees).
     def report_assets = ["acmg_sf.tsv", "carrier_genes.tsv", "callability_genes.tsv", "mito_confirmed.tsv",
-                         "paralog_loci.tsv", "paraphase_genes.tsv", "steps.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
+                         "paralog_loci.tsv", "paraphase_genes.tsv", "steps.tsv", "pgs_scores.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
     ch_report_inputs = ch_vcf
         .map { meta, vcf, idx -> [meta.id, meta, vcf] }
         .join(PGX.out.clinvar_dir.map             { meta, f -> [meta.id, f] }, remainder: true)

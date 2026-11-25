@@ -279,6 +279,12 @@
                     "description": "prs: keep each score's strand-ambiguous rows (A/T and C/G pairs) when its other rows agree with the reference on the forward strand, and pass --keep_ambiguous to pgsc_calc; a score that fails that check keeps dropping them. Rows with a gVCF (WGS) only: a row with a VCF alone stops the PRS task. Off by default: pgsc_calc drops every ambiguous row. The summary's Ambiguous column says what happened to them per score.",
                     "fa_icon": "fas fa-exchange-alt"
                 },
+                "pgs_academic": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "prs: also score the scores assets/pgs_scores.tsv marks academic-research: PGS000014 (type 2 diabetes), PGS000016 (atrial fibrillation), PGS000017 (inflammatory bowel disease) and PGS000027 (BMI), which the PGS Catalog publishes as freely available to the academic community for research use. Off by default: PRS_PREPARE leaves them out even when --pgs_scoring holds their files, and summary.json lists them under the PRS section skipped. scripts/setup.sh --prs-academic installs them.",
+                    "fa_icon": "fas fa-graduation-cap"
+                },
                 "expansion_catalog": {
                     "type": "string",
                     "format": "file-path",
