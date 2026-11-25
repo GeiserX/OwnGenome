@@ -201,10 +201,13 @@
           (lo !== null && hi !== null ? ', 95% interval ' + lo + ' to ' + hi : '') + (unsized ? ', not sized from short reads' : '')));
       });
       var st = l.status ? 'Stranger: "' + l.status + '"' : 'no Stranger status';
-      var legend = (nmax !== null || pmin !== null)
-        ? [nmax !== null ? '"normal" up to ' + nmax : '', pmin !== null ? 'pathologic from ' + pmin : '', 'scale 0 to ' + max]
-          .filter(Boolean).join(' · ')
-        : 'No Stranger thresholds for this locus. Scale 0 to ' + max + '.';
+      // The range of reduced penetrance comes from its own table, not from Stranger, so it is
+      // named whether or not the locus has Stranger thresholds.
+      var thresholds = nmax !== null || pmin !== null;
+      var legend = [nmax !== null ? '"normal" up to ' + nmax : '', pmin !== null ? 'pathologic from ' + pmin : '',
+        l.penetrance ? 'reduced penetrance ' + l.penetrance : '',
+        thresholds ? 'scale 0 to ' + max : 'No Stranger thresholds for this locus. Scale 0 to ' + max + '.']
+        .filter(Boolean).join(' · ');
       var flagged = l.status && l.status.split(',').some(function (x) { return x && x !== 'normal'; });
       add(box, wrow(whead(l.locus, (l.repeat_count || '.') + ' repeats', st), trackOf(max, parts), legend, flagged ? 'w-attn' : ''));
     });
@@ -213,15 +216,18 @@
     return box;
   }
 
-  // A count with its 95% interval on a scale from 0 (Lp(a)'s KIV-2 repeats).
+  // A count with its 95% interval on a scale from 0 (Lp(a)'s KIV-2 repeats). w.interval, when the
+  // card sends it, says what the interval covers ("95% interval for read sampling only").
   function ciBar(w) {
     var box = el('div', { 'class': 'widget w-cibar', 'data-widget': 'ci' });
     var max = w.max || nice(w.high * 1.25);
-    var label = w.label + ': ' + w.value + ', 95% interval ' + w.low + ' to ' + w.high;
-    add(box, wrow(whead(w.label, w.value + ' ' + (w.unit || ''), '95% interval ' + w.low + ' to ' + w.high +
+    var range = w.interval ? w.interval + ', ' + w.low + ' to ' + w.high : '95% interval ' + w.low + ' to ' + w.high;
+    var label = w.label + ': ' + w.value + ', ' + range;
+    add(box, wrow(whead(w.label, w.value + ' ' + (w.unit || ''), range +
       (w['class'] ? ' · class "' + w['class'] + '"' : '')),
-      trackOf(max, [whisker(w.low, w.high, max, '95% interval'), mark('', w.value, max, label)]),
-      'Scale 0 to ' + max + ' ' + (w.unit || '') + '. The line is the 95% interval of the estimate.'));
+      trackOf(max, [whisker(w.low, w.high, max, w.interval || '95% interval'), mark('', w.value, max, label)]),
+      'Scale 0 to ' + max + ' ' + (w.unit || '') + '. The line is the ' +
+        (w.interval ? 'estimate’s ' + w.interval : '95% interval of the estimate') + '.'));
     return box;
   }
 

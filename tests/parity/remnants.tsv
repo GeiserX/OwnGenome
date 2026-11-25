@@ -3,5 +3,3 @@
 # names listed here and nothing else, that every name has a user, and that
 # the importers are exactly these (docs/rust.md).
 # file<TAB>names<TAB>importers<TAB>lane
-bin/genome_lookup.py	GENE_KEYS,RSID_RE,norm_chrom,parse_query,names_of,walk_mentions,flat	bin/results_index.py	R5c
-bin/collect_summary.py	HERE,ASSETS_DIR,SECTIONS,og,collect,COMMON_AF,RUN_ALL_STEPS,open_text,info_map,read_tsv,hla_quality,HLA_MAX_CANDIDATES,EXPLORE_DOCS,csq_rank	bin/owngenome_live.py,bin/render_report.py,bin/results_index.py,tests/test_run_state.py,tests/test_viewer.py	R6b

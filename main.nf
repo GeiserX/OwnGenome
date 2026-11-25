@@ -49,6 +49,7 @@ include { EXOMISER_PREPARE; EXOMISER; EXOMISER_REPORT } from './modules/local/ex
 include { CHIP_PREPARE; CHIP_MUTECT2; CHIP_ANNOTATE; CHIP_REPORT } from './modules/local/chip/main'
 include { MEI_DEPTH; MEI; MEI_REPORT } from './modules/local/mei/main'
 include { MOCHA_PREP; MOCHA_PHASE; MOCHA_CALL; MOCHA_REPORT } from './modules/local/mocha/main'
+include { exome_dropped } from './workflows/exome'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,6 +162,67 @@ workflow {
         if (!(params.exomiser_assembly in ['hg38', 'hg19'])) {
             error "--exomiser_assembly must be hg38 or hg19, got '${params.exomiser_assembly}'."
         }
+    }
+
+    // ─── Exome (--model_type WES) ───────────────────────────────────────
+    // As scripts/03's MODEL_TYPE=WES and scripts/16b's CAPTURE_BED:
+    // DeepVariant's exome model on the capture regions, and mosdepth's
+    // coverage over them; Manta runs with --exome. The steps that read
+    // whole-genome depth, or variants spread over the genome, are not run
+    // (workflows/exome.nf). The sex check is somalier's (sample_qc): indexcov
+    // reads depth along the whole genome from the BAM index, and an exome has
+    // none outside its capture.
+    if (!(params.model_type in ['WGS', 'WES'])) {
+        error "--model_type must be WGS (a whole genome) or WES (an exome), got '${params.model_type}'. " +
+              "It picks DeepVariant's model; the pipeline takes paired short reads."
+    }
+    if (params.model_type == 'WES') {
+        if (!params.capture_bed) {
+            error "--model_type WES needs --capture_bed, the BED of the capture kit's target regions " +
+                  "(docs/wes-guide.md): DeepVariant calls those regions and mosdepth measures them."
+        }
+        if (params.intervals) {
+            error "--intervals and --capture_bed both set DeepVariant's regions. Give one BED: the capture " +
+                  "regions cut to the regions you want (bedtools intersect), as --capture_bed."
+        }
+        if (!tools_list.contains('sample_qc')) {
+            error "--model_type WES takes the sex check from somalier: add sample_qc to --tools, with " +
+                  "--somalier_sites and --verifybamid2_panel (scripts/setup.sh --sample-qc-data). indexcov, " +
+                  "the whole-genome check, reads depth an exome does not have."
+        }
+        // A kit BED named for another build ('1', not 'chr1') matches no
+        // contig of the reference: mosdepth would measure nothing, and
+        // DeepVariant would stop hours later with its own message. One
+        // contig in common is enough (a kit BED may list alt contigs the
+        // reference leaves out). A bgzipped BED is read as it is.
+        def capture = file(params.capture_bed, checkIfExists: true)
+        def ref_fai = file("${params.reference}.fai")
+        if (ref_fai.exists()) {
+            def ref_contigs = ref_fai.readLines().collect { l -> l.split('\t')[0] }.toSet()
+            def bed_text = capture.name.endsWith('.gz')
+                ? new java.util.zip.GZIPInputStream(capture.newInputStream()).getText('UTF-8')
+                : capture.text
+            def bed_contigs = bed_text.readLines()
+                .findAll { l -> l.trim() && !l.startsWith('#') && !l.startsWith('track') && !l.startsWith('browser') }
+                .collect { l -> l.split('\t')[0] }
+                .unique()
+            if (bed_contigs && !bed_contigs.any { c -> ref_contigs.contains(c) }) {
+                error "--capture_bed ${params.capture_bed}: none of its contigs (${bed_contigs.take(3).join(', ')}" +
+                      "${bed_contigs.size() > 3 ? ', ...' : ''}) is in the reference (${ref_fai.name}: " +
+                      "${ref_contigs.take(3).join(', ')}, ...). The pipeline's reference is GRCh38 with chr names: " +
+                      "use the kit's GRCh38 BED, or add chr to a BED named like '1' (sed 's/^/chr/'; chrMT is chrM)."
+            }
+        }
+        def dropped = exome_dropped(tools_list)
+        if (dropped) {
+            log.warn "--model_type WES: not run: exome: ${dropped.join(', ')}. These steps read depth along " +
+                     "the whole genome, weigh a locus against a background across it, or read variants spread " +
+                     "over it, which an exome does not have (docs/wes-guide.md)."
+            tools_list = tools_list - dropped
+        }
+    } else if (params.capture_bed) {
+        error "--capture_bed holds the capture regions of an exome: add --model_type WES, or leave it out " +
+              "for a whole genome."
     }
 
     // Fail-fast: stop when enabled tools lack required databases
@@ -556,6 +618,7 @@ workflow {
         )
 
     // Every BAM, given or aligned here, once INDEXCOV has checked its sex
+    // (an exome's: SAMPLE_QC's somalier check, in BAM_ANALYSIS)
     ch_bam = UPSTREAM.out.bam
 
     // ─── Sequence dictionary ────────────────────────────────────────────
@@ -578,6 +641,11 @@ workflow {
     // ClinVar
     ch_clinvar       = params.clinvar       ? Channel.value(file(params.clinvar, checkIfExists: true))       : Channel.value([])
     ch_clinvar_index = params.clinvar_index  ? Channel.value(file(params.clinvar_index, checkIfExists: true)) : Channel.value([])
+    // The conflicting subset step 06 lists apart from the hits (setup.sh's
+    // clinvar/clinvar_conflicting_plp_chr.vcf.gz), its .tbi beside it.
+    ch_clinvar_conflicting = params.clinvar_conflicting
+        ? Channel.value([file(params.clinvar_conflicting, checkIfExists: true), file("${params.clinvar_conflicting}.tbi", checkIfExists: true)])
+        : Channel.value([[], []])
 
     // VEP caches
     ch_vep_cache      = Channel.value(params.vep_cache      ? file(params.vep_cache, checkIfExists: true)      : [])
@@ -737,6 +805,7 @@ workflow {
         ch_reference_fai,
         ch_clinvar,
         ch_clinvar_index,
+        ch_clinvar_conflicting,
         ch_bam,
         ch_pypgx_bundle,
         ch_gvcf,
@@ -1186,6 +1255,7 @@ workflow {
         .join(PGX.out.clinvar_cdna.map            { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_cdna_scan.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_deep_intronic.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(PGX.out.clinvar_conflicting.map     { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_json.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_html.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_phenotypes.map         { meta, f -> [meta.id, f] }, remainder: true)
@@ -1281,11 +1351,13 @@ workflow {
         // meta.tools is the run's tool list (--tools, with exomiser when
         // --hpo added it): HTML_REPORT records it, so a selected step that
         // wrote nothing reads "selected, no result" instead of not run.
+        // meta.model_type is --model_type: HTML_REPORT records an exome, so
+        // the report's mean depth is mosdepth's on-target one.
         .map { meta, vcf, files -> [meta.id, meta, vcf, files] }
         .join(ch_gvcf.map { meta, gvcf, idx -> [meta.id, [gvcf, idx]] }, remainder: true)
         .filter { items -> items[1] != null }
         .map { id, meta, vcf, files, gvcf ->
-            def report_meta = meta + [tools: tools_list]
+            def report_meta = meta + [tools: tools_list, model_type: params.model_type]
             gvcf ? [report_meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [report_meta, vcf, files]
         }
 

@@ -23,6 +23,7 @@ use og_runlog::state::{RunFiles, Sources, StepState};
 use og_runlog::steps::Step;
 use pycompat::json::Value;
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -43,6 +44,11 @@ pub const CLINVAR_FILES: &[&str] = &[
     "clinvar/clinvar_chr.vcf.gz",
     "clinvar/clinvar.vcf.gz",
 ];
+/// The manifest key of step 06's conflicting subset, and the subset.
+pub const CONFLICTING_KEY: &str = "clinvar_conflicting";
+pub const CONFLICTING_FILE: &str = "clinvar/clinvar_conflicting_plp_chr.vcf.gz";
+/// The manifest value of a missing conflicting subset (or its `.tbi`).
+pub const NOT_INSTALLED: &str = "not installed";
 /// The looked-up pins: (manifest key, label).
 pub const PINNED: &[(&str, &str)] = &[
     ("VEP_CACHE_RELEASE", "Ensembl / VEP cache"),
@@ -275,6 +281,28 @@ pub fn installed_clinvar(genome_dir: &Path) -> Option<String> {
         }
     }
     None
+}
+
+/// Step 06's conflicting subset as `bin/write_manifest.sh` records it:
+/// `<##fileDate> (sha256 <hex>)`, so a subset rebuilt for the same ClinVar
+/// release reads as another one; [`NOT_INSTALLED`] without the file or its
+/// `.tbi` (step 06 then does not check it).
+pub fn installed_conflicting(genome_dir: &Path) -> String {
+    let p = genome_dir.join(CONFLICTING_FILE);
+    let mut tbi = p.clone().into_os_string();
+    tbi.push(".tbi");
+    if !p.is_file() || !Path::new(&tbi).is_file() {
+        return NOT_INSTALLED.into();
+    }
+    let Ok(bytes) = std::fs::read(&p) else {
+        return NOT_INSTALLED.into();
+    };
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let date = header_value(&p, "fileDate").unwrap_or_else(|| "no fileDate".into());
+    format!("{date} (sha256 {hex})")
 }
 
 /// A field of a manifest PGS value (`pgs_id=..;HmPOS_date=..`).
@@ -624,6 +652,29 @@ pub fn check(
         installed_clinvar(genome_dir),
     );
     items.push(finish(cv, Some(answers.clinvar()), true));
+    let skipped = steps_not_run(sample, &sample_dir, steps);
+    // Step 06's conflicting subset: nothing upstream to ask. A subset that
+    // appeared, went or was rebuilt since the run (another sha256 for the
+    // same ClinVar release) makes step 06 rerun-ready, so the table a run
+    // lacks or says "not checked" in is redone. A manifest from before the
+    // subset existed names none: that run had none.
+    if !skipped.contains("06") {
+        let ran = get("data", CONFLICTING_KEY).map(str::to_owned);
+        let inst = installed_conflicting(genome_dir);
+        let mut item = Item::new(
+            CONFLICTING_KEY,
+            "ClinVar conflicting subset (step 06's table)",
+            Kind::File,
+            ran.clone(),
+            Some(inst.clone()),
+        );
+        item.class = if ran.as_deref().unwrap_or(NOT_INSTALLED) == inst {
+            Class::NoNewerRelease
+        } else {
+            Class::RerunReady
+        };
+        items.push(finish(item, None, false));
+    }
     for (key, label) in PINNED {
         let ran_raw = if *key == "hla_database" {
             get("data", key)
@@ -657,7 +708,6 @@ pub fn check(
     // same tag counts) makes its step rerun-ready. A pin the run's manifest
     // lacks is unknown, never no-newer-release. A pin read only by steps this
     // run did not run is left out: a rerun would not run that step either.
-    let skipped = steps_not_run(sample, &sample_dir, steps);
     let mut seen: Vec<&str> = vec![];
     for r in steps.iter().flat_map(|s| s.reads.iter()) {
         let key = r.strip_suffix("@self").unwrap_or(r);

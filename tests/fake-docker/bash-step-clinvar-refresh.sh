@@ -3,6 +3,9 @@
 #   - the raw file is NCBI's current one, checked against NCBI's .md5;
 #   - clinvar_chr and clinvar_pathogenic_chr (and their indexes) are rebuilt
 #     from it, and step 06's normalised copy is removed so step 06 rebuilds it;
+#   - og rebuilds the conflicting subset (records some labs call pathogenic)
+#     from it; when og cannot, the other files still refresh and the old
+#     subset is removed, never kept beside the new release;
 #   - clinvar/RELEASE holds the new ##fileDate;
 #   - a failed download leaves every installed file as it was;
 #   - a move into clinvar/ that fails part way fails the refresh and leaves
@@ -16,11 +19,26 @@ C="${GENOME_DIR}/clinvar"
 seed_reference "$GENOME_DIR"
 seed_clinvar "$GENOME_DIR"
 seed_sample "$GENOME_DIR" sample1
-for f in clinvar_pathogenic_chr.norm.vcf.gz clinvar_pathogenic_chr.norm.vcf.gz.tbi; do
+for f in clinvar_pathogenic_chr.norm.vcf.gz clinvar_pathogenic_chr.norm.vcf.gz.tbi \
+         clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi; do
   printf 'old\n' > "${C}/${f}"
 done
 echo 2025-01-01 > "${C}/RELEASE"
 use_output_hook
+
+# og builds the conflicting subset: a stand-in for each Linux build bin/.og
+# lacks satisfies setup.sh's og check, and goes when the case ends.
+OGDIR="${REPO_ROOT}/bin/.og"
+TREE=$("${REPO_ROOT}/rust/og.sh" tree-hash) || fail "could not compute the rust/ tree hash"
+STANDINS=()
+trap 'for f in "${STANDINS[@]}"; do rm -f "$f"; done' EXIT
+for a in x86_64 aarch64; do
+  [ ! -e "${OGDIR}/og-linux-${a}" ] || continue
+  mkdir -p "$OGDIR"
+  printf 'stand-in og-tree-hash:%s;\n' "$TREE" > "${OGDIR}/og-linux-${a}"; chmod 755 "${OGDIR}/og-linux-${a}"
+  STANDINS+=("${OGDIR}/og-linux-${a}")
+done
+"${REPO_ROOT}/rust/og.sh" check --required > /dev/null || fail "bin/.og does not pass setup.sh's og check"
 
 # What NCBI serves: a ClinVar VCF of 2026-09-28.
 SERVED="${CASE_WORK}/served"
@@ -47,6 +65,13 @@ docker_log_has '^run .*--rename-chrs .*/clinvar/\.refresh/chr_rename\.txt /genom
 [ "$(cat "${C}/RELEASE")" = 2026-09-28 ] || fail "clinvar/RELEASE is '$(cat "${C}/RELEASE")', want 2026-09-28"
 [ ! -e "${C}/.refresh" ] || fail "the refresh left clinvar/.refresh behind"
 output_has refresh 'ClinVar release 2026-09-28'
+# The conflicting subset is rebuilt from the new release by og, and replaced.
+docker_log_has '^run .*conflicting-subset.*/genome/clinvar/\.refresh/clinvar_chr\.vcf\.gz' \
+  "the conflicting subset was not built from the new release"
+for f in clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi; do
+  [ -f "${C}/${f}" ] && [ "$(cat "${C}/${f}")" != old ] || fail "${f} was not replaced"
+done
+output_has refresh 'pathogenic and conflicting subsets replaced'
 
 # A refresh whose download fails changes nothing.
 BEFORE=$(cd "$C" && cksum clinvar.vcf.gz clinvar_chr.vcf.gz clinvar_pathogenic_chr.vcf.gz RELEASE)
@@ -75,6 +100,27 @@ PATH="${SHIM}:${PATH}" FAKE_DOWNLOAD_DIR="$SERVED" run_rc refresh-move-fails "${
 [ "$RC" -ne 0 ] || fail "a refresh whose move into clinvar/ failed exited 0"
 output_has refresh-move-fails 'could not move the new ClinVar files'
 [ ! -e "${C}/RELEASE" ] || fail "a refresh that failed part way left RELEASE: $(cat "${C}/RELEASE")"
+
+# A refresh whose conflicting subset cannot be built (og fails in the container)
+# still refreshes the other files, and removes the old subset, so it never sits
+# beside a newer release; step 06 then says those records were not checked.
+cat > "${CASE_WORK}/hook-no-conflicting" <<'HOOK'
+#!/usr/bin/env bash
+case " $* " in *conflicting-subset*) echo "og: cannot execute binary file" >&2; exit 126 ;; esac
+exec "${CASE_WORK}/hook-outputs" "$@"
+HOOK
+chmod +x "${CASE_WORK}/hook-no-conflicting"
+for f in clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi; do printf 'old\n' > "${C}/${f}"; done
+echo 2025-01-01 > "${C}/RELEASE"
+FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hook-no-conflicting" FAKE_DOWNLOAD_DIR="$SERVED" \
+  run_expect 0 refresh-no-conflicting "${SCRIPTS}/setup.sh" --refresh clinvar "$GENOME_DIR"
+output_has refresh-no-conflicting 'Could not build the conflicting ClinVar subset of the new release'
+output_has refresh-no-conflicting 'pathogenic subset replaced; the conflicting subset was not built'
+for f in clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi; do
+  [ ! -e "${C}/${f}" ] || fail "a refresh that could not build the conflicting subset kept the old ${f}"
+done
+[ "$(cat "${C}/RELEASE")" = 2026-09-28 ] || fail "a refresh without the conflicting subset did not record the release"
+[ ! -e "${C}/.refresh" ] || fail "a refresh without the conflicting subset left clinvar/.refresh behind"
 
 # validate-setup.sh: the release and its age.
 echo 2025-01-01 > "${C}/RELEASE"

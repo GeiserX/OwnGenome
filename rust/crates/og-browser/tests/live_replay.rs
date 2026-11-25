@@ -14,8 +14,9 @@ use std::path::Path;
 use std::time::Duration;
 
 const RUN: &str = "DEMO-001";
-/// The policy the live site sends (`CSP` of bin/owngenome_live.py; the
-/// test `the_policy_is_the_live_sites` keeps the two equal).
+/// The policy the live site sends (`CSP` of og live serve,
+/// rust/crates/og-live/src/csp.rs; the test `the_policy_is_the_live_sites`
+/// keeps the two equal).
 const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; \
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
 
@@ -201,17 +202,18 @@ fn replay_plays_frames_json() {
     assert!(fails.is_empty(), "failed: {fails:?}");
 }
 
-/// The replay is served with the live site's own policy: the `CSP = (...)`
-/// string pieces of bin/owngenome_live.py, joined, must equal [`CSP`]. When
-/// the live site moves to Rust, this test reads the policy from there.
+/// The replay is served with the live site's own policy: `CSP` of og live
+/// serve (rust/crates/og-live/src/csp.rs, a Rust string whose lines end in
+/// `\` and go on after the next line's indent) must equal [`CSP`].
 #[test]
 fn the_policy_is_the_live_sites() {
-    let src = fs::read_to_string(repo_root().join("bin/owngenome_live.py")).unwrap();
-    let start = src
-        .find("\nCSP = (")
-        .expect("bin/owngenome_live.py defines CSP = (...)")
-        + 1;
-    let end = start + src[start..].find(")\n").expect("CSP = ( ... ) ends");
-    let policy: String = src[start..end].split('"').skip(1).step_by(2).collect();
+    let src = fs::read_to_string(repo_root().join("rust/crates/og-live/src/csp.rs")).unwrap();
+    let open = "pub const CSP: &str = \"";
+    let start = src.find(open).expect("csp.rs defines pub const CSP") + open.len();
+    let end = start + src[start..].find("\";").expect("pub const CSP ends");
+    let mut policy = String::new();
+    for (i, piece) in src[start..end].split("\\\n").enumerate() {
+        policy.push_str(if i == 0 { piece } else { piece.trim_start() });
+    }
     assert_eq!(policy, CSP);
 }

@@ -67,7 +67,7 @@
 ## Clinical Variant Filter
 ---
   Clinical variants: 6
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 2 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
     MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic

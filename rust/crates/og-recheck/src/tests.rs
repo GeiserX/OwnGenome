@@ -250,6 +250,74 @@ fn clinvar_newer_upstream_is_refresh_available_with_06_and_its_downstream() {
     assert_eq!(c.affected_steps, CLINVAR_STEPS);
 }
 
+/// Step 06's conflicting subset for one ClinVar release: it appearing
+/// (setup.sh run after an upgrade), being rebuilt with other records, or
+/// going makes step 06 and the report rerun-ready, nothing downstream; the
+/// subset the run recorded does not.
+#[test]
+fn the_conflicting_subset_appearing_or_rebuilt_reruns_step_06() {
+    let g = genome("conf", Opt::default());
+    let a = answers(&[("clinvar_file_date", r#"{"upstream": "20260901"}"#)]);
+    let sub = g.root.join("clinvar/clinvar_conflicting_plp_chr.vcf.gz");
+    let tbi = g
+        .root
+        .join("clinvar/clinvar_conflicting_plp_chr.vcf.gz.tbi");
+    let item = |c: &Check| by_item(c)["clinvar_conflicting"].clone();
+    let vcf = |id: &str| {
+        format!(
+            "##fileformat=VCFv4.1\n##fileDate=20260901\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+             chr22\t100\t{id}\tC\tT\t.\t.\tCLNSIG=Conflicting_classifications_of_pathogenicity;CLNSIGCONF=Pathogenic_(2)|Uncertain_significance_(1)\n"
+        )
+    };
+    assert_eq!(
+        affected_steps(&steps(), &["clinvar_conflicting"]),
+        ["06", "24"]
+    );
+
+    // A run from before the subset existed, and none here: nothing to redo.
+    let c = run_check(&g, &a, &this_pins(), Some("3.66.0"));
+    assert_eq!(item(&c).ran_with, None);
+    assert_eq!(item(&c).installed.as_deref(), Some("not installed"));
+    assert_eq!(item(&c).class, Class::NoNewerRelease);
+    assert!(c.rerun_ready_steps.is_empty(), "{:?}", c.rerun_ready_steps);
+
+    // The subset appears for the same release.
+    gz(&sub, &vcf("1"));
+    fs::write(&tbi, "tbi").unwrap();
+    let c = run_check(&g, &a, &this_pins(), Some("3.66.0"));
+    let now = item(&c).installed.unwrap();
+    assert!(
+        now.starts_with("20260901 (sha256 ") && now.len() == 17 + 64 + 1,
+        "{now}"
+    );
+    assert_eq!(item(&c).class, Class::RerunReady);
+    assert_eq!(item(&c).steps, ["06", "24"]);
+    assert_eq!(c.rerun_ready_steps, ["06", "24"]);
+
+    // The run recorded this subset: nothing to redo.
+    fs::write(
+        g.manifest(),
+        fs::read_to_string(g.manifest()).unwrap() + &format!("data\tclinvar_conflicting\t{now}\n"),
+    )
+    .unwrap();
+    let c = run_check(&g, &a, &this_pins(), Some("3.66.0"));
+    assert_eq!(item(&c).class, Class::NoNewerRelease);
+    assert!(c.rerun_ready_steps.is_empty(), "{:?}", c.rerun_ready_steps);
+
+    // Rebuilt with other records, same release: redo.
+    gz(&sub, &vcf("2"));
+    let c = run_check(&g, &a, &this_pins(), Some("3.66.0"));
+    assert_ne!(item(&c).installed.unwrap(), now);
+    assert_eq!(item(&c).class, Class::RerunReady);
+    assert_eq!(c.rerun_ready_steps, ["06", "24"]);
+
+    // Gone (no .tbi, so step 06 would not check it): redo too.
+    fs::remove_file(&tbi).unwrap();
+    let c = run_check(&g, &a, &this_pins(), Some("3.66.0"));
+    assert_eq!(item(&c).installed.as_deref(), Some("not installed"));
+    assert_eq!(item(&c).class, Class::RerunReady);
+}
+
 #[test]
 fn a_newer_clinvar_installed_here_is_rerun_ready() {
     let g = genome(

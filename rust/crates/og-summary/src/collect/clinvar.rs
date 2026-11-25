@@ -1,7 +1,10 @@
 //! The ClinVar screen (step 06): each P/LP hit with its review stars, its
 //! call quality against step 06's floor, gnomAD AF and rsIDs from step 13's
 //! VEP output, and the cDNA read check, the cDNA scan and the always-report
-//! deep intronic sites when step 06 wrote them.
+//! deep intronic sites when step 06 wrote them. The conflicting records some
+//! labs call pathogenic (step 06's `<s>_clinvar_conflicting.tsv`) go under
+//! `conflicting`, apart from the hits: no count, tier or other section reads
+//! them, and the key is there only when step 06 wrote the table.
 //!
 //! The hits VCF is small and three sections read it (this one, the ACMG
 //! tier of the clinical section and the carrier list), so it is read once
@@ -546,6 +549,147 @@ fn deep_intronic(path: &str) -> Result<Value, String> {
     Ok(Value::Array(out))
 }
 
+/// `<s>_clinvar_conflicting.tsv`: the conflicting records the sample carries
+/// that some labs call pathogenic. A first line `# not checked: ...` (no
+/// subset was installed) gives `checked` false with that note and a null
+/// count, so it never reads as zero records.
+fn conflicting(path: &str) -> Result<Value, String> {
+    let lines = text::lines(path).map_err(|e| e.unreadable(path))?;
+    let note = lines
+        .first()
+        .and_then(|l| l.strip_prefix("# "))
+        .filter(|n| n.starts_with("not checked"))
+        .map(str::to_owned);
+    let body = lines
+        .iter()
+        .filter(|l| !l.starts_with('#'))
+        .map(|l| Ok::<_, std::io::Error>(l.clone()));
+    let mut rows = Vec::new();
+    for r in pycompat::csv::DictReader::new(body, '\t', pycompat::csv::Quoting::Minimal) {
+        let r = r.map_err(|e| format!("{}: {e}", e.exception()))?;
+        let Some(pos) = digits(text::cell(&r, "pos")) else {
+            continue;
+        };
+        let s = |k: &str| Value::Str(text::cell_or(&r, k).to_owned());
+        let n = |k: &str| opt_int(digits(text::cell(&r, k)));
+        let dot = |k: &str| text::cell(&r, k).filter(|v| !v.is_empty() && *v != ".");
+        let ids = dot("condition_ids")
+            .map(|v| v.split(',').map(|x| Value::Str(x.to_owned())).collect())
+            .unwrap_or_default();
+        rows.push(obj([
+            ("chrom", s("chrom")),
+            ("pos", Value::Int(pos)),
+            ("ref", s("ref")),
+            ("alt", s("alt")),
+            ("genotype", s("genotype")),
+            ("gene", s("gene")),
+            ("clinvar_id", s("clinvar_id")),
+            ("stars", n("stars")),
+            ("review_status", s("review_status")),
+            ("submissions", s("submissions")),
+            ("plp_submissions", n("plp_submissions")),
+            ("clinvar_condition", opt_s(dot("condition"))),
+            ("clinvar_condition_ids", Value::Array(ids)),
+            ("dp", n("dp")),
+            ("gq", n("gq")),
+            (
+                "low_confidence",
+                Value::Bool(text::cell(&r, "low_confidence") == Some("yes")),
+            ),
+        ]));
+    }
+    let checked = note.is_none();
+    Ok(obj([
+        ("checked", Value::Bool(checked)),
+        ("note", opt_s(note.as_deref())),
+        (
+            "count",
+            if checked {
+                Value::Int(rows.len() as i128)
+            } else {
+                Value::Null
+            },
+        ),
+        ("hits", Value::Array(rows)),
+    ]))
+}
+
+#[cfg(test)]
+mod conflicting_tests {
+    use super::*;
+
+    fn write(name: &str, body: &str) -> String {
+        let dir =
+            std::env::temp_dir().join(format!("og-summary-conflicting-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, body).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    const HEAD: &str = "chrom\tpos\tref\talt\tgenotype\tgene\tclinvar_id\tstars\treview_status\tsubmissions\tplp_submissions\tcondition\tcondition_ids\tdp\tgq\tlow_confidence\n";
+
+    #[test]
+    fn a_checked_table_lists_its_rows() {
+        let p = write(
+            "checked.tsv",
+            &format!(
+                "{HEAD}chr22\t100\tC\tT\thet\tNF2\t9900101\t1\tcriteria provided, conflicting classifications\tPathogenic(2), Uncertain_significance(1)\t2\tNeurofibromatosis, type 2\tMONDO:MONDO:0007039,OMIM:101000\t30\t20\tyes\n"
+            ),
+        );
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["checked"], Value::Bool(true));
+        assert_eq!(v["note"], Value::Null);
+        assert_eq!(v["count"], Value::Int(1));
+        let Value::Array(h) = &v["hits"] else {
+            panic!("no hits")
+        };
+        let Value::Object(r) = &h[0] else {
+            panic!("no row")
+        };
+        assert_eq!(r["pos"], Value::Int(100));
+        assert_eq!(r["plp_submissions"], Value::Int(2));
+        assert_eq!(r["stars"], Value::Int(1));
+        assert_eq!(
+            r["clinvar_condition"],
+            Value::Str("Neurofibromatosis, type 2".into())
+        );
+        assert_eq!(
+            r["clinvar_condition_ids"],
+            Value::Array(vec![
+                Value::Str("MONDO:MONDO:0007039".into()),
+                Value::Str("OMIM:101000".into())
+            ])
+        );
+        assert_eq!(r["low_confidence"], Value::Bool(true));
+        let p = write("empty.tsv", HEAD);
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["count"], Value::Int(0));
+    }
+
+    #[test]
+    fn a_table_that_was_not_checked_is_never_zero() {
+        let p = write(
+            "skip.tsv",
+            &format!("# not checked: run setup.sh --refresh clinvar\n{HEAD}"),
+        );
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["checked"], Value::Bool(false));
+        assert_eq!(
+            v["note"],
+            Value::Str("not checked: run setup.sh --refresh clinvar".into())
+        );
+        assert_eq!(v["count"], Value::Null);
+        assert_eq!(v["hits"], Value::Array(vec![]));
+    }
+}
+
 // --- gnomAD AF and rsIDs from step 13's VEP output -----------------------------------
 
 /// Where the frequencies came from, or why there are none.
@@ -702,6 +846,9 @@ pub struct ClinVar {
     pub cdna: bool,
     pub cdna_scan: Option<Value>,
     pub deep_intronic: Option<Value>,
+    /// Step 06's conflicting records some labs call pathogenic, when it
+    /// wrote their table.
+    pub conflicting: Option<Value>,
 }
 
 impl ClinVar {
@@ -749,6 +896,10 @@ impl ClinVar {
             Some((p, _)) => Some(deep_intronic(&p)?),
             None => None,
         };
+        let conflicting = match side(&format!("clinvar/{s}_clinvar_conflicting.tsv")) {
+            Some((p, _)) => Some(conflicting(&p)?),
+            None => None,
+        };
         Ok(ClinVar {
             hits: rows,
             floor,
@@ -756,6 +907,7 @@ impl ClinVar {
             cdna,
             cdna_scan,
             deep_intronic,
+            conflicting,
         })
     }
 
@@ -811,6 +963,9 @@ impl ClinVar {
         }
         if let Some(v) = &self.deep_intronic {
             m.insert("deep_intronic".into(), v.clone());
+        }
+        if let Some(v) = &self.conflicting {
+            m.insert("conflicting".into(), v.clone());
         }
         Value::Object(m)
     }

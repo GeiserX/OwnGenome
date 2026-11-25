@@ -24,7 +24,9 @@ Alignment and variant calling of the samplesheet rows that start from FASTQ or f
 | `--skip_trim` | `false` | Align the raw reads, without fastp trimming (SKIP_TRIM=true in scripts/01b-fastp-qc.sh). |
 | `--minimap2_index` | none | minimap2 index built with -x sr. Default: &lt;reference base&gt;.sr.mmi beside the FASTA, the file scripts/02-alignment.sh builds; when neither exists the run builds one. |
 | `--intervals` | none | Space-separated regions DeepVariant calls (its --regions, INTERVALS in scripts/03-deepvariant.sh). Unset calls the whole genome. |
-| `--sex_check` | `fail` | What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM, before any BAM step) or by somalier (with sample_qc): fail stops the run; warn logs it and goes on with the declared sex. One of: `fail`, `warn`. |
+| `--model_type` | `WGS` | WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them (the report's mean depth is then the on-target one) and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha, viral, cyrius, parascopy, locityper or mei, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture, and Cyrius, Parascopy, Locityper and MEGAnE weigh a locus against depth across the genome. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing ([WES guide](wes-guide.md)). One of: `WGS`, `WES`. |
+| `--capture_bed` | none | BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them. Its contigs must be named as the reference names them (chr1, not 1), or the run stops before it starts. |
+| `--sex_check` | `fail` | What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM of a whole genome, before any BAM step) or by somalier (with sample_qc; an exome's only check): fail stops the run; warn logs it and goes on with the declared sex. One of: `fail`, `warn`. |
 
 ## Reference data
 
@@ -35,6 +37,7 @@ Paths to reference files required by the pipeline.
 | `--reference` | none | Path to the GRCh38 reference FASTA the BAMs were aligned to: the no-ALT analysis set that scripts/setup.sh installs as reference/GRCh38_no_alt_analysis_set.fasta. |
 | `--clinvar` | none | Path to ClinVar pathogenic VCF (bgzipped). Optional — skip ClinVar screen if not provided. |
 | `--clinvar_index` | none | Path to ClinVar pathogenic VCF tabix index (.tbi). |
+| `--clinvar_conflicting` | none | The conflicting ClinVar subset, its .tbi beside it, which scripts/setup.sh installs as clinvar/clinvar_conflicting_plp_chr.vcf.gz: the records ClinVar labels Conflicting classifications of pathogenicity where at least one lab submitted Pathogenic or Likely_pathogenic. With clinvar, CLINVAR_SCREEN lists the ones the sample carries in &lt;id&gt;_clinvar_conflicting.tsv, apart from the hits: they never enter the hit counts, the ACMG card, the carrier list or the couple screen. Without it that table says not checked. |
 
 ## Tool selection
 

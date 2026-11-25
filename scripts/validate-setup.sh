@@ -642,6 +642,21 @@ else
         echo "       Download and prepare it — see docs/00-reference-setup.md"
       fi
     fi
+
+    # --- ClinVar conflicting subset (step 6's table of records some labs call
+    # pathogenic; optional: without it the table says "not checked") ---
+    CLINVAR_CONF="${GENOME_DIR}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"
+    if [ -f "$CLINVAR_CONF" ] && [ -f "${CLINVAR_CONF}.tbi" ] \
+       && ! { [ -f "$CLINVAR" ] && [ "$CLINVAR" -nt "$CLINVAR_CONF" ]; }; then
+      pass "ClinVar conflicting subset: present"
+    elif [ -f "$CLINVAR_PATH" ]; then
+      if [ -f "$CLINVAR_CONF" ] && [ -f "${CLINVAR_CONF}.tbi" ]; then
+        info "ClinVar conflicting subset is older than ${CLINVAR#"${GENOME_DIR}"/}: step 6 lists conflicting records of an older release."
+      else
+        info "ClinVar conflicting subset not built: step 6's table of conflicting records some labs call pathogenic says \"not checked\"."
+      fi
+      echo "       Build it: ./scripts/setup.sh ${GENOME_DIR}"
+    fi
   fi
 
   # --- ClinVar release date (clinvar/RELEASE, written by setup.sh) ---

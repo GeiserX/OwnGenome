@@ -1,0 +1,519 @@
+{
+ "box": "opsbox",
+ "cores": 16,
+ "generated_utc": "2026-01-03T12:00:00Z",
+ "steps": {
+  "01b": {
+   "low_s": 900.0,
+   "high_s": 1188.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "02": {
+   "low_s": 13860.0,
+   "high_s": 19440.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "03": {
+   "low_s": 31799.879999999997,
+   "high_s": 48600.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "03a": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "03b": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "03c": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "03d": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "04": {
+   "low_s": 1319.76,
+   "high_s": 2448.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "04a": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "04b": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "05": {
+   "low_s": 59.76,
+   "high_s": 108.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "06": {
+   "low_s": 30.0,
+   "high_s": 30.0,
+   "n": 1,
+   "source": "box",
+   "label": "on this box, 1 run",
+   "cpus": 1
+  },
+  "07": {
+   "low_s": 29.88,
+   "high_s": 72.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "08": {
+   "low_s": 2099.88,
+   "high_s": 3924.0000000000005,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "09": {
+   "low_s": 1.8,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "09b": {
+   "low_s": 0.7200000000000001,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "10": {
+   "low_s": 4259.88,
+   "high_s": 5508.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "11": {
+   "low_s": 60.0,
+   "high_s": 100.0,
+   "n": 2,
+   "source": "box",
+   "label": "on this box, 2 runs",
+   "cpus": 2
+  },
+  "12": {
+   "low_s": 3.9600000000000004,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "13": {
+   "low_s": 14580.0,
+   "high_s": 16632.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "14": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "15": {
+   "low_s": 180.0,
+   "high_s": 252.00000000000003,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "16": {
+   "low_s": 0.7200000000000001,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "16b": {
+   "low_s": 119.88000000000001,
+   "high_s": 180.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "17": {
+   "low_s": 1019.88,
+   "high_s": 2160.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "18": {
+   "low_s": 839.88,
+   "high_s": 1188.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "19": {
+   "low_s": 1260.0,
+   "high_s": 11952.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "20": {
+   "low_s": 59.76,
+   "high_s": 108.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "21": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "22": {
+   "low_s": 1.8,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "23": {
+   "low_s": 149.76,
+   "high_s": 396.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "24": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "25": {
+   "low_s": 3600.0,
+   "high_s": 5292.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "26": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "26b": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "27": {
+   "low_s": 2.8800000000000003,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "28": {
+   "low_s": 2.8800000000000003,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "29": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "30": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "31": {
+   "low_s": 239.76000000000002,
+   "high_s": 612.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "32": {
+   "low_s": 334.8,
+   "high_s": 612.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "33": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "34": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "35": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "35b": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "36": {
+   "low_s": 0.7200000000000001,
+   "high_s": 36.0,
+   "n": 0,
+   "source": "docs",
+   "label": "from the docs, measured on 16 threads",
+   "cpus": 1
+  },
+  "37": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "38": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "39": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "40": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "41": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "42": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "43": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "44": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "45": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "46": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "47": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "48": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "49": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "50": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "51": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "52": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  },
+  "53": {
+   "low_s": null,
+   "high_s": null,
+   "n": 0,
+   "source": "none",
+   "label": "not measured",
+   "cpus": null
+  }
+ },
+ "remaining": {
+  "low_s": 3600.0,
+  "high_s": 5292.0,
+  "unknown_steps": [],
+  "late_steps": [],
+  "note": null,
+  "basis": "low: the longest chain of waiting and running steps at their low ends; high: the longer of that chain at the high ends and their CPU work (1.5 CPU-hours) over 16 cores"
+ }
+}

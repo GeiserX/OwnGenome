@@ -1,0 +1,53 @@
+# acmg_lof_overrides.tsv: the hand rows of the lof column of assets/acmg_sf.tsv, each with its reason.
+# Hand-curated from ClinGen's gene curation list and the ACMG SF papers; reviewed like code.
+# og dev build acmg-lof (scripts/ci/build-acmg-lof.sh) writes the lof cell of each ACMG gene: yes when
+# ClinGen's haploinsufficiency score is 3 (sufficient evidence that losing one copy causes disease), no
+# when it is 40 (dosage sensitivity unlikely), and the row below for every other gene. ClinGen's other
+# scores (0, 1 and 2 for no, little or some evidence, 30 for a gene of a recessive disease, or no score
+# when ClinGen has not curated the gene) do not say whether loss of function causes the disease ACMG lists,
+# so such a gene needs a row here, and the build stops for a gene that has none. A row also overrides a
+# score of 3 or 40 that belongs to another disease. Columns, tab separated:
+#   gene    the HGNC symbol, as in acmg_sf.tsv
+#   lof     yes: a predicted loss-of-function call (a VEP HIGH-impact record) counts; no: it does not,
+#           and only a ClinVar P/LP variant counts; mark: it counts, with a note that loss of function is
+#           a less certain cause of the disease
+#   reason  why, in a few words
+gene	lof	reason
+APOB	no	ClinGen's score 3 is for hypobetalipoproteinemia, where loss of function lowers LDL; ACMG lists APOB for familial hypercholesterolemia, caused by variants that weaken LDL receptor binding
+RET	no	ClinGen's score 3 is for Hirschsprung disease; ACMG lists RET for MEN2 and familial medullary thyroid cancer, caused by gain-of-function variants
+TGFBR1	mark	Loeys-Dietz syndrome is mostly caused by missense variants of the kinase domain; truncating variants are a less certain cause
+TGFBR2	mark	Loeys-Dietz syndrome is mostly caused by missense variants of the kinase domain; truncating variants are a less certain cause
+TTN	yes	ACMG reports only truncating TTN variants (SF v3.2 and v3.3, Table 1 footnote f); the limit column says in which exons they count
+DSG2	yes	truncating variants are a main class of pathogenic DSG2 variants in arrhythmogenic right ventricular cardiomyopathy (ClinGen ARVC gene reappraisal, James et al. 2021); the score grades evidence for whole-gene copy loss only
+DSC2	yes	truncating variants are a main class of pathogenic DSC2 variants in arrhythmogenic right ventricular cardiomyopathy (ClinGen ARVC gene reappraisal, James et al. 2021); the score grades evidence for whole-gene copy loss only
+RBM20	mark	most pathogenic RBM20 variants are missense variants of its RS-rich region that act by a dominant mechanism; truncating variants are reported in dilated cardiomyopathy, but are a less certain cause
+DES	no	dilated cardiomyopathy and desmin myopathy come from dominant missense and in-frame variants that disrupt filament assembly; losing one copy is not known to cause disease (null alleles cause a recessive myopathy)
+PLN	no	its cardiomyopathy comes from dominant variants such as p.Arg14del and p.Arg9Cys; a heterozygous truncating variant has little evidence of causing it (ClinGen score 1)
+ACTA2	no	aortopathy from dominant-negative missense variants
+MYH11	no	aortopathy from dominant-negative missense and in-frame variants
+TMEM43	no	arrhythmogenic right ventricular cardiomyopathy from the dominant missense variant p.Ser358Leu
+RYR2	no	catecholaminergic polymorphic ventricular tachycardia from gain-of-function missense variants
+TNNT2	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+TNNC1	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+MYH7	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+TNNI3	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+TPM1	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+MYL3	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+ACTC1	no	cardiomyopathy from dominant-negative missense variants of the sarcomere
+MYL2	no	hypertrophic cardiomyopathy from dominant missense variants; ClinGen's score 30 is for a recessive myopathy
+PRKAG2	no	PRKAG2 cardiac syndrome from gain-of-function missense variants that activate AMPK
+CALM1	no	long QT syndrome from dominant missense variants that disturb calcium binding; losing one of the three calmodulin genes is tolerated
+CALM2	no	long QT syndrome from dominant missense variants that disturb calcium binding; losing one of the three calmodulin genes is tolerated
+CALM3	no	long QT syndrome from dominant missense variants that disturb calcium binding; losing one of the three calmodulin genes is tolerated
+TTR	no	transthyretin amyloidosis from missense variants that destabilise the protein; losing one copy causes no disease
+RYR1	no	malignant hyperthermia susceptibility from gain-of-function missense variants; ClinGen's score 30 is for a recessive myopathy
+CACNA1S	no	malignant hyperthermia susceptibility from gain-of-function missense variants
+MUTYH	yes	recessive disease: losing both copies is the disease
+BTD	yes	recessive disease: losing both copies is the disease
+GAA	yes	recessive disease: losing both copies is the disease
+RPE65	yes	recessive disease: losing both copies is the disease
+ATP7B	yes	recessive disease: losing both copies is the disease
+CASQ2	yes	recessive disease: losing both copies is the disease
+TRDN	yes	recessive disease: losing both copies is the disease
+CYP27A1	yes	recessive disease: losing both copies is the disease
+HFE	yes	recessive disease: losing both copies is the disease (only p.Cys282Tyr homozygotes are reported, by the variants column)

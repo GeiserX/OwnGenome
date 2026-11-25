@@ -87,6 +87,7 @@ file	{sample}/clinical/{sample}_clinical.vcf.gz.tbi	23	CLINICAL_FILTER	both	inde
 file	{sample}/clinical/{sample}_clinical_summary.tsv	23	CLINICAL_FILTER	both	tsv	stable	bash	-
 file	{sample}/clinvar/{sample}_clinvar_cdna_check.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
 file	{sample}/clinvar/{sample}_clinvar_cdna_scan.tsv	06	CLINVAR_CDNA_CHECK	both	tsv	stable	both	-
+file	{sample}/clinvar/{sample}_clinvar_conflicting.tsv	06	CLINVAR_SCREEN	both	tsv	stable	both	chrom,pos,ref,alt,genotype,gene,clinvar_id,stars,review_status,submissions,plp_submissions,condition,condition_ids,dp,gq,low_confidence
 file	{sample}/clinvar/{sample}_clinvar_deep_intronic.tsv	06	CLINVAR_SCREEN	both	tsv	stable	both	-
 file	{sample}/clinvar/{sample}_clinvar_hits.tsv	06	CLINVAR_SCREEN	both	tsv	stable	both	chrom,pos,ref,alt,genotype,clinvar_id,geneinfo,clnsig,clnrevstat
 file	{sample}/clinvar/{sample}_clinvar_hits.vcf	06	CLINVAR_SCREEN	both	vcf	stable	both	INFO/GENEINFO,INFO/CLNSIG,INFO/CLNREVSTAT
@@ -282,9 +283,12 @@ param	publish_dir_mode	-	-	-	-	stable	-	-
 param	skip_trim	-	-	-	-	stable	-	-
 param	minimap2_index	-	-	-	-	stable	-	-
 param	intervals	-	-	-	-	stable	-	-
+param	model_type	-	-	-	-	stable	-	-
+param	capture_bed	-	-	-	-	stable	-	-
 param	sex_check	-	-	-	-	stable	-	-
 param	reference	-	-	-	-	stable	-	-
 param	clinvar	-	-	-	-	stable	-	-
+param	clinvar_conflicting	-	-	-	-	stable	-	-
 param	clinvar_index	-	-	-	-	stable	-	-
 param	tools	-	-	-	-	stable	-	-
 param	vep_cache	-	-	-	-	stable	-	-
@@ -439,6 +443,7 @@ switch	EXTRA_CALLERS	-	-	-	-	stable	-	-
 switch	BENCHMARK	-	-	-	-	stable	-	-
 switch	FAMILIES	-	-	-	-	experimental	-	-
 switch	OWNGENOME_LIVE_URL	-	-	-	-	experimental	-	-
+switch	OWNGENOME_LIVE_STATE_DIR	-	-	-	-	experimental	-	-
 switch	LOCITYPER_DATA	-	-	-	-	experimental	-	-
 switch	LOCITYPER_BG_REGION	-	-	-	-	experimental	-	-
 switch	EVERYTHING	-	-	-	-	stable	-	-

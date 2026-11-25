@@ -36,6 +36,7 @@ include { SAMPLE_QC        } from '../modules/local/somalier/main'
 include { VERIFYBAMID2     } from '../modules/local/verifybamid2/main'
 include { Y_POSITIONS; Y_PILEUP; Y_HAPLOGROUP; Y_PRIVATE } from '../modules/local/y_haplogroup/main'
 include { Y_STR } from '../modules/local/y_str/main'
+include { selected_tools } from './exome'
 
 workflow BAM_ANALYSIS {
 
@@ -178,9 +179,10 @@ workflow BAM_ANALYSIS {
 
     //
     // MODULE 3: TelomereHunter (telomere length)
-    // Gates on: params.tools contains 'telomere_hunter'
+    // Gates on: params.tools contains 'telomere_hunter', and a whole genome:
+    // an exome captures no telomeric repeats (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('telomere_hunter')) {
+    if (selected_tools().contains('telomere_hunter')) {
         // The BAM is GRCh38: without --cytoband the module gets the GRCh38
         // bands the repository ships, never TelomereHunter's own fallback.
         ch_bands = ch_cytoband.map { f -> f instanceof List ? file("${projectDir}/assets/reference/cytoBand.hg38.txt", checkIfExists: true) : f }
@@ -191,11 +193,13 @@ workflow BAM_ANALYSIS {
 
     //
     // MODULE 4: mosdepth (coverage statistics, and the callability of the
-    // genes of assets/callability_genes.tsv and of their coding exons)
+    // genes of assets/callability_genes.tsv and of their coding exons); an
+    // exome's statistics over its capture regions (--capture_bed)
     // Gates on: params.tools contains 'mosdepth'
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mosdepth')) {
-        MOSDEPTH(ch_bam, Channel.value(["callability_genes.tsv", "callability_exons.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }))
+        MOSDEPTH(ch_bam, Channel.value(["callability_genes.tsv", "callability_exons.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }),
+                 Channel.value(params.capture_bed ? file(params.capture_bed, checkIfExists: true) : []))
         ch_callability    = MOSDEPTH.out.callability
         ch_coverage       = MOSDEPTH.out.summary
         ch_mosdepth_depth = MOSDEPTH.out.summary.join(MOSDEPTH.out.global_dist)
@@ -211,9 +215,21 @@ workflow BAM_ANALYSIS {
     // step 16b. Without mosdepth the filter runs at depth 0, as step 20 does.
     // failOnMismatch: a BAM with no mosdepth row stops the run instead of
     // dropping the sample from MITO_VARIANTS.
+    // An exome has autosomal depth only inside its capture: MITO_DELETIONS,
+    // whose mtDNA copy number weighs chrM's reads against the autosomes',
+    // does not run, and the NuMT filter gets the exome's genome-wide median
+    // depth, 0 or close to it, so it marks little or nothing, as step 20
+    // does on step 16b's output for an exome.
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mito_variants')) {
+        def mito_exome     = params.model_type == 'WES'
         def mito_has_depth = params.tools.split(',').collect{it.trim()}.contains('mosdepth')
+        if (mito_exome) {
+            log.warn "mito_variants: not run: exome: the mtDNA copy number and the large deletions (MITO_DELETIONS). " +
+                "The copy number weighs chrM's reads against the autosomes', which an exome reads only inside its " +
+                "capture. The NuMT filter runs on the exome's median autosomal depth, 0 or close to it, so it marks " +
+                "little or nothing."
+        }
         if (!mito_has_depth) {
             // The task's own WARNING goes only to its .command.err, which
             // Nextflow does not show for a task that succeeds.
@@ -234,18 +250,21 @@ workflow BAM_ANALYSIS {
         ch_mito_annotated = MITO_VARIANTS_ANNOTATE.out.annotated
         ch_versions       = ch_versions.mix(MITO_VARIANTS.out.versions, MITO_VARIANTS_ANNOTATE.out.versions)
         // Step 20's large deletions (eKLIPse) and mtDNA copy number, from the same BAM
-        MITO_DELETIONS(ch_bam)
-        ch_mito_deletions = MITO_DELETIONS.out.deletions
-        ch_mito_copies    = MITO_DELETIONS.out.copies
-        ch_versions       = ch_versions.mix(MITO_DELETIONS.out.versions)
+        if (!mito_exome) {
+            MITO_DELETIONS(ch_bam)
+            ch_mito_deletions = MITO_DELETIONS.out.deletions
+            ch_mito_copies    = MITO_DELETIONS.out.copies
+            ch_versions       = ch_versions.mix(MITO_DELETIONS.out.versions)
+        }
     }
 
     //
     // MODULE 6: Parascopy (SMN1/SMN2 copy number)
     // Gates on: params.tools contains 'parascopy' (opt-in; main.nf requires
-    // --parascopy_data with it)
+    // --parascopy_data with it), and a whole genome: its background depth
+    // lies across GRCh38, where an exome has none (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('parascopy')) {
+    if (selected_tools().contains('parascopy')) {
         PARASCOPY(ch_bam, ch_reference, ch_reference_fai, ch_parascopy_data, ch_parascopy_bed)
         ch_cn_intervals    = PARASCOPY.out.intervals
         ch_cn_dosage       = PARASCOPY.out.dosage
@@ -287,7 +306,8 @@ workflow BAM_ANALYSIS {
     // same person are reported. A sex that disagrees with the samplesheet
     // stops the run as INDEXCOV's check does (--sex_check warn logs it);
     // contamination only warns. SAMPLE_QC also gets mosdepth's windows and
-    // the VCF, when they exist, for the mosaic loss of chrY or chrX.
+    // the VCF, when they exist, for the mosaic loss of chrY or chrX (an
+    // exome: the VCF only).
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('sample_qc')) {
         SOMALIER(ch_bam, ch_reference, ch_reference_fai, ch_somalier_sites)
@@ -302,10 +322,14 @@ workflow BAM_ANALYSIS {
             .first()   // a value channel, so every SAMPLE_QC task gets the tables
         SOMALIER_RELATE(SOMALIER.out.extract.map { meta, f, id_file -> f }.collect(), ch_somalier_sites, ch_somalier_ped)
         VERIFYBAMID2(ch_bam, ch_reference, ch_reference_fai, ch_verifybamid2_panel)
+        // An exome's mosdepth regions are its capture regions, not the
+        // 500 bp windows og qc sex-loss sums into 10 kb blocks: an exome gets
+        // the estimate from its VCF only.
+        ch_qc_regions = params.model_type == 'WES' ? Channel.empty() : ch_mosdepth_regions
         ch_qc_in = SOMALIER.out.extract
             .map { meta, f, id_file -> [meta.id, meta, id_file] }
             .join(VERIFYBAMID2.out.selfsm.map { meta, selfsm, marker_check -> [meta.id, selfsm, marker_check] })
-            .join(ch_mosdepth_regions.map { meta, f -> [meta.id, f] }, remainder: true)
+            .join(ch_qc_regions.map { meta, f -> [meta.id, f] }, remainder: true)
             .join(ch_vcf.map { meta, vcf, _tbi -> [meta.id, vcf] }, remainder: true)
             .filter { items -> items[1] != null }   // a VCF-only row has no BAM
             .map { _id, meta, id_file, selfsm, marker_check, regions, vcf ->
