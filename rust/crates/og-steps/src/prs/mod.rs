@@ -3,8 +3,15 @@
 //!
 //! ```text
 //! og prs format --scores DIR [--ids A,B] [--labels TSV] --out DIR --alleles F
-//!               [--keep-x] [--keep-ambiguous --reference FASTA]
+//!               [--keep-x] [--keep-ambiguous --reference FASTA] [--academic]
 //! ```
+//!
+//! A score the list marks `academic-research` (free for academic research use
+//! only) is written only with `--academic`. Without it the score is left out,
+//! whether `--ids` names it or the folder holds its file, and stdout says so
+//! in one line per score. This is the one place every path passes through
+//! (step 25, Nextflow's `PRS_PREPARE`), so a folder that still holds such a
+//! file from an older setup gives the same default answer as a new one.
 //!
 //! Each GRCh38-harmonised PGS Catalog file of `--scores` (`*.txt.gz`,
 //! `*.txt`) is written as `OUT/<pgs_id>.txt.gz`, pgsc_calc's custom GRCh38
@@ -46,7 +53,10 @@ pub const SCORE_NOTES_FILE: &str = "score_notes.tsv";
 /// Beside the scores: per score its PGS Catalog evaluations.
 pub const EVALS_FILE: &str = "score_evaluations.tsv";
 
-const USAGE: &str = "usage: og prs format --scores DIR [--ids A,B] [--labels TSV] --out DIR --alleles F\n                     [--keep-x] [--keep-ambiguous --reference FASTA]\n";
+const USAGE: &str = "usage: og prs format --scores DIR [--ids A,B] [--labels TSV] --out DIR --alleles F\n                     [--keep-x] [--keep-ambiguous --reference FASTA] [--academic]\n";
+
+/// Why a score was left out without `--academic`.
+pub const ACADEMIC_REASON: &str = "academic-only licence (PRS_ACADEMIC=true to include)";
 
 /// The command line.
 #[derive(Debug, Default)]
@@ -59,6 +69,7 @@ pub struct Args {
     pub keep_x: bool,
     pub keep_ambiguous: bool,
     pub reference: Option<PathBuf>,
+    pub academic: bool,
 }
 
 impl Args {
@@ -92,6 +103,7 @@ impl Args {
                 }
                 "--keep-x" if inline.is_none() => a.keep_x = true,
                 "--keep-ambiguous" if inline.is_none() => a.keep_ambiguous = true,
+                "--academic" if inline.is_none() => a.academic = true,
                 _ => return Err(format!("unrecognized arguments: {arg}")),
             }
         }
@@ -198,14 +210,24 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
     for p in &all {
         by_id.entry(pgs_id_of(p)).or_default().push(p);
     }
+    // The academic-only scores left out (no --academic), in the order met.
+    let mut skipped: Vec<String> = Vec::new();
+    let mut skip = |pid: &str| {
+        let out = !a.academic && labels.academic(pid);
+        if out && !skipped.iter().any(|s| s == pid) {
+            skipped.push(pid.to_owned());
+        }
+        out
+    };
     let files: Vec<&PathBuf> = if a.ids.is_empty() {
-        all.iter().collect()
+        all.iter().filter(|p| !skip(&pgs_id_of(p))).collect()
     } else {
         let want: Vec<&str> = a
             .ids
             .split(',')
             .map(|x| pycompat::text::strip(x, None))
             .filter(|x| !x.is_empty())
+            .filter(|x| !skip(x))
             .collect();
         let missing: Vec<&str> = want
             .iter()
@@ -225,6 +247,12 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
         if let [x, y, ..] = by_id[&pgs_id_of(p)].as_slice() {
             return Err(two_files(&pgs_id_of(p), &a.scores, x, y));
         }
+    }
+    if files.is_empty() && !skipped.is_empty() {
+        return Err(format!(
+            "every score asked for is free for academic research use only ({}); --academic scores them",
+            skipped.join(", ")
+        ));
     }
     if files.is_empty() {
         return Err(format!(
@@ -278,6 +306,11 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         done.push((s, p));
+    }
+    for pid in &skipped {
+        let label = labels.trait_of(pid).unwrap_or("label from the file");
+        writeln!(out, "  {pid}: not scored, {ACADEMIC_REASON} ({label})")
+            .map_err(|e| e.to_string())?;
     }
 
     let write = |name: &str, body: String| -> Result<(), String> {

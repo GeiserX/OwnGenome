@@ -2,9 +2,12 @@
 //! sex it applies to and its PGS Catalog evaluations.
 //!
 //! The file is tab separated with a header row (`pgs_id trait_reported
-//! applies_to ppm_id ancestry effect`, the last four optional); lines that
-//! start with `#` are comments. It is read as Python's `csv.DictReader`
-//! reads it, so quoting and short rows behave as they did.
+//! applies_to ppm_id ancestry effect licence`, the last five optional); lines
+//! that start with `#` are comments. `licence` is `author` (the PGS Catalog's
+//! default terms: use as the authors allow) or `academic-research` (free for
+//! academic research use only); `og prs format` scores an
+//! `academic-research` score only with `--academic`. It is read as Python's
+//! `csv.DictReader` reads it, so quoting and short rows behave as they did.
 
 use og_io::{Lines, Utf8};
 use pycompat::csv::{DictReader, DictRow, Quoting};
@@ -17,6 +20,10 @@ use std::path::Path;
 pub const SEXES: [&str; 2] = ["female", "male"];
 /// The 1000 Genomes groups pgsc_calc places a sample in.
 pub const GROUPS: [&str; 5] = ["AFR", "AMR", "EAS", "EUR", "SAS"];
+/// The `licence` of a score free for academic research use only.
+pub const ACADEMIC: &str = "academic-research";
+/// The licences a row can name: the catalog's default terms, and academic only.
+pub const LICENCES: [&str; 2] = ["author", ACADEMIC];
 
 /// One PGS Catalog evaluation of a score.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +42,8 @@ pub struct Labels {
     traits: HashMap<String, String>,
     applies: HashMap<String, String>,
     evals: HashMap<String, Vec<Eval>>,
+    /// The `academic-research` ids, in the list's order.
+    academic: Vec<String>,
 }
 
 impl Labels {
@@ -57,6 +66,16 @@ impl Labels {
     /// The evaluations, in the list's order; empty when it names none.
     pub fn evals(&self, pid: &str) -> &[Eval] {
         self.evals.get(pid).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether the list marks the score free for academic research use only.
+    pub fn academic(&self, pid: &str) -> bool {
+        self.academic.iter().any(|a| a == pid)
+    }
+
+    /// The ids the list marks `academic-research`, in its order.
+    pub fn academic_ids(&self) -> &[String] {
+        &self.academic
     }
 
     /// Reads the list at `path`. The error is the message after `ERROR: `.
@@ -104,6 +123,16 @@ impl Labels {
                 ));
             }
             out.applies.insert(pid.to_owned(), sex);
+            let licence = lower(strip(cell(r, "licence"), None));
+            if !licence.is_empty() && !LICENCES.contains(&licence.as_str()) {
+                return Err(format!(
+                    "{name}: licence of {pid} is '{licence}', expected {}, {} or empty",
+                    LICENCES[0], LICENCES[1]
+                ));
+            }
+            if licence == ACADEMIC && !out.academic.iter().any(|a| a == pid) {
+                out.academic.push(pid.to_owned());
+            }
         }
         for r in &rows {
             read_evals(r, name, &mut out.evals)?;
@@ -291,6 +320,27 @@ mod tests {
                 "{row}: {got}"
             );
         }
+    }
+
+    #[test]
+    fn reads_the_licence_and_refuses_an_unknown_one() {
+        let head = "pgs_id\ttrait_reported\tapplies_to\tlicence\n";
+        let l = parse(&format!(
+            "{head}PGS2\tb\t\tAcademic-Research\nPGS1\ta\t\tauthor\nPGS3\tc\t\t\nPGS4\td\t\tacademic-research\n"
+        ))
+        .expect("read");
+        assert!(l.academic("PGS2") && l.academic("PGS4"));
+        assert!(!l.academic("PGS1") && !l.academic("PGS3") && !l.academic("PGS9"));
+        assert_eq!(l.academic_ids(), ["PGS2", "PGS4"]);
+        // A list without the column marks nothing academic.
+        assert!(parse(&format!("{HEAD}PGS2\tb\t\t\t\t\n")).expect("read").academic_ids().is_empty());
+        let got = parse(&format!("{head}PGS1\ta\t\tnon-commercial\n"))
+            .err()
+            .unwrap_or_default();
+        assert_eq!(
+            got,
+            "list.tsv: licence of PGS1 is 'non-commercial', expected author, academic-research or empty"
+        );
     }
 
     #[test]
