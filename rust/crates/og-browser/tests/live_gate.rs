@@ -2401,6 +2401,14 @@ fn capture_live(
     items(&got).to_vec()
 }
 
+/// A captured page with hidden="hidden" written as hidden="". The two are one state, and
+/// which one the map's tooltip carries depends on whether map.js's last redraw ran after
+/// map.json, so a compare of two captures reads the state. The section marks check the
+/// attribute itself, under a fixed order.
+fn hidden_state(page: &Value) -> String {
+    text(page).replace(r#"hidden="hidden""#, r#"hidden="""#)
+}
+
 /// Up to four places where two pages differ, a little of each side.
 fn differences(x: &str, y: &str) -> Vec<(String, String)> {
     x.split("><")
@@ -2430,12 +2438,13 @@ fn live_mode_checks(f: &mut Fixture, base: &str, core: &Path, source: &str) {
             capture_live(b, &url, core, &bare, &map_last, false),
             capture_live(b, &url, core, source, &map_last, false),
         ];
+        let (bare_page, gated_page) = (hidden_state(&pair[0][0]), hidden_state(&pair[1][0]));
         assert!(
-            pair[0][..3] == pair[1][..3],
+            bare_page == gated_page && pair[0][1..3] == pair[1][1..3],
             "live mode: {label}'s page differs with the gate: {:?} / {:?}; {:?}",
             pair[0][2],
             pair[1][2],
-            differences(text(&pair[0][0]), text(&pair[1][0]))
+            differences(&bare_page, &gated_page)
         );
         pass(&format!(
             "live mode: the page of {label} makes the requests of the page without the gate, in its order, and is the same page"
@@ -2553,10 +2562,11 @@ fn live_mode_checks(f: &mut Fixture, base: &str, core: &Path, source: &str) {
             .clone(),
         );
     }
+    let (one_card, two_cards) = (hidden_state(&seen[0]), hidden_state(&seen[1]));
     assert!(
-        seen[0] == seen[1],
+        one_card == two_cards,
         "live mode: a parent's page differs by the card that holds the child's results: {:?}",
-        differences(text(&seen[0]), text(&seen[1]))
+        differences(&one_card, &two_cards)
     );
     pass("live mode: a parent's page is the same whichever card holds a child's results to act on");
     fs::write(&child_summary, saved).unwrap();
