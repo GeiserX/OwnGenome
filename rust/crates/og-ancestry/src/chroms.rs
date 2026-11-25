@@ -1,7 +1,8 @@
 //! `chroms`: the chromosomes to phase and paint, those with N genotyped
-//! SNVs or more (default 100) spanning X cM or more (default 5). RFMix
-//! stops with a segmentation fault on a span of a few cM; on a whole
-//! genome every autosome spans more than 40. The map is read by
+//! SNVs or more (default 100) spanning X cM or more (default 5). The rule
+//! is an information floor: a chromosome with fewer genotyped SNVs or a
+//! shorter span gives the painter too little evidence to tell the groups
+//! apart. On a whole genome every autosome spans more than 40 cM. The map is read by
 //! [`og_admix::map`], which the engines share.
 
 use crate::{Args, Fail, Result, Spec};
