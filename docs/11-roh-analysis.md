@@ -54,7 +54,7 @@ How the panel is built and published: [Reference setup](00-reference-setup.md#ro
 We ran `bcftools roh` 1.24 with the step's flags (PASS records, `-G30`: neither input has `FORMAT/PL`) on two public genomes. Both inputs hold variant records only, as step 11's VCF does:
 
 - **HG002**: the GIAB v4.2.1 benchmark calls, GRCh38, chr1 to chr22.
-- **HG00096**: the 1000 Genomes phase 3 genotypes on GRCh38 positions (low coverage, imputed), the sample's non-reference sites on chr1 to chr22.
+- **HG00096**: the 1000 Genomes phase 3 genotypes on GRCh38 positions (low coverage, imputed; the 2017 liftover `ALL.chr*_GRCh38.genotypes.20170504.vcf.gz`, now kept at https://ftp.ensembl.org/pub/data_files/homo_sapiens/GRCh38/variation_genotype/), the sample's non-reference sites on chr1 to chr22.
 
 "Sites" counts the records bcftools roh used. "Runs of 5 Mb or more" is what `${SAMPLE}_roh_summary.txt` lists, with the centromere and heterochromatin bands left out. Both genomes are European, so the group column is gnomAD's `nfe`.
 
@@ -83,11 +83,12 @@ The [1000 Genomes NYGC 30× GRCh38 call set](https://internationalgenome.org/dat
 | chr22:21,579,132–26,579,131 (left flank) | 6,250 | 1,250.00 |
 | chr22:26,579,132–32,429,957 (run) | 45 | 7.69 |
 | chr22:32,429,958–37,429,957 (right flank) | 6,305 | 1,261.00 |
-| chr21 (autosomal baseline, 46.710 Mb) | 41,171 | 881.42 |
+| chr1–chr22 (autosome-wide, 2,875.0 Mb) | 2,696,894 | 938.05 |
+| chr21 (46.710 Mb) | 41,171 | 881.42 |
 
-The run's heterozygous-call density is under 1% of each flank and the sampled autosomal density. It meets the 10% validation threshold in all three comparisons. Both panel modes recover this real run.
+The run's heterozygous-call density is 0.62% and 0.61% of the two flanks and 0.82% of the autosome-wide density. It meets the 10% validation threshold in every comparison. Both panel modes recover this real run.
 
-The [bcftools ROH model](https://samtools.github.io/bcftools/bcftools.html#roh) weighs called genotypes under two states. Its Hardy–Weinberg state assigns a heterozygote probability of `2f(1-f)` for alternate-allele frequency `f`. Its autozygous state emits homozygotes, with genotype likelihoods allowing for call errors. Flat `f = 0.4` gives every marker a Hardy–Weinberg heterozygote probability of 0.48, so it gives rare-allele heterozygotes more weight than their population frequency would. The flat run also used 223 heterozygous calls outside the panel among the 259 it saw in the interval. Those extra calls add evidence for breaks in the run. The flat mode called 13 segments of 1.1 Mb or less there.
+The [bcftools ROH model](https://samtools.github.io/bcftools/bcftools.html#roh) weighs called genotypes under two states. Its Hardy–Weinberg state assigns a heterozygote probability of `2f(1-f)` for alternate-allele frequency `f`. Its autozygous state emits homozygotes, with genotype likelihoods allowing for call errors. Flat `f = 0.4` gives every marker a Hardy–Weinberg heterozygote probability of 0.48, so it gives rare-allele heterozygotes more weight than their population frequency would. The flat run also used 223 heterozygous calls outside the panel among the 259 it saw in the interval. Those extra calls add evidence for breaks in the run. The flat mode called 11 segments of 1.1 Mb or less inside the run's interval (13 between 26 and 33 Mb).
 
 ## Output
 - `${SAMPLE}/vcf/${SAMPLE}_roh.txt` — bcftools roh output: per-site states (`ST` lines) and segments (`RG` lines)
