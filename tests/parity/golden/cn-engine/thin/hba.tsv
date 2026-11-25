@@ -1,0 +1,10 @@
+metric	value
+status	not assessed
+alpha_globin_genes	.
+estimate	.
+hba2_depth	4.68
+hba1_depth	6.67
+flank_left_depth	5.34
+flank_right_depth	4.92
+mapq0_share	0.317
+message	not assessed: flank depth under 8x (5.3x and 4.9x), too low to compare
