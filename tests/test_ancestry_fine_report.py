@@ -73,12 +73,6 @@ def run_all(tmp):
     expect("panel-map: the 10 West Africans are references and painting references",
            sorted({tuple(by[f"y{i}"][4:]) for i in range(10)}), [("1", "1")])
     expect("check-map: panel-map's table passes", og("check-map", "--map", samples).returncode, 0)
-    one = rows[0:1] + [row[:4] + ["1", "1"] if row[0] == "p0" else row for row in rows[1:]]
-    write(os.path.join(tmp, "one.tsv"), "".join("\t".join(row) + "\n" for row in one))
-    r = og("check-map", "--map", os.path.join(tmp, "one.tsv"))
-    expect("check-map: stops on one Oceanian put back, and says why",
-           (r.returncode, "regional group OCE has 1 of the 10 reference people it needs" in r.stderr,
-            "continental group OCE has 1 of the 2 painting references RFMix needs" in r.stderr), (1, True, True))
     header = "sample\tpopulation\tcontinent\tregion\treference\tpaint\n"
     for name, text in (("short", header + "y0\tYRI\tAFR\n"), ("flag", header + "y10\tYRI\tAFR\tWAF\ttrue\t0\n"),
                        ("empty", header)):
