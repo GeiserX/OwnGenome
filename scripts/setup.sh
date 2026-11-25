@@ -2915,8 +2915,10 @@ else
 fi
 # Step 11's allele-frequency panel (ROH_AF_PANEL_URL: gnomAD genomes' common
 # biallelic SNVs, built by og dev build roh-af), checked against
-# ROH_AF_PANEL_SHA256 and indexed here with tabix. Without it step 11 gives
-# every site AF 0.4, so a failed download warns and does not stop setup.
+# ROH_AF_PANEL_SHA256 and indexed here with the tabix of GATK_IMAGE, as
+# REVEL is (scripts/ci/check-container-helpers.sh keeps bgzip and tabix out
+# of BCFTOOLS_IMAGE). Without it step 11 gives every site AF 0.4, so a
+# failed download warns and does not stop setup.
 ROH_AF_PANEL="${GENOME_DIR}/roh_af/${ROH_AF_PANEL_URL##*/}"
 # Download only a missing panel or one whose sha256 is not the pinned one;
 # then index the checked file, so a failed index is retried without
@@ -2935,7 +2937,7 @@ fi
 if [ "$ROH_AF_PANEL_OK" = 1 ]; then
   if [ -s "${ROH_AF_PANEL}.tbi" ]; then
     echo "[OK] ROH allele-frequency panel (step 11) already present (sha256 matches ROH_AF_PANEL_SHA256)."
-  elif run_in --rw "${GENOME_DIR}/roh_af" "$BCFTOOLS_IMAGE" tabix -f -s1 -b2 -e2 "$(cpath "$ROH_AF_PANEL")"; then
+  elif run_in --rw "${GENOME_DIR}/roh_af" "$GATK_IMAGE" tabix -f -s1 -b2 -e2 "$(cpath "$ROH_AF_PANEL")"; then
     echo "[OK] ROH allele-frequency panel (step 11): ${ROH_AF_PANEL}"
   else
     rm -f "${ROH_AF_PANEL}.tbi"

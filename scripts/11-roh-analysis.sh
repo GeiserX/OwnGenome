@@ -39,9 +39,9 @@ HAS_PL=$(run_in \
 # 0.8 or more (EUR reads gnomAD's nfe). bcftools roh then uses the panel's
 # sites only, with matching alleles (--AF-file restricts the markers by
 # itself; it refuses -T). A group run gets its own 4-column file, with the
-# group's AF of 0.01 to 0.99, the global panel's range. The Nextflow ROH
-# module picks and cuts the same way. Without the panel: 0.4 at every site,
-# whatever the record's INFO says.
+# group's AF of 0.01 to 0.99, the global panel's range, which og roh
+# af-file writes and indexes. The Nextflow ROH module picks and cuts the same
+# way. Without the panel: 0.4 at every site, whatever the record's INFO says.
 AF_DESC="0.4 at every site (--AF-dflt 0.4)"
 AF_LINE=""
 if [ -s "$PANEL" ] && [ -s "${PANEL}.tbi" ]; then
@@ -51,16 +51,14 @@ if [ -s "$PANEL" ] && [ -s "${PANEL}.tbi" ]; then
     AF_DESC="global (panel ${PANEL##*/}); no step 26 group at 0.8 or more"
   else
     read -r POP PROB <<< "$GROUP"
-    case "$POP" in AFR) COL=5 ;; AMR) COL=6 ;; EAS) COL=7 ;; EUR) COL=8 ;; SAS) COL=9 ;; esac
-    GNOMAD_GROUP=$(echo "afr amr eas nfe sas" | cut -d' ' -f$((COL - 4)))
+    case "$POP" in AFR) GNOMAD_GROUP=afr ;; AMR) GNOMAD_GROUP=amr ;; EAS) GNOMAD_GROUP=eas ;; EUR) GNOMAD_GROUP=nfe ;; SAS) GNOMAD_GROUP=sas ;; esac
     rm -f "$GROUP_AF" "${GROUP_AF}.tbi"
     run_in \
       --cpus 2 --memory 1g \
       -v "${GENOME_DIR}/${SAMPLE}/vcf:/data" \
+      -v "${PGP_ROOT}/bin:/pgp-bin:ro" \
       "${BCFTOOLS_IMAGE}" \
-      bash -euo pipefail -c "bgzip -dc '/genome/roh_af/${PANEL##*/}' \
-        | awk -F'\t' -v OFS='\t' -v c=${COL} '\$1 !~ /^#/ && \$c != \".\" && \$c + 0 >= 0.01 && \$c + 0 <= 0.99 {print \$1, \$2, \$3, \$c}' \
-        | bgzip > '/data/${SAMPLE}_roh_af.tsv.gz' && tabix -s1 -b2 -e2 '/data/${SAMPLE}_roh_af.tsv.gz'"
+      /pgp-bin/og roh af-file --panel "/genome/roh_af/${PANEL##*/}" --group "$GNOMAD_GROUP" --out "/data/${SAMPLE}_roh_af.tsv.gz"
     ROH_FLAGS=(--AF-file "/data/${SAMPLE}_roh_af.tsv.gz")
     AF_DESC="${GNOMAD_GROUP} (panel ${PANEL##*/}); step 26 gives ${POP} ${PROB}"
   fi

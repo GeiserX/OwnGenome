@@ -43,8 +43,9 @@ process ROH {
     # The allele frequencies, picked and cut as scripts/11-roh-analysis.sh
     # does: the panel's global AF, or one continental group's when step 26
     # gives it 0.8 or more (EUR reads gnomAD's nfe), in a 4-column file of
-    # the group's AF of 0.01 to 0.99. --AF-file restricts the markers to the
-    # panel's sites by itself. Without the panel: 0.4 at every site.
+    # the group's AF of 0.01 to 0.99 that og roh af-file writes and indexes.
+    # --AF-file restricts the markers to the panel's sites by itself. Without
+    # the panel: 0.4 at every site.
     set -o pipefail
     AF_LINE=""
     if [ -n "${panel}" ]; then
@@ -54,12 +55,8 @@ process ROH {
             AF_DESC="global (panel ${panel}); no step 26 group at 0.8 or more"
         else
             read -r POP PROB <<< "\${GROUP}"
-            case "\${POP}" in AFR) COL=5 ;; AMR) COL=6 ;; EAS) COL=7 ;; EUR) COL=8 ;; SAS) COL=9 ;; esac
-            GNOMAD_GROUP=\$(echo "afr amr eas nfe sas" | cut -d' ' -f\$((COL - 4)))
-            bgzip -dc "${panel}" \\
-                | awk -F'\\t' -v OFS='\\t' -v c=\${COL} '\$1 !~ /^#/ && \$c != "." && \$c + 0 >= 0.01 && \$c + 0 <= 0.99 {print \$1, \$2, \$3, \$c}' \\
-                | bgzip > ${meta.id}_roh_af.tsv.gz
-            tabix -s1 -b2 -e2 ${meta.id}_roh_af.tsv.gz
+            case "\${POP}" in AFR) GNOMAD_GROUP=afr ;; AMR) GNOMAD_GROUP=amr ;; EAS) GNOMAD_GROUP=eas ;; EUR) GNOMAD_GROUP=nfe ;; SAS) GNOMAD_GROUP=sas ;; esac
+            og roh af-file --panel "${panel}" --group "\${GNOMAD_GROUP}" --out ${meta.id}_roh_af.tsv.gz
             ROH_FLAGS=(--AF-file "${meta.id}_roh_af.tsv.gz")
             AF_DESC="\${GNOMAD_GROUP} (panel ${panel}); step 26 gives \${POP} \${PROB}"
         fi
