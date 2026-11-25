@@ -195,7 +195,16 @@ fn names_evaluations(rs: &[Value]) -> Result<bool, Malformed> {
 /// compared with.
 pub fn note(d: &Value) -> Result<String, Malformed> {
     let rs = scores(d)?;
-    let tail = chrx_note(&rs)? + &sex_note(&rs)?;
+    let mut tail = chrx_note(&rs)? + &sex_note(&rs)?;
+    if let Some(skipped) = get(d, "skipped", PATH)? {
+        const SKIPPED: &str = "sections.prs.data.skipped";
+        for row in items(skipped, SKIPPED)? {
+            let condition = need_text(&row, "condition", SKIPPED)?;
+            let id = need_text(&row, "pgs_id", SKIPPED)?;
+            let reason = need_text(&row, "reason", SKIPPED)?;
+            tail.push_str(&format!(" {condition} ({id}) skipped: {reason}."));
+        }
+    }
     if !get(d, "adjusted", PATH)?.is_some_and(truthy) {
         if withheld(&rs)? {
             return Ok(format!(

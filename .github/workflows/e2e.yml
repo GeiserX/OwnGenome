@@ -33,7 +33,7 @@ name: E2E
 #   settle-doubts  answers questions a code review could not answer without
 #                  running the tools. Not a gate: it prints a table.
 #   prs-memory     on dispatch only: the memory of PRS_PREPARE and pgsc_calc's
-#                  FORMAT_SCOREFILES on the default score list
+#                  FORMAT_SCOREFILES on the full score list, including the academic opt-in
 #                  (tests/test_prs_memory.sh --measure), under the requests of
 #                  conf/base.config, and killed under what the labels gave
 #                  before them.
