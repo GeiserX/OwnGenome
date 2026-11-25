@@ -43,6 +43,22 @@ check_ge() {
 has()   { grep -Eq -- "$1" <<< "$2"; }
 lacks() { ! grep -Eq -- "$1" <<< "$2"; }
 
+# The destination must be absent. Keep failed clones from seeding later cases.
+clone_shallow_with_retry() {
+  local branch=$1 url=$2 dest=$3 attempt
+  for attempt in 1 2 3; do
+    if GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=60 \
+      git clone -q --branch "$branch" --depth 1 "$url" "$dest"; then
+      return 0
+    fi
+    rm -rf -- "$dest" || return 1
+    if [ "$attempt" -lt 3 ]; then
+      sleep 10
+    fi
+  done
+  return 1
+}
+
 # run_step <script> [args...]: runs scripts/<script>, output to the case log and
 # to STEP_LOG; the exit code lands in STEP_RC.
 run_step() {
@@ -143,8 +159,9 @@ setup_ancestry_panel() {
   fi
   if [ -z "$from" ] && [ "$name" = GRCh38_HAPNEST_reference ] && [ -n "${E2E_DATA_MIRROR:-}" ]; then
     mkdir -p "${panel%/*}"
-    # One try, cut when it stalls or takes over 15 minutes: EBI is next.
-    if curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 120 --max-time 900 \
+    # Allow up to 15 minutes including retries, then fall back to EBI.
+    if timeout 900 curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
+         --connect-timeout 30 --speed-limit 1024 --speed-time 120 \
          -o "${panel}.mirror" "${E2E_DATA_MIRROR%/}/${name}.tar.zst" \
        && [ "$(_sha256 "${panel}.mirror")" = "$HAPNEST_SHA256" ]; then
       mv -f "${panel}.mirror" "$panel"
