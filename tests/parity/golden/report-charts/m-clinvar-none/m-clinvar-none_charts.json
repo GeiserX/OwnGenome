@@ -1,0 +1,92 @@
+{
+ "schema_version": 1,
+ "sample": "S",
+ "generated_utc": "2026-01-02 03:04 UTC",
+ "charts": [
+  {
+   "id": "clinvar-stars",
+   "section": "clinvar",
+   "kind": "bars",
+   "title": "ClinVar hits by review stars",
+   "caveat_key": "CLINVAR_FREQ_NOTE",
+   "caveat": "Check every P/LP hit's population frequency, a heterozygous hit in a dominant gene as well as a homozygous one: a hit above 1% in gnomAD is unlikely to be a high-penetrance finding, and a hit whose frequency is unknown has not been checked.",
+   "axis": {
+    "unit": "hits"
+   },
+   "marks": [
+    {
+     "id": "stars-4",
+     "label": "4 stars",
+     "value": 0,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "muted",
+     "anchor": "clinvar",
+     "locus": null,
+     "detail": "0 hits with 4 review stars"
+    },
+    {
+     "id": "stars-3",
+     "label": "3 stars",
+     "value": 2,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "attention",
+     "anchor": "clinvar",
+     "locus": null,
+     "detail": "2 hits with 3 review stars"
+    },
+    {
+     "id": "stars-2",
+     "label": "2 stars",
+     "value": 3,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "attention",
+     "anchor": "clinvar",
+     "locus": null,
+     "detail": "3 hits with 2 review stars"
+    },
+    {
+     "id": "stars-1",
+     "label": "1 star",
+     "value": 1,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "attention",
+     "anchor": "clinvar",
+     "locus": null,
+     "detail": "1 hit with 1 review star"
+    },
+    {
+     "id": "stars-0",
+     "label": "0 stars",
+     "value": 2,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "attention",
+     "anchor": "clinvar",
+     "locus": null,
+     "detail": "2 hits with 0 review stars"
+    }
+   ],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"clinvar-stars\" viewBox=\"0 0 640 162\" width=\"100%\" role=\"img\" aria-label=\"ClinVar hits by review stars\"><title>ClinVar hits by review stars</title><a href=\"#clinvar\" data-mark=\"stars-4\"><title>4 stars: 0 hits with 4 review stars</title><text x=\"182\" y=\"25\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">4 stars</text><rect x=\"190\" y=\"12\" width=\"2\" height=\"18\" fill=\"#8a909b\"/><text x=\"198\" y=\"25\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\">0</text></a><a href=\"#clinvar\" data-mark=\"stars-3\"><title>3 stars: 2 hits with 3 review stars</title><text x=\"182\" y=\"51\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">3 stars</text><rect x=\"190\" y=\"38\" width=\"260\" height=\"18\" rx=\"3\" fill=\"#e0b94a\"/><text x=\"456\" y=\"51\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\">2</text></a><a href=\"#clinvar\" data-mark=\"stars-2\"><title>2 stars: 3 hits with 2 review stars</title><text x=\"182\" y=\"77\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">2 stars</text><rect x=\"190\" y=\"64\" width=\"390\" height=\"18\" rx=\"3\" fill=\"#e0b94a\"/><text x=\"586\" y=\"77\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\">3</text></a><a href=\"#clinvar\" data-mark=\"stars-1\"><title>1 star: 1 hit with 1 review star</title><text x=\"182\" y=\"103\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">1 star</text><rect x=\"190\" y=\"90\" width=\"130\" height=\"18\" rx=\"3\" fill=\"#e0b94a\"/><text x=\"326\" y=\"103\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\">1</text></a><a href=\"#clinvar\" data-mark=\"stars-0\"><title>0 stars: 2 hits with 0 review stars</title><text x=\"182\" y=\"129\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">0 stars</text><rect x=\"190\" y=\"116\" width=\"260\" height=\"18\" rx=\"3\" fill=\"#e0b94a\"/><text x=\"456\" y=\"129\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\">2</text></a></svg>"
+  }
+ ]
+}

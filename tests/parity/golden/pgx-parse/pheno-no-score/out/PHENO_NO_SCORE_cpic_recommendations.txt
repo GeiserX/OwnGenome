@@ -1,0 +1,39 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: PHENO_NO_SCORE
+Date: 2026-11-25
+Source: PharmCAT 3.4.0 report (pheno-no-score.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       *1/*2                          Normal Metabolizer
+CYP2C19      *1/*1                          Normal Metabolizer
+
+Medications and Phenoconversion (CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5):
+------------------------------------------------------------------------
+
+  Medication list: pheno-no-score.txt (1 line).
+  CYP2D6 -- on duloxetine (moderate CYP2D6 inhibitor): not converted, the report gives no activity score.
+  The genotype phenotype in the table above is unchanged. A phenoconverted phenotype
+  holds while the inhibitor is taken. This is an aid for your clinician, not advice.
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

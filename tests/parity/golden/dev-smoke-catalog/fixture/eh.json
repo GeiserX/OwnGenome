@@ -1,0 +1,8 @@
+[
+ {
+  "LocusId": "SMOKE1",
+  "LocusStructure": "(CA)*",
+  "ReferenceRegion": "chr20:21000-21024",
+  "VariantType": "Repeat"
+ }
+]

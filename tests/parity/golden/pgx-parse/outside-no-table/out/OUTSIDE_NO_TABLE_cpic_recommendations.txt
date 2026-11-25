@@ -1,0 +1,46 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: OUTSIDE_NO_TABLE
+Date: 2026-11-25
+Source: PharmCAT  report (outside-no-table.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+MT-RNR1      m.1555A>G                      increased risk of aminoglycoside-induced hearing loss  [outside call]
+CYP2D6       *1/*4                          outside call not confirmed by step 36  [outside call]
+HLA-B        *57:01/*08:01                  outside call not confirmed by step 36  [outside call]
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  MT-RNR1 -- increased risk of aminoglycoside-induced hearing loss:
+    Diplotype: m.1555A>G
+    Drugs PharmCAT links to MT-RNR1 (no matched guidance text in the report): amikacin, gentamicin
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Calls From Other Tools (outside calls, step 36):
+------------------------------------------------------------------------
+
+  Could not read the consensus table (FileNotFoundError: [Errno 2] No such file or directory: 'absent.tsv').
+  Run step 36 again, then steps 07 and 27.
+  WARNING: PharmCAT's report has the outside call CYP2D6 *1/*4, which the consensus does not pass on: the report is older than step 36's last run.
+           Rerun step 07, then this step. No drug guidance is given for CYP2D6 here. Drugs affected by CYP2D6: codeine.
+  WARNING: PharmCAT's report has the outside call HLA-B *57:01/*08:01, which the consensus does not pass on: the report is older than step 36's last run.
+           Rerun step 07, then this step. No drug guidance is given for HLA-B here. Drugs affected by HLA-B: abacavir.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  CYP2D6 -- outside call not confirmed by step 36 (not callable from available data)
+  HLA-B -- outside call not confirmed by step 36 (not callable from available data)
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

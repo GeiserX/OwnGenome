@@ -1,0 +1,52 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: PHENO_CYP2C9_CYP3A5
+Date: 2026-11-25
+Source: PharmCAT 3.4.0 report (pheno-cyp2c9-cyp3a5.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       *1/*2                          Normal Metabolizer
+CYP2C19      *1/*1                          Normal Metabolizer
+CYP2C9       *1/*1                          Normal Metabolizer
+CYP3A5       *3/*3                          Poor Metabolizer
+
+Medications and Phenoconversion (CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5):
+------------------------------------------------------------------------
+
+  Medication list: pheno-cyp2c9-cyp3a5.txt (2 lines).
+  WARNING: CYP2C19 genotype phenotype Normal Metabolizer; on fluconazole (strong CYP2C19 inhibitor). CPIC has no CYP2C19 activity score, so no converted phenotype is computed.
+    The inhibitor can lower CYP2C19 activity below what the genotype predicts.
+    Drugs affected by CYP2C19: clopidogrel, voriconazole, escitalopram, citalopram, sertraline, amitriptyline, clomipramine, doxepin, imipramine, trimipramine, lansoprazole, omeprazole, pantoprazole, dexlansoprazole.
+  WARNING: CYP2C9 genotype phenotype Normal Metabolizer; on fluconazole (moderate CYP2C9 inhibitor). CPIC gives no rule that converts the CYP2C9 phenotype, so no converted phenotype is computed.
+    The inhibitor can lower CYP2C9 activity below what the genotype predicts.
+    Drugs affected by CYP2C9: warfarin, phenytoin, flurbiprofen, celecoxib, ibuprofen, lornoxicam, meloxicam, piroxicam, tenoxicam, siponimod.
+  CYP3A4 -- on ketoconazole (strong CYP3A4 inhibitor): not converted, the report has no result for the gene, so there is no genotype phenotype to convert.
+  WARNING: CYP3A5 genotype phenotype Poor Metabolizer; on ketoconazole (strong CYP3A5 inhibitor). CPIC gives no rule that converts the CYP3A5 phenotype, so no converted phenotype is computed.
+    Drugs affected by CYP3A5: tacrolimus.
+  The genotype phenotype in the table above is unchanged. A phenoconverted phenotype
+  holds while the inhibitor is taken. This is an aid for your clinician, not advice.
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP3A5 -- Poor Metabolizer:
+    Diplotype: *3/*3
+    Drugs (pipeline fallback table; the report names none): tacrolimus
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

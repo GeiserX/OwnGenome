@@ -1,0 +1,1 @@
+WARNING: BROKEN_CONTROL: control segment 5q35_Sotos_syndrome_L of 5q35_Sotos_syndrome has no read while the other controls have 30.0x; check its coordinates in bin/cn_loci.tsv (or the sample lacks that stretch)

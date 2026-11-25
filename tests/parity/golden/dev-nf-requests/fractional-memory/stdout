@@ -1,0 +1,21 @@
+X:DEEPVARIANT (s): attempt 1, exit 137, cpus 8, memory 16.5 GB, time 48 h
+X:DEEPVARIANT (s): attempt 2, exit 0, cpus 8, memory 64 GB, time 48 h
+X:FASTP (s): attempt 1, exit 137, cpus 8, memory 8 GB, time 8 h
+X:FASTP (s): attempt 2, exit 0, cpus 8, memory 16 GB, time 8 h
+X:ALIGN_MINIMAP2 (s): attempt 1, exit 137, cpus 8, memory 32 GB, time 24 h
+X:ALIGN_MINIMAP2 (s): attempt 2, exit 0, cpus 8, memory 64 GB, time 24 h
+X:MANTA (s): attempt 1, exit 137, cpus 8, memory 16 GB, time 24 h
+X:MANTA (s): attempt 2, exit 0, cpus 8, memory 32 GB, time 24 h
+X:CNVPYTOR (s): attempt 1, exit 137, cpus 4, memory 8 GB, time 24 h
+X:CNVPYTOR (s): attempt 2, exit 0, cpus 4, memory 16 GB, time 24 h
+X:VEP (s): attempt 1, exit 137, cpus 8, memory 16 GB, time 24 h
+X:VEP (s): attempt 2, exit 0, cpus 8, memory 32 GB, time 24 h
+X:PRS_PREPARE (s): attempt 1, exit 137, cpus 1, memory 2 GB, time 2 h
+X:PRS_PREPARE (s): attempt 2, exit 0, cpus 1, memory 4 GB, time 2 h
+X:PRS_SCORE_SITES (s): attempt 1, exit 137, cpus 2, memory 4 GB, time 4 h
+X:PRS_SCORE_SITES (s): attempt 2, exit 0, cpus 2, memory 8 GB, time 4 h
+X:PRS (s): attempt 1, exit 137, cpus 4, memory 24 GB, time 8 h
+X:PRS (s): attempt 2, exit 0, cpus 4, memory 48 GB, time 8 h
+FAIL DEEPVARIANT: first attempt asks for cpus 8, memory 16.5 GB, time 48 h; want 8, 32 GB, 48 h
+18 task attempts ask for 102 CPUs and 410.5 GB added together; the executor is told it has 512 CPUs and 2048 GB
+1 failure(s)

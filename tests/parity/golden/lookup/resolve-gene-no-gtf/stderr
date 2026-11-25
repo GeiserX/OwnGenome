@@ -1,0 +1,1 @@
+ERROR: no GENCODE gene coordinates (reference/gencode.v*.basic.genes.gtf): run scripts/setup.sh, which installs them, or ask for a position (chr:pos).

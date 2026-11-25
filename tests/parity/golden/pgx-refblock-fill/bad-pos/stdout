@@ -1,0 +1,61 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position (for use with symbolic alleles)">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Conditional genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum DP observed within the GVCF block.">
+##ALT=<ID=*,Description="Represents any possible alternative allele at this location">
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chr2,length=242193529>
+##contig=<ID=chr6,length=170805979>
+##contig=<ID=chr10,length=133797422>
+##contig=<ID=chr19,length=58617616>
+##contig=<ID=chrX,length=156040895>
+##INFO=<ID=PGX_REFBLOCK,Number=0,Type=Flag,Description="0/0 written by pgx_refblock_fill.py: reference blocks cover the whole REF span">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	REFBLOCKS
+chr1	97450020	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450021	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450022	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450023	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450024	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450025	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450026	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450027	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450028	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450029	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450030	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450031	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450032	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450033	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450034	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450035	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450036	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450037	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450038	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450039	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450040	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450041	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450042	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450043	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450044	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450045	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450046	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450047	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450048	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450049	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450050	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450051	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450052	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450053	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450054	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450055	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450056	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450057	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450058	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450059	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450060	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450061	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450062	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450063	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31
+chr1	97450064	.	N	.	0	.	.	GT:GQ:MIN_DP	0/0:50:31

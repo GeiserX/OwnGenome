@@ -1,0 +1,46 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: PYPGX
+Date: 2026-11-25
+Source: PharmCAT  report (pypgx.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       Unknown/Unknown                No Result
+CYP2C9       Unknown/Unknown                No Result
+CYP3A5       Unknown/Unknown                No Result
+CYP2C19      *1/*1                          Normal Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  CYP2D6 -- No Result (not callable from available data)
+  CYP2C9 -- No Result (not callable from available data)
+  CYP3A5 -- No Result (not callable from available data)
+
+PharmCAT and pypgx:
+------------------------------------------------------------------------
+
+  WARNING: PharmCAT has no result for CYP2D6, but pypgx (step 32) called *1/*4 (Intermediate Metabolizer). The medications above do not cover CYP2D6.
+    Drugs affected by CYP2D6: codeine, tramadol
+    Review them with the pypgx call and docs/32-pypgx.md.
+  NOTE: PharmCAT has no result for CYP2C9; pypgx (step 32) called *1/*1 (Normal Metabolizer).
+  WARNING: PharmCAT has no result for CYP3A5, but pypgx (step 32) called *3/*3 (no phenotype). The medications above do not cover CYP3A5.
+    Drugs affected by CYP3A5: tacrolimus
+    Review them with the pypgx call and docs/32-pypgx.md.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

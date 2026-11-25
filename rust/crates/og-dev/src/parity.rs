@@ -1,5 +1,4 @@
-//! `og dev parity-compare KIND ORACLE NEW`: compares a file the Python
-//! goldens record with the one og writes, by meaning.
+//! `og dev parity-compare KIND EXPECTED ACTUAL` compares two files by meaning.
 //!
 //! Exit 0 when they are the same, 1 when they differ (the first difference
 //! on stdout), 2 when the kind is unknown or a file cannot be read.
@@ -157,14 +156,7 @@ pub fn compare(kind: &Kind, oracle: &Path, new: &Path) -> Outcome {
         Kind::Kv => Ok(list(&kv(&lines(oracle)?), &kv(&lines(new)?), "row")),
         Kind::Vcf => Ok(vcf(&lines(oracle)?, &lines(new)?)),
         Kind::Json { paths, mask, tol } => {
-            let parse = |p: &Path| -> Result<Value, String> {
-                let text = String::from_utf8(read(p)?).map_err(|e| err(p, e))?;
-                let mut v =
-                    json::loads(&text).map_err(|e| err(p, format!("{} ({e:?})", e.exception())))?;
-                strip_keys(&mut v, mask);
-                Ok(v)
-            };
-            let (a, b) = (parse(oracle)?, parse(new)?);
+            let (a, b) = (read_json(oracle, mask)?, read_json(new, mask)?);
             if paths.is_empty() {
                 return Ok(json_diff(&a, &b, "$", *tol));
             }
@@ -219,6 +211,14 @@ fn open_text(p: &Path) -> Result<Box<dyn BufRead>, String> {
 
 fn read(p: &Path) -> Result<Vec<u8>, String> {
     fs::read(p).map_err(|e| err(p, e))
+}
+
+fn read_json(path: &Path, mask: &[String]) -> Result<Value, String> {
+    let text = String::from_utf8(read(path)?).map_err(|e| err(path, e))?;
+    let mut value =
+        json::loads(&text).map_err(|e| err(path, format!("{} ({e:?})", e.exception())))?;
+    strip_keys(&mut value, mask);
+    Ok(value)
 }
 
 /// Every line, plain or gzip, universal newlines, strict UTF-8.
@@ -283,6 +283,16 @@ fn canonical(kind: &str, path: &Path, out: impl Write) -> Result<(), String> {
             keys: None,
             unordered: false,
         } => canonical_tsv(path, &mut out)?,
+        Kind::Json {
+            paths,
+            mask,
+            tol: None,
+        } if paths.is_empty() => {
+            let value = read_json(path, &mask)?;
+            let formatted = json::dumps(&value, &json::Dump::default())
+                .map_err(|e| err(path, format!("{} ({e:?})", e.exception())))?;
+            out.write_all(formatted.as_bytes()).map_err(write)?;
+        }
         _ => return Err(format!("canonical output is unavailable for kind {kind}")),
     }
     out.flush().map_err(write)

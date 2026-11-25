@@ -1,0 +1,1 @@
+ERROR: PGS000010.txt.gz has is_recessive=True rows (a non-additive score); only additive scores are supported

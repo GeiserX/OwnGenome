@@ -1,0 +1,3 @@
+gene	inheritance	lists	condition	result	offspring_risk	partner_a	findings_a	partner_b	findings_b	explanation
+DMD	XL	ACMG	Duchenne and Becker muscular dystrophy	x_linked	A: every son, every daughter a carrier	A	chrX:32218643 A>G hemizygous, Pathogenic, 2 stars, ClinVar 90000	B	.	A carries the change on both X chromosomes: every son inherits it and can have Duchenne and Becker muscular dystrophy; every daughter is a carrier.
+NAGA	AR	ACMG	Schindler disease	one_partner	none shared	A	.	B	chr22:42051896 A>G het, Pathogenic, 2 stars, ClinVar 90000	Only B carries a change in NAGA (Schindler disease, autosomal recessive). A child can be a carrier like B, not affected, unless A carries a change this screen does not see.

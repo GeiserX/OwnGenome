@@ -1,0 +1,1 @@
+ERROR: two.vcf holds 2 samples; step 43 reads a one-sample VCF (keep one with bcftools view -s <sample>).

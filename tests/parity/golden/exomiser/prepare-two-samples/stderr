@@ -1,0 +1,1 @@
+ERROR: fam.vcf.gz has 3 samples; one person's VCF has one (a family VCF goes with --pedigree)

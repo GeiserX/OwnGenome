@@ -1,0 +1,1 @@
+ERROR: the gVCF of 'dad' (nochrom.g.vcf) holds the sample none (no #CHROM line), not 'dad'. The joint call names each column after the gVCF's own sample. Rename it: echo dad > name.txt; bcftools reheader -s name.txt -o dad.g.vcf.gz nochrom.g.vcf; bcftools index -t dad.g.vcf.gz

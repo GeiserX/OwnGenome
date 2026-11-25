@@ -1,0 +1,1 @@
+ERROR: samples.tsv: regional group OCE has 1 of the 10 reference people it needs; regional group WAF has 9 of the 10 reference people it needs; continental group OCE has 1 of the 2 painting references RFMix needs; painting references who are no reference people: 1, e.g. p1; reference people without a continental and a regional group: 1, e.g. z0

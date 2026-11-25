@@ -1,0 +1,3 @@
+  out/S_23andme_v5.txt line 10: rsid is not rs<number> or i<number>: 'rs0101\t20\t1100\tAA'
+  out/S_ancestrydna_layout.txt line 10: rsid is not rs<number> or i<number>: 'rs0101\t20\t1100\tA\tA'
+ERROR: the written files fail the strict reader (2 problems); they are left unzipped in out

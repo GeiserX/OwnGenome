@@ -1,0 +1,2 @@
+Gene	PharmCAT_diplotype	pypgx_diplotype	Match	Called_by	PharmCAT_phenotype	pypgx_phenotype
+CYP2C19	ambiguous (2 possible diplotypes)	*1/*2	pypgx only	pypgx only	ambiguous: one of Normal Metabolizer, Intermediate Metabolizer	Intermediate Metabolizer

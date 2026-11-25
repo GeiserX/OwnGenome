@@ -1,0 +1,1 @@
+ERROR: pedigree.example.tsv line 2: the pedigree says 'child_a' is female, the sex given to run-all.sh says male

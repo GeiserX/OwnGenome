@@ -1,0 +1,1 @@
+pgx_mito_merge: ERROR: cannot read bad.depth (ValueError: invalid literal for int() with base 10: 'lots')

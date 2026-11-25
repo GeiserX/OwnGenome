@@ -1,0 +1,1 @@
+ERROR: trio.tsv line 4: the pedigree says 'mum' is female, the samplesheet says male

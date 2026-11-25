@@ -1,0 +1,10 @@
+metric	value
+status	not assessed
+alpha_globin_genes	.
+estimate	3.50
+hba2_depth	22.5
+hba1_depth	30.0
+flank_left_depth	30.0
+flank_right_depth	30.0
+mapq0_share	0.250
+message	not assessed: the estimate 3.50 lies between 3 and 4 alpha-globin genes

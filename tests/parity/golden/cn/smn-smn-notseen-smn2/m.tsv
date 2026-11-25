@@ -1,0 +1,11 @@
+metric	value
+marker	SMN1 g.27134T>G
+rsid	rs143838139
+status	not seen
+alt_reads	0
+depth	30
+fraction	0.0000
+copies	.
+smn1_pscn	2 (quality 40, filter PASS)
+agcn	4
+message	SMN1 g.27134T>G (rs143838139): not seen, 0 of 30 reads carry G at the SMN1 and SMN2 copies of the site together. The reads cannot tell whether a G sits on SMN1 or SMN2. With two SMN1 copies and no marker, the chance of 2+0 is lower than for a two-copy result alone (in Luo 2014, in African Americans, about 1 in 396 against 1 in 121), not zero; the figures depend on ancestry. This marker does not prove 2+0, and its absence does not rule 2+0 out.

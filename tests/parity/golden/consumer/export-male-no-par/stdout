@@ -1,0 +1,8 @@
+Sites: 18 (of 18 on the chip list; 0 dropped when the table was built)
+Called: 10 (55.6%), 5 of them from reference blocks; no-call (--): 8
+  filtered call: 1
+  inside a deletion or a longer allele: 1
+  no gVCF record: 2
+  no-call in the gVCF: 1
+  two alleles on a haploid site (chrM heteroplasmy, or male chrX/chrY): 3
+Reference bases checked at 9 variant records, 0 differ from the table

@@ -1,0 +1,53 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr22>
+##INFO=<ID=Altai,Number=1,Type=Integer,Description="ALT alleles in the Altai genome (9: unknown; 10 to 12: 0 to 2 outside its mask)">
+##INFO=<ID=Vindija,Number=1,Type=Integer,Description="ALT alleles in the Vindija genome (9: unknown; 10 to 12: 0 to 2 outside its mask)">
+##INFO=<ID=Denisova,Number=1,Type=Integer,Description="ALT alleles in the Denisova genome (9: unknown; 10 to 12: 0 to 2 outside its mask)">
+##INFO=<ID=AF_ALL,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (ALL)">
+##INFO=<ID=AF_AFR,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (AFR)">
+##INFO=<ID=AF_AMR,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (AMR)">
+##INFO=<ID=AF_EAS,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (EAS)">
+##INFO=<ID=AF_EUR,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (EUR)">
+##INFO=<ID=AF_SAS,Number=1,Type=Float,Description="1000 Genomes phase 3 ALT frequency (SAS)">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr22	1010	.	C	G	.	.	Altai=1;Vindija=9;Denisova=9;AF_ALL=1e-05;AF_AFR=0.000123;AF_AMR=0;AF_EAS=nan;AF_EUR=1;AF_SAS=0
+chr22	1020	.	G	T	.	.	Altai=2;Vindija=1;Denisova=9;AF_ALL=0.000123;AF_AFR=0;AF_AMR=nan;AF_EAS=1;AF_EUR=0;AF_SAS=0.123457
+chr22	1040	.	A	C	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=nan;AF_AFR=1;AF_AMR=0;AF_EAS=0.123457;AF_EUR=1;AF_SAS=0
+chr22	1050	.	C	G	.	.	Altai=1;Vindija=9;Denisova=2;AF_ALL=1;AF_AFR=0;AF_AMR=0.123457;AF_EAS=1;AF_EUR=0;AF_SAS=2.5e-07
+chr22	1070	.	T	A	.	.	Altai=9;Vindija=0;Denisova=9;AF_ALL=0.123457;AF_AFR=1;AF_AMR=0;AF_EAS=2.5e-07;AF_EUR=0;AF_SAS=0.5
+chr22	1080	.	A	C	.	.	Altai=9;Vindija=1;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=2.5e-07;AF_EAS=0;AF_EUR=0.5;AF_SAS=1e-05
+chr22	1110	.	T	A	.	.	Altai=1;Vindija=9;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1140	.	G	T	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=0.000123;AF_AFR=0;AF_AMR=nan;AF_EAS=1;AF_EUR=0;AF_SAS=0.123457
+chr22	1150	.	T	A	.	.	Altai=9;Vindija=9;Denisova=2;AF_ALL=0;AF_AFR=nan;AF_AMR=1;AF_EAS=0;AF_EUR=0.123457;AF_SAS=1
+chr22	1160	.	A	C	.	.	Altai=9;Vindija=2;Denisova=9;AF_ALL=nan;AF_AFR=1;AF_AMR=0;AF_EAS=0.123457;AF_EUR=1;AF_SAS=0
+chr22	1190	.	T	A	.	.	Altai=2;Vindija=2;Denisova=9;AF_ALL=0.123457;AF_AFR=1;AF_AMR=0;AF_EAS=2.5e-07;AF_EUR=0;AF_SAS=0.5
+chr22	1200	.	A	C	.	.	Altai=10;Vindija=9;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=2.5e-07;AF_EAS=0;AF_EUR=0.5;AF_SAS=1e-05
+chr22	1220	.	G	T	.	.	Altai=2;Vindija=1;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1230	.	T	A	.	.	Altai=9;Vindija=9;Denisova=0;AF_ALL=0;AF_AFR=0.5;AF_AMR=1e-05;AF_EAS=0.000123;AF_EUR=0;AF_SAS=nan
+chr22	1240	.	A	G	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1250	.	C	G	.	.	Altai=1;Vindija=9;Denisova=2;AF_ALL=1e-05;AF_AFR=0.000123;AF_AMR=0;AF_EAS=nan;AF_EUR=1;AF_SAS=0
+chr22	1280	.	A	C	.	.	Altai=9;Vindija=1;Denisova=1;AF_ALL=nan;AF_AFR=1;AF_AMR=0;AF_EAS=0.123457;AF_EUR=1;AF_SAS=0
+chr22	1290	.	C	G	.	.	Altai=12;Vindija=9;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=0.123457;AF_EAS=1;AF_EUR=0;AF_SAS=2.5e-07
+chr22	1310	.	T	A	.	.	Altai=1;Vindija=9;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1320	.	A	C	.	.	Altai=2;Vindija=1;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=2.5e-07;AF_EAS=0;AF_EUR=0.5;AF_SAS=1e-05
+chr22	1340	.	G	T	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=2.5e-07;AF_AFR=0;AF_AMR=0.5;AF_EAS=1e-05;AF_EUR=0.000123;AF_SAS=0
+chr22	1350	.	T	A	.	.	Altai=1;Vindija=9;Denisova=2;AF_ALL=0;AF_AFR=0.5;AF_AMR=1e-05;AF_EAS=0.000123;AF_EUR=0;AF_SAS=nan
+chr22	1380	.	G	T	.	.	Altai=9;Vindija=1;Denisova=1;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1400	.	A	C	.	.	Altai=0;Vindija=9;Denisova=9;AF_ALL=nan;AF_AFR=1;AF_AMR=0;AF_EAS=0.123457;AF_EUR=1;AF_SAS=0
+chr22	1410	.	C	G	.	.	Altai=1;Vindija=9;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=0.123457;AF_EAS=1;AF_EUR=0;AF_SAS=2.5e-07
+chr22	1430	.	T	A	.	.	Altai=9;Vindija=9;Denisova=0;AF_ALL=0.123457;AF_AFR=1;AF_AMR=0;AF_EAS=2.5e-07;AF_EUR=0;AF_SAS=0.5
+chr22	1440	.	A	C	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1455	.	C	G	.	.	Altai=9;Vindija=9;Denisova=2;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1460	.	G	T	.	.	Altai=9;Vindija=2;Denisova=9;AF_ALL=2.5e-07;AF_AFR=0;AF_AMR=0.5;AF_EAS=1e-05;AF_EUR=0.000123;AF_SAS=0
+chr22	1470	.	T	A	.	.	Altai=9;Vindija=0;Denisova=9;AF_ALL=0;AF_AFR=0.5;AF_AMR=1e-05;AF_EAS=0.000123;AF_EUR=0;AF_SAS=nan
+chr22	1490	.	C	G	.	.	Altai=2;Vindija=9;Denisova=9;AF_ALL=1e-05;AF_AFR=0.000123;AF_AMR=0;AF_EAS=nan;AF_EUR=1;AF_SAS=0
+chr22	1500	.	G	T	.	.	Altai=0;Vindija=9;Denisova=9;AF_ALL=0.000123;AF_AFR=0;AF_AMR=nan;AF_EAS=1;AF_EUR=0;AF_SAS=0.123457
+chr22	1530	.	C	G	.	.	Altai=9;Vindija=9;Denisova=0;AF_ALL=1;AF_AFR=0;AF_AMR=0.123457;AF_EAS=1;AF_EUR=0;AF_SAS=2.5e-07
+chr22	1545	.	G	T	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1550	.	T	A	.	.	Altai=11;Vindija=9;Denisova=2;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1560	.	A	C	.	.	Altai=9;Vindija=2;Denisova=9;AF_ALL=1;AF_AFR=0;AF_AMR=2.5e-07;AF_EAS=0;AF_EUR=0.5;AF_SAS=1e-05
+chr22	1580	.	G	T	.	.	Altai=9;Vindija=1;Denisova=1;AF_ALL=2.5e-07;AF_AFR=0;AF_AMR=0.5;AF_EAS=1e-05;AF_EUR=0.000123;AF_SAS=0
+chr22	1590	.	T	A	.	.	Altai=12;Vindija=2;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1610	.	C	G	.	.	Altai=11;Vindija=9;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1620	.	G	T	.	.	Altai=12;Vindija=1;Denisova=9;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0
+chr22	1640	.	A	G	.	.	Altai=9;Vindija=9;Denisova=1;AF_ALL=0;AF_AFR=0;AF_AMR=0;AF_EAS=0;AF_EUR=0;AF_SAS=0

@@ -1,0 +1,1353 @@
+[
+ {
+  "LocusId": "VWA1",
+  "LocusStructure": "(AGCGGCGCGG)*",
+  "ReferenceRegion": "chr1:1435798-1435818",
+  "VariantType": "Repeat",
+  "NoThresholds": "STRchive gives no pathogenic size",
+  "Disease": "HMNR7",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "HMNR7_VWA1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "DAB1",
+  "LocusStructure": "(AAAAT)*(GAAAT)*",
+  "ReferenceRegion": [
+   "chr1:57367043-57367078",
+   "chr1:57367078-57367121"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "DAB1_AAAAT",
+   "DAB1"
+  ],
+  "NormalMax": 30,
+  "PathologicMin": 31,
+  "PathologicRegion": "chr1:57367078-57367121",
+  "Disease": "SCA37",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA37_DAB1",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "AAAAT"
+  ],
+  "PathogenicMotifs": [
+   "TGAAA"
+  ]
+ },
+ {
+  "LocusId": "ABCD3",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr1:94418421-94418444",
+  "VariantType": "Repeat",
+  "NormalMax": 44,
+  "PathologicMin": 118,
+  "Disease": "OPDM5",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM5_ABCD3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "NOTCH2NLC",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr1:149390802-149390842",
+  "VariantType": "Repeat",
+  "NormalMax": 37,
+  "PathologicMin": 66,
+  "Disease": "NIID",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "NIID_NOTCH2NLC",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "MUC1",
+  "LocusStructure": "(CCGGGGCCGAGGTGACACCGTGGGCTGGGGGGGGCGGTGGAGCCCGGGGCCGGCCTGGTGT)*",
+  "ReferenceRegion": "chr1:155188505-155192239",
+  "VariantType": "Repeat",
+  "NoThresholds": "the reference repeat is 3734 bases, longer than 300: short reads cannot size it",
+  "Disease": "ADTKD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "ADTKD_MUC1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "NAXE",
+  "LocusStructure": "(CCGGG)*",
+  "ReferenceRegion": "chr1:156591765-156591783",
+  "VariantType": "Repeat",
+  "NormalMax": 7,
+  "PathologicMin": 200,
+  "Disease": "NME",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "NME_NAXE",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "STARD7",
+  "LocusStructure": "(AAATG)*(AAAAT)*",
+  "ReferenceRegion": [
+   "chr2:96197066-96197069",
+   "chr2:96197069-96197124"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "STARD7",
+   "STARD7_AAAAT"
+  ],
+  "NormalMax": 0,
+  "PathologicMin": 274,
+  "PathologicRegion": "chr2:96197066-96197069",
+  "Disease": "FAME2",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME2_STARD7",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "AAAAT"
+  ],
+  "PathogenicMotifs": [
+   "TGAAA"
+  ]
+ },
+ {
+  "LocusId": "AFF3",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr2:100104798-100104824",
+  "VariantType": "Repeat",
+  "NormalMax": 20,
+  "PathologicMin": 300,
+  "Disease": "FRA2A",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FRA2A_AFF3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "HOXD13",
+  "LocusStructure": "(GCN)*",
+  "ReferenceRegion": "chr2:176093058-176093103",
+  "VariantType": "Repeat",
+  "NormalMax": 15,
+  "PathologicMin": 22,
+  "Disease": "SPD1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SPD1_HOXD13",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "GLS",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr2:190880872-190880920",
+  "VariantType": "Repeat",
+  "NormalMax": 38,
+  "PathologicMin": 680,
+  "Disease": "GDPAG",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "GDPAG_GLS",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN7",
+  "LocusStructure": "(CAG)*(CCG)*",
+  "ReferenceRegion": [
+   "chr3:63912684-63912715",
+   "chr3:63912715-63912727"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "ATXN7",
+   "ATXN7_CCG"
+  ],
+  "NormalMax": 27,
+  "PathologicMin": 37,
+  "PathologicRegion": "chr3:63912684-63912715",
+  "Disease": "SCA7",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA7_ATXN7",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CNBP",
+  "LocusStructure": "(CAGG)*(CAGA)*(CA)*",
+  "ReferenceRegion": [
+   "chr3:129172576-129172656",
+   "chr3:129172656-129172696",
+   "chr3:129172696-129172734"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "CNBP",
+   "CNBP_CAGA",
+   "CNBP_CA"
+  ],
+  "NormalMax": 26,
+  "PathologicMin": 75,
+  "PathologicRegion": "chr3:129172576-129172656",
+  "Disease": "DM2",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "DM2_CNBP",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "FOXL2",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chr3:138946019-138946062",
+  "VariantType": "Repeat",
+  "NormalMax": 14,
+  "PathologicMin": 15,
+  "Disease": "BPES",
+  "InheritanceMode": "AD/AR",
+  "Source": "STRchive",
+  "SourceId": "BPES_FOXL2",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "YEATS2",
+  "LocusStructure": "(TTTTA)*(TTTCA)*",
+  "ReferenceRegion": [
+   "chr3:183712187-183712222",
+   "chr3:183712222-183712226"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "YEATS2_TTTTA",
+   "YEATS2"
+  ],
+  "NormalMax": 0,
+  "PathologicMin": 1000,
+  "PathologicRegion": "chr3:183712222-183712226",
+  "Disease": "FAME4",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME4_YEATS2",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TTTTA"
+  ],
+  "PathogenicMotifs": [
+   "TTTCA"
+  ]
+ },
+ {
+  "LocusId": "HTT",
+  "LocusStructure": "(CAG)*CAACAG(CCG)*",
+  "ReferenceRegion": [
+   "chr4:3074876-3074927",
+   "chr4:3074933-3074969"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "HTT",
+   "HTT_CCG"
+  ],
+  "NormalMax": 26,
+  "PathologicMin": 36,
+  "PathologicRegion": "chr4:3074876-3074927",
+  "Disease": "HD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HD_HTT",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "RFC1",
+  "LocusStructure": "(AAAAG)*(AAGGG)*",
+  "ReferenceRegion": [
+   "chr4:39348424-39348479",
+   "chr4:39348479-39348483"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "RFC1_AAAAG",
+   "RFC1"
+  ],
+  "NormalMax": 11,
+  "PathologicMin": 400,
+  "PathologicRegion": "chr4:39348479-39348483",
+  "Disease": "CANVAS",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "CANVAS_RFC1",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "AAAAG",
+   "AAAGG"
+  ],
+  "PathogenicMotifs": [
+   "AAGGG",
+   "ACAGG",
+   "CAGGG"
+  ]
+ },
+ {
+  "LocusId": "PHOX2B",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chr4:41745972-41746032",
+  "VariantType": "Repeat",
+  "NormalMax": 20,
+  "PathologicMin": 26,
+  "Disease": "CCHS",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "CCHS_PHOX2B",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "RAPGEF2",
+  "LocusStructure": "(TTTTA)*(TTTCA)*",
+  "ReferenceRegion": [
+   "chr4:159342526-159342611",
+   "chr4:159342611-159342618"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "RAPGEF2_TTTTA",
+   "RAPGEF2"
+  ],
+  "NormalMax": 1,
+  "PathologicMin": 60,
+  "PathologicRegion": "chr4:159342611-159342618",
+  "Disease": "FAME7",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME7_RAPGEF2",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TTTTA"
+  ],
+  "PathogenicMotifs": [
+   "TTTCA"
+  ]
+ },
+ {
+  "LocusId": "MARCHF6",
+  "LocusStructure": "(TTTTA)*(TTTCA)*",
+  "ReferenceRegion": [
+   "chr5:10356343-10356403",
+   "chr5:10356403-10356411"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "MARCHF6_TTTTA",
+   "MARCHF6"
+  ],
+  "NormalMax": 1,
+  "PathologicMin": 650,
+  "PathologicRegion": "chr5:10356403-10356411",
+  "Disease": "FAME3",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME3_MARCHF6",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TTTTA"
+  ],
+  "PathogenicMotifs": [
+   "TTTCA"
+  ]
+ },
+ {
+  "LocusId": "PPP2R2B",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr5:146878727-146878759",
+  "VariantType": "Repeat",
+  "NormalMax": 32,
+  "PathologicMin": 51,
+  "Disease": "SCA12",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA12_PPP2R2B",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "FAM193B",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr5:177554489-177554531",
+  "VariantType": "Repeat",
+  "NormalMax": 50,
+  "PathologicMin": 194,
+  "Disease": "OPDM",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM_FAM193B",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TBC1D7",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr6:13328476-13328603",
+  "VariantType": "Repeat",
+  "NormalMax": 60,
+  "PathologicMin": 83,
+  "Disease": "OPDM",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM_TBC1D7",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN1",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr6:16327633-16327724",
+  "VariantType": "Repeat",
+  "NormalMax": 35,
+  "PathologicMin": 39,
+  "Disease": "SCA1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA1_ATXN1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "RUNX2",
+  "LocusStructure": "(CAG)*(GCN)*",
+  "ReferenceRegion": [
+   "chr6:45422681-45422750",
+   "chr6:45422750-45422801"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "RUNX2_CAG",
+   "RUNX2"
+  ],
+  "NormalMax": 17,
+  "PathologicMin": 20,
+  "PathologicRegion": "chr6:45422750-45422801",
+  "Disease": "CCD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "CCD_RUNX2",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TBP",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr6:170561906-170562017",
+  "VariantType": "Repeat",
+  "NormalMax": 40,
+  "PathologicMin": 49,
+  "Disease": "SCA17",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA17_TBP",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "HFG_HOXA13-III",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chr7:27199678-27199732",
+  "VariantType": "Repeat",
+  "NormalMax": 18,
+  "PathologicMin": 22,
+  "Disease": "HFG-III",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HFG_HOXA13-III",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "HFG_HOXA13-II",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chr7:27199825-27199861",
+  "VariantType": "Repeat",
+  "NormalMax": 12,
+  "PathologicMin": 18,
+  "Disease": "HFG-II",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HFG_HOXA13-II",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "HFG_HOXA13-I",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chr7:27199924-27199966",
+  "VariantType": "Repeat",
+  "NormalMax": 14,
+  "PathologicMin": 22,
+  "Disease": "HFG-I",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HFG_HOXA13-I",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ZNF713",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr7:55887600-55887639",
+  "VariantType": "Repeat",
+  "NormalMax": 22,
+  "PathologicMin": 450,
+  "Disease": "FRA7A",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FRA7A_ZNF713",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "LRP12",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr8:104588970-104588999",
+  "VariantType": "Repeat",
+  "NormalMax": 45,
+  "PathologicMin": 85,
+  "Disease": "OPDM1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM1_LRP12",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "SAMD12",
+  "LocusStructure": "(TAAAA)*(TGAAA)*",
+  "ReferenceRegion": [
+   "chr8:118366812-118366912",
+   "chr8:118366912-118366918"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "SAMD12_TAAAA",
+   "SAMD12"
+  ],
+  "NormalMax": 1,
+  "PathologicMin": 105,
+  "PathologicRegion": "chr8:118366912-118366918",
+  "Disease": "FAME1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME1_SAMD12",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TAAAA"
+  ],
+  "PathogenicMotifs": [
+   "TGAAA"
+  ]
+ },
+ {
+  "LocusId": "C9ORF72",
+  "LocusStructure": "(CCCCGG)*",
+  "ReferenceRegion": "chr9:27573484-27573546",
+  "VariantType": "Repeat",
+  "NormalMax": 23,
+  "PathologicMin": 31,
+  "Disease": "FTDALS1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FTDALS1_C9orf72",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "FXN",
+  "LocusStructure": "(A)*(GAA)*",
+  "ReferenceRegion": [
+   "chr9:69037270-69037286",
+   "chr9:69037286-69037304"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "FXN_A",
+   "FXN"
+  ],
+  "NormalMax": 33,
+  "PathologicMin": 56,
+  "PathologicRegion": "chr9:69037286-69037304",
+  "Disease": "FRDA",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "FRDA_FXN",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "PRDM12",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr9:130681605-130681641",
+  "VariantType": "Repeat",
+  "NormalMax": 14,
+  "PathologicMin": 18,
+  "Disease": "HSAN-VIII",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "HSAN-VIII_PRDM12",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CEL",
+  "LocusStructure": "(GGCCCCCCCGTGCCGCCCACGGGTGACTCCGG)*",
+  "ReferenceRegion": "chr9:133071177-133071737",
+  "VariantType": "Repeat",
+  "NoThresholds": "the reference repeat is 560 bases, longer than 300: short reads cannot size it",
+  "Disease": "MODY8",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "MODY8_CEL",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "NUTM2B-AS1",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr10:79826383-79826404",
+  "VariantType": "Repeat",
+  "NormalMax": 16,
+  "PathologicMin": 161,
+  "Disease": "OPML1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPML1_NUTM2B-AS1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CBL",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr11:119206289-119206323",
+  "VariantType": "Repeat",
+  "NormalMax": 79,
+  "PathologicMin": 101,
+  "Disease": "JBS",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "JBS_CBL",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATN1",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr12:6936716-6936775",
+  "VariantType": "Repeat",
+  "NormalMax": 35,
+  "PathologicMin": 48,
+  "Disease": "DRPLA",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "DRPLA_ATN1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "DIP2B",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr12:50505001-50505024",
+  "VariantType": "Repeat",
+  "NormalMax": 23,
+  "PathologicMin": 273,
+  "Disease": "FRA12A",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FRA12A_DIP2B",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN2",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr12:111598949-111599019",
+  "VariantType": "Repeat",
+  "NormalMax": 28,
+  "PathologicMin": 35,
+  "Disease": "SCA2",
+  "InheritanceMode": "AD/AR",
+  "Source": "STRchive",
+  "SourceId": "SCA2_ATXN2",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "RILPL1",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr12:123533720-123533750",
+  "VariantType": "Repeat",
+  "NormalMax": 16,
+  "PathologicMin": 120,
+  "Disease": "OPDM4",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM4_RILPL1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "EP400",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr12:132062524-132062611",
+  "VariantType": "Repeat",
+  "NormalMax": 39,
+  "PathologicMin": 71,
+  "Disease": "SCA",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA_EP400",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN8OS",
+  "LocusStructure": "(CTA)*(CTG)*",
+  "ReferenceRegion": [
+   "chr13:70139353-70139383",
+   "chr13:70139383-70139429"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "ATXN8OS_CTA",
+   "ATXN8OS"
+  ],
+  "NormalMax": 50,
+  "PathologicMin": 71,
+  "PathologicRegion": "chr13:70139383-70139429",
+  "Disease": "SCA8",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA8_ATXN8OS",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ZIC2",
+  "LocusStructure": "(GCN)*",
+  "ReferenceRegion": "chr13:99985448-99985494",
+  "VariantType": "Repeat",
+  "NormalMax": 15,
+  "PathologicMin": 25,
+  "Disease": "HPE5",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HPE5_ZIC2",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "FGF14",
+  "LocusStructure": "(AAG)*",
+  "ReferenceRegion": "chr13:102161574-102161726",
+  "VariantType": "Repeat",
+  "NormalMax": 179,
+  "PathologicMin": 320,
+  "Disease": "SCA27B",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA27B_FGF14",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "PABPN1",
+  "LocusStructure": "(GCN)*",
+  "ReferenceRegion": "chr14:23321472-23321503",
+  "VariantType": "Repeat",
+  "NormalMax": 10,
+  "PathologicMin": 12,
+  "Disease": "OPMD",
+  "InheritanceMode": "AD/AR",
+  "Source": "STRchive",
+  "SourceId": "OPMD_PABPN1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN3",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr14:92071010-92071052",
+  "VariantType": "Repeat",
+  "NormalMax": 44,
+  "PathologicMin": 60,
+  "Disease": "SCA3, MJD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA3_ATXN3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "NIPA1",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chr15:22786677-22786703",
+  "VariantType": "Repeat",
+  "NormalMax": 10,
+  "PathologicMin": 11,
+  "Disease": "ALS",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "ALS_NIPA1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "GOLGA8A",
+  "LocusStructure": "(CT)*",
+  "ReferenceRegion": "chr15:34419425-34419451",
+  "VariantType": "Repeat",
+  "NormalMax": 13,
+  "PathologicMin": 190,
+  "Disease": "aFTLD-U",
+  "Source": "STRchive",
+  "SourceId": "aFTLD-U_GOLGA8A",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [],
+  "PathogenicMotifs": [
+   "CT"
+  ]
+ },
+ {
+  "LocusId": "MIR7-2",
+  "LocusStructure": "(GTTT)*",
+  "ReferenceRegion": "chr15:88569433-88569452",
+  "VariantType": "Repeat",
+  "NoThresholds": "pathogenic from 3 units, below the benign maximum 4: a contraction, which Stranger does not grade",
+  "Disease": "CHNG3",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "CHNG3_MIR7-2",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "POLG",
+  "LocusStructure": "(GCT)*(GTT)*(GCT)*",
+  "ReferenceRegion": [
+   "chr15:89333579-89333585",
+   "chr15:89333585-89333588",
+   "chr15:89333588-89333629"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "POLG_GCT",
+   "POLG_GTT",
+   "POLG"
+  ],
+  "NoThresholds": "STRchive gives no pathogenic size",
+  "PathologicRegion": "chr15:89333588-89333629",
+  "Disease": "CPEO",
+  "Source": "STRchive",
+  "SourceId": "CPEO_POLG",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "XYLT1",
+  "LocusStructure": "(GCC)*(GCC)*",
+  "ReferenceRegion": [
+   "chr16:17470907-17470907",
+   "chr16:17470907-17470922"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "XYLT1_GCC",
+   "XYLT1"
+  ],
+  "NormalMax": 20,
+  "PathologicMin": 72,
+  "PathologicRegion": "chr16:17470907-17470922",
+  "Disease": "DBQD2, BSS",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "DBQD2_XYLT1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TNRC6A",
+  "LocusStructure": "(TTTTA)*(TTTCA)*",
+  "ReferenceRegion": [
+   "chr16:24613438-24613488",
+   "chr16:24613488-24613532"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "TNRC6A_TTTTA",
+   "TNRC6A"
+  ],
+  "NormalMax": 8,
+  "PathologicMin": 1100,
+  "PathologicRegion": "chr16:24613488-24613532",
+  "Disease": "FAME6",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME6_TNRC6A",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TTTTA"
+  ],
+  "PathogenicMotifs": [
+   "TTTCA"
+  ]
+ },
+ {
+  "LocusId": "BEAN1",
+  "LocusStructure": "(AATGG)*",
+  "ReferenceRegion": "chr16:66490396-66490466",
+  "VariantType": "Repeat",
+  "NormalMax": 14,
+  "PathologicMin": 110,
+  "Disease": "SCA31",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA31_BEAN1",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "AATAA"
+  ],
+  "PathogenicMotifs": [
+   "AATGG",
+   "AATAG"
+  ]
+ },
+ {
+  "LocusId": "THAP11",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr16:67842862-67842950",
+  "VariantType": "Repeat",
+  "NormalMax": 38,
+  "PathologicMin": 45,
+  "Disease": "SCA51",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA51_THAP11",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ZFHX3",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr16:72787694-72787758",
+  "VariantType": "Repeat",
+  "NormalMax": 26,
+  "PathologicMin": 46,
+  "Disease": "SCA4",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA4_ZFHX3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "JPH3",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr16:87604282-87604329",
+  "VariantType": "Repeat",
+  "NormalMax": 28,
+  "PathologicMin": 40,
+  "Disease": "HDL2",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HDL2_JPH3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "RAI1",
+  "LocusStructure": "(TTTTA)*(TTTCA)*",
+  "ReferenceRegion": [
+   "chr17:17808358-17808448",
+   "chr17:17808448-17808460"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "RAI1_TTTTA",
+   "RAI1"
+  ],
+  "NormalMax": 2,
+  "PathologicMin": 9,
+  "PathologicRegion": "chr17:17808448-17808460",
+  "Disease": "FAME8",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FAME8_RAI1",
+  "SourceDisplay": "STRchive-pinned",
+  "BenignMotifs": [
+   "TTTTA"
+  ],
+  "PathogenicMotifs": [
+   "TTTCA"
+  ]
+ },
+ {
+  "LocusId": "EIF4A3",
+  "LocusStructure": "(GCCGCTGCCGACCTCGCTGT)*",
+  "ReferenceRegion": "chr17:80147009-80147139",
+  "VariantType": "Repeat",
+  "NormalMax": 12,
+  "PathologicMin": 14,
+  "Disease": "RCPS",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "RCPS_EIF4A3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TYMS",
+  "LocusStructure": "(GATGGT)*",
+  "ReferenceRegion": "chr18:666891-667632",
+  "VariantType": "Repeat",
+  "NoThresholds": "the reference repeat is 741 bases, longer than 300: short reads cannot size it",
+  "Disease": "CPUM",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "CPUM_TYMS",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TCF4",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr18:55586153-55586229",
+  "VariantType": "Repeat",
+  "NormalMax": 39,
+  "PathologicMin": 51,
+  "Disease": "FECD3",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "FECD3_TCF4",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "PLIN4",
+  "LocusStructure": "(GGCCACATTCATGGCACCAGTCACCCCACTACAGACGGTGTCCTTGGTACCTGTTAGGACAGTCTTACTGGTGTCCACGCCGGTCTGGATGGTTCCTTT)*",
+  "ReferenceRegion": "chr19:4510727-4513659",
+  "VariantType": "Repeat",
+  "NoThresholds": "the reference repeat is 2932 bases, longer than 300: short reads cannot size it",
+  "Disease": "MRUPAV",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "MRUPAV_PLIN4",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CACNA1A",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr19:13207858-13207898",
+  "VariantType": "Repeat",
+  "NormalMax": 18,
+  "PathologicMin": 21,
+  "Disease": "SCA6",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA6_CACNA1A",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "GIPC1",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr19:14496041-14496075",
+  "VariantType": "Repeat",
+  "NormalMax": 32,
+  "PathologicMin": 73,
+  "Disease": "OPDM2",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "OPDM2_GIPC1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "COMP",
+  "LocusStructure": "(CGT)*",
+  "ReferenceRegion": "chr19:18786034-18786050",
+  "VariantType": "Repeat",
+  "NormalMax": 5,
+  "PathologicMin": 6,
+  "Disease": "EDM1, PSACH",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "EDM1-PSACH_COMP",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "DMPK",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chr19:45770204-45770266",
+  "VariantType": "Repeat",
+  "NormalMax": 34,
+  "PathologicMin": 50,
+  "Disease": "DM1",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "DM1_DMPK",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "NOP56",
+  "LocusStructure": "(GGCCTG)*(CGCCTG)*",
+  "ReferenceRegion": [
+   "chr20:2652732-2652757",
+   "chr20:2652757-2652775"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "NOP56",
+   "NOP56_CGCCTG"
+  ],
+  "NormalMax": 14,
+  "PathologicMin": 650,
+  "PathologicRegion": "chr20:2652732-2652757",
+  "Disease": "SCA36",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA36_NOP56",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "PRNP",
+  "LocusStructure": "(CCTCAGGGCGGTGGTGGCTGGGGGCAG)*(CCTCATGGTGGTGGCTGGGGGCAG)*",
+  "ReferenceRegion": [
+   "chr20:4699370-4699397",
+   "chr20:4699397-4699493"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "PRNP_CCTCAGGGCGGTGGTGGCTGGGGGCAG",
+   "PRNP"
+  ],
+  "NormalMax": 4,
+  "PathologicMin": 5,
+  "PathologicRegion": "chr20:4699397-4699493",
+  "Disease": "CJD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "CJD_PRNP",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CSTB",
+  "LocusStructure": "(CGCGGGGCGGGG)*",
+  "ReferenceRegion": "chr21:43776442-43776479",
+  "VariantType": "Repeat",
+  "NormalMax": 3,
+  "PathologicMin": 30,
+  "Disease": "EPM1",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "EPM1_CSTB",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TBX1",
+  "LocusStructure": "(GCN)*",
+  "ReferenceRegion": "chr22:19766762-19766807",
+  "VariantType": "Repeat",
+  "NormalMax": 15,
+  "PathologicMin": 25,
+  "Disease": "TOF",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "TOF_TBX1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "CSNK1E",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chr22:38317282-38317375",
+  "VariantType": "Repeat",
+  "NormalMax": 48,
+  "PathologicMin": 745,
+  "Disease": "EPM, DEE",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "EPM_CSNK1E",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ATXN10",
+  "LocusStructure": "(ATTCT)*",
+  "ReferenceRegion": "chr22:45795354-45795424",
+  "VariantType": "Repeat",
+  "NormalMax": 32,
+  "PathologicMin": 800,
+  "Disease": "SCA10",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "SCA10_ATXN10",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "BCLAF3",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chrX:19990922-19990973",
+  "VariantType": "Repeat",
+  "NormalMax": 23,
+  "PathologicMin": 482,
+  "Disease": "FRAXG",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "FRAXG_BCLAF3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "PRTS_ARX",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chrX:25013529-25013565",
+  "VariantType": "Repeat",
+  "NormalMax": 12,
+  "PathologicMin": 20,
+  "Disease": "PRTS",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "PRTS_ARX",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "EIEE1_ARX",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chrX:25013649-25013697",
+  "VariantType": "Repeat",
+  "NormalMax": 16,
+  "PathologicMin": 17,
+  "Disease": "EIEE1",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "EIEE1_ARX",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "DMD",
+  "LocusStructure": "(TTC)*(T)*",
+  "ReferenceRegion": [
+   "chrX:31284557-31284605",
+   "chrX:31284605-31284613"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "DMD",
+   "DMD_T"
+  ],
+  "NormalMax": 33,
+  "PathologicMin": 59,
+  "PathologicRegion": "chrX:31284557-31284605",
+  "Disease": "DMD",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "DMD_DMD",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "AR",
+  "LocusStructure": "(CAG)*",
+  "ReferenceRegion": "chrX:67545316-67545419",
+  "VariantType": "Repeat",
+  "NormalMax": 34,
+  "PathologicMin": 38,
+  "Disease": "SBMA",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "SBMA_AR",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "TAF1",
+  "LocusStructure": "(AGAGGG)*",
+  "ReferenceRegion": "chrX:71453054-71453131",
+  "VariantType": "Repeat",
+  "NormalMax": 12,
+  "PathologicMin": 35,
+  "Disease": "XDP",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "XDP_TAF1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "ZIC3",
+  "LocusStructure": "(GCN)*",
+  "ReferenceRegion": "chrX:137566826-137566856",
+  "VariantType": "Repeat",
+  "NormalMax": 10,
+  "PathologicMin": 12,
+  "Disease": "VACTERLX",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "VACTERLX_ZIC3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "SOX3",
+  "LocusStructure": "(NGC)*",
+  "ReferenceRegion": "chrX:140504316-140504361",
+  "VariantType": "Repeat",
+  "NormalMax": 15,
+  "PathologicMin": 22,
+  "Disease": "XLID, PHPX",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "XLID_SOX3",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "FMR1",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chrX:147912049-147912111",
+  "VariantType": "Repeat",
+  "NormalMax": 44,
+  "PathologicMin": 201,
+  "Disease": "FXS, FXTAS, POF1",
+  "InheritanceMode": "XD",
+  "Source": "STRchive",
+  "SourceId": "FXS_FMR1",
+  "SourceDisplay": "STRchive-pinned"
+ },
+ {
+  "LocusId": "AFF2",
+  "LocusStructure": "(CCG)*",
+  "ReferenceRegion": "chrX:148500604-148500753",
+  "VariantType": "Repeat",
+  "NormalMax": 39,
+  "PathologicMin": 201,
+  "Disease": "FRAXE",
+  "InheritanceMode": "XR",
+  "Source": "STRchive",
+  "SourceId": "FRAXE_AFF2",
+  "SourceDisplay": "STRchive-pinned"
+ }
+]

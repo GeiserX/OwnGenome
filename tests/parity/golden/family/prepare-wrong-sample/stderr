@@ -1,0 +1,1 @@
+ERROR: the gVCF of 'dad' (hg003.g.vcf) holds the sample HG003, not 'dad'. The joint call names each column after the gVCF's own sample. Rename it: echo dad > name.txt; bcftools reheader -s name.txt -o dad.g.vcf.gz hg003.g.vcf; bcftools index -t dad.g.vcf.gz

@@ -1,0 +1,22 @@
+1	chr22	37	AGC	A	het	SYNTH1	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	38	GCCAT	CATGGG	het	SYNTH1	Pathogenic	criteria provided, single submitter	combined allele of chr22:37 AGC>A + chr22:42 T>TGGG; unphased, so the parts may sit on different haplotypes	.	.	no
+1	chr22	39	CCAT	ATGGG	het	SYNTH1	Pathogenic	criteria provided, single submitter	combined allele of chr22:37 AGC>A + chr22:43 A>G; unphased, so the parts may sit on different haplotypes	.	.	no
+1	chr22	42	T	TGGG	het	SYNTH1	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	210	C	T	het	SYNTH2	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	300	A	G	het	SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	305	C	T	het	SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	308	CAT	C	het	SYNTH9,SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	400	A	G	het	SYNTH4	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	404	C	T	het	SYNTH5	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	500	A	G	het	SYNTH6	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	504	C	T	het	SYNTH6	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	600	A	G	one copy, other copy not called ref (1|.)	SYNTH7	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr22	605	C	T	het	SYNTH7	Pathogenic	criteria provided, single submitter	.	.	.	no
+0	chr22	700	A	G	het	SYNTH8	.	.	.	.	.	no
+0	chr22	711	C	T	het	SYNTH8	.	.	.	.	.	no
+0	chr22	720	A	G	het	.	.	.	.	.	.	no
+0	chr22	722	C	T	het	.	.	.	.	.	.	no
+1	chr23	300	A	G	het	SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr23	302	C	T	het	SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr23	304	C	T	het	SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr23	310	A	G		SYNTH3	Pathogenic	criteria provided, single submitter	.	.	.	no

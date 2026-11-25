@@ -1,0 +1,6 @@
+family	analysis	members	decision	reason
+family_b	joint_call	partner_x,partner_y	waiting	partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b	trio_phasing	partner_x,partner_y	waiting	partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b	inheritance_map	partner_x,partner_y	waiting	partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b	shared_segments	partner_x,partner_y	waiting	partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b	couple_carrier	partner_x,partner_y	waiting	partner_x has no ClinVar hits yet (step 06 writes clinvar/partner_x_clinvar_hits.vcf): run run-all.sh partner_x first; partner_y has no ClinVar hits yet (step 06 writes clinvar/partner_y_clinvar_hits.vcf): run run-all.sh partner_y first

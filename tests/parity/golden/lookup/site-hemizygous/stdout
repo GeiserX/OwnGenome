@@ -1,0 +1,10 @@
+== chrX:1000: chrX:1000 (GRCh38; from position)
+  genotype: A (hemizygous; REF G, ALT A)
+  evidence: depth 12, QUAL 44
+  variant: chrX:1000 G>A A (hemizygous)
+    gene: GENEX
+    consequence: synonymous_variant
+    impact: LOW
+    gnomAD genomes AF: 1e-05
+  in the reports:
+  none of the reports mentions GENEX, rs4004

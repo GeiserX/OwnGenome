@@ -1,52 +1,51 @@
-# tests/parity: og against the Python it replaces
+# Rust parity cases
 
-Each OwnGenome tool moves from Python to the Rust binary `og` in one pull request. That pull request deletes the Python, so the Python must stay runnable to prove the port writes the same thing. This folder holds what `scripts/ci/oracle-diff.sh` needs for that proof. The Python is called the *oracle*.
+The parity harness runs each case in a fresh working directory and compares
+its exit code, stdout, stderr, named outputs, and new files with committed
+goldens. The goldens came from the archived implementations and the existing
+goldens that recorded deliberate changes in the Rust ports.
 
-| File | What it holds |
+| Path | Contents |
 |---|---|
-| `oracle.ref` | One row per ported tool: the commit that still had the Python, where it was (`heredoc:FILE:NAME` or `file:FILE`), its interpreter, and the `og` words that replace it. |
-| `cases.tsv` | One row per case: tool, case name, inputs, arguments, the outputs it must write, the compare kind for its output files (one kind, or `GLOB=KIND ... DEFAULT`: the kind of the first glob that matches a file's name, else the default), and the `versions.env` image the oracle runs in. |
-| `inputs/<tool>/` | The case inputs, staged into each run by their base name. A staged input named `stdin` is the standard input of both sides; without one it is empty. `.gitattributes` keeps their line endings as they are. |
-| `gen/` | Generators for inputs too large to commit, named in `inputs` as `gen:<script>`. |
-| `golden/<tool>/<case>/` | What `og` must write where it fixes the oracle on purpose: one file per item (`exit`, `stdout`, `stderr` or an output name), or `<item>.absent` when `og` must write nothing. |
-| `known.tsv` | Differences that cannot be stable: zip and deflate bytes, clocks, mtimes, Python exception text. |
-| `shadow-self-test.sh` | The self-test of `bin/og`'s shadow mode. |
+| `cases.tsv` | Tool, case, inputs, arguments, named outputs, comparison kind, and the words of the og command. |
+| `inputs/` | Files staged by base name. If a staged file is named `stdin`, the tool reads it as standard input. |
+| `gen/` | Generators that stage inputs. The large synthetic VEP, ClinVar, consumer, and IBD generators use fixed seeds. |
+| `golden/fixtures/` | Small fixture archives captured from the retired generators and historical catalogs. |
+| `golden/TOOL/CASE/` | Expected exit, stdout, stderr, and output files. |
+| `known.tsv` | Historical record of four differences that the archived comparison accepted. |
 
-## Running it
+Inputs are comma-separated. Use `gen:SCRIPT` for a generator, `fixture:NAME` for
+a frozen input archive, or `-` for an empty input list. Name an in-place edit in
+the outputs column so the harness compares it. The comparison kind for exit,
+stdout, and stderr is bytes. An output uses the case's comparison kind or its
+matching file glob. The [Rust comparator](../../rust/crates/og-dev/src/parity.rs) lists the supported comparison kinds.
 
-```bash
-scripts/ci/oracle-diff.sh                  # every case; builds rust/target/release/og when needed
-scripts/ci/oracle-diff.sh setup-mask-fasta/overlap
-scripts/ci/oracle-diff.sh --self-test      # planted differences must each be reported
-OG=path/to/og scripts/ci/oracle-diff.sh    # another og binary
-```
+An `ITEM.absent` file records that the tool must leave ITEM absent. An
+`ITEM.sha256` file holds the SHA-256 of the canonical stream for that item's
+comparison kind. Large output files and selected public or synthetic fixture
+outputs use checksums. The checksum for a ZIP covers each member's name
+and uncompressed contents. Each case can store up to 1,000,000 bytes across
+its golden files. The Yleaf data-folder cases replace the temporary working
+directory with `<case-dir>` in their diagnostic. The two known Paraphase
+exception differences keep the diagnostic from og.
 
-Each case stages the same inputs into two directories. `og` runs in one directory. The oracle runs in the other, inside its image with no network. Both get the same arguments. The harness then compares the exit code, stdout, stderr, the outputs the case names and every new file either side wrote. A staged input that a tool changes in place is compared only when the case names it as an output, so name such a file in the `outputs` column. Files use the case's compare kind. A kind written `KIND;GLOB=KIND2` compares the files whose path matches `GLOB` with `KIND2` instead, so one case can compare its tables as bytes and its picture as pixels (`bytes;*.png=png-pixels`). The exit code, stdout and stderr compare as bytes. `og dev parity-compare` does each comparison. Its kinds are `bytes`, `gz-content`, `content` (`gz-content` when the oracle's file is gzip, else `bytes`, for a case whose outputs mix the two), `zip-content`, `png-pixels`, `tsv[:keys=A,B][:unordered]`, `kv`, `vcf`, `json[:paths=..][:mask=..][:tol=..]`, `mask:REGEX` and `stderr-first-line`. Its own `--self-test` plants a difference of each kind.
+## Run and inspect cases
 
-Each difference has one of three outcomes:
+Run these commands from the repository root.
 
-- A *quirk* is a byte that cannot be stable. It gets a `known.tsv` row with the reason.
-- A *deliberate fix* gets a golden file and a line in the pull request.
-- Anything else is a bug in the port, and the run is red.
+	scripts/ci/oracle-diff.sh
+	scripts/ci/oracle-diff.sh setup-mask-fasta/overlap
+	scripts/ci/oracle-diff.sh --self-test
+	scripts/ci/oracle-diff.sh --check-goldens
 
-A `known.tsv` row whose difference is gone fails. A golden that the oracle also matches fails too. So neither list can go stale.
+Set `OG` to the absolute path of a prebuilt binary to use it. Set `PARITY_WORK` to
+an absolute scratch directory to retain the case's files and actual results.
+When a change intentionally alters an expectation, review the case output in
+that directory and update the affected golden in the same pull request. To
+recompute a checksum, pass the comparison kind and the actual filename to
+`og dev parity-compare --canonical` and pipe the result to `sha256sum`.
 
-## Shadow mode in e2e
-
-`bin/og` has a shadow mode for CI. `OG_SHADOW` names tools of `oracle.ref`, comma or space separated. `scripts/ci/oracle-diff.sh materialise` writes their oracles into `bin/.og/oracle/`. An `og` call that starts with such a tool's words then runs `og` as the real output. It also runs the oracle in a scratch directory of symlinks to what the working directory held before, with the same arguments. The exit code, stdout and every new top-level file each side wrote must be the same, byte for byte, or the call fails. The call also fails when either side changes a file that was there before or writes into a directory that was there before: the oracle would write those through its symlinks into the same tree, so the shadow cannot compare them. stderr is not compared. A call that agrees prints `og shadow (<tool>): og and the Python it replaces agree` on stderr, so a log shows the shadow ran. The e2e workflow sets `OG_SHADOW` for ported tools, so every case that calls one checks it on real data. Shadow mode compares bytes only and knows no goldens, so a tool leaves `OG_SHADOW` once a later change makes `og` differ from its oracle on purpose. The tool must be called with paths relative to its working directory.
-
-## Adding a port
-
-1. Write the `og` subcommand.
-2. Add a row to `oracle.ref` with the parent commit of your pull request. Add the cases: the old unit tests' inputs, and the traps the old code had. When the old program took its options in another form (awk's `-v name=value`), stage a small adapter with the case inputs and name it as the interpreter, as `sh ./oracle.sh` does for `vcf-csq-rank` and `table-constraint-join`: it turns `og`'s options into the old ones. Such an oracle runs only in the harness, not in shadow mode, which has no adapter in the task's directory.
-3. Run `scripts/ci/oracle-diff.sh`. Turn each difference into a fix, a golden or a `known.tsv` row.
-4. Switch the callers to `og`, delete the Python, and add the tool to `OG_SHADOW` in `.github/workflows/e2e.yml`.
-5. Link a red run in the pull request: the cases with one planted change in the port must fail.
-
-The `dev-pharmcat*`, `dev-nf-*` and `dev-smoke-*` cases extract archived heredocs from their pre-port shell/workflow files. The wrapper keeps the original Python as the oracle. The mini-reference golden records the deliberate change to a fixed Rust random seed. Truncated PharmCAT JSON has goldens for exit 2 and the unreadable-report diagnostic. The standalone [CI reader tests](../../rust/crates/og-dev/tests/ci_readers.rs) pair clean inputs with changed requests, exits, CSV fields and smoke properties that must fail.
-The `traits` cases cover all APOE genotype pairs, missing and other alleles,
-duplicate records, TAS2R38 phase blocks, phase-site VCFs and catalog refusals.
-The oracle adapter maps the three Rust verbs to the old flags. The Python
-report keeps only the metadata and table reader listed in `remnants.tsv`.
-
-The `report-render` cases render the summaries that `gen/report-corpus.sh` writes: each summary-collect folder collected whole by `og summary collect`, and changes of a few of those summaries made with `jq`. Both reports are compared whole, byte for byte, against `bin/render_report.py`'s: every section, the charts and the closing gene list. The generator's `oracle.sh` reads a null PRS count as og's "not available", and its copy of `results_index.py` leaves out the `acmg_sf` section as og's index does. Six summaries whose PRS scores the Python's HTML report cannot render run as text-only cases. Cases where og's report differs from the Python's on purpose are compared with their committed goldens instead: `m-optin-viral-na` for its viral line, and the cases that show the SV support reason of a consensus that cannot tell. `report-corpus.sh` fixes each summary's `generated_utc`, so those goldens stay stable. The Python still runs, so a golden it matches fails as stale.
+The `cn-engine` goldens come from the per-gene tools at
+605645249e6762c52a84ac58a28968f269b16536. The E2E case checks HBA regions and
+tables, the RhD rows, and the LPA table and interval against those results.
+Its reads are public HG002 reference data at full depth and one eighth depth.

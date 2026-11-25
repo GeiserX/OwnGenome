@@ -1,0 +1,20 @@
+metric	value
+status	called
+cyp21a2_copies	1
+module_total	4
+expected_total	4
+estimate	4.00
+finding	conversion
+conversion_sites	PSV_In2G
+psv_PSV_In2G	15 gene, 45 pseudogene, 0 other reads; copies 1 (1.00); ratio 0.50
+psv_PSV_I172N	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_V237E	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_V281L	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_Q318X	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_R356W	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+target_depth	60.00
+control_depth	30.00
+reason	.
+reading	fewer CYP21A2 copies carry the gene's own base at PSV_In2G (c.293-13A/C>G (In2G, intron 2)) than at the other sites: a possible conversion of one CYP21A2 copy to the pseudogene sequence there, a carrier pattern for 21-hydroxylase deficiency (congenital adrenal hyperplasia) when it sits on one chromosome; which chromosome carries it is not known; unconfirmed: a clinical test confirms it
+mapq0_share	0.100
+message	.

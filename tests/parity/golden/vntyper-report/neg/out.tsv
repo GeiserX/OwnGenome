@@ -1,0 +1,14 @@
+metric	value
+status	negative
+confidence	Negative
+variant	.
+flag	.
+alt_depth	.
+region_depth	.
+depth_score	.
+vntr_mean_depth	147.94
+vntr_uncovered_pct	0.00
+coverage_qc	PASS
+sensitivity	Mean depth over the MUC1 VNTR: 148x. At that depth (at 100x or more) VNtyper found the known variant in 160 of 161 runs (99%), in VNtyper 2.0.47's downsampling of 42 confirmed positive GRCh38 exomes (repeated runs, not independent tests).
+message	VNtyper calls no MUC1 VNTR frameshift.
+advice	A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment still deserves a clinical test (SNaPshot for dupC).

@@ -1,0 +1,3 @@
+ERROR: the data disagree with the pedigree:
+ERROR:   dad and kid: first degree, but opposite homozygotes at 8.0% of sites: a parent and child share an allele at every site (siblings do not)
+ERROR: A sample swap (at the lab or in the samplesheet), or a wrong line in the pedigree. Check the pedigree and the samplesheet; somalier's own tables are beside relationships.tsv.

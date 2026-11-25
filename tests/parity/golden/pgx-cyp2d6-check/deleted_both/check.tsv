@@ -1,0 +1,12 @@
+metric	value
+status	ok
+message	CYP2D6 depth is fit for a copy-number call
+gene_depth_all	0.31
+gene_depth_mapq1	0.10
+flank_depth_all	29.70
+flank_depth_mapq1	29.68
+gene_mapq1_share	0.32
+gene_mapq20_share	not measured
+body_depth_all	not measured
+body_mapq1_share	not measured
+body_mapq20_share	not measured

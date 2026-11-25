@@ -1,0 +1,6 @@
+== chr7:670: chr7:670 (GRCh38; from position)
+  genotype: ./C (half call; REF A, ALT C)
+  evidence: no depth or quality recorded
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  none of the reports mentions it

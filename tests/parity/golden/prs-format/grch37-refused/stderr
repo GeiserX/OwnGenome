@@ -1,0 +1,1 @@
+ERROR: PGS000009.txt.gz has #HmPOS_build='GRCh37', expected GRCh38 (use the PGS Catalog's Harmonized/<id>_hmPOS_GRCh38 file)

@@ -1,0 +1,2 @@
+pgx_mito_merge: held back: chrM:1555 A>C AF 0.990: a change at an MT-RNR1 position that PharmCAT does not name
+pgx_mito_merge: no MT-RNR1 call passed to PharmCAT: it stays No Result; read the records above in the chrM call set

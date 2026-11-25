@@ -1,0 +1,1 @@
+ERROR: mapbp/maps/chr1.map line 102: a PLINK map row has 4 columns (chrom, id, cM, bp)

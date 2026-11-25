@@ -1,0 +1,34 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: LAYOUT_GENE_RESULTS
+Date: 2026-11-25
+Source: PharmCAT 1.0 report (layout-gene-results.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+TPMT         *1/*3A                         Intermediate Metabolizer
+DPYD         Unknown/Unknown                N/A
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  TPMT -- Intermediate Metabolizer:
+    Diplotype: *1/*3A
+    Drugs (pipeline fallback table; the report names none): azathioprine, mercaptopurine, thioguanine
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  DPYD -- N/A (not callable from available data)
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

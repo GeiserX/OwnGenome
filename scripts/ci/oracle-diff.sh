@@ -1,169 +1,126 @@
 #!/usr/bin/env bash
-# oracle-diff.sh: run each og port and the Python it replaced (the oracle) on
-# the same inputs, and require the same results, by meaning. Every port is
-# checked with it before its Python is deleted (tests/parity/README.md).
+# Run the cases of tests/parity/cases.tsv against their frozen goldens.
 #
-#   scripts/ci/oracle-diff.sh [CASE...]
-#       runs the cases of tests/parity/cases.tsv (all, or those named
-#       TOOL/CASE or TOOL), prints one line per compared item and a total,
-#       exits 1 on any difference that is neither known nor golden
-#   scripts/ci/oracle-diff.sh materialise [DIR]
-#       writes each oracle of tests/parity/oracle.ref into DIR (default
-#       bin/.og/oracle): DIR/<tool>/prefix (the og words it replaces),
-#       DIR/<tool>/prog and DIR/<tool>/run. bin/og's shadow mode
-#       (OG_SHADOW) runs these
+#   scripts/ci/oracle-diff.sh [TOOL[/CASE] ...]
 #   scripts/ci/oracle-diff.sh --self-test
-#       plants each kind of difference in a fake tool and requires each to
-#       be reported, then runs og dev parity-compare --self-test and the
-#       shadow mode of bin/og against a fake binary
+#   scripts/ci/oracle-diff.sh --check-goldens
 #
-# A case runs in two directories that hold the same staged inputs: og runs
-# in one, the oracle in the other, with the same arguments. A staged input
-# named `stdin` is each side's standard input; without one it is empty.
-# Compared items: the exit code, stdout, stderr, the named outputs and every
-# new file (stdout and stderr as bytes, files with the case's compare kind,
-# through og dev parity-compare; a kind of KIND;GLOB=KIND2 compares the files
-# whose path matches GLOB with KIND2 instead). The expected side of an item is the oracle's,
-# unless tests/parity/golden/<tool>/<case>/<item> exists (a deliberate fix:
-# og must write the golden instead; <item>.absent means it must write
-# nothing). A golden the oracle also matches is stale and fails, and so does
-# a known.tsv row whose difference is no longer seen.
-#
-# Env: OG       the og binary (default: rust/target/release/og, built when
-#               missing or older than rust/)
-#      ORACLE_RUNNER  docker (default; the case's image from versions.env,
-#               no network) or local (the host's interpreter, for a quick
-#               look on a laptop; CI never uses it)
-#      PARITY_WORK    the work directory (default: a temporary one, removed)
+# OG selects an existing binary (otherwise builds a release og). PARITY_WORK
+# keeps the staged inputs and actual outputs in the given absolute directory.
 set -euo pipefail
-export LC_ALL=C
+export LC_ALL=C TZ=UTC
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-PARITY=${PARITY_DIR:-${ROOT}/tests/parity}
-CASES="${PARITY}/cases.tsv"
-KNOWN="${PARITY}/known.tsv"
-REF="${PARITY}/oracle.ref"
-GOLDEN="${PARITY}/golden"
-RUNNER=${ORACLE_RUNNER:-docker}
+PARITY=${PARITY_DIR:-"$ROOT/tests/parity"}
+CASES="$PARITY/cases.tsv"
+GOLDEN="$PARITY/golden"
+CAP=1000000
 
 die() { echo "oracle-diff: $*" >&2; exit 2; }
-rows() { grep -vE '^[[:space:]]*(#|$)' "$1" || true; }
+rows() { awk '!/^[[:space:]]*(#|$)/' "$1"; }
 
-# --- the oracles --------------------------------------------------------------------
-
-# source_at SHA PATH: PATH as it was at SHA; fetches SHA from origin when a
-# shallow checkout lacks it.
-source_at() {
-  git -C "$ROOT" cat-file -e "$1^{commit}" 2> /dev/null \
-    || git -C "$ROOT" fetch -q --depth=1 origin "$1" \
-    || die "commit $1 is not here and could not be fetched"
-  git -C "$ROOT" show "$1:$2"
+# Count stored bytes across all files in each tool/case directory, including
+# absence markers and checksums.
+check_goldens() {
+  find "$GOLDEN" -type f -exec wc -c {} + | awk -v root="$GOLDEN/" -v cap="$CAP" '
+    index($0, root) {
+      path = substr($0, index($0, root) + length(root))
+      if (split(path, parts, "/") < 3) { print "invalid golden path: " path; bad = 1; next }
+      sizes[parts[1] "/" parts[2]] += $1
+      total += $1
+      files++
+    }
+    END {
+      for (id in sizes) {
+        if (sizes[id] > cap) { printf "%s: %d bytes exceeds %d\n", id, sizes[id], cap; bad = 1 }
+        if (sizes[id] > max) max = sizes[id]
+        cases++
+      }
+      printf "Goldens: %d bytes in %d files across %d cases (largest case %d bytes, cap %d)\n", total, files, cases, max, cap
+      exit (bad || !files)
+    }'
 }
 
-# materialise DIR: one directory per oracle.ref row (awk reads to the end,
-# so git show never dies of SIGPIPE under pipefail). Sources:
-#   heredoc:FILE:NAME  the body of NAME=$(cat <<'X' ... X) in FILE at SHA
-#   file:FILE          FILE at SHA
-materialise() {
-  local dir=$1 tool sha src interp prefix body
-  mkdir -p "$dir"
-  while IFS=$'\t' read -r tool sha src interp prefix; do
-    [ -n "$prefix" ] || die "oracle.ref row ${tool}: needs tool, sha, source, interpreter and og prefix"
-    case "$src" in
-      heredoc:*:*)
-        local file=${src#heredoc:} name
-        name=${file##*:}
-        file=${file%:*}
-        body=$(source_at "$sha" "$file" | awk -v n="$name" '
-          !on && !done && index($0, n "=$(cat <<") == 1 { on = 1; split($0, a, "<<"); t = a[2]; gsub(/[^A-Za-z0-9_]/, "", t); next }
-          on && $0 == t { done = 1; on = 0; next }
-          on { print }
-          END { if (!done) exit 1 }') || die "${tool}: no heredoc ${name} in ${file} at ${sha}"
-        ;;
-      file:*) body=$(source_at "$sha" "${src#file:}") ;;
-      *) die "${tool}: unknown oracle source '${src}'" ;;
-    esac
-    rm -rf "${dir:?}/${tool}"
-    mkdir -p "${dir}/${tool}"
-    printf '%s\n' "$body" > "${dir}/${tool}/prog"
-    printf '%s\n' "$prefix" > "${dir}/${tool}/prefix"
-    printf '#!/bin/sh\nexec %s "$(dirname "$0")/prog" "$@"\n' "$interp" > "${dir}/${tool}/run"
-    chmod 755 "${dir}/${tool}/run"
-    echo "oracle ${tool}: ${src} at ${sha:0:12} -> ${dir}/${tool}"
-  done < <(rows "$REF")
-}
-
-# --- one case -----------------------------------------------------------------------
-
-# stage DIR INPUTS: the case's inputs into DIR. INPUTS is comma separated:
-# paths under tests/parity/inputs (copied by base name), or gen:SCRIPT, run
-# from tests/parity/gen inside DIR (once per run; later cases copy it).
 stage() {
-  local dir=$1 item
+  local dir=$1 item gen cache
   local -a items
   IFS=, read -r -a items <<< "$2"
   for item in "${items[@]}"; do
-    [ "$item" != - ] || continue
     case "$item" in
+      -) ;;
       gen:*)
-        local cache="${WORK}/gen/${item#gen:}"
+        gen=${item#gen:}
+        cache="$WORK/gen/$gen"
         if [ ! -d "$cache" ]; then
           mkdir -p "$cache"
-          (cd "$cache" && bash "${PARITY}/gen/${item#gen:}") || die "generator ${item#gen:} failed"
+          (cd "$cache" && bash "$PARITY/gen/$gen") || die "generator $gen failed"
         fi
         cp -pR "$cache"/. "$dir"/ ;;
+      fixture:*)
+        tar -xzf "$GOLDEN/fixtures/${item#fixture:}/inputs.tar.gz" -C "$dir" ;;
       *)
-        [ -f "${PARITY}/inputs/${item}" ] || die "input ${item} is not in tests/parity/inputs"
-        cp -p "${PARITY}/inputs/${item}" "$dir"/ ;;
+        [ -f "$PARITY/inputs/$item" ] || die "missing input $item"
+        cp -p "$PARITY/inputs/$item" "$dir"/ ;;
     esac
   done
 }
 
-# new_files DIR: every file under DIR not in DIR/.staged, relative, sorted.
 new_files() {
-  (cd "$1" && find . -type f ! -name .staged | sed 's|^\./||' | sort | comm -23 - .staged)
+  (cd "$1" && find . -type f -print | sed 's|^\./||' | sort | comm -23 - "$2")
 }
 
-# run_oracle TOOL IMAGE DIR OUT ARGS...
-run_oracle() {
-  local tool=$1 image=$2 dir=$3 out=$4
-  shift 4
-  local in=/dev/null
-  [ ! -f "${dir}/stdin" ] || in="${dir}/stdin"
-  if [ "$RUNNER" = local ]; then
-    (cd "$dir" && "${ORACLES}/${tool}/run" "$@") < "$in" > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
+digest() {
+  "$OG" dev parity-compare --canonical "$1" "$2" | sha256sum | awk 'NR == 1 {print $1}'
+}
+
+difference() {
+  local kind=$1 expected=$2 actual=$3 want got status=0
+  if [ -f "$expected.absent" ]; then
+    if [ -e "$expected" ] || [ -e "$expected.sha256" ]; then
+      echo "conflicting goldens"
+    elif [ -e "$actual" ]; then
+      echo "expected absence, but og wrote a file"
+    fi
+  elif [ -f "$expected.sha256" ]; then
+    if [ -e "$expected" ]; then echo "conflicting goldens"; return; fi
+    if [ ! -f "$actual" ]; then echo "expected a checksummed file, but og did not write it"; return; fi
+    want=$(cat "$expected.sha256")
+    if ! [[ "$want" =~ ^[a-f0-9]{64}$ ]]; then echo "invalid golden checksum"; return; fi
+    got=$(digest "$kind" "$actual") || { echo "cannot checksum output ($kind)"; return; }
+    [ "$got" = "$want" ] || echo "checksum differs (expected $want, got $got)"
+  elif [ -f "$expected" ]; then
+    if [ ! -f "$actual" ]; then echo "expected a file, but og did not write it"; return; fi
+    got=$("$OG" dev parity-compare "$kind" "$expected" "$actual" 2>&1) || status=$?
+    case "$status" in
+      0) ;;
+      1) echo "$got" ;;
+      *) echo "cannot compare ($got)" ;;
+    esac
   else
-    # Pulled first: docker run's pull progress would land in the oracle's stderr.
-    docker image inspect "$image" > /dev/null 2>&1 || docker pull -q "$image" > /dev/null || die "cannot pull ${image}"
-    docker run --rm -i --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
-      -v "${ORACLES}:/oracle:ro" -v "${dir}:/w" -w /w "$image" "/oracle/${tool}/run" "$@" \
-      < "$in" > "${out}/stdout" 2> "${out}/stderr" || echo $? > "${out}/exit"
+    echo "no golden for this item"
   fi
-  [ -s "${out}/exit" ] || echo 0 > "${out}/exit"
+}
+
+# The two Yleaf data-path messages report the staged working directory.
+# Preserve the rest of each line, including the name under that directory.
+normalize_path() {
+  CASE_PATH=$1 awk '{
+    s = $0; from = ENVIRON["CASE_PATH"]; result = ""
+    while ((i = index(s, from))) {
+      result = result substr(s, 1, i - 1) "<case-dir>"
+      s = substr(s, i + length(from))
+    }
+    print result s
+  }' "$2" > "$2.normalized"
+  mv "$2.normalized" "$2"
 }
 
 FAILS=0
 ITEMS=0
-TIMES=""
-report() { # STATUS TOOL CASE ITEM DETAIL
+report() {
   printf '%-7s %s/%s %s%s\n' "$1" "$2" "$3" "$4" "${5:+: $5}"
   ITEMS=$((ITEMS + 1))
-  case "$1" in ok | known | golden) ;; *) FAILS=$((FAILS + 1)) ;; esac
-}
-
-# differ KIND A B: empty when A and B are the same by KIND, else why. A path
-# that does not exist is "absent"; two absent files are the same.
-differ() {
-  local kind=$1 a=$2 b=$3 out rc=0
-  if [ ! -e "$a" ] && [ ! -e "$b" ]; then return 0; fi
-  if [ ! -e "$a" ]; then echo "absent on the expected side, written by og"; return 0; fi
-  if [ ! -e "$b" ]; then echo "expected, but og did not write it"; return 0; fi
-  out=$("$OG" dev parity-compare "$kind" "$a" "$b" 2>&1) || rc=$?
-  case "$rc" in
-    0) ;;
-    1) echo "$out" ;;
-    *) echo "cannot compare ($out)" ;;
-  esac
+  if [ "$1" != ok ]; then FAILS=$((FAILS + 1)); fi
 }
 
 # kind_for ITEM SPEC: the compare kind of ITEM. SPEC is one kind, or a
@@ -191,86 +148,54 @@ kind_for() {
 }
 
 run_case() {
-  local tool=$1 case=$2 inputs=$3 args=$4 outputs=$5 kind=$6 image_var=$7
-  local w="${WORK}/run/${tool}/${case}" image prefix item exp why known g
-  local -a argv prefixv
-  image=${!image_var:-}
-  [ -n "$image" ] || die "${tool}/${case}: ${image_var} is not set in versions.env"
-  [ -x "${ORACLES}/${tool}/run" ] || die "${tool}: no oracle (is it in oracle.ref?)"
+  local tool=$1 case=$2 inputs=$3 args=$4 outputs=$5 kind=$6 prefix=$7
+  local work="$WORK/run/$tool/$case" expected="$GOLDEN/$tool/$case"
+  local file actual item k override why input=/dev/null rc=0
+  local -a argv prefixv named overrides
+  if [ ! -d "$expected" ]; then
+    report DIFF "$tool" "$case" goldens "missing case directory"
+    return
+  fi
   read -r -a argv <<< "$args"
-  read -r -a prefixv < "${ORACLES}/${tool}/prefix"
-  rm -rf "$w"
-  mkdir -p "${w}/og" "${w}/oracle" "${w}/og.out" "${w}/oracle.out"
-  for d in og oracle; do
-    stage "${w}/${d}" "$inputs"
-    (cd "${w}/${d}" && find . -type f | sed 's|^\./||' | sort > .staged)
-  done
-  local t0=${EPOCHREALTIME:-0} t1 t2
-  local in=/dev/null
-  [ ! -f "${w}/og/stdin" ] || in="${w}/og/stdin"
-  (cd "${w}/og" && "$OG" "${prefixv[@]}" "${argv[@]}") < "$in" > "${w}/og.out/stdout" 2> "${w}/og.out/stderr" \
-    || echo $? > "${w}/og.out/exit"
-  [ -s "${w}/og.out/exit" ] || echo 0 > "${w}/og.out/exit"
-  t1=${EPOCHREALTIME:-0}
-  run_oracle "$tool" "$image" "${w}/oracle" "${w}/oracle.out" "${argv[@]}"
-  t2=${EPOCHREALTIME:-0}
-  # Wall seconds of each side (bash 5; the oracle's include starting its container).
-  TIMES=$(awk -v a="${t0/,/.}" -v b="${t1/,/.}" -v c="${t2/,/.}" 'BEGIN { printf "og %.2f s, oracle %.2f s", b - a, c - b }')
-
-  # The items: exit, stdout, stderr, the outputs the case names and every
-  # other file either side wrote.
-  local -a items=(exit stdout stderr)
-  local -a named
+  read -r -a prefixv <<< "$prefix"
   IFS=, read -r -a named <<< "$outputs"
-  for item in "${named[@]}"; do [ "$item" = - ] || items+=("$item"); done
-  while IFS= read -r item; do
-    case " ${items[*]} " in *" ${item} "*) ;; *) items+=("$item") ;; esac
-  done < <({ new_files "${w}/og"; new_files "${w}/oracle"; } | sort -u)
-
-  # The case's kind, and its GLOB=KIND overrides (e.g. bytes;*.png=png-pixels).
-  local -a overrides
   IFS=';' read -r -a overrides <<< "$kind"
-  for item in "${items[@]}"; do
-    local ours oracle k o
+  rm -rf "$work"
+  mkdir -p "$work/files" "$work/result"
+  stage "$work/files" "$inputs"
+  (cd "$work/files" && find . -type f -print | sed 's|^\./||' | sort) > "$work/staged"
+  [ ! -f "$work/files/stdin" ] || input="$work/files/stdin"
+  (cd "$work/files" && "$OG" "${prefixv[@]}" "${argv[@]}") < "$input" \
+    > "$work/result/stdout" 2> "$work/result/stderr" || rc=$?
+  printf '%s\n' "$rc" > "$work/result/exit"
+  case "$tool/$case" in
+    y-yleaf-positions/data) normalize_path "$work/files" "$work/result/stdout" ;;
+    y-yleaf-positions/no-tree) normalize_path "$work/files" "$work/result/stderr" ;;
+  esac
+
+  {
+    printf '%s\n' exit stdout stderr "${named[@]}"
+    new_files "$work/files" "$work/staged"
+    (cd "$expected" && find . -type f -print | sed -e 's|^\./||' -e 's/\.absent$//' -e 's/\.sha256$//')
+  } | sort -u > "$work/items"
+  while IFS= read -r item; do
     case "$item" in
-      exit | stdout | stderr) ours="${w}/og.out/${item}"; oracle="${w}/oracle.out/${item}"; k=bytes ;;
+      -) continue ;;
+      exit | stdout | stderr) actual="$work/result/$item"; k=bytes ;;
       *)
-        ours="${w}/og/${item}"; oracle="${w}/oracle/${item}"
-        # Both spellings of a per-file kind: "GLOB=KIND ... KIND" (kind_for) and "KIND;GLOB=KIND".
+        actual="$work/files/$item"
         k=$(kind_for "$item" "${overrides[0]}")
-        for o in "${overrides[@]:1}"; do
+        for override in "${overrides[@]:1}"; do
           # shellcheck disable=SC2053  # the left side is a glob on purpose
-          [[ "$item" == ${o%%=*} ]] && k=${o#*=}
+          if [[ "$item" == ${override%%=*} ]]; then k=${override#*=}; fi
         done ;;
     esac
-    g="${GOLDEN}/${tool}/${case}/${item}"
-    known=$(awk -F'\t' -v t="$tool" -v c="$case" -v i="$item" '$1 == t && $2 == c && $3 == i {print $4; exit}' <(rows "$KNOWN"))
-    if [ -e "$g" ] || [ -e "${g}.absent" ]; then
-      exp=$g
-      if [ -z "$(differ "$k" "$oracle" "$exp")" ]; then
-        report STALE "$tool" "$case" "$item" "the golden is what the oracle writes: delete it"
-        continue
-      fi
-    else
-      exp=$oracle
-    fi
-    why=$(differ "$k" "$exp" "$ours")
-    if [ -n "$known" ]; then
-      if [ -n "$why" ]; then report known "$tool" "$case" "$item" "$known"
-      else report STALE "$tool" "$case" "$item" "known.tsv lists a difference that is gone: remove the row"; fi
-    elif [ -n "$why" ]; then
-      report DIFF "$tool" "$case" "$item" "$why"
-    elif [ "$exp" = "$g" ]; then
-      report golden "$tool" "$case" "$item"
-    else
-      report ok "$tool" "$case" "$item"
-    fi
-  done
-  # A case must write what it names, or its golden must say it writes nothing.
-  for item in "${named[@]}"; do
-    [ "$item" = - ] || [ -e "${w}/og/${item}" ] || [ -e "${GOLDEN}/${tool}/${case}/${item}.absent" ] \
-      || report MISSING "$tool" "$case" "$item" "the case names it, og did not write it"
-  done
+    file="$expected/$item"
+    why=$(difference "$k" "$file" "$actual")
+    if [ -n "$why" ]; then report DIFF "$tool" "$case" "$item" "$why"
+    else report ok "$tool" "$case" "$item"; fi
+  done < "$work/items"
+  if [ -z "${PARITY_WORK:-}" ]; then rm -rf "$work"; fi
 }
 
 # selected TOOL CASE: 0 when no CASE argument was given, or one names it.
@@ -291,126 +216,116 @@ find_og() {
 }
 
 run_all() {
-  # shellcheck source=../../versions.env
-  . "${ROOT}/versions.env"
   find_og
-  materialise "${ORACLES}" > /dev/null
-  local tool case inputs args outputs kind image n=0
-  while IFS=$'\t' read -r tool case inputs args outputs kind image; do
+  export OG
+  local tool case inputs args outputs kind prefix extra n=0
+  while IFS=$'\t' read -r tool case inputs args outputs kind prefix extra; do
     selected "$tool" "$case" || continue
-    [ -n "$image" ] || die "cases.tsv row ${tool}/${case}: needs 7 columns"
+    [ -n "$prefix" ] && [ -z "$extra" ] || die "cases.tsv row $tool/$case: expected 7 columns"
     n=$((n + 1))
-    run_case "$tool" "$case" "$inputs" "$args" "$outputs" "$kind" "$image"
-    echo "        ${tool}/${case}: ${TIMES}"
+    run_case "$tool" "$case" "$inputs" "$args" "$outputs" "$kind" "$prefix"
   done < <(rows "$CASES")
   [ "$n" -gt 0 ] || die "no case matched: ${PICK[*]:-every case}"
   if [ "$FAILS" -gt 0 ]; then
-    echo "oracle-diff: ${FAILS} of ${ITEMS} items in ${n} cases differ"
+    echo "oracle-diff: $FAILS of $ITEMS items in $n cases differ"
     return 1
   fi
-  echo "oracle-diff: all ${ITEMS} items in ${n} cases agree"
+  echo "oracle-diff: all $ITEMS items in $n cases agree"
 }
 
-# --- the self-test ------------------------------------------------------------------
-
-# A fake tool, "fake echo", whose og side is OG_REAL with OG_FAKE_PLANT set,
-# and whose oracle is a shell program: each planted kind of difference must
-# be reported, and the agreeing ones must pass.
 self_test() {
   find_og
-  local real=$OG st="${WORK}/self" bad=0 out rc
-  mkdir -p "${st}/parity/inputs" "${st}/parity/golden/fake/golden-out" "${st}/parity/golden/fake/golden-stale" "${st}/bin"
-  printf 'a\tb\n' > "${st}/parity/inputs/in.tsv"
-  # og side: copies in.tsv to out.tsv, says "copied", changed as PLANT says.
-  cat > "${st}/bin/og" <<EOF
+  local real=$OG st="$WORK/self" found=0 n=0 log rc
+  local case_dir="$st/parity/golden/fake/copy"
+  mkdir -p "$st/parity/inputs" "$case_dir" "$st/bin"
+  printf 'a\tb\n' > "$st/parity/inputs/in.tsv"
+  cp -p "$st/parity/inputs/in.tsv" "$case_dir/out.tsv"
+  printf '0\n' > "$case_dir/exit"
+  printf 'copied\n' > "$case_dir/stdout"
+  : > "$case_dir/stderr"
+  : > "$case_dir/never.absent"
+  cat > "$st/bin/og" <<'FAKE'
 #!/usr/bin/env bash
-if [ "\$1" = dev ]; then exec "${real}" "\$@"; fi
-shift 2
-cp "\$1" "\$2"
-case "\${OG_FAKE_PLANT:-}" in
-  byte) printf 'a\tc\n' > "\$2" ;;
-  missing) rm "\$2" ;;
+set -eu
+if [ "$1" = dev ]; then exec "$OG_REAL" "$@"; fi
+cp in.tsv out.tsv
+case "${OG_FAKE_PLANT:-}" in
+  byte) printf 'a\tc\n' > out.tsv ;;
+  missing) rm out.tsv ;;
   extra) echo x > extra.txt ;;
+  absent) echo x > never ;;
   exit) exit 3 ;;
-  stdout) echo "copied!"; exit 0 ;;
+  stdout) echo changed; exit 0 ;;
+  stderr) echo changed >&2 ;;
 esac
-echo "\${OG_FAKE_SAY:-copied}"
-EOF
-  chmod 755 "${st}/bin/og"
-  # The oracle: the same, written as the "old" program.
-  mkdir -p "${st}/oracle/fake"
-  printf 'fake echo\n' > "${st}/oracle/fake/prefix"
-  printf '#!/bin/sh\ncp "$1" "$2"\necho copied\n' > "${st}/oracle/fake/run"
-  chmod 755 "${st}/oracle/fake/run"
-  # golden-out: the fix makes og print "fixed" (OG_FAKE_SAY) where the
-  # oracle printed "copied"; golden-stale: a golden equal to the oracle.
-  printf 'fixed\n' > "${st}/parity/golden/fake/golden-out/stdout"
-  printf 'copied\n' > "${st}/parity/golden/fake/golden-stale/stdout"
+echo copied
+FAKE
+  chmod 755 "$st/bin/og"
+  printf 'fake\tcopy\tin.tsv\t \tout.tsv,never\t%s\tfake echo\n' '*.zip=zip-content out.*=tsv bytes' > "$st/parity/cases.tsv"
 
-  # expect LABEL WANT PLANT [KNOWN_ROW] [CASE] [KIND]: run one case of the
-  # fake tool; WANT is the status one item must get, or "pass" for all ok.
   expect() {
-    local label=$1 want=$2 plant=$3 known=${4:-} case=${5:-plain} kind=${6:-tsv}
-    printf '' > "${st}/parity/known.tsv"
-    [ -z "$known" ] || printf '%s\n' "$known" > "${st}/parity/known.tsv"
-    printf 'fake\t%s\tin.tsv\tin.tsv out.tsv\tout.tsv\t%s\tPYTHON_IMAGE\n' "$case" "$kind" > "${st}/parity/cases.tsv"
+    local label=$1 plant=$2 reject=${3:-}
     rc=0
-    out=$(OG="${st}/bin/og" OG_FAKE_PLANT=$plant OG_FAKE_SAY=$([ "$case" = golden-out ] && echo fixed || echo copied) \
-      PARITY_DIR="${st}/parity" ORACLE_RUNNER=local ORACLE_DIR="${st}/oracle" PYTHON_IMAGE=unused \
-      bash "$0" --cases-only 2>&1) || rc=$?
-    local ok=false
-    case "$want" in
-      pass) [ "$rc" -eq 0 ] && ! grep -qE '^(DIFF|STALE|MISSING)' <<< "$out" && ok=true ;;
-      *) [ "$rc" -eq 1 ] && grep -qE "^${want} " <<< "$out" && ok=true ;;
-    esac
-    if $ok; then echo "ok      ${label}"
-    else echo "WRONG   ${label} (exit ${rc}, wanted ${want})"; sed 's/^/        /' <<< "$out"; bad=$((bad + 1)); fi
+    log=$(OG="$st/bin/og" OG_REAL="$real" OG_FAKE_PLANT="$plant" PARITY_DIR="$st/parity" \
+      PARITY_WORK='' bash "$0" 2>&1) || rc=$?
+    n=$((n + 1))
+    if { [ -z "$reject" ] && [ "$rc" -eq 0 ]; } ||
+      { [ -n "$reject" ] && [ "$rc" -eq 1 ] && grep -qF "fake/copy $reject:" <<< "$log"; }; then
+      echo "ok      $label"
+    else
+      printf 'WRONG   %s (exit %s)\n%s\n' "$label" "$rc" "$log"
+      found=$((found + 1))
+    fi
   }
-  expect "the same output passes" pass ""
-  expect "a changed byte in an output file is reported" DIFF byte
-  expect "a missing output file is reported" DIFF missing
-  expect "an extra output file is reported" DIFF extra
-  expect "a wrong exit code is reported" DIFF exit
-  expect "a changed stdout is reported" DIFF stdout
-  expect "a known difference passes" pass byte $'fake\tplain\tout.tsv\tplanted in the self-test'
-  expect "a stale known row fails" STALE "" $'fake\tplain\tout.tsv\tplanted in the self-test'
-  expect "a golden og matches passes" pass "" "" golden-out
-  expect "a golden the oracle matches is stale" STALE "" "" golden-stale
-  # out.tsv is no zip: it passes only when its own glob picks its kind.
-  expect "a per-file kind applies to its file" pass "" "" plain "*.zip=zip-content out.*=tsv zip-content"
-  expect "a per-file kind still reports a change" DIFF byte "" plain "*.zip=zip-content out.*=tsv zip-content"
-  expect "the kind after the globs applies to every other file" DIFF "" "" plain "*.zip=tsv zip-content"
-  local n=13
 
-  echo "--- og dev parity-compare --self-test"
-  if "$real" dev parity-compare --self-test; then :; else bad=$((bad + 1)); fi
+  expect "matching outputs and an absent named file pass" ""
+  expect "a changed field, using its own comparison kind, fails" byte out.tsv
+  expect "a missing file fails" missing out.tsv
+  expect "an unexpected file fails" extra extra.txt
+  expect "a file with an absence marker fails if written" absent never
+  expect "a changed exit code fails" exit exit
+  expect "changed stdout fails" stdout stdout
+  expect "changed stderr fails" stderr stderr
+  printf 'fake\tcopy\tin.tsv\t \tout.tsv,never\tbytes\tfake echo\n' > "$st/parity/cases.tsv"
+  digest bytes "$case_dir/out.tsv" > "$case_dir/out.tsv.sha256"
+  rm -f "$case_dir/out.tsv"
+  expect "a matching checksum passes" ""
+  expect "a changed file fails its checksum" byte out.tsv
+  printf 'fake\tcopy\tin.tsv\t \tout.tsv,never\t%s\tfake echo\n' 'mask:^masked:' > "$st/parity/cases.tsv"
+  printf 'masked: expected\na\tb\n' > "$st/parity/inputs/in.tsv"
+  digest 'mask:^masked:' "$st/parity/inputs/in.tsv" > "$case_dir/out.tsv.sha256"
+  printf 'masked: actual\na\tb\n' > "$st/parity/inputs/in.tsv"
+  expect "a changed masked line keeps the same checksum" ""
+  printf 'masked: actual\na\tc\n' > "$st/parity/inputs/in.tsv"
+  expect "a changed unmasked line fails its checksum" "" out.tsv
+  dd if=/dev/zero of="$case_dir/cap-probe" bs=1000001 count=1 2>/dev/null
   n=$((n + 1))
-  echo "--- bin/og shadow mode (OG_SHADOW)"
-  if bash "${ROOT}/tests/parity/shadow-self-test.sh" "$real"; then :; else bad=$((bad + 1)); fi
+  rc=0
+  log=$(PARITY_DIR="$st/parity" bash "$0" --check-goldens 2>&1) || rc=$?
+  if [ "$rc" -eq 1 ] && grep -qF "bytes exceeds 1000000" <<< "$log"; then
+    echo "ok      an oversized case fails the cap check"
+  else
+    printf 'WRONG   oversized case (exit %s)\n%s\n' "$rc" "$log"
+    found=$((found + 1))
+  fi
+  if "$real" dev parity-compare --self-test; then :; else found=$((found + 1)); fi
   n=$((n + 1))
-  if [ "$bad" -gt 0 ]; then echo "oracle-diff self-test: ${bad} of ${n} checks went wrong"; return 1; fi
-  echo "oracle-diff self-test: all ${n} checks came out as they must"
+  if [ "$found" -gt 0 ]; then
+    echo "oracle-diff self-test: $found of $n checks went wrong"
+    return 1
+  fi
+  echo "oracle-diff self-test: all $n checks came out as they must"
 }
-
-# --- main ---------------------------------------------------------------------------
 
 WORK=${PARITY_WORK:-}
 if [ -z "$WORK" ]; then
   WORK=$(mktemp -d "${TMPDIR:-/tmp}/oracle-diff.XXXXXX")
   trap 'rm -rf "$WORK"' EXIT
 fi
-ORACLES=${ORACLE_DIR:-${WORK}/oracle}
 PICK=()
 case "${1:-}" in
-  materialise) materialise "${2:-${ROOT}/bin/.og/oracle}" ;;
   --self-test) self_test ;;
-  --cases-only)
-    # The self-test's inner run: the oracles are already in ORACLE_DIR.
-    [ -n "${ORACLE_DIR:-}" ] || die "--cases-only needs ORACLE_DIR"
-    materialise() { :; }
-    shift
-    PICK=("$@")
-    run_all ;;
+  --check-goldens) check_goldens ;;
   -h | --help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
   *) PICK=("$@"); run_all ;;
 esac

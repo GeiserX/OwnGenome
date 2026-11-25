@@ -107,13 +107,6 @@ permissions:
   contents: read
 
 env:
-  # bin/og's shadow mode (tests/parity/README.md): each og call of these
-  # tools in a case also runs the Python it replaced, from the oracles the
-  # legs materialise, and fails the case when the two disagree. A lane that
-  # ports a tool adds it here for its pull request.
-  # str-motif left on purpose: og keeps pathogenic and unknown minority
-  # motif reads as uncertain_motif, which the Python did not (claim sv-28).
-  OG_SHADOW: dev-contract pgx-cyp2d6-measure cdna-check comphet-phase
   # The shard legs besides the base leg. A full run uses all of them; a run
   # of picked cases runs fewer when they fit (scripts/ci/e2e-shards.sh count). The cases took 230
   # minutes in one job on 2026-11-02 (run 41390434697).
@@ -745,18 +738,16 @@ jobs:
             sleep 20
           done
 
-      # og from the job og, checked against this checkout's rust/, and the
-      # oracles bin/og's shadow mode runs (OG_SHADOW above).
+      # Check the artifact from the og job against this checkout.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: og-e2e
           path: bin/.og
 
-      - name: og and the shadow oracles
+      - name: Check the og artifact
         run: |
           chmod 755 bin/.og/og-linux-*
           rust/og.sh check --required
-          scripts/ci/oracle-diff.sh materialise
 
       # The base leg uploads e2e-base only once its cases all passed, and this
       # leg starts only after it passed. A rerun of failed legs finds the

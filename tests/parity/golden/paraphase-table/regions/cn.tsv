@@ -1,0 +1,23 @@
+region	gene	copy_number	status	detail	total_cn	region_depth	genome_depth
+CFHclust	CFH,CFHR1,CFHR2,CFHR3,CFHR4	.	not assessed	not assessed: Paraphase wrote no fusions_called for this region	4	.	.
+CYP11B1	CYP11B1,CYP11B2	3	called	copies of the whole gene family (gene and paralogs together); dup (h1); fusion (h2); deletion (h3)	3	.	.
+f8	F8 intron 22	3	called	h1del (a); inversion (f8_int22invhap1)	3	.	.
+hba	HBA1	2	called	genotype -a/aa (3 alpha-globin genes); 4.2 kb deletion (-a4.2): HBA2 lost (hba_4p2delhap1)	3	90	31.5
+hba	HBA2	1	called	genotype -a/aa (3 alpha-globin genes); 4.2 kb deletion (-a4.2): HBA2 lost (hba_4p2delhap1)	3	90	31.5
+ikbkg	IKBKG	2	called	haplotypes with the 11.7 kb deletion: ikbkg_pseudohap1, 7	4	.	.
+ncf1	NCF1	2	called	.	6	.	.
+neb	NEB triplicate repeat	6	called	TRI1: 2 haplotype(s); TRI2: 1 haplotype(s); TRI3: x haplotype(s)	6	.	.
+opn1lw	OPN1LW	1	called	.	2	.	.
+opn1lw	OPN1MW	.	no call	one haplotype seen and the depth does not settle one copy or two	2	.	.
+pms2	PMS2	2	called	.	4	33.25	.
+rccx	CYP21A2 (RCCX)	4	called	RCCX module copies (each carries CYP21A2 or its pseudogene CYP21A1P); CYP21A2 alleles: WT / WT; the copies could not be phased into two alleles	4	.	.
+smn1	SMN1	2	called	.	4	120	31.5
+smn1	SMN2	.	no call	one haplotype seen and the depth does not settle one copy or two	4	120	31.5
+smn1	SMN exon 7-8 deletion	0	called	.	4	120	31.5
+strc	STRC	2	called	.	4	.	.
+alpha	alpha	100000000000000000000	called	copies of the gene, not of its pseudogenes	2.5	.	.
+CFC1	CFC1,CFC1B	3	called	copies of the whole gene family (gene and paralogs together)	3	.	.
+GBA	GBA1	2	called	copies of GBA1 alone (Paraphase's gene1 haplotypes); pseudogene copies 2 (gene2 haplotypes); fusions: {"GBA_gene2hap2": {"b": null, "breakpoint": [[1, 2]], "type": "deletion"}}	4	.	.
+OTOA	OTOA	2	called	copies of OTOA alone (Paraphase's gene1 haplotypes); pseudogene copies 1 (gene2 haplotypes); 1 haplotype(s) not placed on either	4	.	.
+TNXB	TNXB	.	no call	copies of the whole gene family (gene and paralogs together)	.	.	.
+Zeta	Zeta	2	called	copies of the whole gene family (gene and paralogs together)	2	.	.

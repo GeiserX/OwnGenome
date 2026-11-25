@@ -1,0 +1,131 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+================================================================================
+
+################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Symptom-Driven Ranking (Exomiser, step 48)
+---
+  [could not be read: S_exomiser_top.tsv has a line that does not have one field per column]
+## Structural Variants (Delly)
+---
+  [could not be read: S_sv.vcf.gz: Compressed file ended before the end-of-stream marker was reached]
+## Mobile Element Insertions (step 50)
+---
+  [could not be read: S_mei.tsv lacks a column of chrom, pos, element, copies]
+## Repeat Expansions (ExpansionHunter)
+---
+  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/str_intermediate_ranges.tsv']
+## Mitochondrial Variants (Mutect2)
+---
+  PASS variants: 0
+  Heteroplasmic (AF 0.05 to 0.95, outside the D-loop poly-C tracts): 0
+  Length heteroplasmy in the D-loop poly-C tracts (m.303-315, m.16184-16193; common, usually technical): 0
+  ClinVar and gnomAD: not annotated (no annotation table (mito/<id>_chrM_annotated.tsv): step 20 ran before it annotated, or the Nextflow MITO_VARIANTS_ANNOTATE task failed (see the Nextflow log))
+  Confirmed disease variants (assets/mito_confirmed.tsv): 0
+  Large deletions: not looked for (no deletion table (mito/<id>_chrM_deletions.tsv): step 20 ran before it looked for large deletions, eKLIPse wrote no table (see the step's log), or the Nextflow MITO_DELETIONS task failed (see the Nextflow log))
+  mtDNA copy number: not counted (no copy-number table (mito/<id>_mtdna_copies.tsv): step 20 ran before it counted mtDNA copies, or the Nextflow MITO_DELETIONS task failed (see the Nextflow log))
+  ClinVar and gnomAD v3.1 (chrM sites) annotate the calls in step 20. MITOMAP (mitomap.org) has the curated disease status of mtDNA variants; it is a manual lookup, as it refuses scripted requests.
+
+## Mosaic Chromosomal Alterations (MoChA, step 51)
+---
+  [could not be read: S_mocha_summary.tsv has no S_mocha.tsv beside it]
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Couple Carrier Screen (step 39)
+---
+  [could not be read: S_couple_carrier.tsv lacks a column of gene, condition, result, offspring_risk, partner_a, findings_a, partner_b, findings_b, explanation]
+## SMN1/SMN2 Copy Number (Parascopy, short reads)
+---
+  [could not be read: S_cn_intervals.tsv line 2 lacks a field]
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (step 35 unreadable, step 35b not run)
+
+################################################################################
+#  5. ANCESTRY: Where do my ancestors come from?
+################################################################################
+
+## Y Placement on the Current Public Tree
+---
+  [could not be read: S_y_tree_path.tsv has no Branch column]
+## Archaic Ancestry (IBDmix, step 43)
+---
+  [could not be read: S_archaic.tsv has no whole number for neanderthal_segments]
+################################################################################
+#  6. TRAITS AND SCORES: What do studies say about my traits and risk scores?
+################################################################################
+
+## Traits Panel (step 42)
+---
+  [could not be read: S_genotype_rules.tsv lacks a column of rule, gene, trait, rsids, chrom, pos, genotypes, gq, phase, result, status, reading, ancestry, note, pmids]
+################################################################################
+#  7. OTHER AND EXPORTS: What else did the run find or write?
+################################################################################
+
+## Viral DNA in the Unmapped Reads (step 47)
+---
+  [could not be read: KeyError: 'human_depth']
+## Raw-Data Export (23andMe v5 layout)
+---
+  [could not be read: S_consumer_export.tsv has a 'no_call: other' row without a whole-number count]
+## Steps Not Run
+---
+  - Coverage (mosdepth)
+  - Gene callability (mosdepth)
+  - Sex check (indexcov)
+  - Sample identity and contamination (somalier, VerifyBamID2)
+  - Mosaic loss of chromosome Y or X
+  - Variant calling
+  - ClinVar screen
+  - PharmCAT
+  - CPIC drug-gene recommendations
+  - pypgx
+  - Cyrius (CYP2D6)
+  - Paralog genes (Paraphase, PacBio HiFi)
+  - HLA typing (T1K)
+  - Polygenic risk scores
+  - Fine-grained ancestry
+  - Structural variants (Manta)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Structural variants, class 4 and 5 (AnnotSV)
+  - Telomere content (TelomereHunter)
+  - Runs of homozygosity
+  - Mitochondrial haplogroup
+  - Y-chromosome haplogroup (Yleaf)
+  - Y-STR markers (HipSTR)
+  - Blood groups (predicted)
+  - Lp(a): LPA KIV-2 repeat count
+  - MUC1 VNTR frameshifts (VNtyper)
+  - Locityper second opinion at hard loci
+  - Ancient populations (AADR PCA)
+  - Clonal haematopoiesis (CHIP)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

@@ -1,0 +1,1 @@
+WARNING: could not read the pypgx summary bad-pypgx.tsv (UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 15: invalid start byte); no PharmCAT/pypgx comparison is made

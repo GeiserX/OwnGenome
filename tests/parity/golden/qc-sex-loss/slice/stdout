@@ -1,0 +1,16 @@
+  mosaic_sex: male
+  mosaic_sex_from: reads
+  mosaic_chrom: chrY
+  mosaic_depth_ratio: 
+  mosaic_depth_ratio_expected: 0.5
+  mosaic_depth_blocks: 
+  mosaic_loss_depth: 
+  mosaic_loss_depth_low: 
+  mosaic_loss_depth_high: 
+  mosaic_x_het_sites: 
+  mosaic_loss_af: 
+  mosaic_loss_af_low: 
+  mosaic_loss_af_high: 
+  mosaic_floor: 0.100
+  mosaic_call: not_estimated
+  mosaic_reason: depth not estimated: too few 10 kb blocks with reads: 1 on chrY's single-copy part and 405 on chr1-22 (each needs 10; a targeted or sliced BAM may have none)

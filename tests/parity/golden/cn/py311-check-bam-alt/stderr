@@ -1,0 +1,1 @@
+REFUSED: the BAM was aligned to a reference with 2 ALT or HLA contigs (first: chr6_GL000250v2_alt). Reads that fit a primary locus and its ALT copy equally get MAPQ 0 or land on the ALT copy, so depth-based copy number reads deletions that are not there. Realign to the default no-ALT reference (docs/realignment.md).

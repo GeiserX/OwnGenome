@@ -1,0 +1,1 @@
+LPA KIV-2: not assessed: reads of mapping quality 0 make up 20.0% of the depth over the KIV-2 exons, so the aligner left out the reads that fit several KIV-2 copies (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM (KIV-2 exons 68.57x, single-copy exons 30.00x, MAPQ 0 share 0.200)

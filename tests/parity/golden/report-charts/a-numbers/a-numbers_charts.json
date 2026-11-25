@@ -1,0 +1,287 @@
+{
+ "schema_version": 1,
+ "sample": "S",
+ "generated_utc": "2026-01-02 03:04 UTC",
+ "charts": [
+  {
+   "id": "genome",
+   "section": "roh",
+   "kind": "ideogram",
+   "title": "Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the chromosomes",
+   "caveat_key": "ROH_NOTE",
+   "caveat": "Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.",
+   "axis": {
+    "assembly": "GRCh38"
+   },
+   "marks": [
+    {
+     "id": "roh-0",
+     "label": "Run of homozygosity chr2:10000001-17000000",
+     "value": 7.0,
+     "low": null,
+     "high": null,
+     "chrom": "chr2",
+     "pos": 10000001,
+     "end": 17000000,
+     "tone": "info",
+     "anchor": "roh",
+     "locus": "chr2:10000001-17000000",
+     "detail": "7.0 MB run of homozygosity at chr2:10000001-17000000",
+     "kind": "roh"
+    },
+    {
+     "id": "roh-1",
+     "label": "Run of homozygosity chr15:23000001-50000000",
+     "value": 27.0,
+     "low": null,
+     "high": null,
+     "chrom": "chr15",
+     "pos": 23000001,
+     "end": 50000000,
+     "tone": "info",
+     "anchor": "roh",
+     "locus": "chr15:23000001-50000000",
+     "detail": "27.0 MB run of homozygosity at chr15:23000001-50000000",
+     "kind": "roh"
+    },
+    {
+     "id": "sv-0",
+     "label": "DEL 1:1100-5100 (AnnotSV class 5)",
+     "value": "5",
+     "low": null,
+     "high": null,
+     "chrom": "chr1",
+     "pos": 1100,
+     "end": 5100,
+     "tone": "attention",
+     "anchor": "structural-variants",
+     "locus": "chr1:1100-5100",
+     "detail": "AnnotSV class 5 DEL, -4000 bp, genotype 0/1, genes: GENE1, GENE2",
+     "kind": "sv",
+     "caveat": "A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV's benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05's rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene's alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here."
+    },
+    {
+     "id": "sv-1",
+     "label": "DUP 2:150-880 (AnnotSV class 4)",
+     "value": "4",
+     "low": null,
+     "high": null,
+     "chrom": "chr2",
+     "pos": 150,
+     "end": 880,
+     "tone": "attention",
+     "anchor": "structural-variants",
+     "locus": "chr2:150-880",
+     "detail": "AnnotSV class 4 DUP, 730 bp, genotype 1/1, genes: GENE3",
+     "kind": "sv",
+     "caveat": "A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV's benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05's rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene's alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here."
+    },
+    {
+     "id": "sv-2",
+     "label": "DEL 9:1-100 (AnnotSV class 4)",
+     "value": "4",
+     "low": null,
+     "high": null,
+     "chrom": "chr9",
+     "pos": 1,
+     "end": 100,
+     "tone": "attention",
+     "anchor": "structural-variants",
+     "locus": "chr9:1-100",
+     "detail": "AnnotSV class 4 DEL, 99 bp, genotype ., genes: G9",
+     "kind": "sv",
+     "caveat": "A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV's benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05's rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene's alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here."
+    },
+    {
+     "id": "mca-0",
+     "label": "MoChA Loss chr20:1-2",
+     "value": "0.1",
+     "low": null,
+     "high": null,
+     "chrom": "chr20",
+     "pos": 1,
+     "end": 2,
+     "tone": "attention",
+     "anchor": "mosaic-mca",
+     "locus": "chr20:1-2",
+     "detail": "mosaic Loss over 10 Mb, cell fraction 0.1",
+     "kind": "mca",
+     "caveat": "Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/<sample>_mocha.tsv."
+    }
+   ],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"genome\" viewBox=\"0 0 640 496\" width=\"100%\" role=\"img\" aria-label=\"Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the chromosomes\"><title>Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the chromosomes</title><text x=\"40\" y=\"19\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">1</text><rect x=\"46\" y=\"12\" width=\"578\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"37\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">2</text><rect x=\"46\" y=\"30\" width=\"562.3\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"55\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">3</text><rect x=\"46\" y=\"48\" width=\"460.4\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"73\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">4</text><rect x=\"46\" y=\"66\" width=\"441.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"91\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">5</text><rect x=\"46\" y=\"84\" width=\"421.5\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"109\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">6</text><rect x=\"46\" y=\"102\" width=\"396.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"127\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">7</text><rect x=\"46\" y=\"120\" width=\"370\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"145\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">8</text><rect x=\"46\" y=\"138\" width=\"337\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"163\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">9</text><rect x=\"46\" y=\"156\" width=\"321.3\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"181\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">10</text><rect x=\"46\" y=\"174\" width=\"310.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"199\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">11</text><rect x=\"46\" y=\"192\" width=\"313.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"217\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">12</text><rect x=\"46\" y=\"210\" width=\"309.4\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"235\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">13</text><rect x=\"46\" y=\"228\" width=\"265.5\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"253\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">14</text><rect x=\"46\" y=\"246\" width=\"248.5\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"271\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">15</text><rect x=\"46\" y=\"264\" width=\"236.8\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"289\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">16</text><rect x=\"46\" y=\"282\" width=\"209.7\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"307\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">17</text><rect x=\"46\" y=\"300\" width=\"193.3\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"325\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">18</text><rect x=\"46\" y=\"318\" width=\"186.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"343\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">19</text><rect x=\"46\" y=\"336\" width=\"136.1\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"361\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">20</text><rect x=\"46\" y=\"354\" width=\"149.6\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"379\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">21</text><rect x=\"46\" y=\"372\" width=\"108.4\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"397\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">22</text><rect x=\"46\" y=\"390\" width=\"118\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"415\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">X</text><rect x=\"46\" y=\"408\" width=\"362.3\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"40\" y=\"433\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">Y</text><rect x=\"46\" y=\"426\" width=\"132.9\" height=\"8\" rx=\"4\" fill=\"none\" stroke=\"#4a505b\"/><a href=\"#roh\" data-mark=\"roh-0\"><title>Run of homozygosity chr2:10000001-17000000: 7.0 MB run of homozygosity at chr2:10000001-17000000</title><rect class=\"roh\" x=\"69.2\" y=\"30\" width=\"16.3\" height=\"8\" fill=\"#5b9ee6\"/></a><a href=\"#roh\" data-mark=\"roh-1\"><title>Run of homozygosity chr15:23000001-50000000: 27.0 MB run of homozygosity at chr15:23000001-50000000</title><rect class=\"roh\" x=\"99.4\" y=\"264\" width=\"62.7\" height=\"8\" fill=\"#5b9ee6\"/></a><a href=\"#structural-variants\" data-mark=\"sv-0\"><title>DEL 1:1100-5100 (AnnotSV class 5): AnnotSV class 5 DEL, -4000 bp, genotype 0/1, genes: GENE1, GENE2</title><rect class=\"sv\" x=\"46\" y=\"9\" width=\"5\" height=\"14\" fill=\"none\" stroke=\"#e0b94a\" stroke-width=\"2\"/></a><a href=\"#structural-variants\" data-mark=\"sv-1\"><title>DUP 2:150-880 (AnnotSV class 4): AnnotSV class 4 DUP, 730 bp, genotype 1/1, genes: GENE3</title><rect class=\"sv\" x=\"46\" y=\"27\" width=\"5\" height=\"14\" fill=\"none\" stroke=\"#e0b94a\" stroke-width=\"2\"/></a><a href=\"#structural-variants\" data-mark=\"sv-2\"><title>DEL 9:1-100 (AnnotSV class 4): AnnotSV class 4 DEL, 99 bp, genotype ., genes: G9</title><rect class=\"sv\" x=\"46\" y=\"153\" width=\"5\" height=\"14\" fill=\"none\" stroke=\"#e0b94a\" stroke-width=\"2\"/></a><a href=\"#mosaic-mca\" data-mark=\"mca-0\"><title>MoChA Loss chr20:1-2: mosaic Loss over 10 Mb, cell fraction 0.1</title><rect class=\"mca\" x=\"46\" y=\"364\" width=\"3\" height=\"3\" fill=\"#e0b94a\"/></a><rect x=\"46\" y=\"448\" width=\"14\" height=\"8\" fill=\"#5b9ee6\"/><text x=\"66\" y=\"456\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">run of homozygosity, 5 MB or more</text><rect x=\"296\" y=\"446\" width=\"3\" height=\"12\" fill=\"#e0b94a\"/><text x=\"304\" y=\"456\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">ClinVar hit</text><rect x=\"386\" y=\"446\" width=\"3\" height=\"12\" fill=\"#8a909b\"/><text x=\"394\" y=\"456\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">low-confidence ClinVar call</text><rect x=\"46\" y=\"464\" width=\"14\" height=\"12\" fill=\"none\" stroke=\"#e0b94a\" stroke-width=\"2\"/><text x=\"66\" y=\"474\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">AnnotSV class 4 or 5 SV</text><rect x=\"296\" y=\"470\" width=\"14\" height=\"3\" fill=\"#e0b94a\"/><text x=\"316\" y=\"474\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">mosaic alteration (MoChA), a share of cells</text></svg>"
+  },
+  {
+   "id": "mito",
+   "section": "mito",
+   "kind": "scatter",
+   "title": "Heteroplasmic chrM sites",
+   "caveat_key": "MITO_NOTE",
+   "caveat": "ClinVar and gnomAD v3.1 (chrM sites) annotate the calls in step 20. MITOMAP (mitomap.org) has the curated disease status of mtDNA variants; it is a manual lookup, as it refuses scripted requests.",
+   "axis": {
+    "min": 0,
+    "max": 1,
+    "unit": "allele fraction",
+    "floor": 0.05,
+    "sites_missing": 0
+   },
+   "marks": [
+    {
+     "id": "m3243-G",
+     "label": "m.3243A>G",
+     "value": 0.4,
+     "low": null,
+     "high": null,
+     "chrom": "chrM",
+     "pos": 3243,
+     "end": null,
+     "tone": "attention",
+     "anchor": "mito",
+     "locus": "chrM:3243",
+     "detail": "allele fraction 0.4",
+     "kind": "site"
+    },
+    {
+     "id": "polyc-302",
+     "label": "chrM:302 A>AC,ACC (D-loop poly-C tract)",
+     "value": 0.3,
+     "low": null,
+     "high": null,
+     "chrom": "chrM",
+     "pos": 302,
+     "end": null,
+     "tone": "muted",
+     "anchor": "mito",
+     "locus": "chrM:302",
+     "detail": "length heteroplasmy in a D-loop poly-C tract, allele fraction 0.3; not counted as heteroplasmic",
+     "kind": "polyc"
+    },
+    {
+     "id": "polyc-16189",
+     "label": "chrM:16189 T>C (D-loop poly-C tract)",
+     "value": 0.5,
+     "low": null,
+     "high": null,
+     "chrom": "chrM",
+     "pos": 16189,
+     "end": null,
+     "tone": "muted",
+     "anchor": "mito",
+     "locus": "chrM:16189",
+     "detail": "length heteroplasmy in a D-loop poly-C tract, allele fraction 0.5; not counted as heteroplasmic",
+     "kind": "polyc"
+    }
+   ],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"mito\" viewBox=\"0 0 640 214\" width=\"100%\" role=\"img\" aria-label=\"Heteroplasmic chrM sites\"><title>Heteroplasmic chrM sites</title><rect x=\"44\" y=\"12\" width=\"580\" height=\"158\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"38\" y=\"174\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">0</text><text x=\"38\" y=\"95\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">0.5</text><text x=\"38\" y=\"16\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">1</text><text x=\"44\" y=\"184\" font-size=\"10\" text-anchor=\"start\" fill=\"currentColor\">m.1</text><text x=\"184\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.4000</text><text x=\"324\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.8000</text><text x=\"464.1\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.12000</text><text x=\"624\" y=\"184\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">m.16569</text><text x=\"334\" y=\"198\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\" opacity=\"0.8\">position on chrM; height: allele fraction</text><rect x=\"53.6\" y=\"12\" width=\"2\" height=\"158\" fill=\"#8a909b\" opacity=\"0.25\"/><rect x=\"609.5\" y=\"12\" width=\"2\" height=\"158\" fill=\"#8a909b\" opacity=\"0.25\"/><a href=\"#mito\" data-mark=\"m3243-G\"><title>m.3243A&gt;G: allele fraction 0.4</title><circle class=\"site\" cx=\"157.5\" cy=\"106.8\" r=\"5\" fill=\"#e0b94a\"/></a><a href=\"#mito\" data-mark=\"polyc-302\"><title>chrM:302 A&gt;AC,ACC (D-loop poly-C tract): length heteroplasmy in a D-loop poly-C tract, allele fraction 0.3; not counted as heteroplasmic</title><rect class=\"polyc\" x=\"50.5\" y=\"118.6\" width=\"8\" height=\"8\" fill=\"none\" stroke=\"#8a909b\" stroke-width=\"2\"/></a><a href=\"#mito\" data-mark=\"polyc-16189\"><title>chrM:16189 T&gt;C (D-loop poly-C tract): length heteroplasmy in a D-loop poly-C tract, allele fraction 0.5; not counted as heteroplasmic</title><rect class=\"polyc\" x=\"606.7\" y=\"87\" width=\"8\" height=\"8\" fill=\"none\" stroke=\"#8a909b\" stroke-width=\"2\"/></a></svg>"
+  },
+  {
+   "id": "ancestry-fine",
+   "section": "ancestry_fine",
+   "kind": "ranges",
+   "title": "Fine-grained ancestry, with bootstrap ranges",
+   "caveat_key": "ANCESTRY_FINE_NOTE",
+   "caveat": "Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.",
+   "axis": {
+    "min": 0,
+    "max": 100,
+    "unit": "%"
+   },
+   "marks": [
+    {
+     "id": "continent-WEA",
+     "label": "West Eurasia",
+     "value": 95.0,
+     "low": 93.0,
+     "high": 97.0,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "info",
+     "anchor": "ancestry-fine",
+     "locus": null,
+     "detail": "Continental groups: 95% (bootstrap range 93% to 97%)",
+     "group": "Continental groups"
+    },
+    {
+     "id": "continent-AFR",
+     "label": "Africa",
+     "value": 100,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "info",
+     "anchor": "ancestry-fine",
+     "locus": null,
+     "detail": "Continental groups: 100%",
+     "group": "Continental groups"
+    },
+    {
+     "id": "region-IBE",
+     "label": "Iberia",
+     "value": 60.0,
+     "low": 50.0,
+     "high": 70.0,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "info",
+     "anchor": "ancestry-fine",
+     "locus": null,
+     "detail": "Regional groups: 60% (bootstrap range 50% to 70%)",
+     "group": "Regional groups"
+    }
+   ],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"ancestry-fine\" viewBox=\"0 0 640 152\" width=\"100%\" role=\"img\" aria-label=\"Fine-grained ancestry, with bootstrap ranges\"><title>Fine-grained ancestry, with bootstrap ranges</title><line x1=\"260\" y1=\"14\" x2=\"590\" y2=\"14\" stroke=\"#4a505b\"/><text x=\"260\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">0%</text><text x=\"342.5\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">25%</text><text x=\"425\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">50%</text><text x=\"507.5\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">75%</text><text x=\"590\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">100%</text><text x=\"8\" y=\"38\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\" font-weight=\"600\">Continental groups</text><a href=\"#ancestry-fine\" data-mark=\"continent-WEA\"><title>West Eurasia: Continental groups: 95% (bootstrap range 93% to 97%)</title><text x=\"252\" y=\"60\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">West Eurasia</text><line class=\"whisker\" x1=\"566.9\" y1=\"56\" x2=\"580.1\" y2=\"56\" stroke=\"#5b9ee6\" stroke-width=\"2\"/><circle cx=\"573.5\" cy=\"56\" r=\"4.5\" fill=\"#5b9ee6\"/><text x=\"596\" y=\"60\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">95%</text></a><a href=\"#ancestry-fine\" data-mark=\"continent-AFR\"><title>Africa: Continental groups: 100%</title><text x=\"252\" y=\"82\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">Africa</text><circle cx=\"590\" cy=\"78\" r=\"4.5\" fill=\"#5b9ee6\"/><text x=\"596\" y=\"82\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">100%</text></a><text x=\"8\" y=\"110\" font-size=\"12\" text-anchor=\"start\" fill=\"currentColor\" font-weight=\"600\">Regional groups</text><a href=\"#ancestry-fine\" data-mark=\"region-IBE\"><title>Iberia: Regional groups: 60% (bootstrap range 50% to 70%)</title><text x=\"252\" y=\"132\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">Iberia</text><line class=\"whisker\" x1=\"425\" y1=\"128\" x2=\"491\" y2=\"128\" stroke=\"#5b9ee6\" stroke-width=\"2\"/><circle cx=\"458\" cy=\"128\" r=\"4.5\" fill=\"#5b9ee6\"/><text x=\"596\" y=\"132\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">60%</text></a></svg>"
+  },
+  {
+   "id": "prs",
+   "section": "prs",
+   "kind": "strip",
+   "title": "Polygenic risk score percentiles",
+   "caveat_key": "PRS_ANCESTRY_NOTE",
+   "caveat": "Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile.",
+   "axis": {
+    "min": 0,
+    "max": 100,
+    "unit": "percentile"
+   },
+   "marks": [
+    {
+     "id": "pgs-PGS000018",
+     "label": "7 (PGS000018)",
+     "value": 75.0,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "info",
+     "anchor": "prs",
+     "locus": null,
+     "detail": "75 (EUR)"
+    },
+    {
+     "id": "pgs-PGS000014",
+     "label": "T2D (PGS000014)",
+     "value": null,
+     "low": null,
+     "high": null,
+     "chrom": null,
+     "pos": null,
+     "end": null,
+     "tone": "muted",
+     "anchor": "prs",
+     "locus": null,
+     "detail": "no percentile"
+    }
+   ],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"prs\" viewBox=\"0 0 640 82\" width=\"100%\" role=\"img\" aria-label=\"Polygenic risk score percentiles\"><title>Polygenic risk score percentiles</title><line x1=\"260\" y1=\"14\" x2=\"520\" y2=\"14\" stroke=\"#4a505b\"/><text x=\"260\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">0</text><text x=\"325\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">25</text><text x=\"390\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">50</text><text x=\"455\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">75</text><text x=\"520\" y=\"10\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">100</text><a href=\"#prs\" data-mark=\"pgs-PGS000018\"><title>7 (PGS000018): 75 (EUR)</title><text x=\"252\" y=\"36\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">7 (PGS000018)</text><line x1=\"260\" y1=\"32\" x2=\"520\" y2=\"32\" stroke=\"#4a505b\"/><circle cx=\"455\" cy=\"32\" r=\"5\" fill=\"#5b9ee6\"/><text x=\"528\" y=\"36\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\">75</text></a><a href=\"#prs\" data-mark=\"pgs-PGS000014\"><title>T2D (PGS000014): no percentile</title><text x=\"252\" y=\"60\" font-size=\"12\" text-anchor=\"end\" fill=\"currentColor\">T2D (PGS000014)</text><line x1=\"260\" y1=\"56\" x2=\"520\" y2=\"56\" stroke=\"#4a505b\"/><text x=\"264\" y=\"60\" font-size=\"11\" text-anchor=\"start\" fill=\"currentColor\" opacity=\"0.8\">no percentile</text></a></svg>"
+  }
+ ]
+}

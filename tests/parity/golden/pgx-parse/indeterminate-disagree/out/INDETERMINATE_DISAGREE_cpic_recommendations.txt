@@ -1,0 +1,39 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: INDETERMINATE_DISAGREE
+Date: 2026-11-25
+Source: PharmCAT  report (indeterminate-disagree.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+UGT1A1       *1/*80                         Indeterminate
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Called Genes Without a Function Phenotype:
+------------------------------------------------------------------------
+
+  UGT1A1 -- Indeterminate (*1/*80)
+  PharmCAT called these genes but its phenotype (n/a, a reference genotype,
+  'no phenotype assigned', an uncertain result) names no changed function, so
+  they are not counted as non-normal and get no drug list here. A variant allele
+  among them can still matter: see the PharmCAT HTML report.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

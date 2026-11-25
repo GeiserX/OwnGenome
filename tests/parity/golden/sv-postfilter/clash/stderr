@@ -1,0 +1,1 @@
+ERROR: the sample column Caller has the name of a checked-table column, so its GT and PS would be lost; rename the sample

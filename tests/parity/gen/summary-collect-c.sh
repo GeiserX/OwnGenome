@@ -6,15 +6,10 @@
 # the Nextflow and other file names, files from an earlier run, unreadable
 # tables of each kind, and the APOL1 G2 deletion written left-aligned,
 # shifted, twice, under a reference block and not at all.
-# py/ holds the modules the oracle imports, as they were at the oracle's
-# commit, and the two bin/ tables it reads beside itself; assets/ is a copy
-# of the repository's catalogs these sections read.
-# scripts/ci/oracle-diff.sh runs it.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${here}/../../.." && pwd)
-ORACLE_SHA=98aa9252ff77825a8a797d388b449931fa9a234e
 
 T0=1577836800        # 2020-01-01 00:00:00 UTC, the start of the run
 OLD=201906011230.00  # before the run
@@ -23,18 +18,6 @@ NEW=202103040506.07  # after it, the time of every file not set otherwise
 at() { touch -t "$1" "${@:2}"; }   # [[CC]YY]MMDDhhmm[.SS], in UTC
 put() { mkdir -p "$(dirname "$1")"; printf '%b' "$2" > "$1"; at "$NEW" "$1"; }
 putgz() { mkdir -p "$(dirname "$1")"; printf '%b' "$2" | gzip -n -c > "$1"; at "$NEW" "$1"; }
-
-# --- the oracle's modules -------------------------------------------------------
-git -C "$root" cat-file -e "${ORACLE_SHA}^{commit}" 2> /dev/null \
-  || git -C "$root" fetch -q --depth=1 origin "$ORACLE_SHA"
-mkdir -p py
-for m in paraphase_report ancestry_fine_report annotsv_postfilter cnvpytor_to_vcf family_report chip_report \
-  traits_report genotype_rules_indels pgx_outside_calls; do
-  git -C "$root" show "${ORACLE_SHA}:bin/${m}.py" > "py/${m}.py"
-done
-for t in hla_alleles.tsv str_intermediate_ranges.tsv; do
-  git -C "$root" show "${ORACLE_SHA}:bin/${t}" > "py/${t}"
-done
 
 mkdir -p assets
 for a in paraphase_genes.tsv paralog_loci.tsv mito_confirmed.tsv callability_genes.tsv; do

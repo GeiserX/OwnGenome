@@ -1,0 +1,6 @@
+# sample	S
+# gates	min_depth=10 min_gq=20 min_fraction=0.9 max_depth_factor=2.0 median_chrY_depth=20.0 callable_mask=callable_mask_chrY.fasta.gz
+# dropped	PAR=0 outside_callable=0 not_PASS=0 genotype=0 depth=1 quality=2 alt_fraction=2 excess_depth=0 on_public_lists=0
+Pos	Ref	Alt	Depth	Alt_fraction	GQ	Genotype
+3100300	A	G	20	0.950	40	1
+3100310	A	G	20	nan	40	1

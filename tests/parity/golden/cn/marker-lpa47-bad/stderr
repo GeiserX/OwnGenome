@@ -1,0 +1,1 @@
+WARNING: bad.pileup: expected samtools mpileup lines (chrom, pos, ref, depth, bases, ...); got '# samtools mpileup failed: 4925G>A not assessed'; KIV-2 4925G>A is not assessed

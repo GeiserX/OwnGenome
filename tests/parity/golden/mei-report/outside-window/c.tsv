@@ -1,0 +1,2 @@
+chrom	pos	end	element	subfamily	copies	filter	confidence	genes	location	benign_af	acmg_class
+chr9	105641200	105641208	SVA	SVA_F	1	PASS	H	.	.	.	.

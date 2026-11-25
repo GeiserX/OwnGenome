@@ -1,0 +1,6 @@
+== chr7:150: chr7:150 (GRCh38; from position)
+  genotype: ref/ref (homozygous reference, inside the reference block chr7:100-200)
+  evidence: lowest depth in the block 31, genotype quality 50
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  none of the reports mentions it

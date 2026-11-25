@@ -1,0 +1,1 @@
+ERROR: fam-famname.tsv line 2: family name 'f/a' may hold only letters, digits, '.', '_' and '-' and may not start with '-' (it names the family's folder)

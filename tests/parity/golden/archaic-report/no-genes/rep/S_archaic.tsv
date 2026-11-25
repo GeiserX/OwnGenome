@@ -1,0 +1,26 @@
+key	value
+sample	S
+method	IBDmix
+archaic_genomes	Altai Neanderthal, Vindija 33.19 Neanderthal, Altai Denisovan
+population	ALL
+min_lod	4
+min_length_bp	50000
+analysed_bp	79800002
+analysed_chromosomes	2
+analysed_sites	5500
+genes	none (no gene annotation installed)
+neanderthal_segments	5
+neanderthal_bp	2310000
+neanderthal_percent	2.89
+neanderthal_longest_bp	1100000
+denisovan_segments	2
+denisovan_bp	1600000
+denisovan_percent	2.01
+denisovan_longest_bp	900000
+longest_1	chr22:17000000-18100000 Neanderthal 1.10 Mb (Altai/Vindija/Denisova); genes: none
+longest_2	chr22:25000000-25900000 Denisovan 0.90 Mb (Denisova); genes: none
+longest_3	chr21:30000000-30700000 Denisovan 0.70 Mb (Denisova); genes: none
+longest_4	chr21:1000000-1600000 Neanderthal 0.60 Mb (Altai/Vindija/Denisova); genes: none
+longest_5	chr21:9000000-9500000 Neanderthal 0.50 Mb (Altai/Vindija); genes: none
+longest_6	chr21:20000000-20060000 Neanderthal 0.06 Mb (Vindija); genes: none
+longest_7	chr22:40000000-40050000 Neanderthal 0.05 Mb (Altai); genes: none

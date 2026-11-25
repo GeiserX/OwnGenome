@@ -1,0 +1,2 @@
+gene	inheritance	lists	condition	result	offspring_risk	partner_a	findings_a	partner_b	findings_b	explanation
+SMN1	AR	ACMG,ACOG	Spinal muscular atrophy	shared	1 in 4 per pregnancy	A	SMN1 1 copy (Parascopy: 1 (quality 45, filter PASS))	B	SMN1 1 copy (Parascopy: 1 (quality 45, filter PASS))	Both partners carry a change in SMN1, linked to Spinal muscular atrophy (autosomal recessive). A child who inherits the change of each parent can have the condition: 1 in 4 per pregnancy.

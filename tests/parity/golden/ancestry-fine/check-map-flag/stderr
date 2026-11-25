@@ -1,0 +1,1 @@
+ERROR: samples.tsv: reference and paint must be 0 or 1, e.g. ['y10', 'YRI', 'AFR', 'WAF', 'true', '0']

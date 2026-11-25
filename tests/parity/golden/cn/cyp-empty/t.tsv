@@ -1,0 +1,20 @@
+metric	value
+status	not assessed
+cyp21a2_copies	.
+module_total	.
+expected_total	4
+estimate	.
+finding	.
+conversion_sites	.
+psv_PSV_In2G	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+psv_PSV_I172N	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+psv_PSV_V237E	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+psv_PSV_V281L	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+psv_PSV_Q318X	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+psv_PSV_R356W	0 gene, 0 pseudogene, 0 other reads; copies . (.); ratio .
+target_depth	.
+control_depth	.
+reason	no_data
+reading	.
+mapq0_share	.
+message	not assessed: no_data

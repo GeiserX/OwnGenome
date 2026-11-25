@@ -1,0 +1,3 @@
+ERROR: ped-samefm.tsv line 2: 'kid' has the same person, 'dad', as father and mother
+ERROR: 'dad' is the mother of 'kid' but its sex is male
+ERROR: 'dad' is named as a father and as a mother

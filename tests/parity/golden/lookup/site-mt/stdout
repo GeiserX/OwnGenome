@@ -1,0 +1,11 @@
+== rs3003: chrM:73 (GRCh38; from sites.tsv)
+  genotype: G/G (homozygous; REF A, ALT G)
+  evidence: depth 900, QUAL 60
+  variant: chrM:73 A>G G/G (homozygous)
+    gene: MT-RNR1
+    consequence: non_coding_transcript_exon_variant
+    impact: MODIFIER
+    known as: rs3003
+  in the reports:
+  Loci (step None):
+    - locus=MT-RNR1, region=chrM:1-2

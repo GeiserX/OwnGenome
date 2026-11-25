@@ -1,0 +1,12 @@
+| chromosome | Chen P04 (bp) | Chen EUR median | Chen EUR max | a (bp) | b (bp) |
+|---|---|---|---|---|---|
+| 1 | 497087 | 295696 | 556949 | 467722 | 112097 |
+| 2 | 288024 | 229629 | 640776 | 311434 | 251414 |
+| 3 | 0 | 0 | 0 | 301953 | 534916 |
+| 10 | 102390 | 156342 | 499821 | 615943 | 188150 |
+| X | 0 | 81604 | 595899 | 392087 | 346813 |
+| all | 887501 | 907436 | 1329045 | 2089139 | 1433390 |
+
+Chen et al., 20 EUR people, these 5 chromosomes: lowest 457262, median 907436, highest 1329045 bp; P04 887501 bp.
+a: 2089139 bp, 2.35 times the released P04 figure; 384767 bp under the released calls, 1704372 bp only here, 502734 bp only released.
+b: 1433390 bp, 1.62 times the released P04 figure; 142865 bp under the released calls, 1290525 bp only here, 744636 bp only released.

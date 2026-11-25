@@ -1,0 +1,24 @@
+Gene	Diplotype	Phenotype	Status
+ABCG2	rs2231142 reference (G)/rs2231142 reference (G)	Normal Function	normal
+CACNA1S	Reference/Reference	Uncertain Susceptibility	unclassified
+CFTR	Reference/Reference	ivacaftor non-responsive in CF patients	unclassified
+CYP2B6	*1/*1	Normal Metabolizer	normal
+CYP2C19	*38/*38	Normal Metabolizer	normal
+CYP2C9	*1/*1	Normal Metabolizer	normal
+CYP2D6	*1/*3	Intermediate Metabolizer	non-normal
+CYP3A4	*1/*1	Normal Metabolizer	normal
+CYP3A5	*1/*1	Normal Metabolizer	normal
+CYP4F2	*1/*1	no phenotype assigned	unclassified
+DPYD	Reference/Reference	Normal Metabolizer	normal
+G6PD	B (reference)/B (reference)	Normal	normal
+HLA-A	Unknown/Unknown	No Result	not called
+HLA-B	*15:02/*57:01	*15:02 positive; *57:01 positive; *58:01 negative	non-normal
+IFNL3	rs12979860 reference (C)/rs12979860 reference (C)	n/a	unclassified
+MT-RNR1	1555A>G	n/a	unclassified
+NAT2	*1/*1	Rapid Metabolizer	non-normal
+NUDT15	*1/*1	Normal Metabolizer	normal
+RYR1	Reference/Reference	Uncertain Susceptibility	unclassified
+SLCO1B1	*1/*1	Normal Function	normal
+TPMT	*1/*1	Normal Metabolizer	normal
+UGT1A1	*1/*1	Normal Metabolizer	normal
+VKORC1	rs9923231 reference (C)/rs9923231 variant (T)	-1639 GA	non-normal
