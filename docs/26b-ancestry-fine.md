@@ -128,7 +128,7 @@ The benchmark used five simulated genomes per scenario, covering chromosomes 9, 
 | S3 | 0.7227 | 0.6267 | 0.7469 | 0.6618 | 15 | 2123 | 182 | 1272 |
 | S4 | 0.7817 | 0.6622 | 0.8049 | 0.6899 | 9 | 2880 | 206 | 1280 |
 
-S0 is unadmixed. S1 and S3 are two-way mixes at different ages. For recent three-way admixture (S2), og was about 2 percentage points behind RFMix in accuracy. For older admixture (S4), og was about 12 points ahead. The comparison ran on a 4-CPU Linux host and measures the painting step per simulated genome. The 1.1 follow-up will work on the gap in recent three-way admixture. [Ancestry engine benchmark](research/ancestry-engine-benchmark.md)
+S0 is unadmixed. S1 and S3 are two-way mixes at different ages. For recent three-way admixture (S2), og was about 2 percentage points behind RFMix in accuracy. For older admixture (S4), og was about 12 points ahead. The comparison ran on a 4-CPU Linux host and measures the painting step per simulated genome. The 1.1 follow-up will work on the gap in recent three-way admixture. See `docs/research/ancestry-engine-benchmark.md` in the repository for the simulation and scoring details.
 
 ## Interpreting Results
 
