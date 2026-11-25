@@ -7,7 +7,10 @@ use pycompat::json::{Value, loads};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const LIST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets/pgs_scores.tsv");
+const LIST: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../assets/pgs_scores.tsv"
+);
 const REASON: &str = "academic-only licence (PRS_ACADEMIC=true to include)";
 
 /// The ids of the shipped list and their licence column, in its order.

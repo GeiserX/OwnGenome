@@ -9,7 +9,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 fn repo(rel: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..").join(rel)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join(rel)
 }
 
 /// pgs_id -> licence column of a score list's text.
@@ -35,7 +37,10 @@ fn answers() -> HashMap<String, String> {
     .expect("saved answers");
     text.lines()
         .map(|l| {
-            let id = l.split("\"id\":\"").nth(1).and_then(|r| r.split('"').next());
+            let id = l
+                .split("\"id\":\"")
+                .nth(1)
+                .and_then(|r| r.split('"').next());
             (id.expect("an id").to_owned(), l.to_owned())
         })
         .collect()
@@ -61,7 +66,10 @@ fn every_licence_of_the_list_is_the_catalogs() {
         .filter(|(_, l)| l == "academic-research")
         .map(|(id, _)| id)
         .collect();
-    assert_eq!(academic, ["PGS000014", "PGS000016", "PGS000027", "PGS000017"]);
+    assert_eq!(
+        academic,
+        ["PGS000014", "PGS000016", "PGS000027", "PGS000017"]
+    );
 }
 
 #[test]
@@ -70,8 +78,15 @@ fn a_flipped_row_and_a_new_licence_text_fail() {
     // One row flipped each way.
     let flipped = list
         .replacen("\tacademic-research\n", "\tauthor\n", 1)
-        .replacen("Breast cancer\tfemale\tPPM000004\tEUR\tOR 1.61\tauthor", "Breast cancer\tfemale\tPPM000004\tEUR\tOR 1.61\tacademic-research", 1);
-    assert_eq!(wrong(&flipped), ["PGS000014 author", "PGS000004 academic-research"]);
+        .replacen(
+            "Breast cancer\tfemale\tPPM000004\tEUR\tOR 1.61\tauthor",
+            "Breast cancer\tfemale\tPPM000004\tEUR\tOR 1.61\tacademic-research",
+            1,
+        );
+    assert_eq!(
+        wrong(&flipped),
+        ["PGS000014 author", "PGS000004 academic-research"]
+    );
     // An empty cell is no licence.
     let empty = list.replacen("\tauthor\n", "\t\n", 1);
     assert_eq!(wrong(&empty), ["PGS000018 "]);
@@ -86,11 +101,18 @@ fn the_reader_knows_two_texts_and_nothing_else() {
         licence_of(&author.replace("cited ", "cited\\n  "), "PGS1"),
         Some("author")
     );
-    let academic = r#"{"id": "PGS1", "license": "Freely available to the academic community for research use. Parties interested in using the scores for commercial purposes should contact the Broad Office."}"#;
+    let academic = r#"{"id": "PGS1", "license": "Freely available to the academic community for research use. Parties interested in using the scores for commercial purposes should contact the Broad Office of Strategic Alliances and Partnering (partnering@broadinstitute.org)."}"#;
     assert_eq!(licence_of(academic, "PGS1"), Some("academic-research"));
     for body in [
         // a restriction the catalog adds to the default text
-        &author.replace("additional details.", "additional details. Non-commercial use only."),
+        &author.replace(
+            "additional details.",
+            "additional details. Non-commercial use only.",
+        ),
+        &academic.replace(
+            "broadinstitute.org).",
+            "broadinstitute.org). Further distribution is restricted.",
+        ),
         r#"{"id": "PGS1", "license": "CC BY-NC-SA 4.0"}"#,
         r#"{"id": "PGS1", "license": ""}"#,
         r#"{"id": "PGS1"}"#,

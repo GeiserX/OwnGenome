@@ -333,7 +333,12 @@ mod tests {
         assert!(!l.academic("PGS1") && !l.academic("PGS3") && !l.academic("PGS9"));
         assert_eq!(l.academic_ids(), ["PGS2", "PGS4"]);
         // A list without the column marks nothing academic.
-        assert!(parse(&format!("{HEAD}PGS2\tb\t\t\t\t\n")).expect("read").academic_ids().is_empty());
+        assert!(
+            parse(&format!("{HEAD}PGS2\tb\t\t\t\t\n"))
+                .expect("read")
+                .academic_ids()
+                .is_empty()
+        );
         let got = parse(&format!("{head}PGS1\ta\t\tnon-commercial\n"))
             .err()
             .unwrap_or_default();

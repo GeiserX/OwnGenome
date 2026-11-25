@@ -90,7 +90,10 @@ fn a_folder_with_all_15_scores_11_by_default_and_15_with_academic() {
     let (said, written) = c.run(&[]).expect("default");
     assert_eq!(written.len(), 11, "{written:?}");
     for id in ACADEMIC {
-        assert!(!written.contains(&id.to_owned()), "{id} was scored by default");
+        assert!(
+            !written.contains(&id.to_owned()),
+            "{id} was scored by default"
+        );
         assert!(
             said.contains(&format!("  {id}: not scored, {ACADEMIC_REASON} (")),
             "{id} not named on stdout:\n{said}"
@@ -128,8 +131,13 @@ fn ids_naming_the_four_skip_them_even_when_their_files_are_gone() {
     });
     assert_eq!(said.matches(": not scored, ").count(), 4, "{said}");
     // With --academic the missing files are an error again.
-    let err = c.run(&["--ids", &joined, "--academic"]).expect_err("missing");
-    assert!(err.starts_with("no scoring file for PGS000014, PGS000016, PGS000027, PGS000017 in "), "{err}");
+    let err = c
+        .run(&["--ids", &joined, "--academic"])
+        .expect_err("missing");
+    assert!(
+        err.starts_with("no scoring file for PGS000014, PGS000016, PGS000027, PGS000017 in "),
+        "{err}"
+    );
 }
 
 #[test]

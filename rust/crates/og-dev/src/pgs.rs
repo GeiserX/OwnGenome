@@ -45,8 +45,8 @@ const USAGE: &str = "usage: og dev pgs trait --id PGS_ID < ANSWER\n       og dev
 /// The PGS Catalog's default `license` text: no restriction beyond the
 /// authors' own.
 const AUTHOR_TERMS: &str = "PGS obtained from the Catalog should be cited appropriately, and used in accordance with any licensing restrictions set by the authors. See EBI Terms of Use (https://www.ebi.ac.uk/about/terms-of-use/) for additional details.";
-/// How an academic-only `license` text starts.
-const ACADEMIC_TERMS: &str = "Freely available to the academic community for research use.";
+/// The catalog's current academic research `license` text.
+const ACADEMIC_TERMS: &str = "Freely available to the academic community for research use. Parties interested in using the scores for commercial purposes should contact the Broad Office of Strategic Alliances and Partnering (partnering@broadinstitute.org).";
 
 /// `text` with its runs of white space made one space, ends trimmed.
 fn squeeze(text: &str) -> String {
@@ -67,7 +67,7 @@ pub fn licence_of(body: &str, id: &str) -> Option<&'static str> {
     let text = squeeze(text);
     if text == AUTHOR_TERMS {
         Some("author")
-    } else if text.starts_with(ACADEMIC_TERMS) {
+    } else if text == ACADEMIC_TERMS {
         Some("academic-research")
     } else {
         None
