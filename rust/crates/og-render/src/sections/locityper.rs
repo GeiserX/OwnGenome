@@ -30,7 +30,8 @@ pub fn locus_text(x: &Value) -> Result<String, Malformed> {
     if !is_str(Some(need(x, "status", PATH)?), "called") {
         return Ok(format!("not called: {}", f("reason")?));
     }
-    let why = if is_str(Some(need(x, "filter", PATH)?), "fail")
+    let filter = need(x, "filter", PATH)?;
+    let why = if (is_str(Some(filter), "fail") || is_str(Some(filter), UNCALIBRATED))
         && !is_str(Some(need(x, "reason", PATH)?), ".")
     {
         format!(": {}", f("reason")?)
@@ -49,6 +50,19 @@ pub fn locus_text(x: &Value) -> Result<String, Malformed> {
     ))
 }
 
+/// The filter of a locus outside HLA and KIR, where the authors never
+/// calibrated their rule (`og locityper report`): neither a pass nor a fail.
+pub const UNCALIBRATED: &str = "uncalibrated";
+
+/// How many loci read [`UNCALIBRATED`].
+fn uncalibrated(loci: &[Value]) -> Result<usize, Malformed> {
+    let mut n = 0;
+    for x in loci {
+        n += usize::from(is_str(Some(need(x, "filter", PATH)?), UNCALIBRATED));
+    }
+    Ok(n)
+}
+
 /// `x.get("primary", ".")`.
 fn primary(x: &Value) -> Result<String, Malformed> {
     get(x, "primary", PATH)?.map_or(Ok(".".to_owned()), py)
@@ -58,12 +72,17 @@ fn primary(x: &Value) -> Result<String, Malformed> {
 /// primary caller's.
 pub fn lines(d: &Section<'_>) -> Result<Vec<String>, Malformed> {
     let loci = loci(d)?;
-    let mut out = vec![format!(
+    let mut head = format!(
         "Loci called: {} of {}; passing the authors' filter: {}",
         d.get("called")?.map_or(Ok("0".to_owned()), py)?,
         loci.len(),
         d.get("passed")?.map_or(Ok("0".to_owned()), py)?
-    )];
+    );
+    let n = uncalibrated(loci)?;
+    if n > 0 {
+        head += &format!("; uncalibrated (outside HLA and KIR, so neither pass nor fail): {n}");
+    }
+    let mut out = vec![head];
     for x in loci {
         let locus = py(need(x, "locus", PATH)?)?;
         out.push(format!(
@@ -134,10 +153,14 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
             Line::Stat(
                 "Loci called".to_owned(),
                 Inline::Text(format!(
-                    "{} of {} ({} pass the filter)",
+                    "{} of {} ({} pass the filter{})",
                     py(d.need("called")?)?,
                     loci.len(),
-                    py(d.need("passed")?)?
+                    py(d.need("passed")?)?,
+                    match uncalibrated(loci)? {
+                        0 => String::new(),
+                        n => format!(", {n} uncalibrated outside HLA and KIR"),
+                    }
                 )),
             ),
             Line::Table(Table {

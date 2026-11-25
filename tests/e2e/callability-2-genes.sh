@@ -97,7 +97,7 @@ NFCONF
   [ "$rc" = 0 ] || grep -E 'ERROR|Error executing process|Command error' -A 8 "${CASE_TMP}/${name}.log" | head -40
 }
 CB="${GENOME_DIR}/${CAL}/aligned/${CAL}_sorted.bam"
-nf_run mosdepth "    MOSDEPTH(channel.of([[id: '${CAL}'], file('${CB}'), file('${CB}.bai')]), file('${CAT}'))"
+nf_run mosdepth "    MOSDEPTH(channel.of([[id: '${CAL}'], file('${CB}'), file('${CB}.bai')]), file('${CAT}'), [])"
 N_CAL="${CASE_TMP}/mosdepth/${CAL}/coverage/${CAL}_callability.bed.gz"
 R_NF=$(reading "$N_CAL" 2>&1); echo "Nextflow, MAPQ 0 copy: ${R_NF}"
 check "Nextflow: the gene of MAPQ 0 reads is not read" has '^TEST_MAPQ0 not_read' "$R_NF"

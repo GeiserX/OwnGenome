@@ -30,7 +30,10 @@
 # CLINICAL_MIN_GQ (default 30, step 6's floor), DP below CLINICAL_MIN_DP
 # (default 10), a heterozygote's alt read fraction outside
 # CLINICAL_HET_AB_MIN..CLINICAL_HET_AB_MAX (0.2..0.8) or a homozygous alt
-# call's below CLINICAL_HOM_AB_MIN (0.8). Weak calls stay in the tiers and are
+# call's below CLINICAL_HOM_AB_MIN (0.8). A call with no GQ, DP or AD to
+# judge (a GT-only VCF) is marked unknown: it is unverified, and og summary
+# collect does not count it as a rare HIGH-impact call or a secondary
+# finding on its own. Weak and unverified calls stay in the tiers and are
 # counted apart.
 #
 # The summary TSV takes the gene, impact and consequence of the ranked
@@ -441,6 +444,7 @@ if [ "$HAS_CONSTRAINT" -eq 1 ]; then
 fi
 mv "${SUMMARY}.tmp" "$SUMMARY"
 WEAK_COUNT=$(awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $c["CALL_CHECK"] == "weak" {n++} END {print n + 0}' "$SUMMARY")
+UNVERIFIED_COUNT=$(awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $c["CALL_CHECK"] == "unknown" {n++} END {print n + 0}' "$SUMMARY")
 
 echo ""
 echo "============================================"
@@ -459,6 +463,8 @@ echo "    Cryptic splice (SpliceAI):   ${SPLICEAI_COUNT}"
 echo "    Deleterious missense:        ${MISSENSE_COUNT}"
 echo "  Frequency filter: ${FREQ_NAME:-none (no frequency field in the VEP output)}"
 echo "  Weak genotype calls (CALL_CHECK=weak, check the reads): ${WEAK_COUNT}"
+[ "$UNVERIFIED_COUNT" -gt 0 ] && \
+echo "  Unverified genotype calls (CALL_CHECK=unknown, no GQ, DP or AD to judge): ${UNVERIFIED_COUNT}"
 echo ""
 echo "  Output files:"
 echo "    ${OUTDIR}/${SAMPLE}_clinical.vcf.gz              (combined)"

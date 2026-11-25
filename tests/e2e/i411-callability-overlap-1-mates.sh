@@ -85,7 +85,7 @@ cat > "${NP}/main.nf" <<NF
 include { MOSDEPTH } from '${REPO}/modules/local/mosdepth/main'
 
 workflow {
-    MOSDEPTH(channel.of([[id: '${S}'], file('${BAM}'), file('${BAM}.bai')]), file('${CAT}'))
+    MOSDEPTH(channel.of([[id: '${S}'], file('${BAM}'), file('${BAM}.bai')]), file('${CAT}'), [])
 }
 NF
 cat > "${NP}/nextflow.config" <<NFCONF

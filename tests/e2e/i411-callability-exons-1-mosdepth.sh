@@ -155,7 +155,7 @@ nf_mosdepth() { # NAME TABLES: MOSDEPTH run alone with the tables (a Groovy list
 include { MOSDEPTH } from '${REPO}/modules/local/mosdepth/main'
 
 workflow {
-    MOSDEPTH(channel.of([[id: '${S}'], file('${BAM}'), file('${BAM}.bai')]), $2)
+    MOSDEPTH(channel.of([[id: '${S}'], file('${BAM}'), file('${BAM}.bai')]), $2, [])
 }
 NF
   cat > "${NP}/nextflow.config" <<NFCONF

@@ -283,6 +283,8 @@ param	publish_dir_mode	-	-	-	-	stable	-	-
 param	skip_trim	-	-	-	-	stable	-	-
 param	minimap2_index	-	-	-	-	stable	-	-
 param	intervals	-	-	-	-	stable	-	-
+param	model_type	-	-	-	-	stable	-	-
+param	capture_bed	-	-	-	-	stable	-	-
 param	sex_check	-	-	-	-	stable	-	-
 param	reference	-	-	-	-	stable	-	-
 param	clinvar	-	-	-	-	stable	-	-

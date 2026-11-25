@@ -104,8 +104,57 @@ pub fn status(l: &Value) -> Result<String, Malformed> {
     st.map_or(Ok(String::new()), py)
 }
 
+/// How a locus's alleles sit against its range of reduced penetrance: the
+/// sized counts inside it, and whether another allele may be more severe
+/// (a sized count above the range, or an allele that was not sized).
+/// `None` without the range or without a sized count inside it.
+pub fn penetrance_alleles(l: &Value) -> Result<Option<(Vec<String>, bool)>, Malformed> {
+    let Some(p) = at(l, "penetrance")?.filter(|v| truthy(v)) else {
+        return Ok(None);
+    };
+    let range = py(p)?;
+    let bound = |s: &str| s.trim().parse::<i64>().ok();
+    let Some((min, max)) = range
+        .split_once('-')
+        .and_then(|(a, b)| Some((bound(a)?, bound(b)?)))
+    else {
+        return Ok(None);
+    };
+    let sizing = text_or_empty(l, "allele_sizing")?;
+    let sizing: Vec<&str> = sizing.split('/').collect();
+    let counts = text_or_empty(l, "repeat_count")?;
+    let (mut inside, mut above) = (Vec::new(), false);
+    for (i, c) in counts.split('/').enumerate() {
+        let sized = matches!(sizing.get(i), Some(&("sized" | "unknown")));
+        match bound(c).filter(|_| sized) {
+            Some(n) if n < min => {}
+            Some(n) if n <= max => inside.push(c.trim().to_owned()),
+            _ => above = true,
+        }
+    }
+    Ok((!inside.is_empty()).then_some((inside, above)))
+}
+
+/// A locus's range of reduced penetrance, when a sized allele falls in it
+/// (`og summary collect`, `assets/str_penetrance_ranges.tsv`), naming that
+/// allele: `38 repeats in 36-39: reduced penetrance (...)`, so the other
+/// allele of a pair keeps Stranger's reading. Stranger reads such a count
+/// as a plain full mutation; `None` without the key.
+pub fn penetrance_text(l: &Value) -> Result<Option<String>, Malformed> {
+    let Some(p) = at(l, "penetrance")?.filter(|v| truthy(v)) else {
+        return Ok(None);
+    };
+    let path = format!("{PATH}.loci[]");
+    let label = py(need(l, "penetrance_label", &path)?)?;
+    Ok(Some(match penetrance_alleles(l)? {
+        Some((inside, _)) => format!("{} repeats in {}: {label}", inside.join(" and "), py(p)?),
+        None => format!("{}: {label}", py(p)?),
+    }))
+}
+
 /// What the report says beside a locus: sizing, the catalog's normal
-/// maximum, an intermediate range, no thresholds, the motif count.
+/// maximum, an intermediate range, a range of reduced penetrance, no
+/// thresholds, the motif count.
 pub fn notes(l: &Value) -> Result<String, Malformed> {
     let mut out = Vec::new();
     if let Some(Value::Str(z)) = at(l, "sizing")?
@@ -132,6 +181,13 @@ pub fn notes(l: &Value) -> Result<String, Malformed> {
             py(z)?,
             py(need(l, "zone_label", &path)?)?,
             py(need(l, "zone_citation", &path)?)?
+        ));
+    }
+    if let Some(p) = penetrance_text(l)? {
+        let path = format!("{PATH}.loci[]");
+        out.push(format!(
+            "{p}; {}",
+            py(need(l, "penetrance_citation", &path)?)?
         ));
     }
     if let Some(n) = at(l, "not_graded")?.filter(|v| truthy(v)) {
@@ -178,6 +234,20 @@ pub fn rows(d: &Value) -> Result<Vec<[String; 4]>, Malformed> {
     }
     out.extend(rows);
     Ok(out)
+}
+
+/// `by.get(l["locus"], l)`: the full locus row of a flagged one when there
+/// is one; the last row of a locus listed twice, as a dict keeps it.
+fn full_row<'a>(loci: &'a [Value], l: &'a Value, locus: &Value) -> &'a Value {
+    loci.iter()
+        .rev()
+        .find(|x| {
+            get(x, "locus", PATH)
+                .ok()
+                .flatten()
+                .is_some_and(|y| crate::model::py_eq(y, locus))
+        })
+        .unwrap_or(l)
 }
 
 /// The first line of one reading of the repeats STRchive leaves out (CFTR,
@@ -259,24 +329,16 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
         for l in flagged {
             let path = format!("{PATH}.flagged[]");
             let locus = need(l, "locus", &path)?;
-            // `by.get(l["locus"], l)`: the full locus row when there is one;
-            // the last row of a locus listed twice, as a dict keeps it.
-            let full = loci
-                .iter()
-                .rev()
-                .find(|x| {
-                    get(x, "locus", PATH)
-                        .ok()
-                        .flatten()
-                        .is_some_and(|y| crate::model::py_eq(y, locus))
-                })
-                .unwrap_or(l);
+            let full = full_row(loci, l, locus);
             w.push(format!(
                 "    {} {}  {}",
                 ljust(&py(locus)?, 8),
                 count(full)?,
                 py(need(l, "status", &path)?)?
             ));
+            if let Some(p) = penetrance_text(full)? {
+                w.push(format!("      {p}"));
+            }
             if let Some(m) = get(l, "rfc1_motif", &path)?.filter(|v| truthy(v)) {
                 w.push(format!("      {}", rfc1_text(m)?));
             }
@@ -433,8 +495,14 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
                 py(need(r, "source", &path)?)?
             )));
         }
+        let loci = list(d, "loci")?;
         for l in flagged {
             let path = format!("{PATH}.flagged[]");
+            let locus = need(l, "locus", &path)?;
+            let full = full_row(loci, l, locus);
+            if let Some(p) = penetrance_text(full)? {
+                body.push(Line::Note(format!("{} {p}", py(locus)?)));
+            }
             if let Some(m) = get(l, "rfc1_motif", &path)?.filter(|v| truthy(v)) {
                 body.push(Line::Note(rfc1_text(m)?));
                 caveats.push(RFC1_NOTE);

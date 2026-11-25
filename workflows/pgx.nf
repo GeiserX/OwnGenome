@@ -24,6 +24,7 @@ include { PGX_CONSENSUS       } from '../modules/local/pgx_consensus/main'
 include { PYPGX               } from '../modules/local/pypgx/main'
 include { CYRIUS              } from '../modules/local/cyrius/main'
 include { CPIC_LOOKUP          } from '../modules/local/cpic_lookup/main'
+include { selected_tools } from './exome'
 
 workflow PGX {
 
@@ -54,7 +55,8 @@ workflow PGX {
     ch_clinvar_scan = Channel.empty()
     ch_clinvar_deep = Channel.empty()
     ch_clinvar_conf = Channel.empty()
-    def tools = params.tools ? params.tools.split(',').collect { it.trim() } : []
+    // --tools less what an exome leaves out (Cyrius: workflows/exome.nf)
+    def tools = selected_tools()
 
     //
     // BRANCH 1: ClinVar pathogenic screen
