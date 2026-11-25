@@ -2,7 +2,8 @@
 //! the gnomAD frequency, the hits best-reviewed first (up to 50, then any
 //! hit at a known lab-construct site), the cDNA read check and the cDNA
 //! scan ([`super::cdna`]) and the known deep intronic sites
-//! ([`super::deep_intronic`]).
+//! ([`super::deep_intronic`]). The conflicting records some labs call P/LP
+//! (`conflicting`) get a review list of their own, apart from every count.
 //!
 //! It also holds what the clinical sections share: [`D`], a dict of
 //! summary.json read with Python's rules, and the Viewer cell of a findings
@@ -354,6 +355,158 @@ pub fn freq_line(d: &D<'_>) -> Result<Option<String>, Malformed> {
     )))
 }
 
+// --- the conflicting records: a review list, never counted ----------------------------
+
+/// The title of the conflicting records' list in both reports.
+pub const CONFLICTING_TITLE: &str =
+    "Conflicting classifications with a P/LP submission: review, not counted";
+
+/// What the list is, under it in both reports.
+pub const CONFLICTING_NOTE: &str = "ClinVar calls these records conflicting: at least one lab \
+    classed the variant pathogenic or likely pathogenic, and another lab did not. They are not in \
+    the P/LP count, the secondary findings, the carrier list or the couple screen. A clinician or \
+    genetic counsellor reviews each one (docs/06-clinvar-screen.md).";
+
+/// The list's size, or the note that it was not checked.
+pub fn conflicting_count(c: &D<'_>) -> Result<String, Malformed> {
+    if c.flag("checked")? {
+        return c.s("count");
+    }
+    match c.opt("note")? {
+        Some(n) => n.text(),
+        None => Ok("not checked".to_owned()),
+    }
+}
+
+/// `1 star`, `2 stars`.
+fn stars_text(h: &D<'_>) -> Result<String, Malformed> {
+    let n = h.s_or("stars", "0")?;
+    Ok(format!("{n} star{}", if n == "1" { "" } else { "s" }))
+}
+
+/// One record as a line: gene, variant, genotype, the labs' split, stars and
+/// condition.
+pub fn conflicting_line(h: &D<'_>) -> Result<String, Malformed> {
+    let mut out = format!(
+        "{} {}:{} {}>{} {}: {}; {}",
+        h.s("gene")?,
+        h.s("chrom")?,
+        h.s("pos")?,
+        h.s("ref")?,
+        h.s("alt")?,
+        h.s("genotype")?,
+        h.s("submissions")?,
+        stars_text(h)?
+    );
+    if let Some(c) = h.opt("clinvar_condition")? {
+        out += &format!("; {}", c.text()?);
+    }
+    let call = call_text(h)?;
+    if !call.is_empty() {
+        out += &format!("; {call}");
+    }
+    Ok(out)
+}
+
+/// The text report's lines, when step 06 wrote the list.
+fn conflicting_text(d: &D<'_>) -> Result<Vec<String>, Malformed> {
+    let Some(c) = d.get("conflicting")? else {
+        return Ok(Vec::new());
+    };
+    let mut w = vec![format!("  {CONFLICTING_TITLE}: {}", conflicting_count(&c)?)];
+    let hits = c.at("hits")?.items()?;
+    for h in hits.iter().take(HITS_SHOWN) {
+        w.push(format!("    {}", conflicting_line(h)?));
+    }
+    if hits.len() > HITS_SHOWN {
+        w.push(format!(
+            "    ... and {} more in clinvar/<sample>_clinvar_conflicting.tsv",
+            hits.len() - HITS_SHOWN
+        ));
+    }
+    w.push(format!("  {CONFLICTING_NOTE}"));
+    Ok(w)
+}
+
+/// The HTML card of the list.
+fn conflicting_card(c: &D<'_>) -> Result<Card, Malformed> {
+    let hits = c.at("hits")?.items()?;
+    let checked = c.flag("checked")?;
+    let mut body = vec![Line::Stat(
+        "Records to review".to_owned(),
+        Inline::Badge(
+            conflicting_count(c)?,
+            if checked && hits.is_empty() {
+                Colour::Gray
+            } else {
+                Colour::Yellow
+            },
+        ),
+    )];
+    let mut rows = Vec::new();
+    for h in hits.iter().take(HITS_SHOWN) {
+        let st =
+            |k: &str| -> Result<Cell, Malformed> { Ok(Cell::Text(h.at(k)?.string()?.to_owned())) };
+        rows.push(vec![
+            st("chrom")?,
+            Cell::Text(h.s("pos")?),
+            st("ref")?,
+            st("alt")?,
+            st("genotype")?,
+            st("gene")?,
+            st("submissions")?,
+            st("review_status")?,
+            Cell::Text(h.s_or("stars", "0")?),
+            Cell::Text(match h.opt("clinvar_condition")? {
+                Some(x) => x.text()?,
+                None => String::new(),
+            }),
+            Cell::Text(call_text(h)?),
+            Cell::viewer(h.at("chrom")?.v, h.at("pos")?.v, None)?,
+        ]);
+    }
+    if !rows.is_empty() {
+        body.push(Line::Table(Table {
+            head: [
+                "Chr",
+                "Position",
+                "Ref",
+                "Alt",
+                "Genotype",
+                "Gene",
+                "Lab classifications",
+                "Review status",
+                "Stars",
+                "Condition",
+                "Call quality",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            rows,
+            viewer: true,
+            layout: Layout::Indented,
+        }));
+        if hits.len() > HITS_SHOWN {
+            body.push(Line::Note(format!(
+                "{} more in clinvar/<sample>_clinvar_conflicting.tsv",
+                hits.len() - HITS_SHOWN
+            )));
+        }
+        body.push(Line::ViewerNote);
+    }
+    Ok(Card {
+        title: format!(
+            "{CONFLICTING_TITLE} ({} of {})",
+            hits.len().min(HITS_SHOWN),
+            hits.len()
+        ),
+        full: true,
+        caveats: vec![CONFLICTING_NOTE],
+        body,
+        ..Card::default()
+    })
+}
+
 // --- the text report ------------------------------------------------------------------
 
 /// The text report's block.
@@ -436,6 +589,7 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
             }
         }
     }
+    w.extend(conflicting_text(&d)?);
     w.extend(cdna_scan::text_lines(&s.section("clinvar"))?);
     if d.has("deep_intronic") {
         w.push("  Known deep intronic sites (always reported): gene, variant, call".to_owned());
@@ -657,14 +811,19 @@ fn sites_card(sec: &Section<'_>, d: &D<'_>) -> Result<Card, Malformed> {
 }
 
 /// The HTML report's cards: the screen always, the hits table when there
-/// are hits, the deep intronic sites and the cDNA scan when step 06 wrote
-/// them.
+/// are hits, the conflicting records to review when step 06 listed them,
+/// and the deep intronic sites and the cDNA scan when step 06 wrote them.
 pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let sec = s.section("clinvar");
     let d = D::of(&sec);
     let mut cards = vec![html::card(&sec, screen_card(s, &d)?)?];
     if sec.state.ran() && d.opt("hits")?.is_some() {
         cards.push(html::card(&sec, hits_card(&d)?)?);
+    }
+    if sec.state.ran()
+        && let Some(c) = d.get("conflicting")?
+    {
+        cards.push(html::card(&sec, conflicting_card(&c)?)?);
     }
     if sec.state.ran() && (d.has("deep_intronic") || d.opt("cdna_scan")?.is_some()) {
         cards.push(html::card(&sec, sites_card(&sec, &d)?)?);
