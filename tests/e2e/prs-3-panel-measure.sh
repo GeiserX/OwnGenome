@@ -44,11 +44,14 @@ if [ "${1:-}" = --download ]; then
   t0=$(date +%s)
   url="${RES}/${PGSC_PANEL}.tar.zst"
   if ! size=$(curl -fsSIL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
-      -o /dev/null -w '%header{content-length}' "$url") \
+      "$url" | tr -d '\r' | awk '
+        /^HTTP\// { n = "" }
+        tolower($1) == "content-length:" { n = $2 }
+        END { print n }') \
     || ! curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
       -o "${CASE_TMP}/md5s.txt" "${RES}/md5s.txt" \
     || ! want=$(awk -v f="${PGSC_PANEL}.tar.zst" '$2 == f {print $1}' "${CASE_TMP}/md5s.txt") \
-    || [ -z "$size" ] || [ -z "$want" ]; then
+    || ! [[ "$size" =~ ^[1-9][0-9]*$ ]] || [ -z "$want" ]; then
     echo "fail no-size-or-md5" > "$STATUS"
     exit 1
   fi
