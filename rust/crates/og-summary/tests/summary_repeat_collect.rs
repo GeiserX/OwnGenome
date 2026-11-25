@@ -107,10 +107,20 @@ fn rows(v: &Value) -> usize {
     }
 }
 
+/// Removes the scratch folder when the test ends, also when an assertion fails.
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn the_same_folder_gives_the_same_summary_and_only_file_dates_follow_the_file() {
     let d = std::env::temp_dir().join(format!("og-summary-repeat-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
+    let _scratch = Scratch(d.clone());
     let sd = d.join("S");
     std::fs::create_dir_all(sd.join("clinvar")).unwrap();
     let hits = sd.join("clinvar/S_clinvar_hits.vcf");
@@ -156,5 +166,4 @@ fn the_same_folder_gives_the_same_summary_and_only_file_dates_follow_the_file() 
         get(&again, &["sections", "acmg_sf", "file_date"]),
         &Value::Str("2026-11-25 02:49 UTC".into())
     );
-    let _ = std::fs::remove_dir_all(&d);
 }

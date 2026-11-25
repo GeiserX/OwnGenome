@@ -16,8 +16,8 @@
 #     split, the stars and the condition, and the plain record is the only hit.
 #   - The tier adds, it never changes: without the subset the hits VCF and TSV
 #     are byte-identical, and so are the summary's clinvar hits, ACMG card,
-#     carrier list and couple section, apart from each section's file_date (the
-#     minute step 06 wrote the hits VCF, which moves when the two runs fall on
+#     carrier list and couple section, apart from the ACMG card's and carrier
+#     list's file_date (the minute step 06 wrote the hits VCF, which moves when the two runs fall on
 #     either side of a minute); the table then says "not checked", never zero
 #     rows. The couple screen reads only the hits VCF.
 #   - The module writes the same table as the bash step, and "not checked"
@@ -95,12 +95,14 @@ OUT="${G2}/${S2}/clinvar"
 CONF="${OUT}/${S2}_clinvar_conflicting.tsv"
 # summary_part FILE: the parts of summary.json the tier must never change.
 # A section's file_date is the minute its file was written, not something the
-# tier decides: step 06 writes the hits VCF again below, so the stamp moves when
-# the two runs fall on either side of a minute. The compare leaves it out.
+# tier decides: step 06 writes the hits VCF again below, so the stamp of the two
+# sections read from it (the ACMG card and the carrier list) moves when the two
+# runs fall on either side of a minute. The compare leaves those two out; the
+# couple section's stamp comes from step 39's table, which neither run rewrites.
 summary_part() {
   jq -S '{clinvar: (.sections.clinvar.data | del(.conflicting)),
     acmg_sf: (.sections.acmg_sf | del(.file_date)), carrier: (.sections.carrier | del(.file_date)),
-    couple: (.sections.couple | del(.file_date))}' "$1"
+    couple: .sections.couple}' "$1"
 }
 collect() {
   "${REPO}/bin/og" summary collect --sample "$S2" --sample-dir "${G2}/${S2}" --assets "${REPO}/assets" \
