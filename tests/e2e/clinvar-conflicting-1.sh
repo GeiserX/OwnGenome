@@ -16,8 +16,10 @@
 #     split, the stars and the condition, and the plain record is the only hit.
 #   - The tier adds, it never changes: without the subset the hits VCF and TSV
 #     are byte-identical, and so are the summary's clinvar hits, ACMG card,
-#     carrier list and couple section; the table then says "not checked", never
-#     zero rows. The couple screen reads only the hits VCF.
+#     carrier list and couple section, apart from each section's file_date (the
+#     minute step 06 wrote the hits VCF, which moves when the two runs fall on
+#     either side of a minute); the table then says "not checked", never zero
+#     rows. The couple screen reads only the hits VCF.
 #   - The module writes the same table as the bash step, and "not checked"
 #     without --clinvar_conflicting; the Nextflow summary.json lists the record
 #     under sections.clinvar.data.conflicting, as og summary collect does on
@@ -92,8 +94,13 @@ check_eq "the pathogenic subset holds only the plain Pathogenic record" \
 OUT="${G2}/${S2}/clinvar"
 CONF="${OUT}/${S2}_clinvar_conflicting.tsv"
 # summary_part FILE: the parts of summary.json the tier must never change.
+# A section's file_date is the minute its file was written, not something the
+# tier decides: step 06 writes the hits VCF again below, so the stamp moves when
+# the two runs fall on either side of a minute. The compare leaves it out.
 summary_part() {
-  jq -S '{clinvar: (.sections.clinvar.data | del(.conflicting)), acmg_sf: .sections.acmg_sf, carrier: .sections.carrier, couple: .sections.couple}' "$1"
+  jq -S '{clinvar: (.sections.clinvar.data | del(.conflicting)),
+    acmg_sf: (.sections.acmg_sf | del(.file_date)), carrier: (.sections.carrier | del(.file_date)),
+    couple: (.sections.couple | del(.file_date))}' "$1"
 }
 collect() {
   "${REPO}/bin/og" summary collect --sample "$S2" --sample-dir "${G2}/${S2}" --assets "${REPO}/assets" \
@@ -158,8 +165,23 @@ check_eq "summary: not checked, never zero" \
 summary_part "${CASE_TMP}/with.json" > "${CASE_TMP}/with.part.json" 2>/dev/null
 summary_part "${CASE_TMP}/without.json" > "${CASE_TMP}/without.part.json" 2>/dev/null
 check_ge "the compared summary parts are not empty" "$(wc -c < "${CASE_TMP}/with.part.json" | tr -d ' ')" 100
-check "the summary's clinvar hits, ACMG card, carrier list and couple section are byte-identical with and without the tier" \
-  cmp -s "${CASE_TMP}/with.part.json" "${CASE_TMP}/without.part.json"
+SAME="the summary's clinvar hits, ACMG card, carrier list and couple section are byte-identical with and without the tier"
+if cmp -s "${CASE_TMP}/with.part.json" "${CASE_TMP}/without.part.json"; then pass "$SAME"; else
+  fail "$SAME"
+  diff <(jq -S . "${CASE_TMP}/with.part.json") <(jq -S . "${CASE_TMP}/without.part.json") | head -40
+fi
+# The compare on the summary as written with the subset: a moved file_date is
+# not a change, a changed ACMG card or carrier list is.
+jq '.sections.acmg_sf.file_date = "2000-01-01 00:00 UTC" | .sections.carrier.file_date = "2000-01-01 00:00 UTC"' \
+  "${CASE_TMP}/with.json" > "${CASE_TMP}/moved.json" 2>/dev/null
+check "the compare leaves out the minute the hits VCF was written" \
+  cmp -s "${CASE_TMP}/with.part.json" <(summary_part "${CASE_TMP}/moved.json" 2>/dev/null)
+for planted in acmg_sf carrier; do
+  jq --arg s "$planted" '.sections[$s].data.planted = true' "${CASE_TMP}/with.json" > "${CASE_TMP}/planted.json" 2>/dev/null
+  summary_part "${CASE_TMP}/planted.json" > "${CASE_TMP}/planted.part.json" 2>/dev/null
+  check_eq "red control: the compare sees a changed ${planted} section" \
+    "$([ -s "${CASE_TMP}/planted.part.json" ] && ! cmp -s "${CASE_TMP}/with.part.json" "${CASE_TMP}/planted.part.json" && echo differ || echo same)" differ
+done
 mv "${CASE_TMP}/aside/"* "${G2}/clinvar/"
 
 # --- the Nextflow module and report ----------------------------------------------
