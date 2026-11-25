@@ -8,7 +8,7 @@
   Database re-check: 2021-03-05 00:00:00 UTC: ClinVar newer-release
   Gene callability (mosdepth): partial: covers 1 of 22 autosomes
   Polygenic risk scores: partial: covers 1 of 22 autosomes
-  Fine-grained ancestry (ADMIXTURE, RFMix): partial: covers 1 of 22 autosomes
+  Fine-grained ancestry: partial: covers 1 of 22 autosomes
   Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
   Runs of homozygosity: partial: covers 1 of 22 autosomes
   Archaic ancestry (IBDmix): partial: covers 1 of 22 autosomes
