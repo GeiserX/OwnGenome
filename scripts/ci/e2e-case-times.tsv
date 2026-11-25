@@ -169,6 +169,7 @@ reports-and-pgx-correctness-revel	shard	10	-
 run-all-launcher	shard	1022	nextflow-from-fastq-1-bash,nextflow-from-fastq-2-nextflow
 run-all-sample-qc-and-stale-index-1-index-times	shard	15	run-all-launcher
 screen-cpsr-sf-switch-1-stub	shard	50	-
+screen-pgs-academic-optin-1-stub	shard	180	-
 setup-gencode-exons-and-nextflow-clip-check-1	shard	57	clinvar-clip-check-1
 short-sample-id-stub	shard	48	-
 single-source-lib-ownership	shard	1	-
