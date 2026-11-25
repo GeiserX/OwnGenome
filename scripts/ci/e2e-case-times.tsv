@@ -75,6 +75,7 @@ clinical-filter-mane-and-quality-2-vep-norm	shard	2	-
 clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-quality-1-tiers
 clinvar-clip-check-1	shard	8	-
 clinvar-combined-allele-1	shard	25	-
+clinvar-conflicting-1	shard	50	-
 clinvar-cpsr-quality-1	shard	5	clinvar-clip-check-1
 clinvar-tier-allele-match	shard	6	-
 cn-engine-1-parity	shard	33	-
@@ -112,7 +113,10 @@ hla-second-caller-2-nextflow	shard	188	hla-second-caller-1-bash
 i411-callability-exons-1-mosdepth	shard	60	-
 i411-callability-exons-2-catalog	shard	40	callability-1-catalog
 i411-callability-overlap-1-mates	shard	40	-
+i411-chrm-shifted-ref-1-step20	shard	5	-
+i411-chrm-shifted-ref-2-nextflow	shard	69	-
 i411-nf-vcfanno-ops-1-score-tiers	shard	37	-
+i411-sf-mechanism-1-acmg-lof	shard	40	-
 ibd-segments-1	shard	239	-
 live-server-1-weblog	shard	18	-
 lpa-1	shard	42	-
@@ -126,6 +130,7 @@ nextflow-from-fastq-3-sexcheck	shard	97	-
 nextflow-hardening-1-manta	shard	21	-
 nextflow-hardening-2-nf	shard	643	bash-step-19-delly,nextflow-hardening-1-manta
 nextflow-report-parity-1-sections	shard	206	clinvar-clip-check-1,comphet-phasing-1-reads
+nf-exome-1-stub	shard	250	-
 nf-wiring-1-report-tables	shard	300	clinvar-clip-check-1
 nf-wiring-2-sv-str-tools	shard	900	-
 output-contract-1-hg002	shard	30	bash-step-09-str

@@ -18,16 +18,43 @@ use crate::text;
 pub const LPA_NULL_CAVEAT: &str = "A null allele lowers the Lp(a) made from the copies it sits on; \
     the Lp(a) blood test is the measure.";
 
+/// What step 46's message says its 95% interval covers, as the label the
+/// count is shown with: read sampling only (no catalog error term), or read
+/// sampling plus the error measured against assembled genomes. `None` for
+/// a message from before step 46 said it, which keeps its old label.
+pub fn interval_label(message: &str) -> Option<&'static str> {
+    if message.contains("(95% interval for read sampling,") {
+        Some("95% interval for read sampling only")
+    } else if message.contains("read sampling plus the error measured against assembled genomes") {
+        Some("95% interval for read sampling and the error measured against assembled genomes")
+    } else {
+        None
+    }
+}
+
+/// The interval as the count's headline shows it: `95% interval for read
+/// sampling only, 31.0 to 46.5`, or `95% interval 31.0 to 46.5` when the
+/// message does not say what it covers.
+pub fn interval_text(message: &str, lo: &str, hi: &str) -> String {
+    match interval_label(message) {
+        Some(label) => format!("{label}, {lo} to {hi}"),
+        None => format!("95% interval {lo} to {hi}"),
+    }
+}
+
 /// The lines of the text section and of the card.
 pub fn lines(d: &Section<'_>) -> Result<Vec<String>, Malformed> {
     let dot = |k: &str| d.get(k).and_then(|v| v.map_or(Ok(".".to_owned()), py));
     let need = |k: &str| d.need(k).and_then(py);
     let mut out = vec![if is_str(d.get("status")?, "estimated") {
+        let message = match d.get("message")? {
+            Some(Value::Str(m)) => m.as_str(),
+            _ => "",
+        };
         format!(
-            "KIV-2 repeats (both chromosomes): {} (95% interval {} to {}), {}",
+            "KIV-2 repeats (both chromosomes): {} ({}), {}",
             need("kiv2_copies")?,
-            need("ci95_low")?,
-            need("ci95_high")?,
+            interval_text(message, &need("ci95_low")?, &need("ci95_high")?),
             need("class")?
         )
     } else {

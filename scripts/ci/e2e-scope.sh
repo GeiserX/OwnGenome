@@ -50,7 +50,8 @@ SCOPE_FILES=(tests/fixtures/VERSION main.nf nextflow.config nextflow_schema.json
   # The committed fixtures the cases read (their rows name them too).
   tests/fixtures/annotsv/class45.sh tests/fixtures/consumer_export/sites.tsv.gz
   tests/fixtures/families/stub_families.tsv tests/fixtures/pharmcat/refblocks.g.vcf tests/fixtures/sv/cnvpytor.vcf.in
-  tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in tests/fixtures/vcf/combined_allele_clinvar.vcf
+  'tests/fixtures/sv/consensus-review-*.vcf.in' tests/fixtures/sv/delly.vcf.in tests/fixtures/sv/manta.vcf.in
+  tests/fixtures/vcf/combined_allele_clinvar.vcf
   tests/fixtures/vcf/combined_allele_sample.vcf tests/fixtures/vcf/grch37_no_contigs.vcf)
 
 # Shared wiring: every case runs through these, so a change to one runs every

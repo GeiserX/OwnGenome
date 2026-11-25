@@ -1254,7 +1254,7 @@ install_fine_maps() {
 # case uses both, for the fixture's slices and the two people of its
 # synthetic mix. ANCESTRY_FINE_THIN (default 2kb) is the window that keeps
 # one SNV (the e2e case keeps more of its few megabases with 200bp), and
-# ANCESTRY_FINE_PAINT_PER_GROUP (default 50, at least 10) caps the painting
+# ANCESTRY_FINE_PAINT_PER_GROUP (default 200, at least 10) caps the painting
 # references of each continental group.
 install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
@@ -1263,7 +1263,7 @@ install_ancestry_fine_panel() {
   local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
-  echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
+  echo "  Step 26b finds the fractions and paints the chromosomes with og. The RFMix image is still pulled; RFMix is free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
   for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
@@ -1331,7 +1331,7 @@ install_ancestry_fine_panel() {
   elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
-          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
+          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-200}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
     echo "[WARN] Could not write the panel's sample table"
     return 1
@@ -2544,9 +2544,10 @@ pull_images() {
 # --- ClinVar ---------------------------------------------------------------------
 CLINVAR_URL="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz"
 CLINVARDIR="${GENOME_DIR:+${GENOME_DIR}/clinvar}"
-# The raw download and the two files built from it, each with its index.
+# The raw download and the three files built from it, each with its index.
 CLINVAR_SET="clinvar.vcf.gz clinvar.vcf.gz.tbi clinvar_chr.vcf.gz clinvar_chr.vcf.gz.tbi
-  clinvar_pathogenic_chr.vcf.gz clinvar_pathogenic_chr.vcf.gz.tbi"
+  clinvar_pathogenic_chr.vcf.gz clinvar_pathogenic_chr.vcf.gz.tbi
+  clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi"
 
 # clinvar_build_derived RAW_DIR OUT_DIR: from RAW_DIR/clinvar.vcf.gz build, in
 # OUT_DIR (both under GENOME_DIR), clinvar_chr.vcf.gz (NCBI's 1, 2 ... MT
@@ -2568,6 +2569,22 @@ clinvar_build_derived() {
       -Oz -o "${out}/clinvar_pathogenic_chr.vcf.gz" || return 1
   run_in --rw "$2" "$BCFTOOLS_IMAGE" bcftools index -f -t "${out}/clinvar_pathogenic_chr.vcf.gz" || return 1
   rm -f "${2}/chr_rename.txt"
+}
+
+# clinvar_build_conflicting SRC_DIR OUT_DIR: from SRC_DIR/clinvar_chr.vcf.gz build,
+# in OUT_DIR (both under GENOME_DIR), clinvar_conflicting_plp_chr.vcf.gz with its .tbi: the records
+# ClinVar labels conflicting whose CLNSIGCONF counts at least one Pathogenic or
+# Likely_pathogenic submission. og clinvar conflicting-subset selects them; the
+# pathogenic subset holds none of them. Step 06 lists the ones a sample carries
+# apart from its hits, for a clinician to review. Needs og (need_og).
+clinvar_build_conflicting() {
+  local src d
+  src=$(cpath "$1") && d=$(cpath "$2") || return 2
+  echo "  Creating the conflicting subset (records some labs call pathogenic)..."
+  run_in --rw "$2" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" bash -o pipefail -c "set -e
+    /pgp-bin/og clinvar conflicting-subset '${src}/clinvar_chr.vcf.gz' \\
+      | bcftools view --no-version -Oz -o '${d}/clinvar_conflicting_plp_chr.vcf.gz' -
+    bcftools index -f -t '${d}/clinvar_conflicting_plp_chr.vcf.gz'" || return 1
 }
 
 # clinvar_install DIR: move every file of CLINVAR_SET that DIR holds into
@@ -2607,12 +2624,15 @@ clinvar_record_release() {
 }
 
 # refresh_clinvar: download NCBI's current ClinVar into clinvar/.refresh/,
-# check it against NCBI's md5, build both derived files from it there, and only
-# then replace all six files. The normalised copy step 06 keeps is removed, so
+# check it against NCBI's md5, build the three derived files from it there, and
+# only then replace all eight files. The normalised copy step 06 keeps is removed, so
 # step 06 builds it again from the new release. RELEASE and that copy go before
 # the files move: a refresh that stops between two moves leaves no release date
 # on a set that may mix two releases (validate-setup.sh then says the date is
-# unknown) and fails, so the next refresh starts again.
+# unknown) and fails, so the next refresh starts again. When og cannot build the
+# conflicting subset, the other six files still refresh and the old subset is
+# removed, so it never sits beside a newer release: step 06 then says those
+# records were not checked, and the next setup.sh run builds the subset.
 refresh_clinvar() {
   local new="${CLINVARDIR}/.refresh"
   # A download cut short last time (*.part) is resumed; anything else is redone.
@@ -2625,6 +2645,11 @@ refresh_clinvar() {
     echo "ERROR: could not build the ClinVar files from the new release; the old ones are kept." >&2
     return 1
   }
+  if ! need_og "builds the conflicting ClinVar subset of step 06" || ! clinvar_build_conflicting "$new" "$new"; then
+    rm -f "${new}/clinvar_conflicting_plp_chr.vcf.gz.tbi" "${new}/clinvar_conflicting_plp_chr.vcf.gz" \
+      "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz"
+    echo "[WARN] Could not build the conflicting ClinVar subset of the new release; step 06 says those records were not checked until setup.sh builds it." >&2
+  fi
   rm -f "${CLINVARDIR}/RELEASE" \
     "${CLINVARDIR}/clinvar_pathogenic_chr.norm.vcf.gz" "${CLINVARDIR}/clinvar_pathogenic_chr.norm.vcf.gz.tbi"
   clinvar_install "$new" || {
@@ -2671,7 +2696,11 @@ if [ "$REFRESH" = clinvar ]; then
   echo "=== Refreshing ClinVar ==="
   if [ -f "${CLINVARDIR}/RELEASE" ]; then echo "  Current release: $(cat "${CLINVARDIR}/RELEASE")"; fi
   refresh_clinvar || exit 1
-  echo "[OK] ClinVar refreshed: raw file, chr-prefixed file and pathogenic subset replaced."
+  if [ -f "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" ]; then
+    echo "[OK] ClinVar refreshed: raw file, chr-prefixed file, pathogenic and conflicting subsets replaced."
+  else
+    echo "[OK] ClinVar refreshed: raw file, chr-prefixed file and pathogenic subset replaced; the conflicting subset was not built (see the warning above)."
+  fi
   exit 0
 fi
 
@@ -2799,6 +2828,26 @@ elif "${PGP_ROOT}/rust/og.sh" install; then
 else
   echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
   note_missing "og, OwnGenome's own binary (steps 04, 05, 07, 25 and 33)" "${SETUP_CMD} --og"
+fi
+
+# ClinVar's conflicting subset (step 06 lists the records of it a sample carries,
+# apart from the hits) is built by og, so it comes after og. It is built when
+# it is missing or older than clinvar_chr.vcf.gz, in clinvar/.build-conflicting/,
+# and moved in once complete. Without it step 06 writes "not checked".
+if [ -f "${CLINVARDIR}/clinvar_chr.vcf.gz" ] \
+   && { [ ! -f "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" ] \
+        || [ "${CLINVARDIR}/clinvar_chr.vcf.gz" -nt "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz" ]; }; then
+  rm -rf "${CLINVARDIR}/.build-conflicting"
+  mkdir -p "${CLINVARDIR}/.build-conflicting"
+  if need_og "builds the conflicting ClinVar subset of step 06" \
+     && clinvar_build_conflicting "$CLINVARDIR" "${CLINVARDIR}/.build-conflicting" \
+     && clinvar_install "${CLINVARDIR}/.build-conflicting"; then
+    echo "[OK] ClinVar conflicting subset (records some labs call pathogenic, step 06) built."
+  else
+    rm -rf "${CLINVARDIR}/.build-conflicting"
+    echo "[WARN] Could not build the conflicting ClinVar subset; step 06 says the records were not checked."
+    note_missing "the conflicting ClinVar subset (step 06)" "${SETUP_CMD} --refresh clinvar \"${GENOME_DIR}\""
+  fi
 fi
 
 ###############################################################################

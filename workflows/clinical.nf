@@ -33,6 +33,7 @@ include { ANCESTRY_FINE_PHASE     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PAINT     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_REPORT    } from '../modules/local/ancestry_fine/main'
 include { CONSUMER_EXPORT    } from '../modules/local/export_consumer/main'
+include { selected_tools } from './exome'
 
 workflow CLINICAL {
 
@@ -168,13 +169,15 @@ workflow CLINICAL {
     }
 
     //
-    // MODULE 2: ROH — Runs of homozygosity. With the allele-frequency panel
+    // MODULE 2: ROH — Runs of homozygosity, on a whole genome: an exome's
+    // variants leave gaps of megabases between the captured exons
+    // (workflows/exome.nf). With the allele-frequency panel
     // (--roh_af_panel) and step 26's ancestry table on the way (prs with
     // --pgs_scoring and --ancestry_ref), each sample waits for its table, so
     // ROH can take one continental group's frequencies (scripts/11-roh-analysis.sh
     // reads the same table); otherwise it starts at once.
     //
-    if (tools_here.contains('roh')) {
+    if (selected_tools().contains('roh')) {
         def roh_waits = params.roh_af_panel && tools_here.contains('prs') && params.pgs_scoring && params.ancestry_ref
         ch_roh_input = roh_waits
             ? ch_vcf.map { meta, vcf, idx -> [meta.id, meta, vcf, idx] }
@@ -188,7 +191,7 @@ workflow CLINICAL {
     }
 
     //
-    // ANCESTRY_FINE — step 26b: og ancestry fractions and an RFMix painting
+    // ANCESTRY_FINE — step 26b: og ancestry fractions and an og painting
     // against the fine-grained panel. With a gVCF the panel's SNVs are
     // genotyped from it, as in PRS; without one the VCF must hold reference
     // calls, or ANCESTRY_FINE_GENOTYPE stops (the bash step's rule).
@@ -208,7 +211,14 @@ workflow CLINICAL {
                 .map { _id, meta, g, gi, c -> [meta, g, gi, c] },
             ch_ancestry_fine_panel
         )
-        ANCESTRY_FINE_PAINT(ANCESTRY_FINE_PHASE.out.phased, ch_ancestry_fine_panel)
+        // The painting's proportions start at the continental fractions.
+        ANCESTRY_FINE_PAINT(
+            ANCESTRY_FINE_PHASE.out.phased
+                .map { meta, d -> [meta.id, meta, d] }
+                .join(ANCESTRY_FINE_FRACTIONS.out.fractions.map { meta, f -> [meta.id, f] })
+                .map { _id, meta, d, f -> [meta, d, f] },
+            ch_ancestry_fine_panel
+        )
         ANCESTRY_FINE_REPORT(
             ANCESTRY_FINE_FRACTIONS.out.fractions
                 .map { meta, d -> [meta.id, meta, d] }

@@ -3,7 +3,9 @@
     MANTA — Structural variant calling (deletions, duplications, inversions, translocations)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Three steps:
-    1. Configure Manta (configManta.py), on --manta_call_regions only when set
+    1. Configure Manta (configManta.py), on --manta_call_regions only when set,
+       and with --exome for an exome (--model_type WES): Manta then drops its
+       depth filters, which read off-target gaps as large deletions
     2. Run workflow (runWorkflow.py)
     3. Inversions: Manta writes each inversion junction as two breakend
        (BND) records, and duphold, AnnotSV and the SV consensus read SVTYPE.
@@ -15,9 +17,19 @@
        one under 1 kb INVDUP_CANDIDATE. Manta's own file is kept as
        diploidSV.raw.vcf.gz; diploidSV.vcf.gz is the converted one.
 
-    Equivalent to: scripts/04-manta.sh
+    Equivalent to: scripts/04-manta.sh (which has no exome option: on an
+    exome, docs/wes-guide.md runs configManta.py --exome by hand)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
+
+// configManta.py's options, written once: the script passes them and the
+// stub prints them, so tests/e2e/nf-exome-1-stub.sh checks what runs. A
+// whole genome's command reads as it did before --exome existed.
+def manta_config_options(call_regions) {
+    def regions_arg = call_regions ? "--callRegions ${call_regions}" : ''
+    def exome_arg   = params.model_type == 'WES' ? '--exome' : ''
+    return [regions_arg, exome_arg].findAll { a -> a }.join(' ')
+}
 
 process MANTA {
     tag "$meta.id"
@@ -44,13 +56,12 @@ process MANTA {
     task.ext.when == null || task.ext.when
 
     script:
-    def regions_arg = call_regions ? "--callRegions ${call_regions}" : ''
     """
     # Step 1: Configure Manta
     configManta.py \\
         --bam ${bam} \\
         --referenceFasta ${reference} \\
-        ${regions_arg} \\
+        ${manta_config_options(call_regions)} \\
         --runDir manta_run
 
     # Step 2: Run Manta workflow
@@ -81,7 +92,9 @@ process MANTA {
     """
 
     stub:
+    // The stub prints the options the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
     """
+    echo "configManta.py options: ${manta_config_options(call_regions)}"
     mkdir -p results/variants
     touch results/variants/diploidSV.vcf.gz results/variants/diploidSV.vcf.gz.tbi
     touch results/variants/diploidSV.raw.vcf.gz results/variants/diploidSV.raw.vcf.gz.tbi

@@ -60,7 +60,7 @@
    "data": {}
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "missing",
    "source": null,

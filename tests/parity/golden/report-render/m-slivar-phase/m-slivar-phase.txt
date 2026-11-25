@@ -67,7 +67,7 @@
   By impact: . 1, HIGH 3, MODERATE 1
   Frequency unknown (not counted as rare): 1
   Weak genotype calls (check the reads): 2
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 2 rare HIGH impact (listed apart: 1 weak call(s)), 2 class 4/5 SV(s), 3 not reported by the gene's rule
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 2 class 4/5 SV(s), 3 not reported by the gene's rule
     MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic; biallelic with DEL chr1:45338000-45340000 (AnnotSV class 5, Manta): in trans: read-backed phase puts them on different copies (phase set 45331000)
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
@@ -231,7 +231,7 @@
   - Paralog genes (Paraphase, PacBio HiFi)
   - HLA typing (T1K)
   - Polygenic risk scores
-  - Fine-grained ancestry (ADMIXTURE, RFMix)
+  - Fine-grained ancestry
   - Structural variants (Manta)
   - Structural variants (Delly)
   - Copy number (CNVpytor)

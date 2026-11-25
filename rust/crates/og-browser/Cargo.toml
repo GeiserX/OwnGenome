@@ -33,3 +33,7 @@ path = "../../../tests/browser/live_demo.rs"
 [[test]]
 name = "live_gate"
 path = "tests/live_gate.rs"
+
+[[test]]
+name = "live_map"
+path = "tests/live_map.rs"

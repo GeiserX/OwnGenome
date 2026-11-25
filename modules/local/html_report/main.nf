@@ -40,7 +40,9 @@
     --tools list), so og summary collect marks each section of a selected
     step that wrote nothing "selected, no result" instead of not run (it
     maps each tool to its sections through assets/steps.tsv, which comes in
-    the list with the other assets); it is not published, because
+    the list with the other assets), and an exome (meta.model_type WES), so
+    og summary collect takes mosdepth's on-target mean depth (total_region)
+    instead of the genome-wide one; it is not published, because
     run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
     (og report index), for the live site's search, and the report's
@@ -81,6 +83,7 @@ process HTML_REPORT {
     // The run's --tools names (main.nf checks each against its known list),
     // single-quoted below like gvcf
     def tools = (meta.tools ?: []).join(' ').replace("'", "'\\''")
+    def model_type = meta.model_type == 'WES' ? 'WES' : ''
     """
     # Where og summary collect looks for each output (rust/crates/og-summary)
     S=layout/${id}
@@ -106,12 +109,17 @@ process HTML_REPORT {
     # "selected, no result"
     tools='${tools}'
     [ -z "\$tools" ] || printf 'run\\ttools\\t%s\\n' "\$tools" >> "\$S/run_manifest.tsv"
+    # An exome (--model_type WES), so og summary collect reads mosdepth's
+    # on-target mean depth; no row for a whole genome, as the bash runner
+    # writes none
+    model_type='${model_type}'
+    [ -z "\$model_type" ] || printf 'run\\tmodel_type\\t%s\\n' "\$model_type" >> "\$S/run_manifest.tsv"
     for f in input/*; do
         n=\$(basename "\$f")
         if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
         case "\$n" in
             sample.vcf.gz) ;;
-            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv) place clinvar "\$f" ;;
+            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv|${id}_clinvar_conflicting.tsv) place clinvar "\$f" ;;
             ${id}.report.json|${id}.report.html)          place pharmcat "\$f" ;;
             ${id}_phenotypes.tsv|${id}_cpic_recommendations.txt) place cpic "\$f" ;;
             ${id}_vep.vcf.gz|${id}_vep.vcf.gz.tbi)        place vep "\$f" ;;

@@ -1662,3 +1662,13 @@ fn cc_pinned_end_joins_a_manta_sniffles2_insertion() {
 fn cc_pinned_end_uses_the_merge_parsers_length_rules() {
     cc_pinned_end_records(2..8);
 }
+
+#[test]
+fn cc_pinned_end_uses_the_last_end() {
+    cc_pinned_end_records(8..9);
+}
+
+#[test]
+fn cc_pinned_end_treats_minus_one_as_missing() {
+    cc_pinned_end_records(9..10);
+}

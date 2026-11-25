@@ -67,7 +67,7 @@ Pipeline helpers (the steps run these):
   og pgx refblock-fill|mito-merge|cyp2d6-bed|cyp2d6-measure|cyp2d6-check [args]
   og pgx outside-calls|hla-concordance|pypgx-summary [args]
   og paraphase check-bam|table [args]
-  og clinvar join-adjacent|hits|deep-intronic [args]
+  og clinvar join-adjacent|hits|deep-intronic|conflicting-subset|conflicting-hits [args]
   og str motif|catalog [args]
   og cdna check [args]
   og cdna scan [args]
@@ -147,7 +147,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev helpers [args]
   og dev build cn-intervals|callability|sv-rule-regions [args]
   og dev build roh-af [args]
-  og dev build acmg-lof [args]
+  og dev build acmg-lof --clingen FILE --overrides FILE --ttn-exons FILE --table FILE [--check]
   og dev demo-sample [args]
   og dev demo-events [args]
   og dev params-doc [args]
@@ -279,6 +279,14 @@ fn io(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -
         &mut std::io::stdout().lock(),
         &mut std::io::stderr().lock(),
     ))
+}
+
+/// Runs a server verb. Its request threads print to stderr themselves (the
+/// access log, a summary.json it cannot read), so no lock on stdout or
+/// stderr is held for the whole command: a held lock would block each of
+/// those prints, and the request with it, for good.
+fn serve(f: fn(&[String], &mut dyn Write, &mut dyn Write) -> u8, args: &[String]) -> ExitCode {
+    ExitCode::from(f(args, &mut std::io::stdout(), &mut std::io::stderr()))
 }
 
 /// A BAM tool called on a build without the `bam` feature (the macOS build
@@ -560,7 +568,7 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: report tool"),
         },
         "live" => match rest.first().map(String::as_str) {
-            Some("serve") => io(og_live::server::cli, &rest[1..]),
+            Some("serve") => serve(og_live::server::cli, &rest[1..]),
             Some("results") => io(og_live::results::cli, &rest[1..]),
             Some("family") => io(og_live::family::cli, &rest[1..]),
             Some("demo") => io(og_live::demo::cli, &rest[1..]),
@@ -568,7 +576,7 @@ fn main() -> ExitCode {
             None => usage_error("the following arguments are required: live tool"),
         },
         "view" => match rest.first().map(String::as_str) {
-            Some("serve") => io(og_live::viewer::cli, &rest[1..]),
+            Some("serve") => serve(og_live::viewer::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown view tool '{other}'")),
             None => usage_error("the following arguments are required: view tool"),
         },

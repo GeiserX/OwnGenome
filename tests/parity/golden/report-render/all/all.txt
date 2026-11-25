@@ -7,7 +7,7 @@
   Latest run-all.sh run: 2020-01-01 00:00 UTC
   Gene callability (mosdepth): partial: covers 1 of 22 autosomes
   Polygenic risk scores: partial: covers 1 of 22 autosomes
-  Fine-grained ancestry (ADMIXTURE, RFMix): partial: covers 1 of 22 autosomes
+  Fine-grained ancestry: partial: covers 1 of 22 autosomes
   Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
   Runs of homozygosity: partial: covers 1 of 22 autosomes
   Archaic ancestry (IBDmix): partial: covers 1 of 22 autosomes
@@ -102,7 +102,7 @@
   By impact: . 1, HIGH 3, MODERATE 1
   Frequency unknown (not counted as rare): 1
   Weak genotype calls (check the reads): 2
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 2 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
     MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
@@ -477,7 +477,7 @@
 #  5. ANCESTRY: Where do my ancestors come from?
 ################################################################################
 
-## Fine-Grained Ancestry (ADMIXTURE, RFMix)
+## Fine-Grained Ancestry
 ---
   [partial: covers 1 of 22 autosomes]
   Continental groups (fraction, bootstrap range):
@@ -486,7 +486,7 @@
   Regional groups (fraction, bootstrap range):
     Iberia                                               60% (50% to 70%)
   Left out of the model: Oceania. The panel has fewer than 10 unrelated reference people for it, so its ancestry is spread over the groups shown.
-  Chromosome painting: none; not painted: RFMix failed on chr21
+  Chromosome painting: none; not painted: the painting failed on chr21
   Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.
 
 ## Mitochondrial Haplogroup

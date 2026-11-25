@@ -6,8 +6,8 @@
 //! - `<S>_ancestry_fine.tsv`: each group's fraction with its bootstrap
 //!   standard error and 2.5 to 97.5 percentile range, each continental
 //!   group's share of the painted genome, a `left_out` row for each group
-//!   the model leaves out and a `not_painted` row for each chromosome RFMix
-//!   failed on (the paint folder's `failed.txt`).
+//!   the model leaves out and a `not_painted` row for each chromosome the
+//!   painting failed on (the paint folder's `failed.txt`).
 //! - `<S>_painting.bed` and `<S>_painting.png`: the painting.
 //! - `<S>_ancestry_fine.txt`: the plain text, also printed.
 //!
@@ -488,7 +488,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
     }
     if !s.shares.is_empty() {
         out.push(format!(
-            "Chromosome painting (RFMix, continental groups) of {}: share of the {} Mb painted on the two haplotypes",
+            "Chromosome painting (og, continental groups) of {}: share of the {} Mb painted on the two haplotypes",
             s.painted_chroms.join(", "),
             fixed(s.painted_bp as f64 / 1e6, 1)
         ));
@@ -509,7 +509,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
     }
     if !s.failed.is_empty() {
         out.push(format!(
-            "  Not painted: RFMix failed on {} (the step's log has its last lines).",
+            "  Not painted: the painting failed on {} (the step's log says why).",
             s.failed.join(", ")
         ));
     }
@@ -655,7 +655,7 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
         ));
     }
     for c in &failed {
-        table.push_str(&format!("not_painted\t{c}\tRFMix failed\t.\t.\t.\t.\n"));
+        table.push_str(&format!("not_painted\t{c}\tpainting failed\t.\t.\t.\t.\n"));
     }
     let mut bed = String::from("#chrom\tstart\tend\thaplotype\tgroup\n");
     for r in &rows {
@@ -804,7 +804,7 @@ mod tests {
             [
                 &["left_out", "OCE", "Oceania (continental group)"][..],
                 &["left_out", "OCE", "Oceania (regional group)"][..],
-                &["not_painted", "chr19", "RFMix failed"][..]
+                &["not_painted", "chr19", "painting failed"][..]
             ]
         );
         assert_eq!(
@@ -824,7 +824,10 @@ mod tests {
         assert!(text.contains(
             "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10 unrelated"
         ));
-        assert!(text.contains("Not painted: RFMix failed on chr19") && text.contains("of chr20:"));
+        assert!(
+            text.contains("Not painted: the painting failed on chr19")
+                && text.contains("of chr20:")
+        );
         let png = std::fs::read(d.0.join("out/S_painting.png")).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(&png[16..24], &[0, 0, 3, 232, 0, 0, 1, 168]);

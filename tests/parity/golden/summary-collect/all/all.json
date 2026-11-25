@@ -13029,6 +13029,7 @@
       "frequency": "rare",
       "frequency_unknown": false,
       "weak_call": false,
+      "call_unverified": true,
       "call_note": null,
       "gq": null,
       "dp": null,
@@ -13056,9 +13057,10 @@
      }
     ],
     "high_impact_checked": true,
-    "high_impact_rare": 2,
+    "high_impact_rare": 1,
     "high_impact_weak": 1,
     "high_impact_frequency_unknown": 0,
+    "high_impact_unverified": 1,
     "structural": [],
     "structural_checked": true,
     "structural_note": null,
@@ -13774,7 +13776,7 @@
    "partial": "partial: covers 1 of 22 autosomes"
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "ok",
    "source": "ancestry_fine/S_ancestry_fine.tsv",
@@ -15623,6 +15625,7 @@
        "frequency": "rare",
        "frequency_unknown": false,
        "weak_call": false,
+       "call_unverified": true,
        "call_note": null,
        "gq": null,
        "dp": null,
@@ -15650,9 +15653,10 @@
       }
      ],
      "high_impact_checked": true,
-     "high_impact_rare": 2,
+     "high_impact_rare": 1,
      "high_impact_weak": 1,
      "high_impact_frequency_unknown": 0,
+     "high_impact_unverified": 1,
      "structural": [],
      "structural_checked": true,
      "structural_note": null,

@@ -62,9 +62,22 @@
                     "description": "Space-separated regions DeepVariant calls (its --regions, INTERVALS in scripts/03-deepvariant.sh). Unset calls the whole genome.",
                     "fa_icon": "fas fa-map"
                 },
+                "model_type": {
+                    "type": "string",
+                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them (the report's mean depth is then the on-target one) and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha, viral, cyrius, parascopy, locityper or mei, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture, and Cyrius, Parascopy, Locityper and MEGAnE weigh a locus against depth across the genome. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing (docs/wes-guide.md).",
+                    "default": "WGS",
+                    "enum": ["WGS", "WES"],
+                    "fa_icon": "fas fa-dna"
+                },
+                "capture_bed": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them. Its contigs must be named as the reference names them (chr1, not 1), or the run stops before it starts.",
+                    "fa_icon": "fas fa-crosshairs"
+                },
                 "sex_check": {
                     "type": "string",
-                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM, before any BAM step) or by somalier (with sample_qc): fail stops the run; warn logs it and goes on with the declared sex.",
+                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM of a whole genome, before any BAM step) or by somalier (with sample_qc; an exome's only check): fail stops the run; warn logs it and goes on with the declared sex.",
                     "default": "fail",
                     "enum": ["fail", "warn"],
                     "fa_icon": "fas fa-venus-mars"
@@ -93,6 +106,12 @@
                     "type": "string",
                     "format": "file-path",
                     "description": "Path to ClinVar pathogenic VCF tabix index (.tbi).",
+                    "fa_icon": "fas fa-database"
+                },
+                "clinvar_conflicting": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "The conflicting ClinVar subset, its .tbi beside it, which scripts/setup.sh installs as clinvar/clinvar_conflicting_plp_chr.vcf.gz: the records ClinVar labels Conflicting classifications of pathogenicity where at least one lab submitted Pathogenic or Likely_pathogenic. With clinvar, CLINVAR_SCREEN lists the ones the sample carries in <id>_clinvar_conflicting.tsv, apart from the hits: they never enter the hit counts, the ACMG card, the carrier list or the couple screen. Without it that table says not checked.",
                     "fa_icon": "fas fa-database"
                 }
             }
@@ -239,7 +258,7 @@
                 "ancestry_fine_panel": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Step 26b's reference: the folder setup.sh --ancestry-fine-panel writes (reference/ancestry_fine/hgdp1kgp_v2, gnomAD's phased HGDP + 1000 Genomes panel with ADMIXTURE's group frequencies). With ancestry_fine in --tools, ADMIXTURE projects the sample on the panel's groups and RFMix paints its chromosomes. With --pedigree, the family workflow also phases the joint call against it with Beagle and lists the DNA segments each pair of members shares (hap-ibd). ADMIXTURE is free for academic use and RFMix for academic research use only.",
+                    "description": "Step 26b's reference: the folder setup.sh --ancestry-fine-panel writes (reference/ancestry_fine/hgdp1kgp_v2, gnomAD's phased HGDP + 1000 Genomes panel with each reference group's allele frequencies). With ancestry_fine in --tools, og projects the sample on the panel's groups and paints its chromosomes. With --pedigree, the family workflow also phases the joint call against it with Beagle and lists the DNA segments each pair of members shares (hap-ibd).",
                     "fa_icon": "fas fa-globe"
                 },
                 "ancient_panel": {

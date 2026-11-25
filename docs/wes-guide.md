@@ -1,6 +1,6 @@
 # Whole Exome Sequencing (WES) Guide
 
-If your data comes from whole exome sequencing instead of whole genome sequencing, most of this pipeline still works -- but some steps need different settings, and others should be skipped entirely. This guide explains what WES is, which pipeline steps apply, and how to run them.
+If your data comes from whole exome sequencing instead of whole genome sequencing, most of this pipeline still works -- but some steps need different settings, and others should be skipped entirely. This guide explains what WES is, which pipeline steps apply, and how to run them: the Nextflow pipeline with `--model_type WES` sets them for you ([Run the Nextflow Pipeline](#run-the-nextflow-pipeline)), and the numbered scripts take them one by one.
 
 ---
 
@@ -35,7 +35,7 @@ You must provide a **BED file** defining the capture regions. This file tells th
 
 ### How to Set It
 
-Pass the BED file path via the `CAPTURE_BED` environment variable:
+Pass the BED file path to the Nextflow pipeline as `--capture_bed`, or to the scripts via the `CAPTURE_BED` environment variable:
 
 ```bash
 export CAPTURE_BED="${GENOME_DIR}/reference/capture_regions.bed"
@@ -70,7 +70,6 @@ These steps operate on VCF data and do not depend on genome-wide BAM coverage. T
 |---|---|---|
 | **6** | ClinVar Screen | Checks your variants (whatever you have) against ClinVar |
 | **8** | HLA Typing (T1K) | HLA genes are included in all major exome capture kits |
-| **11** | ROH Analysis | Runs on VCF genotype data. Detects large ROH (>5 Mb) but misses smaller ones due to sparse non-coding coverage |
 | **12** | Mito Haplogroup | Works if your capture kit includes mitochondrial targets (most clinical kits do) |
 | **13** | VEP Annotation | Annotates whatever variants you supply |
 | **17** | CPSR | Cancer predisposition screening on your VCF. All ACMG SF v3.2 genes are coding |
@@ -92,7 +91,7 @@ These steps require different parameters when processing WES data.
 | Step | Name | What Changes | Why |
 |---|---|---|---|
 | **3** | DeepVariant | `MODEL_TYPE=WES ./scripts/03-deepvariant.sh sample` | DeepVariant has separate trained models for WGS and WES. The WES model is calibrated for the higher depth, sharper coverage boundaries, and different error profiles of exome data. Using the WGS model on WES data inflates false positive rates at capture region boundaries. |
-| **4** | Manta (SVs) | Add `--exome` flag to `configManta.py` | Without `--exome`, Manta expects genome-wide coverage and misinterprets off-target regions (zero coverage) as evidence of large deletions. The `--exome` flag restricts analysis to the capture regions and adjusts depth expectations. |
+| **4** | Manta (SVs) | Add `--exome` flag to `configManta.py` (the pipeline does, with `--model_type WES`) | Without `--exome`, Manta applies its whole-genome depth filters, which drop calls in the deep coverage of the capture regions. The `--exome` flag turns those depth filters off. It does not restrict calls to the capture regions; `--manta_call_regions` does that, with a bgzipped, indexed BED, and `--model_type WES` does not set it. |
 | **9** | ExpansionHunter | Limited to captured loci only | ExpansionHunter estimates repeat lengths from reads spanning the repeat region. For WES, only loci that fall within capture regions have sufficient coverage. Most clinically important repeat expansions (Huntington's HTT, Fragile X FMR1, ALS C9orf72) are in UTRs or introns and are **not captured** by standard exome kits. Expect very few usable results. |
 | **16b** | mosdepth | `--by ${CAPTURE_BED}` instead of genome-wide | Calculates on-target coverage (mean depth within capture regions) rather than genome-wide coverage. Without the BED file, mosdepth reports ~2X mean coverage across the whole genome, which is technically correct but completely misleading for WES. |
 
@@ -104,11 +103,19 @@ These steps require genome-wide data and produce incorrect or meaningless result
 |---|---|---|
 | **4b** | GRIDSS | Assembly-based SV caller that needs genome-wide read pairs. Off-target WES regions have no coverage, causing GRIDSS to generate thousands of false positive breakpoints at capture boundaries. |
 | **10** | TelomereHunter | Estimates telomere length from telomeric repeat reads (TTAGGG). Exome capture kits do not target telomeres, so there are essentially zero telomeric reads. Output will show near-zero telomere content regardless of actual telomere length. |
-| **16** | indexcov (Coverage QC) | Designed for whole-genome BAMs. Reports normalized coverage across 16kb windows, which is meaningless when 98% of the genome has zero coverage by design. Use mosdepth with `--by ${CAPTURE_BED}` instead (step 16b). |
+| **11** | ROH Analysis | `bcftools roh` reads runs of homozygous genotypes. An exome leaves gaps of megabases between the captured exons, so each run and the share of the genome in runs rest on a few sites. Large runs (>5 Mb) may still show, but their edges and the totals are not reliable. |
+| **16** | indexcov (Coverage QC and sex check) | Designed for whole-genome BAMs. Reports normalized coverage across 16kb windows, which is meaningless when 98% of the genome has zero coverage by design. Use mosdepth with `--by ${CAPTURE_BED}` instead (step 16b), and take the sex check from somalier (step 33). |
 | **18** | CNVpytor | Detects CNVs from read-depth signal across the genome. WES has coverage in ~2% of the genome, making genome-wide read-depth analysis impossible. For exome CNV calling, dedicated tools like ExomeDepth or XHMM are needed (not currently in this pipeline). |
 | **19** | Delly | Relies on discordant read pairs and split reads across the genome. WES read pairs that span capture boundaries look like structural variant evidence to Delly, causing massive false positive rates. |
-| **20** | Mito analysis (GATK Mutect2) | Mutect2 mitochondrial mode expects reads covering the full mtDNA circle. Most exome kits capture few or no mitochondrial regions, so heteroplasmy detection fails. If your kit does capture mtDNA, step 12 (haplogrep3) still works. |
+| **20** | Mito analysis (GATK Mutect2) | Mutect2 mitochondrial mode expects reads covering the full mtDNA circle. Most exome kits capture few or no mitochondrial regions, so heteroplasmy detection fails. If your kit does capture mtDNA, step 12 (haplogrep3) still works. The mtDNA copy number weighs chrM's reads against the autosomes', which an exome reads only inside its capture. |
+| **21** | Cyrius (CYP2D6) | Cyrius is a whole-genome caller: it calls CYP2D6 copy number from the depth at CYP2D6 and CYP2D7 against the sample's depth elsewhere, and an exome's capture depth gives neither. A wrong call can reach the drug answers through the CYP2D6 consensus. |
 | **26** | Ancestry projection | pgsc_calc places the sample on a reference panel's principal components from common SNVs spread over the whole genome. An exome covers few of them, and its coding variants are biased toward conserved regions, so the placement is unreliable. |
+| **35** | Parascopy (SMN1/SMN2 and other paralogs) | Parascopy weighs the depth of each duplicated gene against background windows spread across GRCh38, which an exome does not read. The copy numbers, among them SMN1's for spinal muscular atrophy carrier status, would rest on that missing background. |
+| **43** | Archaic ancestry (IBDmix) | IBDmix finds Neanderthal and Denisovan segments from runs of sites along the genome; an exome holds too few of them per segment. |
+| **47** | Viral DNA | Reads the unmapped reads of a whole genome. An exome's capture keeps few reads that are not human, so a virus present in the blood can show as absent. |
+| **50** | Mobile element insertions (MEGAnE) | MEGAnE is made for paired-end whole genomes and its own documentation says it does not support exomes: it calls insertions from reads anywhere in the genome and genotypes them against the genome's depth. |
+| **51** | Mosaic alterations (MoChA) | Reads allele balance along whole chromosome arms, from heterozygous sites spread over the genome. An exome has too few of them to see a mosaic event. |
+| **53** | Hard loci (Locityper) | Locityper is a whole-genome genotyper: `locityper preproc` models the read depth of a background region, and an exome reads the target genes only where the capture has probes. |
 
 ---
 
@@ -151,7 +158,33 @@ export SAMPLE=your_name
 export CAPTURE_BED="${GENOME_DIR}/reference/capture_regions.bed"
 ```
 
-`run-all.sh` has no WES mode and runs the whole-genome steps, so no single command sets up an exome run. Run the steps below one by one instead: `MODEL_TYPE=WES` for DeepVariant and `CAPTURE_BED` for mosdepth are the only settings the scripts read for exome data.
+### Run the Nextflow Pipeline
+
+The pipeline runs an exome with `--model_type WES` and the capture BED. It needs `sample_qc` in `--tools`, with the data `scripts/setup.sh --sample-qc-data` installs, because the sex check of an exome comes from somalier:
+
+```bash
+nextflow run main.nf -profile docker \
+  --input samplesheet.csv --reference /path/to/GRCh38_no_alt_analysis_set.fasta --outdir ./results \
+  --model_type WES --capture_bed "$CAPTURE_BED" \
+  --tools pharmcat,cpic,vcfanno,prs,mito_haplogroup,mosdepth,mito_variants,sample_qc,traits,html_report,multiqc \
+  --somalier_sites "${GENOME_DIR}/reference/somalier/sites.hg38.vcf.gz" \
+  --verifybamid2_panel "${GENOME_DIR}/reference/verifybamid2"
+```
+
+With `--model_type WES` the pipeline:
+
+- calls with DeepVariant's exome model on the regions of `--capture_bed`. Step 03 with `MODEL_TYPE=WES` calls the whole BAM; the calls inside the capture are the ones to read;
+- measures coverage over the capture regions, as step 16b with `CAPTURE_BED`;
+- runs Manta with `--exome`;
+- skips indexcov and takes the sex check from somalier (`sample_qc`, step 33). A sex that disagrees with the samplesheet stops the run, as on a whole genome, but DeepVariant does not wait for it;
+- does not run `cnvpytor`, `roh`, `telomere_hunter`, `archaic`, `mocha`, `viral`, `cyrius`, `parascopy`, `locityper` or `mei` when they are in `--tools`, nor the mtDNA copy number and large deletions of `mito_variants`. The log says "not run: exome" and names them, and the report lists them as not run. `survivor_merge` goes too when CNVpytor was one of its two callers. The NuMT filter of `mito_variants` gets the exome's median autosomal depth, 0 or close to it, so it marks little or nothing.
+- reports the on-target mean depth: the `total_region` row of `<outdir>/<sample>/coverage/<sample>.mosdepth.summary.txt`, the mean over the capture regions, not the genome-wide `total` row (a few X for an exome). The report's QC lines, the live page and the genome facts' depth floor all read it. The report takes the `total_region` row whenever it is under half as long as the `total` row (500 bp windows cover the whole genome, a capture kit 1-3% of it), so a report built again with `24-html-report.sh`, a run through `run-all.sh` and step 16b with `CAPTURE_BED` read it too.
+
+The pipeline refuses `--model_type WES` without `--capture_bed`, `--capture_bed` without `--model_type WES`, `--intervals` with `--capture_bed` (both set DeepVariant's regions: cut the capture BED to your regions instead), and a capture BED none of whose contigs is in the reference, such as a kit BED named `1` instead of `chr1`: use the kit's GRCh38 BED, or add `chr` to the names. Delly and the ancestry projection still run when you select them; leave them out, as the table above says. `run-all.sh` passes the options after the sex to Nextflow, so `run-all.sh <sample> <sex> --model_type WES --capture_bed <bed>` runs an exome under the same rules. It reads the list of steps an exome leaves out from `workflows/exome.nf`, does not pass them to Nextflow, and records them, with indexcov (step 16), as `skipped (not run: exome)` in `logs/run_status.tsv`, so the live page and the step table agree with the report. It selects `sample_qc` only when step 33's data is installed; without it the run stops.
+
+### Or Run the Scripts One by One
+
+`MODEL_TYPE=WES` for DeepVariant and `CAPTURE_BED` for mosdepth are the only settings the scripts read for exome data.
 
 ### 3. Align (if starting from FASTQ)
 
@@ -191,7 +224,7 @@ CAPTURE_BED=${GENOME_DIR}/reference/your_capture.bed ./scripts/16b-mosdepth.sh $
 
 ### 7. Skip These Steps
 
-Do **not** run: TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), GRIDSS (4b), Mito analysis (20), Ancestry projection (26).
+Do **not** run: ROH (11), TelomereHunter (10), indexcov (16), CNVpytor (18), Delly (19), GRIDSS (4b), Mito analysis (20), Cyrius (21), Ancestry projection (26), Parascopy (35), Archaic ancestry (43), Viral DNA (47), Mobile element insertions (50), MoChA (51), Locityper (53).
 
 ---
 
@@ -262,7 +295,7 @@ Most clinical and research WES providers use one of a few standard capture kits.
 
 3. **Reduced PRS accuracy.** Most polygenic risk scoring files include many non-coding variants. WES typically matches only 5-15% of a scoring file's variants, far fewer than WGS. Imputation from exome data does not help much because the target regions are too sparse for accurate imputation of flanking non-coding variants.
 
-4. **ROH detection is less precise.** Runs of homozygosity analysis on WES data detects large ROH segments (>5 Mb) reasonably well because exome targets are spread across all chromosomes. Smaller ROH segments may be missed due to gaps between captured regions.
+4. **No runs of homozygosity.** Exome targets are spread across all chromosomes, but the gaps of megabases between them leave each run, and the share of the genome in runs, resting on a few sites. The pipeline does not run ROH on an exome.
 
 5. **Some drug-gene answers are incomplete.** Defining variants of CYP2C19, CYP3A5, CYP3A4, UGT1A1, DPYD and other genes sit outside the coding exons, so PharmCAT can call a normal-function allele where you carry one it could not see. See [Drug-Gene Answers on an Exome](#drug-gene-answers-on-an-exome).
 

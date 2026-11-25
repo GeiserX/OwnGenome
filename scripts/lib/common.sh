@@ -24,7 +24,8 @@
 # wrote_vcf, atomic_out, fetch, data_file / install_data_file, install_vep_cache,
 # lock_acquire / lock_release, pipeline_images, pinned_tag / tag_pinned_image /
 # pinned_tag_present, image_is_dangling,
-# scatter_beds, scatter_jobs and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
+# scatter_beds, scatter_jobs and run_parallel, PAR_BED / sample_sex /
+# ploidy_line / ploidy_units, FASTQ_RECORDS_AWK / fastp_total_reads /
 # read_count_mode / read_count_check, input_stamp / trimmed_reads_current /
 # trimmed_reads_usable,
 # described where they are
@@ -41,9 +42,9 @@ THREADS=${THREADS:-8}
 # validate_sample NAME: exit 2 unless NAME is a plain sample name. Scripts put
 # it into container paths and `bash -c` bodies, so only letters, digits, '.',
 # '_' and '-' are allowed (the same rule as main.nf), and '.' and '..' are not
-# names at all. Nor is a name that starts with '-': CPSR, bin/pgx_parse.py and
-# bin/collect_summary.py take it as an argument value, and argparse reads '-x'
-# as an option. CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
+# names at all. Nor is a name that starts with '-': CPSR and bin/pgx_parse.py
+# take it as an argument value, and argparse reads '-x' as an option.
+# CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
 validate_sample() {
   local s=${1:-}
   if [[ ! "$s" =~ ^[A-Za-z0-9._-]+$ ]] || [ "$s" = "." ] || [ "$s" = ".." ]; then
@@ -1025,18 +1026,93 @@ run_parallel() {
   return "$rc"
 }
 
-# live_post RUN JSON: send one message to the live site (bin/owngenome_live.py,
+# --- Sex and the ploidy of chrX and chrY (steps 03a-03d) ----------------------
+# A male sample has one X and one Y. Outside the pseudoautosomal regions of
+# PAR_BED, a heterozygous call there cannot be real, so the alternative
+# callers call those parts with ploidy 1, as step 03 does with `male`.
+
+# shellcheck disable=SC2034  # read by the step scripts
+PAR_BED="${PGP_ROOT}/assets/par_grch38.bed"
+
+# sample_sex [SEX]: the sex a step calls chrX and chrY by. SEX (the step's
+# second argument) when given. Else the sex run-all.sh was given for this
+# sample: run-all.sh starts the alternative callers with the sample name only,
+# and records the sex as `meta declared_sex` in GENOME_DIR/SAMPLE/logs/
+# run_status.tsv before any step runs; a NOTE on stderr says the sex came
+# from there. Else nothing. Prints male, female or nothing; any other value
+# exits 2.
+sample_sex() {
+  local sex=${1:-} status="${GENOME_DIR:?}/${SAMPLE:?}/logs/run_status.tsv"
+  if [ -z "$sex" ] && [ -f "$status" ]; then
+    sex=$(awk -F'\t' '$1 == "meta" && $2 == "declared_sex" { s = $3 } END { print s }' "$status")
+    [ -z "$sex" ] || echo "NOTE: sex ${sex}, as run-all.sh was given it (${status})" >&2
+  fi
+  case "$sex" in
+    ''|male|female) printf '%s' "$sex" ;;
+    *) echo "ERROR: sex must be 'male' or 'female' (or left out), got '${sex}'." >&2; exit 2 ;;
+  esac
+}
+
+# ploidy_line SEX: the line a step prints about how it calls chrX and chrY.
+ploidy_line() {
+  case "$1" in
+    male) echo "Ploidy: male, chrX and chrY haploid outside the PARs (${PAR_BED#"${PGP_ROOT}"/})" ;;
+    female) echo "Ploidy: female, every contig diploid" ;;
+    *) echo "Ploidy: no sex given, chrX and chrY are called diploid. Pass male or female as the second argument." ;;
+  esac
+}
+
+# ploidy_units SEX UNIT...: the calling units (BED files, as scatter_beds
+# writes them) split by ploidy. For SEX male every row on chrX or chrY is cut
+# at PAR_BED: the parts inside a PAR stay in UNIT and are called diploid, the
+# parts outside go to UNIT's haploid twin, the same name ending in .hap.bed,
+# called with ploidy 1. A unit left with no row is removed. Prints each unit
+# that has rows, followed by its twin when it has one. For any other SEX,
+# prints UNIT... unchanged. PAR_BED's rows must be in order on each contig.
+ploidy_units() {
+  local sex=$1 u hap
+  shift
+  for u in "$@"; do
+    if [ "$sex" != male ]; then echo "$u"; continue; fi
+    hap="${u%.bed}.hap.bed"
+    rm -f "${u}.dip" "$hap"
+    awk -F'\t' -v OFS='\t' -v dip="${u}.dip" -v hap="$hap" '
+      FNR == NR { n[$1]++; ps[$1, n[$1]] = $2 + 0; pe[$1, n[$1]] = $3 + 0; next }
+      $1 != "chrX" && $1 != "chrY" { print > dip; next }
+      { c = $1; s = $2 + 0; e = $3 + 0
+        for (i = 1; i <= n[c] && s < e; i++) {
+          a = ps[c, i]; b = pe[c, i]
+          if (b <= s || a >= e) continue
+          if (a > s) print c, s, a > hap
+          if (a < s) a = s
+          if (b > e) b = e
+          print c, a, b > dip
+          s = b
+        }
+        if (s < e) print c, s, e > hap }' "$PAR_BED" "$u" || return 1
+    if [ -s "${u}.dip" ]; then mv -f "${u}.dip" "$u" || return 1; echo "$u"; else rm -f "${u}.dip" "$u"; fi
+    if [ -s "$hap" ]; then echo "$hap"; fi
+  done
+}
+
+# live_post RUN JSON: send one message to the live site (og live serve,
 # docs/live-site.md) at OWNGENOME_LIVE_URL/ingest/RUN; nothing without OWNGENOME_LIVE_URL.
+# The site's ingest token (OWNGENOME_LIVE_TOKEN, or the last part of a
+# OWNGENOME_LIVE_URL of the form http://host:port/<token>) goes as the HTTP
+# Basic password of user og, in a curl config curl reads from a pipe (fd 3):
+# it is in no argument of any process and in no output line.
 # A site that is down or slow (3 s) costs one warning per script and never the
 # step: it always returns 0.
 live_post() {
   [ -n "${OWNGENOME_LIVE_URL:-}" ] || return 0
-  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- \
-      "${OWNGENOME_LIVE_URL%/}/ingest/$1" 2>/dev/null; then
+  local site=${OWNGENOME_LIVE_URL%/} tok=${OWNGENOME_LIVE_TOKEN:-}
+  if [[ "$site" =~ ^(http://[^/]+)/([A-Za-z0-9_-]{43})$ ]]; then site=${BASH_REMATCH[1]} tok=${BASH_REMATCH[2]}; fi
+  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- -K/dev/fd/3 \
+      "${site}/ingest/$1" 3< <([ -z "$tok" ] || printf 'user = "og:%s"\n' "$tok") 2>/dev/null; then
     return 0
   fi
   if [ -z "${OWNGENOME_LIVE_WARNED:-}" ]; then
-    echo "WARNING: the live site at ${OWNGENOME_LIVE_URL} did not take a message; the run goes on without it" >&2
+    echo "WARNING: the live site at ${site} did not take a message; the run goes on without it" >&2
     OWNGENOME_LIVE_WARNED=1
   fi
   return 0

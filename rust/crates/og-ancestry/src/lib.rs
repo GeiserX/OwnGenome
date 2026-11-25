@@ -12,8 +12,8 @@
 //! - [`project`]: `og ancestry-fine project`, the fractions at each level
 //!   projected on the groups' frequencies, with their block bootstrap (in
 //!   place of ADMIXTURE).
-//! - [`paint`]: `og ancestry-fine paint`, the engine that replaces RFMix.
-//!   Not ported yet: it says so and exits 2.
+//! - [`paint`]: `og ancestry-fine paint`, the chromosome painting with our
+//!   own local-ancestry model, in place of RFMix.
 //! - [`simulate`]: `og ancestry-fine simulate`, an admixed genome with known
 //!   truth that those engines test against.
 //! - [`compare`]: `og archaic compare|genomes`, Chen et al.'s Neanderthal
