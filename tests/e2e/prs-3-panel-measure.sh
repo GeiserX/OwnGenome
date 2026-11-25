@@ -59,7 +59,8 @@ if [ "${1:-}" = --download ]; then
   pids=()
   for i in $(seq 0 $((n - 1))); do
     a=$((i * chunk)); b=$(( (i + 1) * chunk - 1 )); [ "$b" -lt "$size" ] || b=$((size - 1))
-    curl -fsSL --retry 5 --retry-delay 10 -r "${a}-${b}" -o "${PANEL}.part${i}" "$url" & pids+=($!)
+    curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+      -r "${a}-${b}" -o "${PANEL}.part${i}" "$url" & pids+=($!)
   done
   ok=true
   for p in "${pids[@]}"; do wait "$p" || ok=false; done
