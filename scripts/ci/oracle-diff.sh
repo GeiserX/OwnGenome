@@ -217,7 +217,7 @@ find_og() {
 
 run_all() {
   find_og
-  export OG
+  export OG OG_BIN_TABLES="$ROOT/bin"
   local tool case inputs args outputs kind prefix extra n=0
   while IFS=$'\t' read -r tool case inputs args outputs kind prefix extra; do
     selected "$tool" "$case" || continue

@@ -3,12 +3,13 @@
 # tests/test_family_segments.py): grandparents gpa and gma, their son dad,
 # mum, and their son kid. chr1 has a crossover in the father's meiosis at
 # 20 Mb and three planted genotype errors, chr2 a 10 Mb gap with no site,
-# chrX the son's single X from his mother. Writes 3gen.vcf (its genotypes
-# drawn with awk's rand, so they differ between awk builds; both sides of a
-# case read the same file) and 3gen.vcf.gz.
+# chrX the son's single X from his mother. Writes 3gen.vcf and 3gen.vcf.gz.
 set -euo pipefail
-awk 'BEGIN {
-  srand(38); OFS = "\t"
+# shellcheck source=tests/parity/gen/family-random.sh
+. "$(dirname "$0")/family-random.sh"
+awk "$family_random"'
+BEGIN {
+  family_seed(38); OFS = "\t"
   print "##fileformat=VCFv4.2"
   print "##contig=<ID=chr1,length=248956422>"
   print "##contig=<ID=chr2,length=242193529>"
@@ -19,7 +20,7 @@ awk 'BEGIN {
   span("chrX", 5000000, 15000000)
 }
 function gt(a, b) { return a <= b ? a "/" b : b "/" a }
-function r() { return rand() < 0.5 ? 0 : 1 }
+function r() { return family_rand() < 0.5 ? 0 : 1 }
 function span(chrom, lo, hi,   pos, gpa1, gpa2, gma1, gma2, mum1, mum2, planted, from_dad) {
   for (pos = lo; pos < hi; pos += 2000) {
     gpa1 = r(); gpa2 = r(); gma1 = r(); gma2 = r(); mum1 = r(); mum2 = r()

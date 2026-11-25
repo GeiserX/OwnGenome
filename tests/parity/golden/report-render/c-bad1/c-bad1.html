@@ -144,7 +144,7 @@
         <li><a href="#exomiser"><span class="dot dot-failed" title="Failed"></span>Symptom-driven ranking</a></li>
         <li><a href="#structural-variants"><span class="dot dot-failed" title="Failed"></span>Structural variants</a></li>
         <li><a href="#mei"><span class="dot dot-failed" title="Failed"></span>Mobile element insertions</a></li>
-        <li><a href="#expansions"><span class="dot dot-failed" title="Failed"></span>Repeat expansions</a></li>
+        <li><a href="#expansions"><span class="dot dot-ok" title="Complete"></span>Repeat expansions</a></li>
         <li><a href="#vntyper"><span class="dot dot-failed" title="Failed"></span>MUC1 repeat (ADTKD)</a></li>
         <li><a href="#mito"><span class="dot dot-failed" title="Failed"></span>Mitochondrial variants</a></li>
         <li><a href="#lpa"><span class="dot dot-failed" title="Failed"></span>Lp(a)</a></li>
@@ -164,7 +164,7 @@
         <li><a href="#pharmcat"><span class="dot dot-missing" title="Not run"></span>PharmCAT</a></li>
         <li><a href="#cpic"><span class="dot dot-missing" title="Not run"></span>CPIC recommendations</a></li>
         <li><a href="#cyp2d6"><span class="dot dot-missing" title="Not run"></span>pypgx, Cyrius and CYP2D6</a></li>
-        <li><a href="#hla"><span class="dot dot-failed" title="Failed"></span>HLA typing</a></li>
+        <li><a href="#hla"><span class="dot dot-ok" title="Complete"></span>HLA typing</a></li>
         <li><a href="#locityper"><span class="dot dot-failed" title="Failed"></span>Locityper second opinion</a></li>
       </ol>
     </li>
@@ -305,9 +305,18 @@
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
-    <p class="sec-meta">Step 09 &middot; <span class="badge badge-red">Failed</span> &middot; <a class="anchor" href="#expansions">link to this section</a></p>
-    <div class="stale">could not be read: FileNotFoundError: [Errno 2] No such file or directory: &#x27;bin/str_intermediate_ranges.tsv&#x27;</div>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Unreadable</span></span></div>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <p class="caveat">Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">Outside the normal range (Stranger)</span><span class="value"><span class="badge badge-gray">not run</span></span></div>
+    <div class="stat"><span class="label">Not sized from short reads (not counted as normal)</span><span class="value"><span class="badge badge-yellow">1</span></span></div>
+    <div class="stat"><span class="label">CFTR intron 9 (legacy IVS8) TG and poly-T tract</span><span class="value"><span class="badge badge-gray">not sized</span></span></div>
+    <p class="note">ExpansionHunter did not size both tracts (TG 11/12, flanking_only; poly-T 7/9, sized): not read. (Deignan et al. 2020, PMID 32404922)</p>
+    <div class="stat"><span class="label">UGT1A1 promoter TA repeat</span><span class="value"><span class="badge badge-gray">not sized</span></span></div>
+    <p class="note">not in step 09&#x27;s output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data &lt;genome_dir&gt; adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28. (Gammal et al. 2016, PMID 26417955)</p>
+    <div class="stat"><span class="label">SLC6A4 5-HTTLPR promoter length polymorphism</span><span class="value"><span class="badge badge-gray">not tested</span></span></div>
+    <p class="note">not tested by any step. CPIC&#x27;s 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)</p>
+    <div class="tscroll" role="region" aria-label="Repeat Expansions" tabindex="0"><table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>HTT</td><td>not in output</td><td></td><td></td></tr><tr><td>FMR1</td><td>not in output</td><td></td><td></td></tr><tr><td>C9ORF72</td><td>not in output</td><td></td><td></td></tr><tr><td>ATXN1</td><td>not in output</td><td></td><td></td></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>CFTR_T</td><td>7/9</td><td></td><td></td></tr><tr><td>CFTR_TG</td><td>11/12</td><td></td><td>size not determined (flanking reads only), interval 11-11/12-12</td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="vntyper">
@@ -423,9 +432,27 @@
   <section class="sec" id="hla">
   <div class="card">
     <h2>HLA Typing</h2>
-    <p class="sec-meta">Step 08 &middot; <span class="badge badge-red">Failed</span> &middot; <a class="anchor" href="#hla">link to this section</a></p>
-    <div class="stale">could not be read: FileNotFoundError: [Errno 2] No such file or directory: &#x27;bin/hla_alleles.tsv&#x27;</div>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Unreadable</span></span></div>
+    <p class="sec-meta">Step 08 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#hla">link to this section</a></p>
+    <p class="caveat">Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.</p>
+    <p class="caveat">HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).</p>
+    <div class="stat"><span class="label">HLA-A</span><span class="value">A*02:01 (quality x); low confidence (T1K quality 0 or below), not passed to PharmCAT</span></div>
+    <p class="note">Coeliac DQ: not determined (HLA-DQA1 not typed; HLA-DQB1 not typed)</p>
+    <p class="note">DQB1*02 copies: not determined</p>
+    <p class="note">A*31:01 not determined (HLA-A low confidence): carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)</p>
+    <p class="note">B*15:02 not determined (HLA-B not typed): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)</p>
+    <p class="note">B*57:01 not determined (HLA-B not typed): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)</p>
+    <p class="note">B*58:01 not determined (HLA-B not typed): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)</p>
+    <p class="note">B*27 not determined (HLA-B not typed): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)</p>
+    <p class="note">C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006, Am J Hum Genet)</p>
+    <p class="note">DQB1*06:02 not determined (HLA-DQB1 not typed): narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)</p>
+    <p class="note">DRB1*15:01 not determined (HLA-DRB1 not typed): multiple sclerosis (Barcellos 2003, Am J Hum Genet)</p>
+    <p class="note">DRB1*01:01 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:01 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:04 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:05 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:08 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*14:02 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <div class="stat"><span class="label">HLA database</span><span class="value">unknown</span></div>
   </div>
   </section>
   <section class="sec full-width" id="locityper">
@@ -615,7 +642,19 @@
   <section class="sec" id="terms-list">
   <div class="card">
     <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
-    <p>No section of this report names a gene or an rsID.</p>
+    <ul class="plain terms">
+      <li><strong>ATXN1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>C9ORF72</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR_T</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR_TG</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>DMPK</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>FMR1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>HLA-A</strong>: <a href="#hla">HLA typing (T1K)</a></li>
+      <li><strong>HTT</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>SLC6A4</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>UGT1A1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+    </ul>
   </div>
   </section>
   </div>

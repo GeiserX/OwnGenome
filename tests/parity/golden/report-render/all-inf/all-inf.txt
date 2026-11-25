@@ -26,7 +26,36 @@
 
 ## Repeat Expansions (ExpansionHunter)
 ---
-  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/str_intermediate_ranges.tsv']
+  Loci in output: 9
+  Outside the normal range (Stranger): 2
+    FMR1     58  premutation
+      FMR1 motif count: interrupted: AGG
+    RFC1     >=400/>=500  full_mutation
+      RFC1 motif count: pathogenic: AAGGG dominant
+  Not graded (no thresholds in the catalog): 1 (EXTRA1: no published range)
+  Not graded: the repeat catalog gives these loci no thresholds (for MUC1, CEL, TYMS and PLIN4 the reference repeat is longer than 300 bases, so no short read spans it), so Stranger gives them no status. Not graded is not normal (docs/09-str-expansions.md).
+  CFTR intron 9 (legacy IVS8) TG and poly-T tract: TG11/TG12 5T/7T
+    5T: 1 copy with the 5T poly-T tract, TG11 or TG12 on the 5T copy, not told by the counts (TG11-5T/TG12-7T or TG12-5T/TG11-7T). 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the 5T copy is not known. (Deignan et al. 2020, PMID 32404922)
+  UGT1A1 promoter TA repeat: *1/*28
+    *1/*28 (TA6/TA7, 7/8 TA units as ExpansionHunter counts them): 1 decreased-function allele (*28 and *37 are decreased function). Not compared with PharmCAT (no unambiguous UGT1A1 call from step 27). (Gammal et al. 2016, PMID 26417955)
+  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
+    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
+  Loci without a Stranger status (not in its catalog): 3
+  Not sized from short reads, so not counted as normal: 5 (FMR1, C9ORF72, ATXN1, EXTRA1, RFC1)
+  Every locus (key loci first): repeat count, Stranger status, notes
+    DMPK     not in output -
+    HTT      17/20      normal,normal  normal max 26
+    FMR1     58         premutation  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 55-60; normal max 44; FMR1 motif count: interrupted: AGG
+    C9ORF72  .          -  no call
+    ATXN1    30/37      not sized  size not determined (flanking reads only), interval 30-30/35-40; normal max 35
+    CFTR_T   5/7        -
+    CFTR_TG  11/12      -
+    EXTRA1   8/9        not graded  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 8-8/9-9; no thresholds in the catalog (no published range)
+    RFC1     >=400/>=500 full_mutation  longer than a read (in-repeat reads only): shown as at least the interval's lower end, interval 400-700/500-800
+    UGT1A1   7/8        normal
+  RFC1: Stranger's catalog sizes the degenerate AARRG unit and flags a low count, so the motif decides. The motif count reads the reads at the locus; it cannot size a long expansion.
+  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
+
 ## Mosaic loss of chromosome Y or X
 ---
   chrY or chrX: not detected above 10% (None)

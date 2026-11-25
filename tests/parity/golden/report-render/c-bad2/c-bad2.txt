@@ -21,7 +21,27 @@
   [could not be read: S_mei.tsv lacks a column of chrom, pos, element, copies]
 ## Repeat Expansions (ExpansionHunter)
 ---
-  [could not be read: FileNotFoundError: [Errno 2] No such file or directory: 'bin/str_intermediate_ranges.tsv']
+  Loci in output: 1
+  Outside the normal range (Stranger): 1
+    RFC1     >=400/>=500  full_mutation
+      RFC1 motif count: not_checked: no motif count beside Stranger's output (step 9b runs it with the sample's BAM): confirm the flag with repeat-primed PCR
+  CFTR intron 9 (legacy IVS8) TG and poly-T tract: not sized
+    not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the tract to the catalog (docs/09-str-expansions.md). (Deignan et al. 2020, PMID 32404922)
+  UGT1A1 promoter TA repeat: not sized
+    not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28. (Gammal et al. 2016, PMID 26417955)
+  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
+    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
+  Not sized from short reads, so not counted as normal: 1 (RFC1)
+  Every locus (key loci first): repeat count, Stranger status, notes
+    HTT      not in output -
+    FMR1     not in output -
+    C9ORF72  not in output -
+    ATXN1    not in output -
+    DMPK     not in output -
+    RFC1     >=400/>=500 full_mutation  longer than a read (in-repeat reads only): shown as at least the interval's lower end, interval 400-700/500-800
+  RFC1: Stranger's catalog sizes the degenerate AARRG unit and flags a low count, so the motif decides. The motif count reads the reads at the locus; it cannot size a long expansion.
+  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
+
 ## Mitochondrial Variants (Mutect2)
 ---
   PASS variants: 0

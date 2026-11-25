@@ -144,7 +144,7 @@
         <li><a href="#exomiser"><span class="dot dot-failed" title="Failed"></span>Symptom-driven ranking</a></li>
         <li><a href="#structural-variants"><span class="dot dot-failed" title="Failed"></span>Structural variants</a></li>
         <li><a href="#mei"><span class="dot dot-failed" title="Failed"></span>Mobile element insertions</a></li>
-        <li><a href="#expansions"><span class="dot dot-failed" title="Failed"></span>Repeat expansions</a></li>
+        <li><a href="#expansions"><span class="dot dot-ok" title="Complete"></span>Repeat expansions</a></li>
         <li><a href="#mito"><span class="dot dot-ok" title="Complete"></span>Mitochondrial variants</a></li>
         <li><a href="#mosaic"><span class="dot dot-missing" title="Not run"></span>Mosaic loss of chromosome Y or X</a></li>
         <li><a href="#mosaic-mca"><span class="dot dot-failed" title="Failed"></span>Mosaic chromosomal alterations</a></li>
@@ -294,9 +294,20 @@
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
-    <p class="sec-meta">Step 09 &middot; <span class="badge badge-red">Failed</span> &middot; <a class="anchor" href="#expansions">link to this section</a></p>
-    <div class="stale">could not be read: FileNotFoundError: [Errno 2] No such file or directory: &#x27;bin/str_intermediate_ranges.tsv&#x27;</div>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Unreadable</span></span></div>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <p class="caveat">RFC1: Stranger&#x27;s catalog sizes the degenerate AARRG unit and flags a low count, so the motif decides. The motif count reads the reads at the locus; it cannot size a long expansion.</p>
+    <p class="caveat">Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">Outside the normal range (Stranger)</span><span class="value"><span class="badge badge-yellow">1</span></span></div>
+    <div class="stat"><span class="label">Not sized from short reads (not counted as normal)</span><span class="value"><span class="badge badge-yellow">1</span></span></div>
+    <div class="stat"><span class="label">CFTR intron 9 (legacy IVS8) TG and poly-T tract</span><span class="value"><span class="badge badge-gray">not sized</span></span></div>
+    <p class="note">not in step 09&#x27;s output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data &lt;genome_dir&gt; adds the tract to the catalog (docs/09-str-expansions.md). (Deignan et al. 2020, PMID 32404922)</p>
+    <div class="stat"><span class="label">UGT1A1 promoter TA repeat</span><span class="value"><span class="badge badge-gray">not sized</span></span></div>
+    <p class="note">not in step 09&#x27;s output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data &lt;genome_dir&gt; adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28. (Gammal et al. 2016, PMID 26417955)</p>
+    <div class="stat"><span class="label">SLC6A4 5-HTTLPR promoter length polymorphism</span><span class="value"><span class="badge badge-gray">not tested</span></span></div>
+    <p class="note">not tested by any step. CPIC&#x27;s 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)</p>
+    <p class="note">RFC1 motif count: not_checked: no motif count beside Stranger&#x27;s output (step 9b runs it with the sample&#x27;s BAM): confirm the flag with repeat-primed PCR</p>
+    <div class="tscroll" role="region" aria-label="Repeat Expansions" tabindex="0"><table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>HTT</td><td>not in output</td><td></td><td></td></tr><tr><td>FMR1</td><td>not in output</td><td></td><td></td></tr><tr><td>C9ORF72</td><td>not in output</td><td></td><td></td></tr><tr><td>ATXN1</td><td>not in output</td><td></td><td></td></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>RFC1</td><td>&gt;=400/&gt;=500</td><td>full_mutation</td><td>longer than a read (in-repeat reads only): shown as at least the interval&#x27;s lower end, interval 400-700/500-800</td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="mito">
@@ -544,7 +555,17 @@
   <section class="sec" id="terms-list">
   <div class="card">
     <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
-    <p>No section of this report names a gene or an rsID.</p>
+    <ul class="plain terms">
+      <li><strong>ATXN1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>C9ORF72</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>DMPK</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>FMR1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>HTT</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>RFC1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a> (2)</li>
+      <li><strong>SLC6A4</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>UGT1A1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+    </ul>
   </div>
   </section>
   </div>
