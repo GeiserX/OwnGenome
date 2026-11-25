@@ -31,7 +31,7 @@
 //! rows out of chromosome order, positions that do not go up, and a row
 //! with a wrong number of columns. With `--check` it writes nothing and
 //! exits 1 when `--out` differs from what it would write. The index is
-//! `tabix -s1 -b2 -e2` of `BCFTOOLS_IMAGE`, made by `scripts/setup.sh`
+//! `tabix -s1 -b2 -e2` of `GATK_IMAGE`, made by `scripts/setup.sh`
 //! after the download.
 //!
 //! How the published panel was made, and how to make it again, byte for

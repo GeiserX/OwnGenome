@@ -45,7 +45,7 @@ Without the panel the script runs `bcftools roh --AF-dflt 0.4` instead. For chip
 - **With the panel** (`scripts/setup.sh` installs it as `roh_af/roh_af_gnomad_v4.1.tsv.gz`, with its `.tbi`): the biallelic PASS SNVs of chr1 to chr22 whose global AF in gnomAD v4.1 genomes (76,215 genomes, released under CC0) is 0.01 to 0.99, with the global AF and the AF of five continental groups. `--AF-file` makes bcftools roh use the panel's sites only, and only where the alleles match; a site of the VCF that is not in the panel is skipped. (bcftools refuses `-T` beside `--AF-file`: the panel already sets the sites.) The step uses the global AF, or the AF of one group when step 26's ancestry table (`ancestry/<sample>_ancestry.tsv`) gives that group a probability of 0.8 or more: AFR reads gnomAD's `afr`, AMR `amr`, EAS `eas`, EUR `nfe` (non-Finnish European) and SAS `sas`. For a group, `og roh af-file` writes a temporary 4-column file of the sites whose group AF is 0.01 to 0.99, the global panel's range, and its index. Run step 26 before step 11 to have it; the Nextflow pipeline waits for step 26's table when it will come (`--roh_af_panel` with `prs`, `--pgs_scoring` and `--ancestry_ref`).
 - **Without the panel**: `--AF-dflt 0.4`, so every site gets an alternate allele frequency of 0.4. This holds also where a record carries `INFO/AC` and `INFO/AN`: with `--AF-dflt`, bcftools roh does not read them. A homozygous call at a common allele then counts as rare evidence, so the short segments come out too many and too long. The step's note says so.
 
-The first line of `${SAMPLE}_roh.txt` names the frequencies used when they came from the panel, for example `# AF used: nfe (panel roh_af_gnomad_v4.1.tsv.gz); step 26 gives EUR 0.93`. Without the panel there is no such line, and bcftools roh's own header line gives its command with `--AF-dflt 0.4`.
+The first line of `${SAMPLE}_roh.txt` names the frequencies used when they came from the panel, for example `# AF used: nfe (panel roh_af_gnomad_v4.1.tsv.gz); step 26 gives EUR 0.93`. Without the panel, bcftools roh's command header records `--AF-dflt 0.4`. The collector stores the `# AF used:` description when present in `roh.data.af_used`. The report and genome chart name the AF mode from that field.
 
 How the panel is built and published: [Reference setup](00-reference-setup.md#roh-allele-frequency-panel).
 
@@ -64,15 +64,30 @@ We ran `bcftools roh` 1.24 with the step's flags (PASS records, `-G30`: neither 
 | HG002 | panel, global AF | 1,746,930 | 2,608 | 362.8 Mb | none |
 | HG002 | panel, `nfe` AF | 1,684,685 | 2,387 | 328.4 Mb | none |
 | HG00096 | 0.4 at every site | 3,997,277 | 6,347 | 449.2 Mb | none |
-| HG00096 | panel, global AF | 1,762,917 | 2,570 | 361.5 Mb | chr22:26,579,132-32,429,957, 5.9 Mb |
-| HG00096 | panel, `nfe` AF | 1,709,455 | 2,283 | 317.9 Mb | chr22:26,579,132-32,429,957, 5.9 Mb |
+| HG00096 | panel, global AF | 1,762,917 | 2,570 | 361.5 Mb | chr22:26,579,132-32,429,957, 5.851 Mb |
+| HG00096 | panel, `nfe` AF | 1,709,455 | 2,283 | 317.9 Mb | chr22:26,579,132-32,429,957, 5.851 Mb |
 
 What it shows:
 
 - The flat 0.4 inflates the short segments. It gives 2.4 to 2.8 times as many segments as the panel, and 24% to 47% more total length.
 - HG002 has no run of 5 Mb or more with any of the three.
-- HG00096 has one run of 5 Mb or more with the panel and none with 0.4. With 0.4, bcftools roh split that stretch of chr22 into 13 segments of 1.1 Mb or less. The stretch holds 259 heterozygous calls. 223 of them are indels or SNVs that are not in the panel (rare in gnomAD, or not PASS there), so the panel run does not read them. The other 36 are panel sites, beside 2,387 homozygous panel sites. These counts come from the same panel markers that found the run, so they explain the difference but do not prove the run independently: read it as a candidate that the panel's markers find and the flat 0.4 splits.
+- Both panel modes find one 5.851 Mb chr22 run in HG00096, raising F_ROH from 0 to 0.0022. The flat mode finds no run of 5 Mb or more. The independent check below validates the panel's run.
 - The group's AF gives fewer and shorter segments than the global AF. The runs of 5 Mb or more are the same.
+
+#### Independent check of the HG00096 run
+
+The [1000 Genomes NYGC 30× GRCh38 call set](https://internationalgenome.org/data-portal/data-collections/1000genomes_30x/) confirms a sustained drop in heterozygosity over the run. We counted fully called diploid genotypes at all indexed SNV, indel, and SV records in the [2022 release](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/), including homozygous-reference calls. Densities use the full physical spans in GRCh38.
+
+| Region (inclusive) | Heterozygous calls | Calls per Mb |
+|---|---:|---:|
+| chr22:21,579,132–26,579,131 (left flank) | 6,250 | 1,250.00 |
+| chr22:26,579,132–32,429,957 (run) | 45 | 7.69 |
+| chr22:32,429,958–37,429,957 (right flank) | 6,305 | 1,261.00 |
+| chr21 (autosomal baseline, 46.710 Mb) | 41,171 | 881.42 |
+
+The run's heterozygous-call density is under 1% of each flank and the sampled autosomal density. It meets the 10% validation threshold in all three comparisons. Both panel modes recover this real run.
+
+The [bcftools ROH model](https://samtools.github.io/bcftools/bcftools.html#roh) weighs called genotypes under two states. Its Hardy–Weinberg state assigns a heterozygote probability of `2f(1-f)` for alternate-allele frequency `f`. Its autozygous state emits homozygotes, with genotype likelihoods allowing for call errors. Flat `f = 0.4` gives every marker a Hardy–Weinberg heterozygote probability of 0.48, so it gives rare-allele heterozygotes more weight than their population frequency would. The flat run also used 223 heterozygous calls outside the panel among the 259 it saw in the interval. Those extra calls add evidence for breaks in the run. The flat mode called 13 segments of 1.1 Mb or less there.
 
 ## Output
 - `${SAMPLE}/vcf/${SAMPLE}_roh.txt` — bcftools roh output: per-site states (`ST` lines) and segments (`RG` lines)

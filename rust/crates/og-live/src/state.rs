@@ -357,7 +357,7 @@ pub const HEADLINE_KEYS: [&str; 11] = [
 /// `(text, attention)` of section `key` from its helper, `None` for a key
 /// without one. An error is a summary the helper cannot read.
 fn line_of(key: &str, sm: &Summary) -> Result<Option<(Option<String>, bool)>, Malformed> {
-    use og_render::notes::{COUPLE_NOTE, ROH_NOTE, VIRAL_NOTE};
+    use og_render::notes::{self, COUPLE_NOTE, ROH_NOTE, VIRAL_NOTE};
     use og_render::sections as sec;
     let x = sm.section(key);
     let d = D::of(&x);
@@ -390,10 +390,12 @@ fn line_of(key: &str, sm: &Summary) -> Result<Option<(Option<String>, bool)>, Ma
                 .find(|l| l.starts_with("**"))
                 .cloned()
                 .map_or_else(|| first(lines.clone()), Ok)?;
-            let text = if f == ROH_NOTE {
+            let key = notes::roh_note_key(get(data, "af_used"));
+            let note = notes::text(key).unwrap_or(ROH_NOTE);
+            let text = if f == note {
                 Some(f)
             } else {
-                with_note(&[f, ROH_NOTE.to_owned()], ROH_NOTE)
+                with_note(&[f, note.to_owned()], note)
             };
             (text, flag("upd_flag"))
         }

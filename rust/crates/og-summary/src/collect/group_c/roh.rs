@@ -224,6 +224,7 @@ pub fn section(c: &Ctx<'_>) -> Out {
     let mut per_chrom: indexmap::IndexMap<String, f64> = indexmap::IndexMap::new();
     let (mut assessed, mut observed) = ([false; 22], [false; 22]);
     let mut reader = crate::text_lines(&p.path).map_err(|e| super::util::os_note(&e))?;
+    let mut af_used = None;
     let mut line = String::new();
     loop {
         line.clear();
@@ -234,6 +235,14 @@ pub fn section(c: &Ctx<'_>) -> Out {
             )
         })? {
             break;
+        }
+        if let Some(header) = line.strip_prefix('#') {
+            if let Some(af) = header.strip_prefix(" AF used:").map(str::trim)
+                && !af.is_empty()
+            {
+                af_used = Some(s(af));
+            }
+            continue;
         }
         let c: Vec<&str> = line.split_whitespace().collect();
         if c.len() >= 6
@@ -332,7 +341,7 @@ pub fn section(c: &Ctx<'_>) -> Out {
     } else {
         Value::Null
     };
-    let data = Obj::new()
+    let mut data = Obj::new()
         .set("segments", count(segs))
         .set("total_mb", r1(total / 1e6, 1))
         .set("largest_mb", r1(largest / 1e6, 1))
@@ -354,6 +363,9 @@ pub fn section(c: &Ctx<'_>) -> Out {
             } else {
                 "Partial or unverified chromosome scope: no relationship band or UPD flag. F_ROH uses only the listed chromosomes, not callable bases."
             })).val());
+    if let Some(af) = af_used {
+        data.put("af_used", af);
+    }
     Ok(Some((p, data.val())))
 }
 
