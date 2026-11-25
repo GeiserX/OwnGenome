@@ -2,7 +2,7 @@
 //! and on the demo's invented trio (tests/fixtures/live/demo/DEMO-FAMILY).
 //! Moved here from tests/test_live_family_depth.py and from the checks of
 //! tests/test_owngenome_live_family.py that read the family plugin's data
-//! (that file keeps the checks of the Python site that serves it):
+//! (the checks of the Python site that served it are gone with that file):
 //!
 //! - the family folders are listed as runs of kind family, a sample's folder
 //!   is not; family_a's state: its members, each child with its parents and

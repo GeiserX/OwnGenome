@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# owngenome-live.sh: start the live site of the runs under GENOME_DIR (bin/owngenome_live.py, docs/live-site.md)
-# Usage: GENOME_DIR=/data ./scripts/owngenome-live.sh [sample] [extra owngenome_live.py flags]
+# owngenome-live.sh: start the live site of the runs under GENOME_DIR (og live serve, docs/live-site.md)
+# Usage: GENOME_DIR=/data ./scripts/owngenome-live.sh [sample] [extra og live serve flags]
 #        GENOME_DIR=/data ./scripts/owngenome-live.sh hash-password
 #
 # With a sample, it checks the name and prints the address of that run's page.
@@ -18,14 +18,17 @@
 #   OWNGENOME_LIVE_ALLOWED_HOSTS  space-separated host names the browser may use besides loopback
 #   OWNGENOME_LIVE_VIEWER         "off" leaves the genome viewer out (default on)
 #
-# The genome viewer (bin/owngenome_live_viewer.py) shows each run's reads at
+# The genome viewer (og live serve's viewer) shows each run's reads at
 # /runs/<run>/viewer/, behind the same password: the reference is REF_FASTA, as
 # in every step, and the first start downloads the pinned igv.js
 # (IGV_JS_VERSION in versions.env) into GENOME_DIR/tools/, checked by sha256,
 # as owngenome-view.sh does. Without the reference or igv.js the site starts
 # without the viewer and says why.
-# Then start a run with OWNGENOME_LIVE_URL=http://127.0.0.1:8788 ./scripts/run-all.sh <sample> <sex>.
-# Needs python3 (3.8 or later) on the host; nothing is installed.
+# Then start a run with OWNGENOME_LIVE_URL=http://127.0.0.1:8788 ./scripts/run-all.sh <sample> <sex>:
+# run-all.sh adds the ingest token the site keeps in OWNGENOME_LIVE_STATE_DIR/ingest-token
+# (give it the same OWNGENOME_LIVE_STATE_DIR when you set one).
+# Needs og built for this machine (scripts/setup.sh --og), through bin/og; OG names
+# another og binary. No python3 is needed.
 set -euo pipefail
 
 GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
@@ -33,11 +36,12 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 . "$(dirname "$0")/lib/common.sh"
 STATE=${OWNGENOME_LIVE_STATE_DIR:-${GENOME_DIR}/.owngenome-live}
 PWF=${OWNGENOME_LIVE_PASSWORD_FILE:-${STATE}/password}
-command -v python3 >/dev/null 2>&1 || { echo "ERROR: owngenome-live.sh needs python3 on the host" >&2; exit 2; }
+OG=${OG:-${PGP_ROOT}/bin/og}
+"$OG" version >/dev/null 2>&1 || { echo "ERROR: owngenome-live.sh needs og built for this machine: run scripts/setup.sh --og" >&2; exit 2; }
 
 if [ "${1:-}" = hash-password ]; then
   mkdir -p "$(dirname "$PWF")"
-  h=$(python3 "${PGP_ROOT}/bin/owngenome_live.py" hash-password)
+  h=$("$OG" live serve hash-password)
   # One command per line: under set -e a failure inside an && list would not stop the script.
   (umask 077; printf '%s\n' "$h" > "${PWF}.tmp")
   chmod 600 "${PWF}.tmp"
@@ -69,4 +73,4 @@ fi
 scheme=http
 for a in "$@"; do [ "$a" != --tls-cert ] && [[ "$a" != --tls-cert=* ]] || scheme=https; done
 [ -z "$OPEN" ] || echo "The run's page: ${scheme}://${OWNGENOME_LIVE_BIND:-127.0.0.1}:${OWNGENOME_LIVE_PORT:-8787}/runs/${OPEN}/"
-exec python3 "${PGP_ROOT}/bin/owngenome_live.py" "${args[@]}" "$@"
+exec "$OG" live serve "${args[@]}" "$@"

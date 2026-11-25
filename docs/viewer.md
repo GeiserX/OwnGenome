@@ -89,7 +89,7 @@ Then open `http://127.0.0.1:8765/` on your computer. The report's links work the
 
 ## From the live site
 
-`scripts/owngenome-live.sh` starts the [live site](live-site.md) with the viewer: each run has it at `/runs/<run>/viewer/`, behind the site's password, and the report the site serves points its Viewer links there. `bin/owngenome_live_viewer.py` uses the same page and the files `owngenome-view.sh` picks by default (the run folder's BAM or CRAM, its VCF and its SV VCF, each with its index, and `REF_FASTA`). The `READS`, `VCF`, `SV_VCF`, `ALIGN_DIR` and `VCF_DIR` overrides do not apply there, and a track whose file or index is a symlink out of `GENOME_DIR` is left out. The first start downloads igv.js the same way. `OWNGENOME_LIVE_VIEWER=off` starts the site without it.
+`scripts/owngenome-live.sh` starts the [live site](live-site.md) with the viewer: each run has it at `/runs/<run>/viewer/`, behind the site's password, and the report the site serves points its Viewer links there. The site's viewer (`rust/crates/og-live/src/viewer.rs`) uses the same page and the files `owngenome-view.sh` picks by default (the run folder's BAM or CRAM, its VCF and its SV VCF, each with its index, and `REF_FASTA`). The `READS`, `VCF`, `SV_VCF`, `ALIGN_DIR` and `VCF_DIR` overrides do not apply there, and a track whose file or index is a symlink out of `GENOME_DIR` is left out. The first start downloads igv.js the same way. `OWNGENOME_LIVE_VIEWER=off` starts the site without it.
 
 On the genome map, zoom below 50 kb and press **R** or select **See the reads**. The **Reads** gauge opens a 2 kb view. A finding's map card also offers **See the reads**, centred on its position with 50 bases on each side. The panel otherwise starts at the nearest open finding in view, or at the view itself. Moving the map updates the viewer's locus. Alignments are visible up to 50 kb.
 
@@ -127,7 +127,7 @@ The browser checks also measure the contrast of the igv.js search input and vari
 
 `tests/test_viewer.py` checks that every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table.
 
-`tests/test_live_viewer.py` checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
+`rust/crates/og-browser/tests/live_map.rs` (`live_site_genome_viewer`) checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
 
 ## Notes
 
