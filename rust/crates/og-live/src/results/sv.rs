@@ -6,6 +6,36 @@ use og_render::sections::{
 };
 use pycompat::fmt::fixed;
 
+/// A class 4-5 row's benign-set AF for its finding: "no frequency data"
+/// when step 05 says AnnotSV gave none, never blank, which would read as
+/// rare. Null (no evidence line) for a row from before step 05 wrote its
+/// per-record evidence, whatever its AF, so such a finding reads as before.
+fn frequency(x: &Value) -> Read<Value> {
+    let row = D::new(x, "AnnotSV row");
+    if annotsv::no_frequency(&row)? {
+        return Ok(s("no frequency data (unknown, not the same as rare)"));
+    }
+    if !annotsv::has_evidence(&row)? {
+        return Ok(Value::Null);
+    }
+    Ok(match val(x, "population_af") {
+        Value::Null => Value::Null,
+        af => s(&format!(
+            "{} (AnnotSV's aggregate over the benign records listed)",
+            text(af)
+        )),
+    })
+}
+
+/// Step 05's `Benign_match` of a row in words, as the card's checks say it
+/// ("only larger SVs around it"); null without the key.
+fn benign_records(x: &Value) -> Read<Value> {
+    Ok(match D::new(x, "AnnotSV row").opt("benign_match")? {
+        Some(m) => s(annotsv::benign_match_text(m.string()?)),
+        None => Value::Null,
+    })
+}
+
 fn annotsv_support(summary: &Summary, x: &D<'_>) -> Read<String> {
     annotsv::support_text(x, truthy(val(data(summary, "annotsv"), "consensus")))
 }
@@ -89,6 +119,17 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 ],
                 rows,
             );
+            if truthy(a) {
+                // Step 05's per-record evidence and unknown frequencies, said
+                // only when a row carries them, as the report says them.
+                let d = D::new(a, "sections.annotsv.data");
+                if let Some(n) = annotsv::same_size_common(&d)? {
+                    out.fact(annotsv::SAME_SIZE_LABEL, n);
+                }
+                if annotsv::shows_evidence_note(&d)? {
+                    out.lines.push(annotsv::BENIGN_EVIDENCE_NOTE.to_owned());
+                }
+            }
             out.attention = truthy(val(a, "count"));
         }
         "mei" => {
@@ -100,6 +141,8 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 .collect::<Vec<_>>()
                 .join(", ");
             out.fact("By element", text_or(&s(&elements), "none"));
+            // The call MEGAnE made at the site, so "call filtered out (LC)"
+            // names the flagged call as the report does.
             out.fields_table(
                 &[
                     "Gene",
@@ -108,6 +151,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     "Inheritance",
                     "Known site",
                     "Depth",
+                    "Call",
                 ],
                 sites,
                 &[
@@ -117,6 +161,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     "inheritance",
                     "status",
                     "mean_depth",
+                    "call",
                 ],
             );
             out.attention = sites
@@ -128,6 +173,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
             let mut outside = 0;
             let mut rows = Vec::new();
             let mut gauge = Vec::new();
+            let mut penetrance = Vec::new();
             for l in array(d, "loci")? {
                 object_row(l)?;
                 let flagged = repeat_flags(repeat_status(l)?).next().is_some();
@@ -139,6 +185,12 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                     "" => "not graded".to_owned(),
                     "not graded" | "not sized" => status.clone(),
                     _ => format!("\"{status}\""),
+                };
+                // Stranger reads a count of reduced penetrance as a plain full
+                // mutation: the range says what it is.
+                let shown = match repeats::penetrance_text(l)? {
+                    Some(p) => format!("{shown}; {p}"),
+                    None => shown,
                 };
                 let count = if matches!(val(l, "repeat_count"), Value::Str(_)) {
                     repeats::count(l)?
@@ -154,6 +206,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 });
                 rows.push(r);
                 gauge.push((l.clone(), status));
+                penetrance.push(val(l, "penetrance").clone());
             }
             out.fact("Loci tested", cell(val(d, "records")));
             out.fact(
@@ -188,7 +241,21 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 ],
                 rows,
             );
-            out.extra("widget", widgets::str_gauge(gauge));
+            let mut widget = widgets::str_gauge(gauge);
+            // person.js names a locus's range of reduced penetrance under its
+            // gauge; a locus without one carries no key.
+            if let Value::Object(w) = &mut widget
+                && let Some(Value::Array(loci)) = w.get_mut("loci")
+            {
+                for (g, p) in loci.iter_mut().zip(penetrance) {
+                    if let Value::Object(g) = g
+                        && truthy(&p)
+                    {
+                        g.insert("penetrance".into(), p);
+                    }
+                }
+            }
+            out.extra("widget", widget);
         }
         "vntyper" => {
             let sec = summary.section("vntyper");
@@ -240,12 +307,16 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
         "lpa" => {
             let sec = summary.section("lpa");
             let d = sec.data;
+            let message = string(d, "message");
             let repeats = if string(d, "status") == "estimated" {
                 format!(
-                    "{} (95% interval {} to {})",
+                    "{} ({})",
                     text(val(d, "kiv2_copies")),
-                    text(val(d, "ci95_low")),
-                    text(val(d, "ci95_high"))
+                    lpa::interval_text(
+                        message,
+                        &text(val(d, "ci95_low")),
+                        &text(val(d, "ci95_high"))
+                    )
                 )
             } else {
                 cell(val(d, "status"))
@@ -260,7 +331,14 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
             }
             out.lines = lpa::lines(&sec)?;
             out.attention = string(d, "flag") == "high";
-            out.extra("widget", widgets::lpa(d));
+            let mut widget = widgets::lpa(d);
+            // The whisker's label says what the interval covers (step 46's
+            // message); person.js reads it, a widget without it keeps "95%
+            // interval".
+            if let (Value::Object(w), Some(label)) = (&mut widget, lpa::interval_label(message)) {
+                w.insert("interval".into(), s(label));
+            }
+            out.extra("widget", widget);
         }
         "chip" => {
             let sec = summary.section("chip");
@@ -371,7 +449,11 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                 format!("A {kind} of {length} bases that AnnotSV ranks class {}. Short reads can misplace large changes: confirm it.", text(class)))
                 .gene(gene).detail(text_or(sv, ""))
                 .evidence("Class", class).evidence("Callers", &s(&annotsv_support(summary, &D::new(x, "AnnotSV row"))?))
-                .evidence("Genotype", val(x, "gt")).viewer(text_or(sv, "").replace(' ', ""))))
+                .evidence("Genotype", val(x, "gt"))
+                .evidence("Benign records", &benign_records(x)?)
+                .evidence_fields(x, &[("Same-size benign record at 1% or more", "clinical_common")])
+                .evidence("Benign-set AF", &frequency(x)?)
+                .viewer(text_or(sv, "").replace(' ', ""))))
         });
     }
     for l in rows(val(data(summary, "expansions"), "loci")) {
@@ -404,6 +486,30 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                 "It may grow when passed on; worth a word with a genetic counsellor."
             };
             let sizing = val(l, "allele_sizing");
+            // A count Stranger reads as a full mutation can sit in a range of
+            // reduced penetrance (HTT 36-39). Each allele is read on its own:
+            // the title follows the most severe one, so a pair with an allele
+            // above the range (or one not sized) keeps Stranger's reading,
+            // and the sentence names the allele of reduced penetrance.
+            let alleles = repeats::penetrance_alleles(l)?;
+            let (title, said) = match repeats::penetrance_text(l)? {
+                Some(p) if matches!(alleles, Some((_, false))) => (
+                    format!("{name} repeat in a reduced-penetrance range"),
+                    format!(
+                        "{name} has {count} repeats: Stranger reads it as \"{what}\", but {p}. {next}"
+                    ),
+                ),
+                Some(p) => (
+                    format!("{name} repeat in the {what}"),
+                    format!(
+                        "{name} has {count} repeats: Stranger reads it as \"{what}\"; {p}. {next}"
+                    ),
+                ),
+                None => (
+                    format!("{name} repeat in the {what}"),
+                    format!("{name} has {count} repeats: Stranger reads it as \"{what}\". {next}"),
+                ),
+            };
             Ok(Some(
                 Finding::new(
                     if full.is_some() {
@@ -413,8 +519,8 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                     },
                     "expansions",
                     &["str", &text_or_null(locus)],
-                    format!("{name} repeat in the {what}"),
-                    format!("{name} has {count} repeats: Stranger reads it as \"{what}\". {next}"),
+                    title,
+                    said,
                 )
                 .gene(locus)
                 .detail(format!("{name} {count} repeats"))
@@ -424,6 +530,7 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                     &[
                         ("95% interval", "ci"),
                         ("Pathologic from", "pathologic_min"),
+                        ("Reduced penetrance", "penetrance"),
                     ],
                 )
                 .evidence(
@@ -538,5 +645,360 @@ pub(super) fn findings(summary: &Summary, found: &mut Vec<Finding>) {
                 .evidence_fields(x, &[("Score", "exomiser_score"), ("Inheritance", "moi")]),
             ))
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(sections: &str) -> Summary {
+        Summary::parse(&format!(r#"{{"sections": {{{sections}}}}}"#)).unwrap()
+    }
+
+    fn findings_of(summary: &Summary) -> Vec<Finding> {
+        let mut found = Vec::new();
+        findings(summary, &mut found);
+        found
+    }
+
+    /// The live card and finding say "no frequency data", tell the
+    /// aggregate AF from the same-size record, and count those records; a
+    /// row from before the evidence columns reads as before.
+    #[test]
+    fn live_sv_shows_unknown_frequency_and_the_per_record_evidence() {
+        let summary = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 2, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr1:1000-5000", "gt": "0/1", "length": "-4000", "acmg_class": "4",
+                 "genes": ["G1"], "caller": "manta", "support": 1, "support_callers": ["manta"],
+                 "exon_edge": "no", "population_af": null, "population_source": "no frequency data",
+                 "common": false, "benign_match": "none", "clinical_common": "no"},
+                {"type": "DEL", "sv": "chr3:1000-9000", "gt": "0/1", "length": "-8000", "acmg_class": "5",
+                 "genes": ["G3"], "caller": "manta", "support": 1, "support_callers": ["manta"],
+                 "exon_edge": "no", "population_af": 0.05, "population_source": "gnomAD-SV_v4.1",
+                 "common": true, "benign_match": "same", "clinical_common": "yes"}]}}"#,
+        );
+        let shown = card("structural-variants", &summary).unwrap();
+        let table = shown.table.unwrap();
+        let rows = val(&table, "rows");
+        let checks = |i: usize| match rows {
+            Value::Array(r) => text(&list(&r[i]).last().cloned().unwrap_or(Value::Null)),
+            _ => String::new(),
+        };
+        assert_eq!(
+            checks(0),
+            "benign-set AF: no frequency data (unknown, not the same as rare); benign records: \
+             none listed, same-size record at 1% or more: no"
+        );
+        assert_eq!(
+            checks(1),
+            "benign-set AF 0.05 (gnomAD-SV_v4.1; the highest AF of the benign records listed, \
+             larger SVs around it included), common; benign records: one of about the same size, \
+             same-size record at 1% or more: yes"
+        );
+        assert!(
+            shown.facts.contains(&strings([
+                "Calls with a confirmed same-size benign record at 1% or more",
+                "1"
+            ])),
+            "{:?}",
+            shown.facts
+        );
+        assert_eq!(shown.lines, [annotsv::BENIGN_EVIDENCE_NOTE]);
+
+        let found = findings_of(&summary);
+        let evidence = |i: usize| {
+            found[i]
+                .evidence
+                .iter()
+                .map(|e| list(e).iter().map(text).collect::<Vec<_>>().join(": "))
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            evidence(0).contains(
+                &"Benign-set AF: no frequency data (unknown, not the same as rare)".into()
+            ),
+            "{:?}",
+            evidence(0)
+        );
+        assert!(
+            evidence(1).contains(&"Same-size benign record at 1% or more: yes".into()),
+            "{:?}",
+            evidence(1)
+        );
+
+        // Control: a row from before step 05 wrote the evidence.
+        let old = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 1, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr1:1000-5000", "acmg_class": "4", "genes": ["G1"],
+                 "caller": "manta", "support": 1, "exon_edge": "no", "population_af": null,
+                 "population_source": ""}]}}"#,
+        );
+        let shown = card("structural-variants", &old).unwrap();
+        assert!(shown.lines.is_empty(), "{:?}", shown.lines);
+        assert_eq!(shown.facts.len(), 5, "{:?}", shown.facts);
+        let found = findings_of(&old);
+        assert!(
+            !found[0]
+                .evidence
+                .iter()
+                .any(|e| text(&list(e)[0]).starts_with("Benign-set")),
+            "{:?}",
+            found[0].evidence
+        );
+    }
+
+    /// The evidence of a finding as "label: value" lines.
+    fn evidence_of(f: &Finding) -> Vec<String> {
+        f.evidence
+            .iter()
+            .map(|e| list(e).iter().map(text).collect::<Vec<_>>().join(": "))
+            .collect()
+    }
+
+    /// A legacy row (no per-record evidence, no "no frequency data" marker)
+    /// with a numeric AF gains no new evidence line: its finding reads as
+    /// before step 05 wrote the columns.
+    #[test]
+    fn live_sv_legacy_numeric_af_adds_no_evidence_line() {
+        let old = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 1, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr2:2000-2500", "acmg_class": "4", "genes": ["G1"],
+                 "caller": "manta", "support": 1, "exon_edge": "no", "population_af": 0.05,
+                 "population_source": "gnomAD-SV_v4.1", "common": true}]}}"#,
+        );
+        let found = findings_of(&old);
+        let evidence = evidence_of(&found[0]);
+        assert!(
+            !evidence
+                .iter()
+                .any(|e| e.starts_with("Benign") || e.starts_with("Same-size")),
+            "{evidence:?}"
+        );
+    }
+
+    /// A finding names step 05's Benign_match in words, as the card does:
+    /// "only larger SVs around it" is what tells a contained match with no
+    /// same-size common record from a same-size one.
+    #[test]
+    fn live_sv_finding_names_the_benign_match() {
+        let summary = parse(
+            r#""annotsv": {"state": "ok", "data": {"count": 1, "consensus": null, "rows": [
+                {"type": "DEL", "sv": "chr2:2000-2500", "gt": "0/1", "length": "-500", "acmg_class": "4",
+                 "genes": ["G1"], "caller": "manta", "support": 1, "support_callers": ["manta"],
+                 "exon_edge": "no", "population_af": 0.05, "population_source": "gnomAD-SV_v4.1",
+                 "common": true, "benign_match": "contained", "clinical_common": "no"}]}}"#,
+        );
+        let evidence = evidence_of(&findings_of(&summary)[0]);
+        assert!(
+            evidence.contains(&"Benign records: only larger SVs around it".into()),
+            "{evidence:?}"
+        );
+        assert!(
+            evidence.contains(&"Same-size benign record at 1% or more: no".into()),
+            "{evidence:?}"
+        );
+    }
+
+    /// The card counts confirmed same-size matches and says how many the
+    /// evidence could not assess, so every row unknown never reads as a bare
+    /// 0; its caveat names no count the card does not show.
+    #[test]
+    fn live_sv_same_size_count_says_confirmed_and_not_assessed() {
+        let row = |sv: &str| {
+            format!(
+                r#"{{"type": "DEL", "sv": "{sv}", "acmg_class": "4", "genes": ["G1"],
+                    "caller": "manta", "support": 1, "exon_edge": "no", "population_af": 0.05,
+                    "population_source": "gnomAD-SV_v4.1", "common": true,
+                    "benign_match": "same", "clinical_common": "unknown"}}"#
+            )
+        };
+        let summary = parse(&format!(
+            r#""annotsv": {{"state": "ok", "data": {{"count": 2, "consensus": null, "rows": [{}, {}]}}}}"#,
+            row("chr1:1000-5000"),
+            row("chr3:1000-9000")
+        ));
+        let shown = card("structural-variants", &summary).unwrap();
+        assert!(
+            shown.facts.contains(&strings([
+                "Calls with a confirmed same-size benign record at 1% or more",
+                "0, not assessed: 2"
+            ])),
+            "{:?}",
+            shown.facts
+        );
+        assert_eq!(shown.lines.len(), 1, "{:?}", shown.lines);
+        assert!(
+            !shown.lines[0].contains("common count"),
+            "{:?}",
+            shown.lines
+        );
+    }
+
+    /// The MEI table names the call MEGAnE flagged, beside its status, and
+    /// shows a site with too few reads as not callable.
+    #[test]
+    fn live_mei_names_the_filtered_call_and_the_site_not_assessed() {
+        let summary = parse(
+            r#""mei": {"state": "ok", "data": {"calls": 1, "by_element": {"SVA": 1}, "sites": [
+                {"gene": "FKTN", "element": "SVA", "condition": "FCMD", "inheritance": "AR",
+                 "status": "call filtered out (LC)", "mean_depth": "30.0",
+                 "call": "chr9:105639660 SVA_F 1 copy LC"},
+                {"gene": "TAF1", "element": "SVA", "condition": "XDP", "inheritance": "XL",
+                 "status": "not callable", "mean_depth": "4.0", "call": "."}]}}"#,
+        );
+        let shown = card("mei", &summary).unwrap();
+        let table = shown.table.unwrap();
+        assert_eq!(text(list(val(&table, "columns")).last().unwrap()), "Call");
+        let Value::Array(rows) = val(&table, "rows") else {
+            panic!("{table:?}")
+        };
+        let row = |i: usize| list(&rows[i]).iter().map(text).collect::<Vec<_>>();
+        assert_eq!(
+            row(0)[4..],
+            [
+                "call filtered out (LC)",
+                "30.0",
+                "chr9:105639660 SVA_F 1 copy LC"
+            ]
+        );
+        assert_eq!(row(1)[4], "not callable");
+        assert!(shown.attention);
+    }
+
+    /// The range of reduced penetrance `og summary collect` puts on an HTT
+    /// locus with a sized count of 36 to 39.
+    const PEN: &str = r#", "penetrance": "36-39", "penetrance_label": "reduced penetrance (may or may not cause Huntington disease; full penetrance from 40)", "penetrance_citation": "GeneReviews""#;
+
+    /// The invented counts of a mixed HTT pair: one allele in the range of
+    /// reduced penetrance, the other above it, a full mutation.
+    const MIXED: &str = "38/42";
+
+    /// Invented controls: one count of reduced penetrance; one full
+    /// mutation (of 42, and of 40, the first count of full penetrance).
+    const REDUCED: &str = "17/38";
+    const FULL: &str = "17/42";
+    const FULL_40: &str = "17/40";
+
+    /// A summary whose only expansions locus is HTT with `counts` (sized,
+    /// flagged by Stranger as a full mutation) and `extra` keys.
+    fn htt(counts: &str, extra: &str) -> Summary {
+        let ci = counts
+            .split('/')
+            .map(|c| format!("{c}-{c}"))
+            .collect::<Vec<_>>()
+            .join("/");
+        parse(&format!(
+            r#""expansions": {{"state": "ok", "data": {{"records": 1, "stranger": true,
+                "loci": [{{"locus": "HTT", "repeat_count": "{counts}", "status": "full_mutation",
+                "normal_max": "26", "pathologic_min": "36", "ci": "{ci}", "sizing": "sized",
+                "allele_sizing": "sized/sized", "zone": ""{extra}}}], "unsized": [],
+                "intermediate": []}}}}"#
+        ))
+    }
+
+    /// An HTT count of reduced penetrance says so in the table, the gauge
+    /// and the finding; a count of 40 reads as before.
+    #[test]
+    fn live_htt_of_reduced_penetrance_says_so() {
+        let summary = htt(REDUCED, PEN);
+        let shown = card("expansions", &summary).unwrap();
+        let table = shown.table.unwrap();
+        let Value::Array(rows) = val(&table, "rows") else {
+            panic!("{table:?}")
+        };
+        assert_eq!(
+            text(&list(&rows[0])[2]),
+            "\"full_mutation\"; 38 repeats in 36-39: reduced penetrance (may or may not cause \
+             Huntington disease; full penetrance from 40)"
+        );
+        let widget = shown.extra.get("widget").unwrap();
+        assert_eq!(
+            text(val(&list(val(widget, "loci"))[0], "penetrance")),
+            "36-39"
+        );
+        let found = findings_of(&summary);
+        assert_eq!(found[0].title, "HTT repeat in a reduced-penetrance range");
+        assert!(
+            found[0]
+                .text
+                .contains("but 38 repeats in 36-39: reduced penetrance"),
+            "{}",
+            found[0].text
+        );
+
+        let summary = htt(FULL_40, "");
+        let shown = card("expansions", &summary).unwrap();
+        let widget = shown.extra.get("widget").unwrap();
+        assert!(get(&list(val(widget, "loci"))[0], "penetrance").is_none());
+        let found = findings_of(&summary);
+        assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+    }
+
+    /// Each sized HTT allele is read on its own: in a mixed pair the
+    /// finding keeps the full-mutation reading of the allele above the
+    /// range and names the other as reduced penetrance. Controls: a pair
+    /// with only a count of reduced penetrance, and one with only a full
+    /// mutation.
+    #[test]
+    fn live_htt_mixed_pair_keeps_the_full_mutation_reading() {
+        let found = findings_of(&htt(MIXED, PEN));
+        assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+        assert!(
+            found[0].text.contains(
+                "Stranger reads it as \"full-mutation range\"; 38 repeats in 36-39: reduced \
+                 penetrance (may or may not cause Huntington disease; full penetrance from 40). \
+                 See a clinical geneticist."
+            ),
+            "{}",
+            found[0].text
+        );
+        assert!(!found[0].text.contains(", but "), "{}", found[0].text);
+
+        let found = findings_of(&htt(REDUCED, PEN));
+        assert_eq!(found[0].title, "HTT repeat in a reduced-penetrance range");
+        let found = findings_of(&htt(FULL, ""));
+        assert_eq!(found[0].title, "HTT repeat in the full-mutation range");
+        assert!(!found[0].text.contains("reduced"), "{}", found[0].text);
+    }
+
+    /// The KIV-2 fact and the whisker say the interval covers read sampling
+    /// only; a message from before keeps "95% interval".
+    #[test]
+    fn live_lpa_labels_the_interval_read_sampling() {
+        let at = |message: &str| {
+            parse(&format!(
+                r#""lpa": {{"state": "ok", "data": {{"status": "estimated", "kiv2_copies": "29.4",
+                    "ci95_low": "23.8", "ci95_high": "35.8", "class": "typical", "message": "{message}",
+                    "advice": ".", "flag": "", "flag_text": "."}}}}"#
+            ))
+        };
+        let shown = card(
+            "lpa",
+            &at(
+                "about 29 KIV-2 repeats in total over both copies (95% interval for read \
+                 sampling, 23.8 to 35.8; aligner or library bias not included): typical",
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            shown.facts[0],
+            strings([
+                "KIV-2 repeats",
+                "29.4 (95% interval for read sampling only, 23.8 to 35.8)"
+            ])
+        );
+        let widget = shown.extra.get("widget").unwrap();
+        assert_eq!(
+            text(val(widget, "interval")),
+            "95% interval for read sampling only"
+        );
+
+        let shown = card("lpa", &at("ok")).unwrap();
+        assert_eq!(
+            shown.facts[0],
+            strings(["KIV-2 repeats", "29.4 (95% interval 23.8 to 35.8)"])
+        );
+        assert!(get(shown.extra.get("widget").unwrap(), "interval").is_none());
     }
 }

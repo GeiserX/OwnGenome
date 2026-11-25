@@ -1352,3 +1352,60 @@ fn the_consensus_confirms_only_the_cyp2d6_call_it_agrees_with() {
     assert_eq!(st(d6, &["confidence", "level"]), "medium", "{d6:?}");
     assert!(!format!("{:?}", get(d6, &["evidence", "tools"])).contains("Cyrius"));
 }
+
+#[test]
+fn an_exome_is_assay_type_wes() {
+    // og summary marks an exome's coverage section `on_target` (the run
+    // manifest says WES, or mosdepth's regions are a capture), so the mean
+    // depth is the on-target one and the assay is an exome.
+    let wes = swap(
+        "coverage",
+        r#""coverage":{"state":"ok","data":{"mean_depth":99.0,"on_target":true}}"#,
+    );
+    let (b, _) = run("wes", &wes);
+    assert_eq!(st(&b.doc, &["assay", "type"]), "wes");
+    assert_eq!(
+        get(&b.doc, &["assay", "mean_depth"]),
+        Some(&Value::Float(99.0))
+    );
+    let schema_text =
+        std::fs::read_to_string(repo().join("assets/ownhealth/genome-facts.v1.json")).unwrap();
+    let schema = json::loads(&schema_text).unwrap();
+    let errors = og_dev::schema::validate(&schema, &b.doc).unwrap();
+    assert!(errors.is_empty(), "{errors:?}");
+    // A whole genome's section has no `on_target` key; a false one is not an exome either.
+    let wgs = swap(
+        "coverage",
+        r#""coverage":{"state":"ok","data":{"mean_depth":31.5,"on_target":false}}"#,
+    );
+    let (b, _) = run("wes-false", &wgs);
+    assert_eq!(st(&b.doc, &["assay", "type"]), "wgs");
+}
+
+#[test]
+fn a_wes_manifest_is_an_exome_without_coverage() {
+    // The run manifest says WES but no coverage section is ok (mosdepth was
+    // not in --tools): the reads still make it a sequenced run, and the
+    // manifest makes it an exome, as for og summary's Coverage::read.
+    let dir = folder("wes-no-coverage", &swap("coverage", ""));
+    let summary = std::fs::read_to_string(dir.join("summary.json"))
+        .unwrap()
+        .replace(
+            r#"["run","git_commit","abc1234"]"#,
+            r#"["run","git_commit","abc1234"],["run","model_type","WES"]"#,
+        );
+    std::fs::write(dir.join("summary.json"), summary).unwrap();
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).expect("builds");
+    assert_eq!(st(&b.doc, &["assay", "type"]), "wes");
+    // A WGS row is not an exome.
+    let dir = folder("wgs-no-coverage", &swap("coverage", ""));
+    let summary = std::fs::read_to_string(dir.join("summary.json"))
+        .unwrap()
+        .replace(
+            r#"["run","git_commit","abc1234"]"#,
+            r#"["run","git_commit","abc1234"],["run","model_type","WGS"]"#,
+        );
+    std::fs::write(dir.join("summary.json"), summary).unwrap();
+    let b = build(SAMPLE, &dir, &panels(), &mut genome()).expect("builds");
+    assert_eq!(st(&b.doc, &["assay", "type"]), "wgs");
+}

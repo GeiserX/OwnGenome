@@ -3,7 +3,10 @@
     MOSDEPTH — Fast per-base and per-region coverage statistics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Computes precise per-base depth from actual alignments (not just the index).
-    Outputs coverage distributions, threshold summaries, and region BED files.
+    Outputs coverage distributions, threshold summaries, and region BED files:
+    500 bp windows for a whole genome, or, with --capture_bed (--model_type
+    WES), the capture regions, so an exome's summary gives its on-target
+    depth (the script's CAPTURE_BED).
 
     A second pass over the genes of assets/callability_genes.tsv counts, per
     gene on chr1-22, X and Y, the bases with 10 or more reads of MAPQ 20 or
@@ -17,6 +20,13 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// mosdepth's windows, written once: the script passes them and the stub
+// prints them, so tests/e2e/nf-exome-1-stub.sh checks what runs. An exome's
+// capture BED, else 500 bp windows.
+def mosdepth_by(capture_bed) {
+    return "--by ${capture_bed ?: 500}"
+}
+
 process MOSDEPTH {
     tag "$meta.id"
     label 'process_medium'
@@ -26,6 +36,7 @@ process MOSDEPTH {
     input:
     tuple val(meta), path(bam), path(bai)
     path(callability_tables)  // assets/callability_genes.tsv, and assets/callability_exons.tsv when exons are measured
+    path(capture_bed)         // --capture_bed with --model_type WES, or []
 
     output:
     tuple val(meta), path("*.mosdepth.summary.txt"),     emit: summary
@@ -42,7 +53,7 @@ process MOSDEPTH {
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     mosdepth \\
-        --by 500 \\
+        ${mosdepth_by(capture_bed)} \\
         --fast-mode \\
         --no-per-base \\
         --threads ${task.cpus} \\
@@ -101,10 +112,13 @@ process MOSDEPTH {
     """
 
     stub:
+    // The stub prints the windows the script passes (tests/e2e/nf-exome-1-stub.sh reads them).
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
+    echo "mosdepth options: ${mosdepth_by(capture_bed)}"
     touch ${prefix}.mosdepth.summary.txt
     touch ${prefix}.mosdepth.global.dist.txt
+    echo | gzip > ${prefix}.regions.bed.gz
     echo | gzip > ${prefix}_callability.bed.gz
 
     cat <<-END_VERSIONS > versions.yml

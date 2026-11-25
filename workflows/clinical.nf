@@ -33,6 +33,7 @@ include { ANCESTRY_FINE_PHASE     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PAINT     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_REPORT    } from '../modules/local/ancestry_fine/main'
 include { CONSUMER_EXPORT    } from '../modules/local/export_consumer/main'
+include { selected_tools } from './exome'
 
 workflow CLINICAL {
 
@@ -95,9 +96,11 @@ workflow CLINICAL {
     }
 
     //
-    // MODULE 2: ROH — Runs of homozygosity
+    // MODULE 2: ROH — Runs of homozygosity, on a whole genome: an exome's
+    // variants leave gaps of megabases between the captured exons
+    // (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('roh')) {
+    if (selected_tools().contains('roh')) {
         ROH(ch_vcf)
         ch_roh_regions = ROH.out.roh_regions
         ch_versions    = ch_versions.mix(ROH.out.versions)

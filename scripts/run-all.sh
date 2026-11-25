@@ -38,6 +38,9 @@
 # Run as scripts after the pipeline: TIDDIT=true (04a), GRIDSS=true (04b), IMPUTATION=true (14),
 #   SOMATIC=true (29), EXTRA_CALLERS=gatk,freebayes,strelka2,octopus (03a-03d), BENCHMARK=true (needs
 #   EXTRA_CALLERS or a second caller VCF); then the HTML report (24) and the text report, also after a failed pipeline.
+# --model_type WES --capture_bed <bed> (an exome, docs/wes-guide.md) goes to main.nf like any option. The steps an exome
+#   leaves out, the --tools names of exome_skipped_tools() in workflows/exome.nf and indexcov (step 16), are not passed
+#   and are recorded as 'skipped (not run: exome)'; so is the SV merge (22) when CNVpytor was one of its two callers.
 # FAMILIES=families.tsv (who is related to whom, assets/families.example.tsv): when the sample is in a family, the sex
 #   must agree with the file (exit 2 before the pipeline). After the pipeline, before the reports, og family
 #   plan writes GENOME_DIR/<family>/family_plan.tsv from what the members have, and step 38 (38-family.sh) and step 39
@@ -73,6 +76,14 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 validate_sample "$SAMPLE"
+# An exome (--model_type WES, as main.nf reads it): EXOME_TOOLS are the --tools names workflows/exome.nf leaves out,
+# read from its exome_skipped_tools(), the one list both paths use.
+EXOME="" EXOME_TOOLS="" prev=""
+for a in "$@"; do case "${prev}:${a}" in --model_type:WES|*:--model_type=WES) EXOME=1 ;; esac; prev=$a; done
+if [ -n "$EXOME" ]; then
+  EXOME_TOOLS=$(sed -n '/^def exome_skipped_tools()/,/^}/p' "${PGP_ROOT}/workflows/exome.nf" | { grep -o "'[a-z0-9_]*'" || true; } | tr -d "'" | tr '\n' ' ')
+  [ -n "$EXOME_TOOLS" ] || { echo "ERROR: --model_type WES: no step list in exome_skipped_tools() of ${PGP_ROOT}/workflows/exome.nf" >&2; exit 2; }
+fi
 # EVERYTHING=true: every tool row of assets/everything.tsv goes into TOOLS (html_report aside: this script writes
 # the report itself, step 24) and every switch row is set to its value. EVHOW keeps each row's install command.
 EV="" EVMISS=(); declare -A EVHOW=()
@@ -167,10 +178,24 @@ NF=() SEL=() RUNS=() KNOWN="" OPTIN=()  # every step of a default run: it runs, 
 declare -A TOOL_OF=()                   # step number -> its --tools name, for the steps that run
 need() { local f; for f in "$@"; do [ -e "$f" ] || { echo "data not installed: ${f#"$G"/}"; return; }; done; }
 optin() { [[ ",${T// /}," == *",$1,"* ]] && return 1; echo "opt-in: add $1 to TOOLS"; }  # prints why it is skipped
+# exome_drops TOOL: 0 when an exome leaves TOOL out, as exome_dropped() of workflows/exome.nf decides: a name of its
+# list, or survivor_merge when CNVpytor goes and fewer than two of its callers are left (Manta and Delly, planned before it).
+exome_drops() {
+  [ -n "$EXOME" ] || return 1
+  if [ "$1" = survivor_merge ]; then
+    local t=${TOOLS:-} c n=0
+    exome_drops cnvpytor && { [ -z "$t" ] || [[ ",${t// /}," == *",cnvpytor,"* ]]; } || return 1
+    for c in manta delly; do [[ " ${SEL[*]} " != *" ${c} "* ]] || n=$((n + 1)); done
+    [ "$n" -lt 2 ]; return
+  fi
+  [[ " ${EXOME_TOOLS} " == *" $1 "* ]]
+}
 plan() {  # plan "STEP Label" TOOL [REASON]: 0 when TOOL runs
   local r=${3:-} t=${TOOLS:-}; KNOWN+=" $2"
   [[ -n "$NOBAM" || " 16 16b 10 20 21 04 19 15 22 08 09 09b 18 05 28 32 33 35 35b 37 45 49 " != *" ${1%% *} "* ]] || r="no BAM"
   [ -z "$t" ] || [[ ",${t// /}," == *",$2,"* ]] || r=${r:-not in TOOLS}
+  # An exome does not run the step whatever else it lacks (main.nf drops it before it checks the data).
+  if exome_drops "$2" && { [ -z "$t" ] || [[ ",${t// /}," == *",$2,"* ]]; }; then r="not run: exome"; fi
   if [ -z "$r" ]; then SEL+=("$2") RUNS+=("${1%% *}") TOOL_OF[${1%% *}]=$2; printf '  %-28s runs\n' "$1"; return 0; fi
   printf '  %-28s skipped    (%s)\n' "$1" "$r"; printf 'step\t%s\tskipped (%s)\n' "${1%% *}" "$r" >> "$STATUS"
   evmiss "$1" "$2" "$r"; return 1
@@ -246,7 +271,9 @@ if [ "$input_mode" = vcf ] && [ -f "$GV" ]; then
   NOGV="INPUT=vcf: the gVCF beside the VCF is not read"
 fi
 printf 'sample,fastq_1,fastq_2,bam,bam_index,vcf,vcf_index,sex%s\n%s,%s,%s%s\n' "$GCOL" "$SAMPLE" "$row" "$SEX" "$GROW" > "$SHEET"
-if [ -n "$NOBAM" ]; then RUNS=(16); else printf 'step\t16\tskipped (no BAM)\n' >> "$STATUS"; fi
+# Step 16 (indexcov) reads depth along the whole genome: main.nf runs it on a whole genome's BAM only.
+if [ -n "$EXOME" ]; then printf 'step\t16\tskipped (not run: exome)\n' >> "$STATUS"
+elif [ -n "$NOBAM" ]; then RUNS=(16); else printf 'step\t16\tskipped (no BAM)\n' >> "$STATUS"; fi
 echo "[Steps] ${SAMPLE} (${SEX})"
 for p in "07 PharmCAT:pharmcat" "27 CPIC lookup:cpic" "11 ROH:roh" "12 Mito haplogroup:mito_haplogroup" "16b mosdepth:mosdepth" \
          "10 TelomereHunter:telomere_hunter" "20 Mito variants (Mutect2):mito_variants" "04 Manta:manta" \
