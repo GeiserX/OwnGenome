@@ -323,14 +323,36 @@ pub(super) fn clinical_findings<'a>(
         .map(str_val)
         .filter(|g| !g.is_empty())
         .collect();
-    match sf_rows(summary, sf) {
+    let sf_record = D::new(sf, "clinical.acmg_sf");
+    let sf_list = text_or(val(sf, "version"), "ACMG SF");
+    match sf_rows(summary, sf).and_then(|rows| {
+        rows.into_iter()
+            .map(|r| {
+                let condition = acmg_sf::listed_condition(&sf_record, &r.0)?;
+                Ok((acmg_sf::lede(&r.0, condition.as_deref()), r))
+            })
+            .collect::<Read<Vec<_>>>()
+    }) {
         Ok(rows) => {
-            for (gene, variant, genotype, why) in rows {
-                found.push(Finding::new(Level::Act, "clinical-filter", &["sf", &gene, &variant],
-                    format!("Secondary finding in {gene}"),
-                    format!("A change in {gene} that the ACMG secondary-findings list reports: {why}."))
-                    .gene(&s(&gene)).detail(format!("{gene} {variant} {}", if genotype == "." { "" } else { &genotype }))
-                    .evidence("Variant", &s(&variant)).evidence("Genotype", &s(&genotype)).evidence("Why it is reported", &s(&why)));
+            for (lede, (gene, variant, genotype, why)) in rows {
+                found.push(
+                    Finding::new(
+                        Level::Act,
+                        "clinical-filter",
+                        &["sf", &gene, &variant],
+                        format!("Secondary finding in {gene}"),
+                        lede,
+                    )
+                    .gene(&s(&gene))
+                    .detail(format!(
+                        "{gene} {variant} {}",
+                        if genotype == "." { "" } else { &genotype }
+                    ))
+                    .evidence("Variant", &s(&variant))
+                    .evidence("Genotype", &s(&genotype))
+                    .evidence("Reporting list", &s(&sf_list))
+                    .evidence("Why it is reported", &s(&why)),
+                );
             }
         }
         Err(err) => found.push(unreadable(
@@ -405,7 +427,25 @@ pub(super) fn family_findings(summary: &Summary, found: &mut Vec<Finding>) {
                     format!("A carrier has one changed copy of a gene where it takes two to cause the condition. This genome has one changed copy of {g}: a carrier, not affected."))
                     .detail(format!("{g} {}", text_or(variant, "")))
             };
-            Ok(Some(finding.gene(gene).evidence_fields(c, &evidence)))
+            // The call's mark against the hits file's floor, and the pair word
+            // of two heterozygous hits in the gene with its phase.
+            let call = if truthy(val(c, "low_confidence")) {
+                s("low confidence: check the reads")
+            } else {
+                Value::Null
+            };
+            let pair = match (text_or(val(c, "pair"), ""), text_or(val(c, "phase"), "")) {
+                (p, ph) if p.is_empty() => ph,
+                (p, ph) if ph.is_empty() => p,
+                (p, ph) => format!("{p}: {ph}"),
+            };
+            Ok(Some(
+                finding
+                    .gene(gene)
+                    .evidence_fields(c, &evidence)
+                    .evidence("Call", &call)
+                    .evidence("Second hit in the gene", &s(&pair)),
+            ))
         });
     }
     let cp = data(summary, "couple");
@@ -464,4 +504,105 @@ pub(super) fn family_findings(summary: &Summary, found: &mut Vec<Finding>) {
             "One copy of SMN1 where most people have two: a carrier of spinal muscular atrophy, not affected.")
             .gene(&s("SMN1")).evidence("SMN1 copies", &s("1")).evidence("Called by", &s(by))))
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(sections: &str) -> Summary {
+        Summary::parse(&format!(r#"{{"sections": {{{sections}}}}}"#)).unwrap()
+    }
+
+    /// The evidence of a finding as "label: value" lines.
+    fn evidence_of(f: &Finding) -> Vec<String> {
+        f.evidence
+            .iter()
+            .map(|e| list(e).iter().map(text).collect::<Vec<_>>().join(": "))
+            .collect()
+    }
+
+    /// A ClinVar hit in BRCA1 on the SF card: one ClinVar P/LP hit whose
+    /// condition step 6 copied, so it carries the disease ACMG lists.
+    const BRCA1: &str = r#""clinical": {"state": "ok", "data": {"variants": 1, "acmg_sf": {
+        "version": "ACMG SF v3.3", "genes_on_list": 84, "high_impact": [], "high_impact_checked": true,
+        "clinvar_hits": [{"gene": "BRCA1", "variant": "chr17:43045712 G>A", "genotype": "het",
+          "significance": "Pathogenic", "stars": 3, "low_confidence": false,
+          "clinvar_condition": "Hereditary breast ovarian cancer syndrome", "clinvar_condition_ids": [],
+          "acmg_phenotype": "hereditary breast and ovarian cancer", "condition_not_acmg": false,
+          "rule": "All P and LP", "rule_note": null, "severity": null}]}}}"#;
+
+    /// The SF finding opens in plain words: the gene is one doctors report
+    /// even unasked, the disease it is listed for, and that this is no
+    /// diagnosis. The list's name and the ClinVar class stay in the
+    /// evidence rows.
+    #[test]
+    fn the_sf_finding_says_why_in_plain_words() {
+        let mut found = Vec::new();
+        clinical_findings(&parse(BRCA1), &mut found);
+        let f = found
+            .iter()
+            .find(|f| f.title == "Secondary finding in BRCA1")
+            .expect("the SF finding");
+        assert!(
+            f.text.contains("hereditary breast and ovarian cancer"),
+            "{}",
+            f.text
+        );
+        assert!(f.text.contains("not a diagnosis"), "{}", f.text);
+        assert!(f.text.contains("certified laboratory"), "{}", f.text);
+        assert!(!f.text.contains("ACMG"), "{}", f.text);
+        let ev = evidence_of(f);
+        assert!(
+            ev.contains(&"Reporting list: ACMG SF v3.3".to_owned()),
+            "{ev:?}"
+        );
+        assert!(
+            ev.iter().any(|e| e.starts_with(
+                "Why it is reported: ClinVar Pathogenic; \
+                ClinVar condition: Hereditary breast ovarian cancer syndrome"
+            )),
+            "{ev:?}"
+        );
+    }
+
+    /// A carrier row below the call floor, and two heterozygous hits of one
+    /// recessive gene, show the mark and the pair on the carrier finding; a
+    /// row with neither gains no evidence line.
+    #[test]
+    fn a_carrier_finding_shows_its_call_and_its_pair() {
+        let summary = parse(
+            r#""carrier": {"state": "ok", "data": {"genes_on_list": 3, "set_aside": [], "hom_or_hemizygous": [],
+              "carriers": [
+                {"gene": "GENE1", "variant": "chr1:100 C>T", "genotype": "het", "significance": "Pathogenic",
+                 "stars": 2, "inheritance": "AR", "condition": "Condition one", "low_confidence": true},
+                {"gene": "GENE2", "variant": "chr2:100 C>T", "genotype": "het", "significance": "Pathogenic",
+                 "stars": 2, "inheritance": "AR", "condition": "Condition two", "low_confidence": false,
+                 "pair": "possible two hits", "phase": "phase unknown"},
+                {"gene": "GENE3", "variant": "chr3:100 C>T", "genotype": "het", "significance": "Pathogenic",
+                 "stars": 2, "inheritance": "AR", "condition": "Condition three", "low_confidence": false}]}}"#,
+        );
+        let mut found = Vec::new();
+        family_findings(&summary, &mut found);
+        let ev = |gene: &str| {
+            evidence_of(
+                found
+                    .iter()
+                    .find(|f| f.gene == s(gene))
+                    .expect("the carrier finding"),
+            )
+        };
+        assert!(ev("GENE1").contains(&"Call: low confidence: check the reads".to_owned()));
+        assert!(
+            ev("GENE2")
+                .contains(&"Second hit in the gene: possible two hits: phase unknown".to_owned())
+        );
+        assert!(
+            !ev("GENE3")
+                .iter()
+                .any(|e| e.starts_with("Call") || e.starts_with("Second hit")),
+            "{:?}",
+            ev("GENE3")
+        );
+    }
 }

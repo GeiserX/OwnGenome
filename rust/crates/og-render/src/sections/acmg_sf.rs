@@ -4,10 +4,22 @@
 //! HIGH-impact records and the class 4/5 SVs it reports, and the variants
 //! it does not report, each with the reason. Every phrase comes from the
 //! summary as `og summary collect` wrote it.
+//!
+//! Each row also carries the marks the collector writes when they apply:
+//! the condition ClinVar names for the hit, and whether it is another
+//! disease than the one ACMG lists the gene for; the loss-of-function
+//! mechanism note; the TTN and LMNA rule condition; a HIGH-impact call
+//! with nothing to judge it by; and the pair word of a recessive gene with
+//! its phase and note. A summary without those keys prints the rows as
+//! before. A run whose step 23 wrote no readable clinical VCF has no
+//! `clinical.acmg_sf`; its card is then `sections.acmg_sf`, built from
+//! step 6 alone, and says the HIGH-impact source was not checked.
 
 use pycompat::fmt::ljust;
 
-use crate::model::{Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Summary, Table};
+use crate::model::{
+    Card, Cell, HtmlPart, Inline, Layout, Line, Malformed, Section, Summary, Table,
+};
 use crate::notes::ACMG_NOTE;
 use crate::sections::annotsv::unknown_reason;
 use crate::sections::clinvar::{D, viewer_of};
@@ -36,6 +48,12 @@ pub fn high_apart(sf: &D<'_>) -> Result<String, Malformed> {
     if let Some(n) = sf.opt("high_impact_frequency_unknown")? {
         parts.push(format!("{} of unknown frequency", n.text()?));
     }
+    if let Some(n) = sf.opt("high_impact_unverified")? {
+        parts.push(format!(
+            "{} with no GQ, DP or AD to judge the call",
+            n.text()?
+        ));
+    }
     Ok(if parts.is_empty() {
         String::new()
     } else {
@@ -56,6 +74,9 @@ pub fn high_marks(x: &D<'_>, lead: &str) -> Result<String, Malformed> {
             x.s_or_none("call_note")?
         ));
     }
+    if x.flag("call_unverified")? {
+        marks.push("no GQ, DP or AD to judge the call, not counted as rare".to_owned());
+    }
     if marks.is_empty() {
         return Ok(String::new());
     }
@@ -63,15 +84,117 @@ pub fn high_marks(x: &D<'_>, lead: &str) -> Result<String, Malformed> {
     Ok(format!("{lead}{}{close}", marks.join("; ")))
 }
 
-/// The severity, rule and two-hit notes of a row.
+/// The severity, rule, rule condition, mechanism and two-hit notes of a
+/// row, then the pair word of a recessive gene with its phase and note.
 fn extra(x: &D<'_>) -> Result<String, Malformed> {
     let mut out = String::new();
-    for k in ["severity", "rule_note", "two_hit"] {
+    for k in [
+        "severity",
+        "rule_note",
+        "rule_condition",
+        "mechanism_note",
+        "two_hit",
+    ] {
         if let Some(v) = x.opt(k)? {
             out += &format!("; {}", v.text()?);
         }
     }
+    if let Some(pair) = x.opt("pair")? {
+        let pair = pair.text()?;
+        let phase = match x.opt("phase")? {
+            Some(p) => p.text()?,
+            None => String::new(),
+        };
+        // The row's own two-hit note can already say it, word and phase
+        // alike (a deletion in trans by the same phase set): say it once.
+        let said = match x.opt("two_hit")? {
+            Some(t) => {
+                let t = t.text()?;
+                t.starts_with(&pair) && t.ends_with(&phase)
+            }
+            None => false,
+        };
+        if !said {
+            out += &format!("; {pair}");
+            if !phase.is_empty() {
+                out += &format!(": {phase}");
+            }
+        }
+    }
+    if let Some(n) = x.opt("pair_note")? {
+        out += &format!("; {}", n.text()?);
+    }
     Ok(out)
+}
+
+/// The condition ClinVar names for a hit, and the mark when it is another
+/// disease than the one ACMG lists the gene for; `""` for a hit with no
+/// named condition.
+fn condition(x: &D<'_>) -> Result<String, Malformed> {
+    let Some(c) = x.opt("clinvar_condition")? else {
+        return Ok(String::new());
+    };
+    let mut out = format!("; ClinVar condition: {}", c.text()?);
+    if x.flag("condition_not_acmg")? {
+        let listed = match x.opt("acmg_phenotype")? {
+            Some(p) => format!(" ({})", p.text()?),
+            None => String::new(),
+        };
+        out += &format!(
+            ", not the disease ACMG lists {} for{listed}: check which disease the variant was \
+             reported for",
+            x.s("gene")?
+        );
+    }
+    Ok(out)
+}
+
+/// The disease ACMG lists `gene` for, from the first row of the gene that
+/// carries it (`acmg_phenotype`, on a ClinVar hit whose condition step 6
+/// copied).
+pub fn listed_condition(sf: &D<'_>, gene: &str) -> Result<Option<String>, Malformed> {
+    for k in ["clinvar_hits", "high_impact", "structural"] {
+        let Some(list) = sf.get(k)? else { continue };
+        if !matches!(list.v, pycompat::json::Value::Array(_)) {
+            continue;
+        }
+        for x in list.items()? {
+            if x.get("gene")?.is_some_and(|g| g.is(gene))
+                && let Some(p) = x.opt("acmg_phenotype")?
+            {
+                return Ok(Some(p.text()?));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The opening sentence of a secondary finding, in plain words: what the
+/// gene is, why it is reported, and what the result is not. The list's
+/// name, its version and the ClinVar class stay in the evidence rows.
+pub fn lede(gene: &str, condition: Option<&str>) -> String {
+    let health = match condition {
+        Some(c) => format!("a change there can matter for health ({c})"),
+        None => "a change there can matter for health".to_owned(),
+    };
+    format!(
+        "{gene} is one of the genes doctors report even when nobody looked for it, because \
+         {health}. This genome has a change there that the gene's reporting rule counts. This is \
+         a research result, not a diagnosis: a certified laboratory confirms it before anyone \
+         acts on it."
+    )
+}
+
+/// The card's label when step 23's HIGH-impact source was not read.
+pub const CLINVAR_ONLY: &str = "ClinVar only, HIGH-impact not checked";
+
+/// Whether the card holds the ClinVar hits and SVs only: step 23 left no
+/// readable clinical VCF (`high_impact_checked: false`). A summary written
+/// before the key reads as checked.
+pub fn clinvar_only(sf: &D<'_>) -> Result<bool, Malformed> {
+    Ok(sf
+        .get("high_impact_checked")?
+        .is_some_and(|c| matches!(c.v, pycompat::json::Value::Bool(false))))
 }
 
 /// Whether step 22's consensus ran, as the AnnotSV section says: then an
@@ -101,8 +224,9 @@ pub fn rows(sf: &D<'_>, consensus: bool) -> Result<Vec<Row>, Malformed> {
             x.s("variant")?,
             x.s("genotype")?,
             format!(
-                "ClinVar {}{low}{}",
+                "ClinVar {}{low}{}{}",
                 x.at("significance")?.string()?,
+                condition(&x)?,
                 extra(&x)?
             ),
         ));
@@ -180,13 +304,82 @@ pub fn apart_lines(sf: &D<'_>) -> Result<Vec<String>, Malformed> {
     Ok(out)
 }
 
+/// The card of `sections.acmg_sf`, built from step 6 alone, when the
+/// clinical section holds none (step 23 did not run, failed, or wrote no
+/// readable clinical VCF). `None` when the clinical section holds the card
+/// or the section did not run.
+pub fn standalone(s: &Summary) -> Result<Option<Section<'_>>, Malformed> {
+    let clinical = s.section("clinical");
+    if clinical.state.ran() && D::of(&clinical).opt("acmg_sf")?.is_some() {
+        return Ok(None);
+    }
+    let sec = s.section("acmg_sf");
+    Ok((sec.state.ran() && D::of(&sec).truthy()).then_some(sec))
+}
+
+/// The text lines of the SF tier, indented as the clinical block indents
+/// them.
+fn sf_text(sf: &D<'_>, s: &Summary) -> Result<Vec<String>, Malformed> {
+    if sf.flag("unavailable")? {
+        return Ok(vec![format!("  {}", apart_lines(sf)?[0])]);
+    }
+    let only = clinvar_only(sf)?;
+    let label = if only {
+        format!("; {CLINVAR_ONLY}")
+    } else {
+        String::new()
+    };
+    let mut line = format!(
+        "  Secondary-findings genes ({}, {} genes{label}): {} ClinVar P/LP",
+        sf.s("version")?,
+        sf.s_or("genes_on_list", "?")?,
+        sf.at("clinvar_hits")?.len()?,
+    );
+    if !only {
+        line += &format!(", {} rare HIGH impact{}", high_rare(sf)?, high_apart(sf)?);
+    }
+    if sf.flag("structural_checked")? {
+        line += &format!(", {} class 4/5 SV(s)", sf.at("structural")?.len()?);
+    }
+    if let Some(nr) = sf.opt("not_reported")? {
+        line += &format!(", {} not reported by the gene's rule", nr.len()?);
+    }
+    let mut w = vec![line];
+    for (g, v, z, ev) in rows(sf, consensus_ran(s)?)? {
+        w.push(format!("    {} {v}  {z}  {ev}", ljust(&g, 8)));
+    }
+    for line in apart_lines(sf)? {
+        w.push(format!("    {line}"));
+    }
+    if let Some(n) = sf.opt("high_impact_note")? {
+        w.push(format!("    {}", n.text()?));
+    }
+    w.push(format!("    {ACMG_NOTE}"));
+    Ok(w)
+}
+
 /// The text report's block.
 pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
     let Some(head) = text::head(s, "clinical", Some("Clinical Variant Filter"))? else {
-        return Ok(Vec::new());
+        // No clinical section at all: the card from step 6 alone, under its
+        // own heading.
+        let Some(sec) = standalone(s)? else {
+            return Ok(Vec::new());
+        };
+        let Some(head) = text::head(s, "acmg_sf", Some("Secondary-Findings Genes"))? else {
+            return Ok(Vec::new());
+        };
+        let mut w = head.lines;
+        w.extend(sf_text(&D::of(&sec), s)?);
+        w.push(String::new());
+        return Ok(w);
     };
     let mut w = head.lines;
     if !head.ran {
+        if let Some(sec) = standalone(s)? {
+            w.extend(sf_text(&D::of(&sec), s)?);
+            w.push(String::new());
+        }
         return Ok(w);
     }
     let d = D::of(&s.section("clinical"));
@@ -218,32 +411,9 @@ pub fn text(s: &Summary) -> Result<Vec<String>, Malformed> {
         ));
     }
     if let Some(sf) = d.opt("acmg_sf")? {
-        if sf.flag("unavailable")? {
-            w.push(format!("  {}", apart_lines(&sf)?[0]));
-        } else {
-            let mut line = format!(
-                "  Secondary-findings genes ({}, {} genes): {} ClinVar P/LP, {} rare HIGH impact{}",
-                sf.s("version")?,
-                sf.s_or("genes_on_list", "?")?,
-                sf.at("clinvar_hits")?.len()?,
-                high_rare(&sf)?,
-                high_apart(&sf)?
-            );
-            if sf.flag("structural_checked")? {
-                line += &format!(", {} class 4/5 SV(s)", sf.at("structural")?.len()?);
-            }
-            if let Some(nr) = sf.opt("not_reported")? {
-                line += &format!(", {} not reported by the gene's rule", nr.len()?);
-            }
-            w.push(line);
-            for (g, v, z, ev) in rows(&sf, consensus_ran(s)?)? {
-                w.push(format!("    {} {v}  {z}  {ev}", ljust(&g, 8)));
-            }
-            for line in apart_lines(&sf)? {
-                w.push(format!("    {line}"));
-            }
-            w.push(format!("    {ACMG_NOTE}"));
-        }
+        w.extend(sf_text(&sf, s)?);
+    } else if let Some(sec) = standalone(s)? {
+        w.extend(sf_text(&D::of(&sec), s)?);
     }
     w.push(String::new());
     Ok(w)
@@ -288,7 +458,9 @@ fn sf_card(sf: &D<'_>, consensus: bool) -> Result<Option<Card>, Malformed> {
         || sf.at("high_impact")?.truthy()
         || sf.flag("structural")?
         || sf.flag("not_reported")?
-        || sf.flag("unavailable")?;
+        || sf.flag("unavailable")?
+        || sf.flag("high_impact_note")?
+        || clinvar_only(sf)?;
     if !shown {
         return Ok(None);
     }
@@ -313,11 +485,21 @@ fn sf_card(sf: &D<'_>, consensus: bool) -> Result<Option<Card>, Malformed> {
         layout: Layout::RowLines,
     })];
     body.extend(apart_lines(sf)?.into_iter().map(Line::Para));
+    if let Some(n) = sf.opt("high_impact_note")? {
+        body.push(Line::Para(n.text()?));
+    }
     if listed {
         body.push(Line::ViewerNote);
     }
     Ok(Some(Card {
-        title: format!("Secondary-Findings Genes ({})", sf.s("version")?),
+        title: if clinvar_only(sf)? {
+            format!(
+                "Secondary-Findings Genes ({}; {CLINVAR_ONLY})",
+                sf.s("version")?
+            )
+        } else {
+            format!("Secondary-Findings Genes ({})", sf.s("version")?)
+        },
         full: true,
         caveats: vec![ACMG_NOTE],
         body,
@@ -330,7 +512,13 @@ pub fn html(s: &Summary) -> Result<HtmlPart, Malformed> {
     let sec = s.section("clinical");
     let d = D::of(&sec);
     let mut cards = vec![html::card(&sec, counts_card(&d)?)?];
-    if let Some(sf) = d.opt("acmg_sf")?
+    // The same card the text report shows: the clinical section's while it
+    // ran and holds one, else the one built from step 6 alone.
+    if let Some(alone) = standalone(s)? {
+        if let Some(card) = sf_card(&D::of(&alone), consensus_ran(s)?)? {
+            cards.push(html::card(&alone, card)?);
+        }
+    } else if let Some(sf) = d.opt("acmg_sf")?
         && let Some(card) = sf_card(&sf, consensus_ran(s)?)?
     {
         cards.push(html::card(&sec, card)?);
