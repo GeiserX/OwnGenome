@@ -12,7 +12,7 @@ goldens that recorded deliberate changes in the Rust ports.
 | `gen/` | Generators that stage inputs. The large synthetic VEP, ClinVar, consumer, and IBD generators use fixed seeds. |
 | `golden/fixtures/` | Small fixture archives captured from the retired generators and historical catalogs. |
 | `golden/TOOL/CASE/` | Expected exit, stdout, stderr, and output files. |
-| `known.tsv` | Historical record of four differences that the archived comparison accepted. |
+| `known.tsv` | Record of archived oracle differences and deliberate golden updates. |
 
 Inputs are comma-separated. Use `gen:SCRIPT` for a generator, `fixture:NAME` for
 a frozen input archive, or `-` for an empty input list. Name an in-place edit in
@@ -41,8 +41,10 @@ Run these commands from the repository root.
 Set `OG` to the absolute path of a prebuilt binary to use it. Set `PARITY_WORK` to
 an absolute scratch directory to retain the case's files and actual results.
 When a change intentionally alters an expectation, review the case output in
-that directory and update the affected golden in the same pull request. To
-recompute a checksum, pass the comparison kind and the actual filename to
+that directory and update the affected golden in the same pull request. Record
+the changed case, output, and reason in `known.tsv` when the current expectation
+intentionally differs from the archived oracle. To recompute a checksum, pass
+the comparison kind and the actual filename to
 `og dev parity-compare --canonical` and pipe the result to `sha256sum`.
 
 The `cn-engine` goldens come from the per-gene tools at

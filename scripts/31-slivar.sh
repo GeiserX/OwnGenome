@@ -449,16 +449,14 @@ fi
 # (cis, one copy of the gene hit) or apart (trans, both copies hit). Pairs
 # further apart than a read pair spans stay unknown. The pairs table holds the
 # verdict and the read counts; the per-variant table gets a PHASE column after
-# GT. og reads the BAM itself; it runs from OUTDIR with relative outputs,
-# so bin/og's shadow mode (OG_SHADOW, CI only) can run the Python it replaced
-# beside it, which needs the pysam of PYPGX_IMAGE, as for step 06's check.
+# GT. og reads the BAM itself and writes relative paths from OUTDIR.
 BAM="${SAMPLE_DIR}/${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam"
 if [ -f "$BAM" ] && [ -f "${BAM}.bai" ]; then
   PHASE_ARGS=(--bam "$(cpath "$BAM")")
 else
   PHASE_ARGS=(--skip "no BAM (${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam with its .bai)")
 fi
-if ! run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTDIR")" "$PYPGX_IMAGE" \
+if ! run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTDIR")" "$PYPGX_IMAGE" \
   /pgp-bin/og comphet phase --vcf "$(cpath "$COMPHET_VCF")" --out "${COMPHET_PAIRS_TSV##*/}.part" \
     --variants "$(cpath "${COMPHET_TSV}.unphased")" --variants-out "${COMPHET_TSV##*/}.part" "${PHASE_ARGS[@]}"; then
   echo "ERROR: the phase of the compound-het pairs failed (og comphet phase)." >&2

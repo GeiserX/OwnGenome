@@ -1,8 +1,15 @@
-# Differences that cannot be made stable (zip and deflate bytes, clocks, mtimes,
-# Python exception text), one per line. A listed difference passes; a listed
-# difference no longer seen fails. A deliberate fix is a golden instead.
+# Differences recorded against the archived oracle. The frozen comparison
+# uses the goldens for all checks.
 # tool<TAB>case<TAB>item<TAB>reason
 y-yleaf-positions	data	stdout	the line names the data folder by its absolute path, and og and the oracle run in two folders
 y-yleaf-positions	no-tree	stderr	the message names the data folder by its absolute path, and og and the oracle run in two folders
 paraphase-table	broken-json	stderr	Python exception text: json.JSONDecodeError gives line and column, og gives the byte
 paraphase-check-bam	plain	stderr	Python exception text: gzip names the bad magic bytes, og says the file is not a BAM
+
+# Intentional family report expectations after the fixture refresh.
+family	report-3gen	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+family	report-3gen	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+family	report-3gen-duo	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+family	report-3gen-duo	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+family	report-bench	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+family	report-bench	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
