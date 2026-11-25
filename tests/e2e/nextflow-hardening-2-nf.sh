@@ -41,7 +41,8 @@ fi
 BUNDLE="${G}/reference/pypgx-bundle"
 if [ ! -d "$BUNDLE" ]; then
   V="${PYPGX_IMAGE##*:}"
-  git clone -q --branch "${V%%--*}" --depth 1 https://github.com/sbslee/pypgx-bundle.git "$BUNDLE"
+  clone_shallow_with_retry "${V%%--*}" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
+    || { fail "the pypgx bundle clone"; finish; }
 fi
 BANDS="${G}/reference/cytoBand.hg38.txt"
 [ -s "$BANDS" ] || bash -c '. "$1/scripts/lib/common.sh" && install_data_file cytoband' _ "$REPO"
