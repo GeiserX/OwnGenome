@@ -161,3 +161,28 @@ fn only_the_academic_scores_the_run_lacks_are_listed() {
     let ids: Vec<&str> = skipped.iter().map(|s| text(get(s, "pgs_id"))).collect();
     assert_eq!(ids, ["PGS000016", "PGS000027"]);
 }
+
+#[test]
+fn a_list_without_the_licence_column_still_names_the_shipped_four() {
+    // og prs format leaves the shipped four out even when the list has no
+    // licence column, so the summary must name them too.
+    let all = listed();
+    let author: Vec<&str> = all
+        .iter()
+        .filter(|r| r.2 == "author")
+        .map(|r| r.0.as_str())
+        .collect();
+    let c = Case::new("legacy", &author, false);
+    let mut list = String::from("pgs_id\ttrait_reported\n");
+    for r in &all {
+        list += &format!("{}\t{}\n", r.0, r.1);
+    }
+    fs::write(c.0.join("assets/pgs_scores.tsv"), list).expect("legacy list");
+    let Some(Value::Array(skipped)) = get(&c.prs(), "skipped").cloned() else {
+        panic!("no skipped list")
+    };
+    let ids: Vec<&str> = skipped.iter().map(|s| text(get(s, "pgs_id"))).collect();
+    assert_eq!(ids, ["PGS000014", "PGS000016", "PGS000017", "PGS000027"]);
+    assert_eq!(text(get(&skipped[0], "condition")), "Type 2 diabetes (T2D)");
+    assert_eq!(text(get(&skipped[0], "reason")), REASON);
+}

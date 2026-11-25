@@ -228,9 +228,10 @@ pub fn prs(c: &Ctx<'_>) -> Out {
     let mut out = Obj::new()
         .set("scores", Value::Array(rows))
         .set("adjusted", Value::Bool(adjusted));
-    // The scores assets/pgs_scores.tsv marks academic-research that this run
-    // did not score: og prs format leaves them out without --academic
-    // (PRS_ACADEMIC=true). Only when the list is there to say which they are.
+    // The academic-only scores this run did not score, by the rule og prs
+    // format uses (the list's licence column, or the shipped four): it
+    // leaves them out without --academic (PRS_ACADEMIC=true). Only when the
+    // list is there to say which they are.
     let list = c.asset("pgs_scores.tsv");
     if crate::is_file(&list) {
         let labels = og_steps::prs::Labels::read(std::path::Path::new(&list))?;
@@ -239,8 +240,7 @@ pub fn prs(c: &Ctx<'_>) -> Out {
             .iter()
             .filter_map(|r| r.get("PGS_ID").flatten())
             .collect();
-        let skipped: Vec<Value> = labels
-            .academic_ids()
+        let skipped: Vec<Value> = og_steps::prs::academic_ids(&labels)
             .iter()
             .filter(|id| !scored.contains(&id.as_str()))
             .map(|id| {

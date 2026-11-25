@@ -187,3 +187,25 @@ fn shipped_academic_scores_stay_opt_in_without_licence_labels() {
         assert_eq!(written.len(), 15);
     }
 }
+
+#[test]
+fn a_file_whose_header_names_an_academic_score_is_refused_by_default() {
+    // The written file takes its id from #pgs_id, not from the file name, so
+    // the gate must hold on that id too, before anything is written.
+    let c = Case::new("renamed", &["PGS000018".to_owned()]);
+    fs::write(
+        c.0.join("in/PGS900014_hmPOS_GRCh38.txt"),
+        "#pgs_id=PGS000014\n#HmPOS_build=GRCh38\nhm_chr\thm_pos\teffect_allele\teffect_weight\n1\t5\tA\t1\n",
+    )
+    .expect("score");
+    for extra in [&[][..], &["--ids", "PGS000018,PGS900014"][..]] {
+        let err = c.run(extra).expect_err("refused");
+        assert_eq!(
+            err,
+            "PGS900014_hmPOS_GRCh38.txt is PGS000014 by its #pgs_id line, a score free for academic research use only; --academic scores it"
+        );
+        assert!(!c.0.join("pgs/PGS000014.txt.gz").exists());
+    }
+    let (_, written) = c.run(&["--academic"]).expect("--academic");
+    assert_eq!(written, ["PGS000014", "PGS000018"]);
+}

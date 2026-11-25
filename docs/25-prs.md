@@ -45,7 +45,7 @@ The list is [`assets/pgs_scores.tsv`](https://github.com/GeiserX/OwnGenome/blob/
 
 The four scores marked `academic-research` cover type 2 diabetes (PGS000014), atrial fibrillation (PGS000016), inflammatory bowel disease (PGS000017) and body mass index (PGS000027). The catalog makes them freely available to the academic community for research use. To include them, run `./scripts/setup.sh --prs-academic /path/to/genome_dir` and set `PRS_ACADEMIC=true` for step 25 or `scripts/run-all.sh`. In Nextflow, pass `--pgs_academic true`. The everything installer and run profiles enable this option. Coronary artery disease (PGS000018) is one of the 11 default scores.
 
-By default, the formatter leaves out the four scores even if an earlier setup installed them or the caller omits `--labels`. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason, `academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)`. The text and HTML reports print the reason alongside each skipped trait.
+By default, the formatter leaves out the four scores even if an earlier setup installed them or the caller omits `--labels`. It checks the id a file is written as, its `#pgs_id` line, so a file under another name that holds one of the four is refused with an error unless `--academic` is given. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason, `academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)`. The text and HTML reports print the reason alongside each skipped trait.
 
 | Condition (PGS Catalog trait) | PGS ID | Variants | Publication |
 |---|---|---|---|

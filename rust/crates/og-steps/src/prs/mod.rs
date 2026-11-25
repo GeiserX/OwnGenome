@@ -63,6 +63,25 @@ pub const ACADEMIC_REASON: &str =
 // labels. The formatter tests compare this behaviour to assets/pgs_scores.tsv.
 const SHIPPED_ACADEMIC_IDS: &[&str] = &["PGS000014", "PGS000016", "PGS000017", "PGS000027"];
 
+/// Whether a run without `--academic` leaves `pid` out: the list marks it
+/// `academic-research`, or it is one of the shipped academic scores.
+pub fn academic(labels: &Labels, pid: &str) -> bool {
+    SHIPPED_ACADEMIC_IDS.contains(&pid) || labels.academic(pid)
+}
+
+/// The scores a run without `--academic` leaves out that the list names: its
+/// `academic-research` ids in its order, then the shipped ones it names
+/// under another licence or with no licence column.
+pub fn academic_ids(labels: &Labels) -> Vec<String> {
+    let mut ids = labels.academic_ids().to_vec();
+    for id in SHIPPED_ACADEMIC_IDS {
+        if labels.trait_of(id).is_some() && !ids.iter().any(|x| x == id) {
+            ids.push((*id).to_owned());
+        }
+    }
+    ids
+}
+
 /// The command line.
 #[derive(Debug, Default)]
 pub struct Args {
@@ -217,8 +236,9 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
     }
     // The academic-only scores left out (no --academic), in the order met.
     let mut skipped: Vec<String> = Vec::new();
+    let gated = |pid: &str| !a.academic && academic(&labels, pid);
     let mut skip = |pid: &str| {
-        let out = !a.academic && (SHIPPED_ACADEMIC_IDS.contains(&pid) || labels.academic(pid));
+        let out = gated(pid);
         if out && !skipped.iter().any(|s| s == pid) {
             skipped.push(pid.to_owned());
         }
@@ -271,6 +291,7 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
     let opts = score::Options {
         keep_x: a.keep_x,
         label: &label,
+        refused: &gated,
     };
     let mut set = Alleles::default();
     let mut done: Vec<(Summary, &PathBuf)> = Vec::new();
