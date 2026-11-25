@@ -58,6 +58,10 @@ const USAGE: &str = "usage: og prs format --scores DIR [--ids A,B] [--labels TSV
 /// Why a score was left out without `--academic`.
 pub const ACADEMIC_REASON: &str = "academic-only licence (PRS_ACADEMIC=true to include)";
 
+// Keep the shipped restrictions when the standalone CLI has no licence
+// labels. The formatter tests compare this behaviour to assets/pgs_scores.tsv.
+const SHIPPED_ACADEMIC_IDS: &[&str] = &["PGS000014", "PGS000016", "PGS000017", "PGS000027"];
+
 /// The command line.
 #[derive(Debug, Default)]
 pub struct Args {
@@ -213,7 +217,7 @@ pub fn run(a: &Args, out: &mut impl Write) -> Result<(), String> {
     // The academic-only scores left out (no --academic), in the order met.
     let mut skipped: Vec<String> = Vec::new();
     let mut skip = |pid: &str| {
-        let out = !a.academic && labels.academic(pid);
+        let out = !a.academic && (SHIPPED_ACADEMIC_IDS.contains(&pid) || labels.academic(pid));
         if out && !skipped.iter().any(|s| s == pid) {
             skipped.push(pid.to_owned());
         }

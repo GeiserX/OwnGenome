@@ -45,16 +45,25 @@ impl Case {
     }
 
     fn run(&self, extra: &[&str]) -> Result<(String, Vec<String>), String> {
+        self.run_with_labels(Some(&list()), extra)
+    }
+
+    fn run_with_labels(
+        &self,
+        labels: Option<&Path>,
+        extra: &[&str],
+    ) -> Result<(String, Vec<String>), String> {
         let mut v: Vec<String> = vec![
             "--scores".into(),
             self.0.join("in").display().to_string(),
-            "--labels".into(),
-            list().display().to_string(),
             "--out".into(),
             self.0.join("pgs").display().to_string(),
             "--alleles".into(),
             self.0.join("alleles.tsv").display().to_string(),
         ];
+        if let Some(labels) = labels {
+            v.extend(["--labels".to_owned(), labels.display().to_string()]);
+        }
         v.extend(extra.iter().map(|s| (*s).to_owned()));
         let _ = fs::remove_dir_all(self.0.join("pgs"));
         let mut out = Vec::new();
@@ -151,4 +160,30 @@ fn only_academic_scores_asked_for_is_an_error_that_names_them() {
         "every score asked for is free for academic research use only (PGS000014, PGS000016, PGS000017, PGS000027); --academic scores them"
     );
     assert_eq!(c.run(&["--academic"]).expect("--academic").1, four);
+}
+
+#[test]
+fn shipped_academic_scores_stay_opt_in_without_licence_labels() {
+    let all = ids();
+    let c = Case::new("no-licence-labels", &all);
+    let legacy_list = c.0.join("legacy.tsv");
+    fs::write(
+        &legacy_list,
+        "pgs_id\ttrait_reported\nPGS000014\tDiabetes\n",
+    )
+    .expect("legacy labels");
+    let mut expected: Vec<_> = all
+        .iter()
+        .filter(|id| !ACADEMIC.contains(&id.as_str()))
+        .cloned()
+        .collect();
+    expected.sort();
+
+    for labels in [None, Some(legacy_list.as_path())] {
+        let (said, written) = c.run_with_labels(labels, &[]).expect("default");
+        assert_eq!(written, expected, "without licence labels");
+        assert_eq!(said.matches(": not scored, ").count(), 4, "{said}");
+        let (_, written) = c.run_with_labels(labels, &["--academic"]).expect("opt-in");
+        assert_eq!(written.len(), 15);
+    }
 }

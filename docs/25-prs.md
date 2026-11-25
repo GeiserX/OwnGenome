@@ -45,7 +45,7 @@ The list is [`assets/pgs_scores.tsv`](https://github.com/GeiserX/OwnGenome/blob/
 
 The four scores marked `academic-research` cover type 2 diabetes (PGS000014), atrial fibrillation (PGS000016), inflammatory bowel disease (PGS000017) and body mass index (PGS000027). The catalog makes them freely available to the academic community for research use. To include them, run `./scripts/setup.sh --prs-academic /path/to/genome_dir` and set `PRS_ACADEMIC=true` for step 25 or `scripts/run-all.sh`. In Nextflow, pass `--pgs_academic true`. The everything installer and run profiles enable this option. Coronary artery disease (PGS000018) is one of the 11 default scores.
 
-By default, the formatter leaves out the four scores even if an earlier setup installed them. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason. The text and HTML reports print the reason alongside each skipped trait.
+By default, the formatter leaves out the four scores even if an earlier setup installed them or the caller omits `--labels`. `summary.json` records them in `sections.prs.data.skipped` with their trait, PGS ID and the reason. The text and HTML reports print the reason alongside each skipped trait.
 
 | Condition (PGS Catalog trait) | PGS ID | Variants | Publication |
 |---|---|---|---|
@@ -97,10 +97,12 @@ The other eight have none (checked on 2026-11-03). BMI, blood pressure, the lipi
 
 There is no schizophrenia score yet. An earlier version listed PGS000738 as schizophrenia, but that score is for vitiligo; a schizophrenia row comes back only once a score is chosen from the catalog and checked against the API.
 
-To add a score, add a line to `assets/pgs_scores.tsv` with the label the API gives, `female` or `male` in the third column when the score is for one sex only, and its evaluations when it has some:
+To add a score, record the Catalog's label and licence in `assets/pgs_scores.tsv`. Set `applies_to` to `female` or `male` for a sex-specific score, and add any evaluations the report uses. Use `og dev pgs licence` to get the required `licence` value from the API response. If the result is `academic-research`, add the ID to `SHIPPED_ACADEMIC_IDS` in `rust/crates/og-steps/src/prs/mod.rs` so the opt-in also applies when `--labels` is omitted.
 
 ```bash
-curl -s https://www.pgscatalog.org/rest/score/PGS000017 | jq -r '.trait_reported, .variants_number'
+curl -fsS https://www.pgscatalog.org/rest/score/PGS000017 > score.json
+jq -r '.trait_reported, .variants_number' < score.json
+og dev pgs licence --id PGS000017 < score.json
 url='https://www.pgscatalog.org/rest/performance/search?pgs_id=PGS000017'
 while [ -n "$url" ] && [ "$url" != null ]; do   # the answer comes in pages; follow each next link
   page=$(curl -s "$url")
