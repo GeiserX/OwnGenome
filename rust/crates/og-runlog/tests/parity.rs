@@ -495,9 +495,14 @@ fn eta_hours_left_of_a_run_going() {
 // ---- og run headroom ---------------------------------------------------
 
 /// Lines with the machine in them masked: each disk line's measure and its
-/// warning (how full and how big the disk is), and the host memory line
-/// (its size, and whether `max_memory` is above it).
-fn mask_host(text: &str) -> String {
+/// warning (how full and how big the disk is), and the host's memory size.
+/// The memory line keeps `max_memory`, and keeps its warning only for a
+/// `max_memory` of a terabyte or more, which is above any machine the
+/// answers were recorded or checked on, when og knows the host's memory
+/// (`known`; og reads it on Linux only and says `unknown` elsewhere, where
+/// it cannot warn). Below a terabyte, whether the warning shows depends on
+/// the machine.
+fn mask_host(text: &str, known: bool) -> String {
     text.lines()
         .map(|l| {
             if l.starts_with("disk ") {
@@ -509,8 +514,22 @@ fn mask_host(text: &str) -> String {
                 let (folders, rest) = line.split_once(": ").unwrap_or((line, ""));
                 let note = rest.find(" (").map_or("", |i| &rest[i..]);
                 format!("{folders}: MASKED{note}")
-            } else if l.starts_with("memory host:") {
-                "memory host: MASKED".to_owned()
+            } else if let Some(rest) = l.strip_prefix("memory host: ") {
+                // `memory host: <size>[, max_memory <size>][; WARN: ...]`.
+                let (head, warn) = rest
+                    .split_once("; WARN: ")
+                    .map_or((rest, None), |(h, w)| (h, Some(w)));
+                let max = head.split_once(", max_memory ").map(|x| x.1);
+                let mut out = "memory host: MASKED".to_owned();
+                if let Some(m) = max {
+                    out += ", max_memory ";
+                    out += m;
+                    if let Some(w) = warn.filter(|_| known && m.ends_with(" TB")) {
+                        out += "; WARN: ";
+                        out += w;
+                    }
+                }
+                out
             } else {
                 l.to_owned()
             }
@@ -526,10 +545,16 @@ fn headroom_parity(label: &str, args: &[&str]) -> String {
     let (p, o) = (py(label, "run_headroom", args), og(&oa));
     assert_eq!(p.code, o.code, "{}{}", p.stderr, o.stderr);
     if p.code == 0 {
+        let known = !o.stdout.contains("memory host: unknown");
+        assert!(
+            known || !cfg!(target_os = "linux"),
+            "og reads the host memory on Linux: {}",
+            o.stdout
+        );
         same(
             "headroom lines",
-            &mask_host(&p.stdout),
-            &mask_host(&o.stdout),
+            &mask_host(&p.stdout, known),
+            &mask_host(&o.stdout, known),
         );
     } else {
         let last = |e: &str| {
