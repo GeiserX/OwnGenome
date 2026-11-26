@@ -671,7 +671,7 @@ fn genome(s: &Summary) -> Result<Option<Spec>, Malformed> {
         Kind::Ideogram,
         "Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the \
          chromosomes",
-        "ROH_NOTE",
+        notes::roh_note_key(get(roh, "af_used", "sections.roh.data")?),
         kept,
     )?;
     sp.axis = axis(&[("assembly", Value::Str("GRCh38".into()))]);

@@ -88,6 +88,7 @@ Pipeline helpers (the steps run these):
   og couple genes [args]
   og facts --sample S --sample-dir DIR --reference FASTA [--assets DIR] [--out FILE]
   og roh summary --sample SAMPLE --roh ROH [--out OUT]
+  og roh af-file --panel PANEL --group GROUP --out OUT
   og chip prepare|report|check-table [args]
   og cn bed|call|intervals|check-bam|marker-regions|marker-read [args]
   og traits table [args]
@@ -598,7 +599,11 @@ fn main() -> ExitCode {
                 &mut std::io::stdout().lock(),
                 &mut std::io::stderr().lock(),
             )),
-            _ => usage_error("og roh takes summary"),
+            Some("af-file") => ExitCode::from(og_summary::collect::group_c::roh::af_file_cli(
+                &rest[1..],
+                &mut std::io::stderr().lock(),
+            )),
+            _ => usage_error("og roh takes summary or af-file"),
         },
         "mito" => ExitCode::from(og_summary::mito::cli(
             rest.first().map(String::as_str),

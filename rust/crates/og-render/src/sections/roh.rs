@@ -8,7 +8,7 @@ use crate::model::{
     Card, Colour, HtmlPart, Inline, Line, Malformed, Section, State, Summary, get, need, num, py,
     truthy,
 };
-use crate::notes::{ROH_BAND_NOTE, ROH_F_NOTE, ROH_NOTE, ROH_UPD_NOTE};
+use crate::notes::{self, ROH_BAND_NOTE, ROH_F_NOTE, ROH_NOTE, ROH_UPD_NOTE};
 use crate::{html, text};
 
 const PATH: &str = "sections.roh.data";
@@ -102,7 +102,8 @@ fn items(d: &Section<'_>) -> Result<Vec<Item>, Malformed> {
             py(n)?
         )));
     }
-    out.push(Item::Caveats(vec![ROH_NOTE]));
+    let key = notes::roh_note_key(d.get("af_used")?);
+    out.push(Item::Caveats(vec![notes::text(key).unwrap_or(ROH_NOTE)]));
     Ok(out)
 }
 

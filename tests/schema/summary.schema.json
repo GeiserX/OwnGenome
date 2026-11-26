@@ -776,6 +776,9 @@
         "data": {
          "type": "object",
          "properties": {
+          "af_used": {
+           "type": "string"
+          },
           "segments": {
            "type": "integer",
            "minimum": 0

@@ -1235,6 +1235,73 @@ fn roh_and_telomere_reports_explain_masking_and_the_read_floor() {
 }
 
 #[test]
+fn roh_af_panel_report_and_chart_name_the_frequency_source() {
+    let d = Sample::new("report-roh-panel-af", "S");
+    put_masked_roh(&d);
+    let roh = fs::read_to_string(d.path(ROH)).unwrap();
+    for (af, expected) in [
+        (
+            "global (panel roh_af_gnomad_v4.1.tsv.gz); no step 26 group at 0.8 or more",
+            "Allele frequencies came from the global panel.",
+        ),
+        (
+            "nfe (panel roh_af_gnomad_v4.1.tsv.gz); step 26 gives EUR 0.9",
+            "Allele frequencies came from the panel's nfe group.",
+        ),
+    ] {
+        d.put(ROH, format!("# AF used: {af}\n{roh}"));
+        let summary = d.collect();
+        render_value(&d, &summary, |txt, html| {
+            has(txt, &[expected]);
+            has(html, &[&expected.replace('\'', "&#x27;")]);
+            assert!(!txt.contains("No population allele frequencies were used"));
+        });
+        let json = dumps(&summary, &Dump::default()).unwrap();
+        let summary = Summary::parse(&json).unwrap();
+        let charts = og_render::charts::build(&summary).unwrap();
+        let genome = charts.iter().find(|chart| chart.id == "genome").unwrap();
+        assert!(genome.caveat.contains(expected));
+        assert!(
+            !genome
+                .caveat
+                .contains("No population allele frequencies were used")
+        );
+        assert_eq!(
+            summary.section("roh").get("af_used").unwrap(),
+            Some(&Value::Str(af.into()))
+        );
+    }
+}
+
+#[test]
+fn roh_af_flat_report_is_byte_identical_to_the_legacy_report() {
+    let d = Sample::new("report-roh-flat-af", "S");
+    put_masked_roh(&d);
+    let mut legacy = d.collect();
+    let roh = fs::read_to_string(d.path(ROH)).unwrap();
+    let af = "0.4 at every site (--AF-dflt 0.4)";
+    d.put(ROH, format!("# AF used: {af}\n{roh}"));
+    let mut flat = d.collect();
+    for result in [&mut legacy, &mut flat] {
+        object(result).insert(
+            "generated_utc".into(),
+            Value::Str("2026-01-01 00:00 UTC".into()),
+        );
+    }
+    let json = dumps(&flat, &Dump::default()).unwrap();
+    let summary = Summary::parse(&json).unwrap();
+    assert_eq!(
+        summary.section("roh").get("af_used").unwrap(),
+        Some(&Value::Str(af.into()))
+    );
+    render_value(&d, &legacy, |legacy_txt, legacy_html| {
+        render_value(&d, &flat, |txt, html| {
+            assert_eq!((txt, html), (legacy_txt, legacy_html))
+        });
+    });
+}
+
+#[test]
 fn roh_reports_distinguish_an_upd_hint_from_a_relationship_band() {
     let d = Sample::new("report-roh-upd", "S");
     put_roh_with_sites(&d, UPD_RUNS);
