@@ -144,7 +144,7 @@ These run after the core pipeline completes and combine outputs from earlier ste
 | 24 | [HTML Report](24-html-report.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | Recommended |
 | 25 | [Polygenic Risk Scores](25-prs.md) | pgsc_calc + og in `OG_IMAGE` (stock Ubuntu) | `PGSC_UTILS_IMAGE` + `PLINK2_IMAGE` + `OG_IMAGE` | Exploratory; percentiles need the ancestry panel |
 | 26 | [Ancestry](26-ancestry.md) | pgsc_calc + og in `OG_IMAGE` (stock Ubuntu) | `PGSC_FRAPOSA_IMAGE` + `PGSC_UTILS_IMAGE` + `OG_IMAGE` | After `setup.sh --ancestry-panel` (runs inside step 25) |
-| 26b | [Fine-Grained Ancestry](26b-ancestry-fine.md) | ADMIXTURE + Beagle + RFMix + og in `OG_IMAGE` (stock Ubuntu) | `ADMIXTURE_IMAGE` + `BEAGLE_IMAGE` + `RFMIX_IMAGE` + `OG_IMAGE` | Opt-in, after `setup.sh --ancestry-fine-panel` (ADMIXTURE: academic use; RFMix: academic research only) |
+| 26b | [Fine-Grained Ancestry](26b-ancestry-fine.md) | bcftools + Beagle + og in `OG_IMAGE` (stock Ubuntu) | `BCFTOOLS_IMAGE` + `BEAGLE_IMAGE` + `OG_IMAGE` | Opt-in, after `setup.sh --ancestry-fine-panel` |
 | 27 | [CPIC Recommendations](27-cpic-lookup.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | If step 7 run |
 | 28 | [MultiQC Report](28-multiqc.md) | MultiQC | `MULTIQC_IMAGE` | Recommended |
 | 29 | [Somatic Variants](29-mutect2-somatic.md) | GATK Mutect2 | `GATK_IMAGE` | Experimental, opt-in (`SOMATIC=true`) |
