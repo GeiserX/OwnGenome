@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 # shellcheck source=../../../../versions.env
 . ../../../../versions.env
 dk() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${PWD}:/v" -w /v "$@"; }
-dk "$SAMTOOLS_IMAGE" sh -c 'samtools faidx rules.fa && samtools faidx random.fa && samtools faidx twice.fa'
+dk --platform linux/amd64 "$SAMTOOLS_IMAGE" sh -c 'samtools faidx rules.fa && samtools faidx random.fa && samtools faidx twice.fa'
 # twice.fa.fai lists y twice, before and after x, so its k-mers count twice.
 awk -F'\t' '$1 == "y" { y = $0 } { l[NR] = $0 } END { print y; for (i = 1; i <= NR; i++) print l[i] }' twice.fa.fai > twice.fai.tmp
 mv twice.fai.tmp twice.fa.fai
