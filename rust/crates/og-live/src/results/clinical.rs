@@ -310,7 +310,14 @@ pub(super) fn clinical_findings<'a>(
     summary: &'a Summary,
     found: &mut Vec<Finding>,
 ) -> Vec<&'a Value> {
-    let sf = val(data(summary, "clinical"), "acmg_sf");
+    // A run whose step 23 wrote no card shows the card step 6 built
+    // (`sections.acmg_sf`), as both reports do.
+    let clinical_sf = val(data(summary, "clinical"), "acmg_sf");
+    let sf = if truthy(clinical_sf) {
+        clinical_sf
+    } else {
+        data(summary, "acmg_sf")
+    };
     let car = data(summary, "carrier");
     let sf_excluded = rows(val(sf, "clinvar_hits"))
         .iter()
@@ -324,7 +331,10 @@ pub(super) fn clinical_findings<'a>(
         .filter(|g| !g.is_empty())
         .collect();
     let sf_record = D::new(sf, "clinical.acmg_sf");
-    let sf_list = text_or(val(sf, "version"), "ACMG SF");
+    let mut sf_list = text_or(val(sf, "version"), "ACMG SF");
+    if matches!(val(sf, "high_impact_checked"), Value::Bool(false)) {
+        sf_list = format!("{sf_list}; {}", acmg_sf::CLINVAR_ONLY);
+    }
     match sf_rows(summary, sf).and_then(|rows| {
         // No rows means no card to read the marks from (step 23 did not
         // run, or the card is unavailable).
@@ -863,6 +873,41 @@ mod tests {
             assert!(!f.text.contains("No read-backed phase"), "{}", f.text);
             assert!(!f.text.contains("both copies are hit"), "{}", f.text);
             assert!(!f.text.contains("not affected"), "{}", f.text);
+        }
+    }
+    /// A run whose step 23 wrote no card shows the step 6 card's findings,
+    /// as both reports do: a pathogenic BRCA1 hit is a secondary finding,
+    /// not only a carrier row.
+    #[test]
+    fn a_step6_card_gives_the_secondary_findings_without_step_23() {
+        let summary = parse(
+            r#""clinical": {"state": "missing"},
+               "acmg_sf": {"state": "ok", "data": {"version": "ACMG SF v3.3", "genes_on_list": 84,
+                 "high_impact_checked": false, "high_impact": [], "clinvar_hits": [
+                   {"gene": "BRCA1", "variant": "chr17:100 C>T", "genotype": "het",
+                    "significance": "Pathogenic", "low_confidence": false}]}}"#,
+        );
+        let mut found = Vec::new();
+        let excluded = clinical_findings(&summary, &mut found);
+        let f = found
+            .iter()
+            .find(|f| f.title == "Secondary finding in BRCA1")
+            .expect("the SF finding");
+        assert!(f.level == Level::Act);
+        assert!(f.text.contains("reporting rule counts"), "{}", f.text);
+        assert!(excluded.contains(&&s("BRCA1")));
+    }
+    /// No SF card, or a card with no rows (unavailable), adds no finding:
+    /// in particular not "A row of this section could not be read".
+    #[test]
+    fn no_sf_card_or_an_unavailable_one_adds_no_finding() {
+        for clinical in [
+            r#""clinical": {"state": "ok", "data": {"variants": 4}}"#,
+            r#""clinical": {"state": "ok", "data": {"acmg_sf": {"unavailable": "no VEP output"}}}"#,
+        ] {
+            let mut found = Vec::new();
+            clinical_findings(&parse(clinical), &mut found);
+            assert!(found.is_empty(), "{clinical}");
         }
     }
 }
