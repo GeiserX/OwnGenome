@@ -525,6 +525,43 @@ pub fn checksum_in(text: &str, name: &str) -> Option<String> {
     if lines == 1 { Some(first) } else { hit }
 }
 
+/// The file name a URL ends in, without its query or fragment.
+fn url_name(url: &str) -> &str {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// The bytes of a `file://` URL: its path as written, else percent-decoded.
+fn read_local(url: &str) -> io::Result<Vec<u8>> {
+    let raw = url.strip_prefix("file://").unwrap_or(url);
+    match fs::read(raw) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            let b = raw.as_bytes();
+            let (mut out, mut i) = (Vec::with_capacity(b.len()), 0);
+            while i < b.len() {
+                let hex = |c: u8| (c as char).to_digit(16);
+                match (
+                    b[i],
+                    b.get(i + 1).copied().and_then(hex),
+                    b.get(i + 2).copied().and_then(hex),
+                ) {
+                    (b'%', Some(h), Some(l)) => {
+                        out.push((h * 16 + l) as u8);
+                        i += 3;
+                    }
+                    (c, _, _) => {
+                        out.push(c);
+                        i += 1;
+                    }
+                }
+            }
+            use std::os::unix::ffi::OsStrExt;
+            fs::read(Path::new(std::ffi::OsStr::from_bytes(&out)))
+        }
+        x => x,
+    }
+}
+
 fn is_url(s: &str) -> bool {
     ["http://", "https://", "ftp://", "file://"]
         .iter()
@@ -564,9 +601,29 @@ pub enum Done {
 /// The error carries nothing: every failure is written to .err. first.
 #[allow(clippy::result_unit_err)]
 pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> {
-    let name = r.url.rsplit('/').next().unwrap_or(r.url);
+    let name = url_name(r.url);
     let mut want = r.want.to_owned();
-    if r.kind != Kind::None && is_url(&want) {
+    if r.kind != Kind::None && want.trim().is_empty() {
+        let _ = writeln!(err, "ERROR: no {} value given for {name}", r.kind.name());
+        return Err(());
+    }
+    if r.kind != Kind::None && want.starts_with("file://") {
+        // A local checksum list is read here: wget has no file:// scheme,
+        // and a path with a space is not a valid URL for curl.
+        match read_local(&want) {
+            Ok(body) => match checksum_in(&String::from_utf8_lossy(&body), name) {
+                Some(l) if !l.is_empty() => want = l,
+                _ => {
+                    let _ = writeln!(err, "ERROR: {want} names no checksum for {name}");
+                    return Err(());
+                }
+            },
+            Err(e) => {
+                let _ = writeln!(err, "ERROR: cannot read the checksum list {want}: {e}");
+                return Err(());
+            }
+        }
+    } else if r.kind != Kind::None && is_url(&want) {
         let mut line = None;
         for i in 1..=knobs.tries {
             match get(&want, Out::Stdout, knobs) {
@@ -601,6 +658,22 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
         }
     }
     let label = r.source.unwrap_or(name);
+    if let Some(d) = r.dest.parent().filter(|d| !d.as_os_str().is_empty())
+        && let Err(e) = fs::create_dir_all(d)
+    {
+        let _ = writeln!(err, "ERROR: cannot create {}: {e}", d.display());
+        return Err(());
+    }
+    // The downloads folder may be shared: one fetch of a file at a time, from
+    // the check of what is there to the rename of what was checked.
+    let _lock = if r.on_wrong == OnWrong::Refuse {
+        match lock(r.dest, label, err) {
+            Ok(l) => l,
+            Err(()) => return Err(()),
+        }
+    } else {
+        None
+    };
     // In the downloads folder a file with no checksum is used when it passes
     // the check a new download would get (whole gzip, or non-empty).
     if r.dest.is_file() && (r.kind != Kind::None || r.on_wrong == OnWrong::Refuse) {
@@ -643,12 +716,6 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
         }
     }
     let part = PathBuf::from(format!("{}.part", r.dest.display()));
-    if let Some(d) = r.dest.parent().filter(|d| !d.as_os_str().is_empty())
-        && let Err(e) = fs::create_dir_all(d)
-    {
-        let _ = writeln!(err, "ERROR: cannot create {}: {e}", d.display());
-        return Err(());
-    }
     let mut bad = String::new();
     for i in 1..=knobs.tries {
         let ok = match get(r.url, Out::File(&part), knobs) {
@@ -661,23 +728,47 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
         if ok {
             match check(r.kind, &want, &part, r.dest, name) {
                 Ok(()) => {
-                    if let Err(e) = fs::rename(&part, r.dest) {
-                        let _ = writeln!(
-                            err,
-                            "ERROR: cannot rename {} to {}: {e}",
-                            part.display(),
-                            r.dest.display()
-                        );
-                        return Err(());
-                    }
-                    return Ok(Done::Downloaded);
+                    let done = if r.on_wrong == OnWrong::Refuse {
+                        publish_new(&part, r.dest)
+                    } else {
+                        fs::rename(&part, r.dest)
+                    };
+                    return match done {
+                        Ok(()) => Ok(Done::Downloaded),
+                        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                            let _ = writeln!(
+                                err,
+                                "ERROR: {} appeared while {label} was downloading; it was left as it is. \
+                                 The checked download is {}: keep one of them and run setup again.",
+                                r.dest.display(),
+                                part.display()
+                            );
+                            Err(())
+                        }
+                        Err(e) => {
+                            let _ = writeln!(
+                                err,
+                                "ERROR: cannot rename {} to {}: {e}",
+                                part.display(),
+                                r.dest.display()
+                            );
+                            Err(())
+                        }
+                    };
                 }
                 Err(Bad::Fatal(m)) => {
                     let _ = writeln!(err, "{m}");
                     return Err(());
                 }
                 Err(Bad::Wrong(why)) => {
-                    let _ = fs::remove_file(&part);
+                    if let Err(e) = fs::remove_file(&part) {
+                        let _ = writeln!(
+                            err,
+                            "ERROR: {why}, and {} cannot be removed: {e}",
+                            part.display()
+                        );
+                        return Err(());
+                    }
                     let _ = writeln!(
                         err,
                         "  Download attempt {i}/{} failed its check: {why}. Removed it.",
@@ -715,6 +806,67 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
     Err(())
 }
 
+/// Holds DEST's lock: the hidden file `.NAME.lock` beside it, kept (it is
+/// empty), as removing it would let a third fetch lock another file. In a
+/// folder this user cannot write there is no lock (and nothing to publish).
+fn lock(dest: &Path, label: &str, err: &mut dyn Write) -> Result<Option<File>, ()> {
+    let name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let p = dest.with_file_name(format!(".{name}.lock"));
+    let f = match File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&p)
+    {
+        Ok(f) => f,
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(e) => {
+            let _ = writeln!(err, "ERROR: cannot open the lock {}: {e}", p.display());
+            return Err(());
+        }
+    };
+    match f.try_lock() {
+        Ok(()) => return Ok(Some(f)),
+        Err(fs::TryLockError::WouldBlock) => {
+            let _ = writeln!(
+                err,
+                "  {label}: another fetch of {} is running; waiting for it.",
+                dest.display()
+            );
+        }
+        Err(fs::TryLockError::Error(e)) => {
+            let _ = writeln!(err, "ERROR: cannot lock {}: {e}", p.display());
+            return Err(());
+        }
+    }
+    f.lock().map(|()| Some(f)).map_err(|e| {
+        let _ = writeln!(err, "ERROR: cannot lock {}: {e}", p.display());
+    })
+}
+
+/// Moves PART to DEST unless DEST is there (`AlreadyExists`): a hard link,
+/// which never replaces, or a rename where the filesystem has no links.
+pub fn publish_new(part: &Path, dest: &Path) -> io::Result<()> {
+    match fs::hard_link(part, dest) {
+        Ok(()) => fs::remove_file(part),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) if fs::symlink_metadata(dest).is_ok() => {
+            Err(io::Error::from(io::ErrorKind::AlreadyExists))
+        }
+        Err(_) => fs::rename(part, dest),
+    }
+}
+
 fn is_gz(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "gz")
 }
@@ -729,8 +881,31 @@ pub fn in_downloads(dest: &Path, env: &dyn Fn(&str) -> Option<String>) -> bool {
     else {
         return false;
     };
-    let abs = |p: &Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-    abs(dest).starts_with(abs(&d))
+    resolved(dest).starts_with(resolved(&d))
+}
+
+/// P with its longest existing head resolved (symlinks, `.` and `..`) and
+/// the rest, which does not exist yet, joined to it with `..` applied.
+pub fn resolved(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    let comps: Vec<Component> = abs.components().collect();
+    for k in (1..=comps.len()).rev() {
+        let head: PathBuf = comps[..k].iter().collect();
+        if let Ok(mut out) = head.canonicalize() {
+            for c in &comps[k..] {
+                match c {
+                    Component::ParentDir => {
+                        out.pop();
+                    }
+                    Component::Normal(n) => out.push(n),
+                    _ => {}
+                }
+            }
+            return out;
+        }
+    }
+    abs
 }
 
 // --- the table ------------------------------------------------------------
@@ -1155,10 +1330,13 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             Out::File(Path::new(dest))
         };
         return match get(url, target, &knobs) {
-            Ok((ok, body)) => {
-                let _ = out.write_all(&body);
-                u8::from(!ok)
-            }
+            Ok((ok, body)) => match out.write_all(&body).and_then(|()| out.flush()) {
+                Ok(()) => u8::from(!ok),
+                Err(e) => {
+                    let _ = writeln!(err, "ERROR: cannot write the download of {url}: {e}");
+                    1
+                }
+            },
             Err(m) => {
                 let _ = writeln!(err, "{m}");
                 1

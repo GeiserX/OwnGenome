@@ -188,7 +188,7 @@ pub fn write_plan(
     }
     let mut dl_free = None;
     let mut seen: Vec<PathBuf> = vec![];
-    for d in std::iter::once(downloads.clone()).chain(genome) {
+    for (i, d) in std::iter::once(downloads.clone()).chain(genome).enumerate() {
         let Some((at, free)) = free_bytes(&d) else {
             w(
                 out,
@@ -203,7 +203,8 @@ pub fn write_plan(
             out,
             format!("Free disk: {} in {}\n", human(free), at.display()),
         )?;
-        if seen.is_empty() {
+        // Only the downloads folder's own filesystem counts for --check.
+        if i == 0 {
             dl_free = Some(free);
             if let Some(s) = shortfall(need_dl, free) {
                 w(
@@ -298,7 +299,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             && let Some(s) = free.and_then(|f| shortfall(need, f))
         {
             return Err(format!(
-                "ERROR: the raw downloads of this setup need {} more than is free in {}: free some disk, set OG_DOWNLOADS to a larger disk, or run with --no-keep-downloads",
+                "ERROR: the raw downloads of this setup need {} more than is free in {}: free some disk, set OG_DOWNLOADS to a larger disk, or run with --no-keep-downloads. The check counts every raw download that is not there, even one whose install is done (after og setup prune): SETUP_DISK_CHECK=false skips it",
                 human(s),
                 ctx.downloads()?.display()
             ));

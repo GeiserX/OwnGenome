@@ -77,7 +77,9 @@ fn serve(mut c: TcpStream, s: &Mutex<State>) {
     if r.read_line(&mut line).is_err() {
         return;
     }
-    let path = line.split_whitespace().nth(1).unwrap_or("/").to_owned();
+    // Files are found by path; a query is ignored.
+    let target = line.split_whitespace().nth(1).unwrap_or("/");
+    let path = target.split('?').next().unwrap_or(target).to_owned();
     let mut range = String::new();
     loop {
         let mut h = String::new();
@@ -520,6 +522,160 @@ fn a_checksum_list_at_a_url_names_the_file() {
 }
 
 #[test]
+fn a_local_checksum_list_is_read_as_a_file_even_with_a_space() {
+    let s = Server::start();
+    let b = body(900);
+    let url = s.put(
+        "/l/x.gz.bin",
+        File {
+            body: b.clone(),
+            ..File::default()
+        },
+    );
+    let d = tmp("local").join("Reference Data");
+    fs::create_dir_all(&d).unwrap();
+    let probe = d.join("probe");
+    fs::write(&probe, &b).unwrap();
+    let md5 = digest(Kind::Md5, &probe).unwrap();
+    let list = d.join("md5.txt");
+    fs::write(&list, format!("ffff  other\n{md5}  x.gz.bin\n")).unwrap();
+    let want = format!("file://{}", list.display());
+    let dest = d.join("x.gz.bin");
+    let (r, log) = run(&plain(&url, &dest, Kind::Md5, &want), &knobs(1));
+    assert_eq!(r, Ok(Done::Downloaded), "{log}");
+    let (r, log) = run(&plain(&url, &dest, Kind::Md5, &want), &knobs(1));
+    assert_eq!(r, Ok(Done::Reused), "{log}");
+    assert_eq!(s.requests("/l/x.gz.bin").len(), 1);
+    let gone = format!("file://{}", d.join("nope.txt").display());
+    let (r, log) = run(&plain(&url, &d.join("y"), Kind::Md5, &gone), &knobs(3));
+    assert_eq!(r, Err(()));
+    assert!(log.contains("cannot read the checksum list"), "{log}");
+}
+
+#[test]
+fn a_checksum_is_named_by_the_url_path_without_its_query() {
+    let s = Server::start();
+    let b = body(700);
+    let url = s.put(
+        "/q/x.gz.bin",
+        File {
+            body: b.clone(),
+            ..File::default()
+        },
+    );
+    let d = tmp("query");
+    let probe = d.join("probe");
+    fs::write(&probe, &b).unwrap();
+    let md5 = digest(Kind::Md5, &probe).unwrap();
+    let list = d.join("md5.txt");
+    fs::write(&list, format!("ffff  other\n{md5}  x.gz.bin\n")).unwrap();
+    let want = format!("file://{}", list.display());
+    let with_query = format!("{url}?download=1");
+    let (r, log) = run(
+        &plain(&with_query, &d.join("x.gz.bin"), Kind::Md5, &want),
+        &knobs(1),
+    );
+    assert_eq!(
+        r,
+        Ok(Done::Downloaded),
+        "the checksum of x.gz.bin, not of x.gz.bin?download=1: {log}"
+    );
+}
+
+#[test]
+fn an_empty_checksum_is_refused_before_any_request() {
+    let s = Server::start();
+    let url = s.put(
+        "/e/x",
+        File {
+            body: body(10),
+            ..File::default()
+        },
+    );
+    let d = tmp("empty");
+    let (r, log) = run(&plain(&url, &d.join("x"), Kind::Md5, ""), &knobs(3));
+    assert_eq!(r, Err(()));
+    assert!(log.contains("no md5 value given"), "{log}");
+    assert!(s.requests("/e/x").is_empty(), "{log}");
+}
+
+#[test]
+fn a_file_that_appears_during_a_download_is_never_replaced() {
+    let d = tmp("publish");
+    let (part, dest) = (d.join("x.part"), d.join("x"));
+    fs::write(&part, b"checked").unwrap();
+    fs::write(&dest, b"the user's").unwrap();
+    let e = fetch::publish_new(&part, &dest).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(fs::read(&dest).unwrap(), b"the user's");
+    assert_eq!(
+        fs::read(&part).unwrap(),
+        b"checked",
+        "the checked file stays"
+    );
+    fs::remove_file(&dest).unwrap();
+    fetch::publish_new(&part, &dest).unwrap();
+    assert_eq!(fs::read(&dest).unwrap(), b"checked");
+    assert!(!part.exists());
+}
+
+#[test]
+fn two_fetches_of_one_download_take_turns() {
+    let s = Server::start();
+    let b = body(5000);
+    let sum = sha256_of(&b);
+    let url = s.put(
+        "/t/x.bin",
+        File {
+            body: b.clone(),
+            ..File::default()
+        },
+    );
+    let d = tmp("turns");
+    let dest = d.join("x.bin");
+    // Another fetch holds the lock.
+    let held = fs::File::create(d.join(".x.bin.lock")).unwrap();
+    held.lock().unwrap();
+    let (u, p, w) = (url.clone(), dest.clone(), sum.clone());
+    let t = std::thread::spawn(move || {
+        let mut f = plain(&u, &p, Kind::Sha256, &w);
+        f.on_wrong = OnWrong::Refuse;
+        let mut err = vec![];
+        let r = fetch::fetch(&f, &knobs(1), &mut err);
+        (r, String::from_utf8(err).unwrap())
+    });
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(!t.is_finished(), "the second fetch waits for the first");
+    assert!(s.requests("/t/x.bin").is_empty());
+    // The first one publishes the file and lets go.
+    fs::write(&dest, &b).unwrap();
+    held.unlock().unwrap();
+    let (r, log) = t.join().unwrap();
+    assert_eq!(r, Ok(Done::Reused), "{log}");
+    assert!(log.contains("another fetch of"), "{log}");
+    assert!(s.requests("/t/x.bin").is_empty(), "{log}");
+}
+
+#[test]
+fn the_downloads_folder_is_found_through_dot_dot_and_symlinks() {
+    let d = tmp("resolve");
+    fs::create_dir_all(d.join("staging")).unwrap();
+    fs::create_dir_all(d.join("downloads")).unwrap();
+    std::os::unix::fs::symlink(d.join("downloads"), d.join("link")).unwrap();
+    let dl = d.join("downloads").display().to_string();
+    let env = move |k: &str| (k == "OG_DOWNLOADS").then(|| dl.clone());
+    assert!(fetch::in_downloads(
+        &d.join("staging/../downloads/new/x.gz"),
+        &env
+    ));
+    assert!(fetch::in_downloads(&d.join("link/x.gz"), &env));
+    assert!(!fetch::in_downloads(
+        &d.join("downloads/../staging/x.gz"),
+        &env
+    ));
+}
+
+#[test]
 fn checks_are_the_shell_checks() {
     let d = tmp("checks");
     let gz = d.join("a.gz");
@@ -779,6 +935,15 @@ fn prune_removes_only_downloads() {
             "downloads/f/2.gz"
         ]
     );
+    // A folder of the table moved away and linked back: its files are
+    // outside the downloads folder, and nothing is removed.
+    let away = tmp("away");
+    fs::write(away.join("1.gz"), b"elsewhere").unwrap();
+    fs::remove_dir_all(g.join("downloads/f")).unwrap();
+    std::os::unix::fs::symlink(&away, g.join("downloads/f")).unwrap();
+    let e = og_setup::prune::targets(&c, &rows).unwrap_err();
+    assert!(e.contains("resolves outside the downloads folder"), "{e}");
+    assert!(away.join("1.gz").exists());
     let named = og_setup::prune::rows(&s, &["inst".to_owned()]).unwrap_err();
     assert!(
         named.contains("prune removes only the downloads folder"),

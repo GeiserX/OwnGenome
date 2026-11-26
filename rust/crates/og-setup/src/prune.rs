@@ -11,8 +11,18 @@
 use crate::fetch::{Ctx, Source, Sources, flag, root_of, take};
 use crate::plan::human;
 use std::fs;
+use std::io::ErrorKind;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// True when the folder that holds FILE resolves inside DL (the resolved
+/// downloads folder). The leaf itself is not followed: a symlink there is
+/// unlinked, never its target.
+fn inside(file: &Path, dl: &Path) -> bool {
+    file.parent()
+        .and_then(|d| d.canonicalize().ok())
+        .is_some_and(|d| d.starts_with(dl))
+}
 
 /// The rows prune works on: every download of the table, or the IDS named,
 /// each of which must be a download (a row stored where a step reads it is
@@ -39,6 +49,19 @@ pub fn rows<'a>(s: &'a Sources, ids: &[String]) -> Result<Vec<&'a Source>, Strin
 /// `.part`, with its size.
 pub fn targets(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<(PathBuf, u64)>, String> {
     let mut out = vec![];
+    let dl = ctx.downloads()?;
+    let dl = match dl.canonicalize() {
+        Ok(d) => d,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(format!("ERROR: cannot read {}: {e}", dl.display())),
+    };
+    let outside = |c: &Path| {
+        format!(
+            "ERROR: {} resolves outside the downloads folder {}; nothing was removed",
+            c.display(),
+            dl.display()
+        )
+    };
     for r in rows {
         let parts: Vec<Option<&str>> = if r.parts.is_empty() {
             vec![None]
@@ -49,18 +72,35 @@ pub fn targets(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<(PathBuf, u64)>, Strin
             let f = ctx.path(r, p)?;
             if r.path.ends_with('/') {
                 // A folder row: the files in it.
-                for e in fs::read_dir(&f).into_iter().flatten().flatten() {
-                    match e.metadata() {
-                        Ok(m) if m.is_file() => out.push((e.path(), m.len())),
-                        _ => {}
+                let entries = match fs::read_dir(&f) {
+                    Ok(x) => x,
+                    Err(e) if e.kind() == ErrorKind::NotFound => continue,
+                    Err(e) => return Err(format!("ERROR: cannot read {}: {e}", f.display())),
+                };
+                for e in entries {
+                    let e = e.map_err(|e| format!("ERROR: cannot read {}: {e}", f.display()))?;
+                    let m = e
+                        .metadata()
+                        .map_err(|x| format!("ERROR: cannot read {}: {x}", e.path().display()))?;
+                    if m.is_file() {
+                        if !inside(&e.path(), &dl) {
+                            return Err(outside(&e.path()));
+                        }
+                        out.push((e.path(), m.len()));
                     }
                 }
                 continue;
             }
             for c in [f.clone(), PathBuf::from(format!("{}.part", f.display()))] {
-                if let Ok(m) = fs::symlink_metadata(&c)
-                    && (m.is_file() || m.file_type().is_symlink())
-                {
+                let m = match fs::symlink_metadata(&c) {
+                    Ok(m) => m,
+                    Err(e) if e.kind() == ErrorKind::NotFound => continue,
+                    Err(e) => return Err(format!("ERROR: cannot read {}: {e}", c.display())),
+                };
+                if m.is_file() || m.file_type().is_symlink() {
+                    if !inside(&c, &dl) {
+                        return Err(outside(&c));
+                    }
                     out.push((c, m.len()));
                 }
             }
