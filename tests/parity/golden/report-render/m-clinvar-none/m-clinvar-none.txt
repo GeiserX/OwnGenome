@@ -24,12 +24,12 @@
   By impact: . 1, HIGH 3, MODERATE 1
   Frequency unknown (not counted as rare): 1
   Weak genotype calls (check the reads): 2
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 2 class 4/5 SV(s), 3 not reported by the gene's rule
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s), 1 with no GQ, DP or AD to judge the call), 2 class 4/5 SV(s), 3 not reported by the gene's rule
     MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic; biallelic with DEL chr1:45338000-45340000 (AnnotSV class 5, Manta): in trans: read-backed phase puts them on different copies (phase set 45331000)
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
-    MUTYH    chr1:45332000 G>A  het  stop_gained
-    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant
+    MUTYH    chr1:45332000 G>A  het  stop_gained; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)
+    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant; no GQ, DP or AD to judge the call, not counted as rare
     MSH2     chr2:47414000 A>AT  het  frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
     MSH2     DEL chr2:47386000-47388000  .  AnnotSV class 4, caller support not known (step 22's consensus cannot tell); through EPCAM exons 8 and 9, the 3' end (ENST00000263735); A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
     BRCA1    DUP chr17:43000000-43100000  .  AnnotSV class 4, caller support not known (step 22's consensus cannot tell)
@@ -117,8 +117,8 @@
   Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside
   MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C>T het, ClinVar Pathogenic
   HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G>A het, ClinVar Pathogenic
-  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic
-  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic
+  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic; low-confidence call: check the reads
+  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic; low-confidence call: check the reads
   BRCA1 (Fanconi anemia; AR): chr17:43057100 C>T het, ClinVar Pathogenic
   HBA1 (Alpha-thalassemia; AR): chr16:176700 G>A het, ClinVar Pathogenic
   GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier
@@ -127,8 +127,8 @@
   Possibly biallelic (low-confidence call): CFTR (Cystic fibrosis; AR), both copies may be hit: CFTR_del deletion, 1 of 2 copies (read depth, step 35) and chr7:117559590 ATCT>A het; the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
   Possibly biallelic (low-confidence call): GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR), both copies may be hit: DEL chr13:20180000-20200000 (AnnotSV class 4, Manta) and chr13:20189473 C>T one copy, other copy not called ref (1/.); the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads
   Possibly biallelic: HBA1 (Alpha-thalassemia; AR), both copies may be hit: 3 of 4 alpha-globin genes (read depth, step 35) and chr16:176700 G>A het; phase unknown, possibly in trans (no read-backed phase links the two calls)
-  Biallelic: MUTYH (MUTYH-related polyposis; AR), both copies may be hit: DEL chr1:45338000-45340000 (AnnotSV class 5, Manta) and chr1:45331556 C>T het; in trans: read-backed phase puts them on different copies (phase set 45331000)
-  Biallelic: SMN1 (Spinal muscular atrophy; AR), both copies may be hit: one SMN1 copy (Parascopy, step 35) and chr5:70951946 C>T hemizygous; the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way
+  Biallelic: MUTYH (MUTYH-related polyposis; AR), both copies are hit: DEL chr1:45338000-45340000 (AnnotSV class 5, Manta) and chr1:45331556 C>T het; in trans: read-backed phase puts them on different copies (phase set 45331000)
+  Biallelic: SMN1 (Spinal muscular atrophy; AR), both copies are hit: one SMN1 copy (Parascopy, step 35) and chr5:70951946 C>T hemizygous; the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way
   Two hits across callers (a deletion plus a variant on the other copy): 5 gene(s); deletions read from AnnotSV class 4 and 5 deletions (step 05); step 35's interval table (read depth); step 35's HBA1/HBA2 count; Parascopy's SMN1 count (step 35)
   Carrier list: the ClinVar P/LP hits of this sample in the genes of assets/carrier_genes.tsv (autosomal recessive and X-linked conditions), one person, no partner needed. A carrier of one recessive change is usually healthy; the result matters for a child when a partner carries a change in the same gene (step 39). A hypomorph or pseudodeficiency allele is set aside.
 

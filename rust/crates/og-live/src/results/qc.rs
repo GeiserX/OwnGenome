@@ -1,5 +1,5 @@
 use super::*;
-use og_render::sections::qc;
+use og_render::sections::{callability, qc};
 use pycompat::fmt::fixed;
 
 pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
@@ -98,16 +98,39 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                 "Not read, no other step calls them",
                 genes.len().to_string(),
             );
+            // As the report: when the summary says which owner steps ran, an
+            // owned gene whose step gave no result is not counted as handled.
+            let owned = array(d, "not_read_owned")?;
+            let ran = owned
+                .iter()
+                .filter(|g| !truthy(val(g, "owner_status")) || string(g, "owner_status") == "ran")
+                .count();
             out.fact(
                 "Not read here, called by a step of their own",
-                array(d, "not_read_owned")?.len().to_string(),
+                ran.to_string(),
             );
+            if owned.iter().any(|g| get(g, "owner_status").is_some()) {
+                out.fact(
+                    "Not read here, their own step gave no result",
+                    (owned.len() - ran).to_string(),
+                );
+            }
+            // The report's rule: one decimal, never at the bar when under it.
+            let min = num(get(d, "min_share")).unwrap_or(0.9);
+            let pct =
+                |v: Option<&Value>| num(v).map(|n| format!("{}%", callability::percent(n, min)));
             let rows = genes
                 .iter()
                 .map(|g| {
                     object_row(g)?;
-                    let share = num(get(g, "share"))
-                        .map_or_else(|| ".".into(), |n| format!("{}%", fixed(n * 100.0, 0)));
+                    let share = pct(get(g, "share")).unwrap_or_else(|| ".".into());
+                    let w = val(g, "worst_exon");
+                    let status = match pct(get(w, "share")) {
+                        Some(p) if truthy(val(w, "exon")) => {
+                            format!("exon {} not read, {p}", text(val(w, "exon")))
+                        }
+                        _ => cell(val(g, "status")),
+                    };
                     let reasons = array(g, "reasons")?
                         .iter()
                         .map(text)
@@ -115,7 +138,7 @@ pub(super) fn card(id: &str, summary: &Summary) -> Read<Adapter> {
                         .join(", ");
                     Ok(vec![
                         cell(val(g, "gene")),
-                        cell(val(g, "status")),
+                        status,
                         share,
                         cell(&s(&reasons)),
                     ])
@@ -289,6 +312,64 @@ S\tS\t-9\t-9\t1\t-9\t-9\t30.0\t5000\t6000\t4000\t0.010\t15.0\t39\t0\t0\t39\t14.0
         let mut found = Vec::new();
         findings(summary, &mut found);
         found.into_iter().map(|f| (f.id, f.title)).collect()
+    }
+
+    #[test]
+    fn live_callability_card_matches_the_report() {
+        // GENEA reads 89.9%, under the 90% bar; GENEB passed on its body but
+        // not on an exon; GENEC's own step did not run, GENED's did.
+        let summary = Summary::parse(
+            r#"{"sections":{"callability":{"state":"ok","data":{
+                "min_depth":10,"min_mapq":20,"min_share":0.9,"catalog_genes":120,"read":116,
+                "not_read":[
+                    {"gene":"GENEA","hgnc_id":"HGNC:1","reasons":["paralog"],"share":0.8988,"status":"not read"},
+                    {"gene":"GENEB","hgnc_id":"HGNC:2","reasons":["paralog"],"share":0.95,"status":"exon not read",
+                     "worst_exon":{"exon":"GENEB:exon3","share":0.41}}],
+                "not_read_owned":[
+                    {"gene":"GENEC","owner":"parascopy","owner_step":"35","owner_status":"not run","share":0.3,"status":"not read"},
+                    {"gene":"GENED","owner":"pypgx","owner_step":"32","owner_status":"ran","share":0.8,"status":"not read"}],
+                "not_on_reference":[]
+            }}}}"#,
+        )
+        .unwrap();
+        let shown = card("callability", &summary).unwrap();
+        assert_eq!(
+            shown.facts[1..],
+            [
+                strings(["Not read, no other step calls them", "2"]),
+                strings(["Not read here, called by a step of their own", "1"]),
+                strings(["Not read here, their own step gave no result", "1"]),
+            ]
+        );
+        let table = shown.table.unwrap();
+        assert_eq!(
+            val(&table, "rows"),
+            &Value::Array(vec![
+                strings(["GENEA", "not read", "89.9%", "paralog"]),
+                strings([
+                    "GENEB",
+                    "exon GENEB:exon3 not read, 41.0%",
+                    "95.0%",
+                    "paralog"
+                ]),
+            ])
+        );
+
+        // A summary from before owner_status keeps the single owned fact.
+        let summary = Summary::parse(
+            r#"{"sections":{"callability":{"state":"ok","data":{
+                "min_share":0.9,"catalog_genes":120,"read":119,"not_read":[],
+                "not_read_owned":[{"gene":"GENED","owner":"pypgx","share":0.8,"status":"not read"}]
+            }}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            card("callability", &summary).unwrap().facts[2..],
+            [strings([
+                "Not read here, called by a step of their own",
+                "1"
+            ])]
+        );
     }
 
     #[test]

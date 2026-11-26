@@ -129,6 +129,7 @@ pub(super) fn card(summary: &Summary) -> Read<Adapter> {
         out.lines.push(line);
     }
     out.lines.extend(cdna_scan::lines(&sec)?);
+    conflicting(&D::of(&sec), &mut out)?;
     for x in array(d, "deep_intronic")? {
         out.lines.push(format!(
             "Known deep intronic site (always reported): {} {} {}: {}",
@@ -181,5 +182,85 @@ pub(super) fn text_or_null(v: &Value) -> String {
         String::new()
     } else {
         text(v)
+    }
+}
+
+/// The conflicting records some labs call P/LP: a fact and one line each,
+/// never a finding and never in the counts above.
+fn conflicting(d: &D<'_>, out: &mut Adapter) -> Read<()> {
+    let Some(c) = d.get("conflicting")? else {
+        return Ok(());
+    };
+    out.fact(clinvar::CONFLICTING_TITLE, clinvar::conflicting_count(&c)?);
+    let hits = c.at("hits")?.items()?;
+    for h in hits.iter().take(HITS_SHOWN) {
+        out.lines
+            .push(format!("To review: {}", clinvar::conflicting_line(h)?));
+    }
+    if hits.len() > HITS_SHOWN {
+        out.lines.push(format!(
+            "To review: {} more in clinvar/<sample>_clinvar_conflicting.tsv",
+            hits.len() - HITS_SHOWN
+        ));
+    }
+    if !hits.is_empty() || !c.flag("checked")? {
+        out.lines.push(clinvar::CONFLICTING_NOTE.to_owned());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(conflicting: &str) -> Summary {
+        Summary::parse(&format!(
+            r#"{{"databases": {{"clinvar_release": "2026-09-28"}}, "sections": {{"clinvar": {{"state": "ok", "data": {{
+                "count": 1, "by_stars": {{"4": 0, "3": 0, "2": 1, "1": 0, "0": 0}},
+                "hits": [{{"chrom": "chr2", "pos": 47403191, "ref": "C", "alt": "T", "genotype": "het",
+                  "gene": "DEMOA", "significance": "Pathogenic", "stars": 2}}]{conflicting}}}}}}}}}"#
+        ))
+        .unwrap()
+    }
+
+    const LIST: &str = r#", "conflicting": {"checked": true, "note": null, "count": 1, "hits": [
+        {"chrom": "chr5", "pos": 31400123, "ref": "G", "alt": "A", "genotype": "het", "gene": "DEMOD",
+         "stars": 1, "submissions": "Pathogenic(2), Uncertain_significance(1)",
+         "clinvar_condition": "Demo condition D", "low_confidence": false}]}"#;
+
+    #[test]
+    fn the_review_list_is_on_the_card_and_never_a_finding() {
+        let with = card(&summary(LIST)).unwrap();
+        let plain = card(&summary("")).unwrap();
+        assert_eq!(with.facts[..plain.facts.len()], plain.facts[..]);
+        assert_eq!(
+            with.facts[plain.facts.len()],
+            strings([clinvar::CONFLICTING_TITLE, "1"])
+        );
+        assert!(with.lines.contains(
+            &"To review: DEMOD chr5:31400123 G>A het: Pathogenic(2), Uncertain_significance(1); 1 star; Demo condition D".to_owned()
+        ));
+        assert!(with.lines.contains(&clinvar::CONFLICTING_NOTE.to_owned()));
+        assert_eq!(with.table, plain.table);
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        findings(&summary(LIST), &[], &mut a);
+        findings(&summary(""), &[], &mut b);
+        assert_eq!(a.len(), 1);
+        assert_eq!(
+            a.iter().map(|f| f.id.clone()).collect::<Vec<_>>(),
+            b.iter().map(|f| f.id.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn an_unchecked_list_says_why() {
+        let shown = card(&summary(
+            r#", "conflicting": {"checked": false, "note": "not checked: run setup.sh --refresh clinvar", "count": null, "hits": []}"#,
+        ))
+        .unwrap();
+        assert!(shown.facts.contains(&strings([
+            clinvar::CONFLICTING_TITLE,
+            "not checked: run setup.sh --refresh clinvar"
+        ])));
     }
 }
