@@ -11,8 +11,11 @@
 //! `FETCH_WAIT` seconds apart (default 5, then 10, ...).
 //!
 //! Reuse is by checksum: a DEST already there that matches its checksum is
-//! kept and no request is made for it (a checksum read from a URL costs
-//! that one request). A DEST that does not match is never replaced
+//! kept and no request is made for it. A checksum that is a list at a URL
+//! (Ensembl's CHECKSUMS, an MD5SUMS) is read first, one small request; the
+//! checksum a download or a kept file matched is saved beside it, in
+//! `DEST.checksum`, so when the list cannot be read a kept file that still
+//! matches the saved checksum is used. A DEST that does not match is never replaced
 //! silently: a file in the downloads folder (a source of the table, or any
 //! `URL DEST` under `OG_DOWNLOADS`; it may be one a user put there) is
 //! refused and left as it is; a `URL DEST` call elsewhere, which setup makes
@@ -30,9 +33,12 @@
 //!
 //! The table: one row per file (or per family of files, `{part}`), the
 //! installer and steps that need it, where it is stored, its URL, its
-//! checksum and its size. `${NAME}` in a URL or a value is the pin NAME of
-//! `versions.env`; `${NAME:-default}` is the environment variable NAME,
-//! or the default. A value `@ID` is the checksum list that row ID stores.
+//! checksum, its size, and for a raw download the files of the install it
+//! feeds. `${NAME}` is the pin NAME of `versions.env`, else the setting
+//! NAME of `scripts/lib/common.sh` or `scripts/setup.sh` as the shell sets
+//! it (`NAME=value`, or `NAME=${NAME:-value}`, which the environment
+//! overrides); `${NAME:-default}` is the environment variable NAME, or the
+//! default. A value `@ID` is the checksum list that row ID stores.
 //! A path under `downloads/` is in the downloads folder: `OG_DOWNLOADS`,
 //! or `$GENOME_DIR/downloads`; any other path is under `GENOME_DIR`.
 
@@ -49,7 +55,7 @@ use std::process::{Command, Stdio};
 /// The table, relative to the checkout.
 pub const TABLE: &str = "assets/data-sources.tsv";
 /// The table's columns, in order.
-pub const COLUMNS: [&str; 10] = [
+pub const COLUMNS: [&str; 11] = [
     "id",
     "installers",
     "steps",
@@ -60,7 +66,13 @@ pub const COLUMNS: [&str; 10] = [
     "value",
     "bytes",
     "licence",
+    "installed",
 ];
+
+/// The checksum file beside a download: the checksum it matched.
+pub fn saved_checksum_path(dest: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.checksum", dest.display()))
+}
 
 // --- checks ---------------------------------------------------------------
 
@@ -588,6 +600,34 @@ pub struct Fetch<'a> {
     pub on_wrong: OnWrong,
     /// The table row, named in messages.
     pub source: Option<&'a str>,
+    /// The `og setup prune` argument that deletes DEST alone (a source of
+    /// one file), offered when DEST is refused.
+    pub prune: Option<&'a str>,
+}
+
+/// The checksum saved beside DEST for KIND, if any.
+fn saved_checksum(dest: &Path, kind: Kind) -> Option<String> {
+    let t = fs::read_to_string(saved_checksum_path(dest)).ok()?;
+    let (k, v) = t.trim().split_once(' ')?;
+    (k == kind.name() && !v.is_empty()).then(|| v.to_owned())
+}
+
+/// Saves the checksum DEST matched beside it; a folder this user cannot
+/// write keeps none (the list is then needed again).
+fn save_checksum(dest: &Path, kind: Kind, value: &str, err: &mut dyn Write) {
+    let p = saved_checksum_path(dest);
+    let tmp = PathBuf::from(format!("{}.tmp", p.display()));
+    let r =
+        fs::write(&tmp, format!("{} {value}\n", kind.name())).and_then(|()| fs::rename(&tmp, &p));
+    if let Err(e) = r {
+        let _ = fs::remove_file(&tmp);
+        let _ = writeln!(
+            err,
+            "  [WARN] could not save the checksum of {} in {}: {e}",
+            dest.display(),
+            p.display()
+        );
+    }
 }
 
 /// How a fetch ended well.
@@ -602,11 +642,31 @@ pub enum Done {
 #[allow(clippy::result_unit_err)]
 pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> {
     let name = url_name(r.url);
+    let label = r.source.unwrap_or(name);
     let mut want = r.want.to_owned();
     if r.kind != Kind::None && want.trim().is_empty() {
         let _ = writeln!(err, "ERROR: no {} value given for {name}", r.kind.name());
         return Err(());
     }
+    if let Some(d) = r.dest.parent().filter(|d| !d.as_os_str().is_empty())
+        && let Err(e) = fs::create_dir_all(d)
+    {
+        let _ = writeln!(err, "ERROR: cannot create {}: {e}", d.display());
+        return Err(());
+    }
+    // The downloads folder may be shared: one fetch of a file at a time, from
+    // the check of what is there to the rename of what was checked.
+    let _lock = if r.on_wrong == OnWrong::Refuse {
+        match lock(r.dest, label, err) {
+            Ok(l) => l,
+            Err(()) => return Err(()),
+        }
+    } else {
+        None
+    };
+    // A checksum list at a URL: what it names is saved beside a kept file
+    // (the downloads folder) once the file matches it.
+    let mut from_list = false;
     if r.kind != Kind::None && want.starts_with("file://") {
         // A local checksum list is read here: wget has no file:// scheme,
         // and a path with a space is not a valid URL for curl.
@@ -646,9 +706,36 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
                 knobs.pause(i);
             }
         }
-        match line.flatten() {
-            Some(l) if !l.is_empty() => want = l,
-            _ => {
+        match line {
+            Some(Some(l)) if !l.is_empty() => {
+                want = l;
+                from_list = r.on_wrong == OnWrong::Refuse;
+            }
+            // The list was read and names no checksum for the file.
+            Some(_) => {
+                let _ = writeln!(
+                    err,
+                    "ERROR: could not read the checksum of {name} from {want}"
+                );
+                return Err(());
+            }
+            // The list could not be read: a kept file that still matches the
+            // checksum saved when it was checked is used, and nothing else.
+            None => {
+                if r.on_wrong == OnWrong::Refuse
+                    && r.dest.is_file()
+                    && let Some(saved) = saved_checksum(r.dest, r.kind)
+                    && check(r.kind, &saved, r.dest, r.dest, name).is_ok()
+                {
+                    let _ = writeln!(
+                        err,
+                        "  {label}: the checksum list {want} could not be read; {} matches the {} saved when it was checked ({}), so it is used.",
+                        r.dest.display(),
+                        r.kind.name(),
+                        saved_checksum_path(r.dest).display()
+                    );
+                    return Ok(Done::Reused);
+                }
                 let _ = writeln!(
                     err,
                     "ERROR: could not read the checksum of {name} from {want}"
@@ -657,23 +744,6 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
             }
         }
     }
-    let label = r.source.unwrap_or(name);
-    if let Some(d) = r.dest.parent().filter(|d| !d.as_os_str().is_empty())
-        && let Err(e) = fs::create_dir_all(d)
-    {
-        let _ = writeln!(err, "ERROR: cannot create {}: {e}", d.display());
-        return Err(());
-    }
-    // The downloads folder may be shared: one fetch of a file at a time, from
-    // the check of what is there to the rename of what was checked.
-    let _lock = if r.on_wrong == OnWrong::Refuse {
-        match lock(r.dest, label, err) {
-            Ok(l) => l,
-            Err(()) => return Err(()),
-        }
-    } else {
-        None
-    };
     // In the downloads folder a file with no checksum is used when it passes
     // the check a new download would get (whole gzip, or non-empty).
     if r.dest.is_file() && (r.kind != Kind::None || r.on_wrong == OnWrong::Refuse) {
@@ -689,6 +759,9 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
                     "  {label}: {} is already here and matches its {what}; not downloaded.",
                     r.dest.display()
                 );
+                if from_list && saved_checksum(r.dest, r.kind).as_deref() != Some(want.as_str()) {
+                    save_checksum(r.dest, r.kind, &want, err);
+                }
                 return Ok(Done::Reused);
             }
             Err(Bad::Fatal(m)) => {
@@ -704,10 +777,14 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
                     );
                 }
                 OnWrong::Refuse => {
+                    let how = match r.prune {
+                        Some(p) => format!("move it away (or run og setup prune {p})"),
+                        None => "move it away".to_owned(),
+                    };
                     let _ = writeln!(
                         err,
                         "ERROR: {} is there but is not the file of {label}: {why}. It was left as it is: \
-                         move it away (or run og setup prune {label}) and run setup again.",
+                         {how} and run setup again.",
                         r.dest.display()
                     );
                     return Err(());
@@ -734,7 +811,12 @@ pub fn fetch(r: &Fetch, knobs: &Knobs, err: &mut dyn Write) -> Result<Done, ()> 
                         fs::rename(&part, r.dest)
                     };
                     return match done {
-                        Ok(()) => Ok(Done::Downloaded),
+                        Ok(()) => {
+                            if from_list {
+                                save_checksum(r.dest, r.kind, &want, err);
+                            }
+                            Ok(Done::Downloaded)
+                        }
                         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
                             let _ = writeln!(
                                 err,
@@ -923,6 +1005,10 @@ pub struct Source {
     pub value: String,
     pub bytes: Option<u64>,
     pub licence: String,
+    /// For a raw download, the files of the install it feeds (`{part}` for a
+    /// family's member): when they are all there, the install is done and
+    /// the download is not needed again (`og setup plan`).
+    pub installed: Vec<String>,
     /// The table's line number, for messages.
     pub line: usize,
 }
@@ -1017,6 +1103,34 @@ impl Sources {
                     f[3]
                 ));
             }
+            let installed: Vec<String> = if f[10] == "-" {
+                vec![]
+            } else {
+                f[10].split_whitespace().map(str::to_owned).collect()
+            };
+            let download = f[3].starts_with("downloads/");
+            if download && installed.is_empty() {
+                return Err(format!(
+                    "{TABLE}:{n}: {id} is a raw download: name the files of its install in 'installed'"
+                ));
+            }
+            if !download && !installed.is_empty() {
+                return Err(format!(
+                    "{TABLE}:{n}: 'installed' is for a raw download (a path under downloads/), not {id}"
+                ));
+            }
+            if parts.is_empty() && installed.iter().any(|p| p.contains("{part}")) {
+                return Err(format!(
+                    "{TABLE}:{n}: {{part}} in 'installed' goes with a parts list"
+                ));
+            }
+            if let Some(bad) = installed.iter().find(|p| {
+                p.starts_with('/') || p.starts_with("downloads/") || p.split('/').any(|x| x == "..")
+            }) {
+                return Err(format!(
+                    "{TABLE}:{n}: installed file '{bad}' must be relative, in GENOME_DIR, outside downloads/"
+                ));
+            }
             // Two families may share a path template with different parts.
             if let Some(other) = paths.insert(format!("{}\t{}", f[3], f[4]), id.clone()) {
                 return Err(format!("{TABLE}:{n}: path {} is also {other}'s", f[3]));
@@ -1036,6 +1150,7 @@ impl Sources {
                 value: f[7].to_owned(),
                 bytes,
                 licence: f[9].to_owned(),
+                installed,
                 line: n,
             };
             if s.rows.insert(id.clone(), row).is_some() {
@@ -1072,15 +1187,74 @@ impl Sources {
     }
 }
 
-/// Where a run reads pins and settings.
 /// How a run reads one environment variable.
 pub type Env = Box<dyn Fn(&str) -> Option<String>>;
 
+/// Where a run reads pins and settings.
 pub struct Ctx {
     pub root: PathBuf,
     pins: IndexMap<String, String>,
+    /// The settings of scripts/lib/common.sh and scripts/setup.sh.
+    shell: IndexMap<String, Setting>,
     env: Env,
 }
+
+/// A top-level setting of a shell script, as the shell sets it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Setting {
+    /// `NAME=value`: always this value.
+    Fixed(String),
+    /// `NAME=${NAME:-value}`: the environment's NAME, else this value.
+    EnvOr(String),
+}
+
+/// The settings a shell script makes at its top level with no expansion of
+/// another variable: `NAME=value` and `NAME=${NAME:-value}`, quoted or not
+/// (the first of each name). Anything else is not read.
+pub fn shell_settings(text: &str) -> IndexMap<String, Setting> {
+    let mut m = IndexMap::new();
+    for l in text.lines() {
+        let Some((k, v)) = l.split_once('=') else {
+            continue;
+        };
+        if k.is_empty()
+            || !k.starts_with(|c: char| c.is_ascii_uppercase())
+            || !k
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        {
+            continue;
+        }
+        // The value ends at a comment or the end of the line.
+        let v = v.split(" #").next().unwrap_or("").trim_end();
+        let v = v
+            .strip_prefix('"')
+            .and_then(|x| x.strip_suffix('"'))
+            .unwrap_or(v);
+        let literal =
+            |x: &str| !x.is_empty() && !x.contains(['$', '`', ' ', '"', '\'', '(', ')', ';']);
+        let s = if let Some(d) = v
+            .strip_prefix("${")
+            .and_then(|x| x.strip_suffix('}'))
+            .and_then(|x| x.strip_prefix(k))
+            .and_then(|x| x.strip_prefix(":-"))
+        {
+            if !literal(d) {
+                continue;
+            }
+            Setting::EnvOr(d.to_owned())
+        } else if literal(v) {
+            Setting::Fixed(v.to_owned())
+        } else {
+            continue;
+        };
+        m.entry(k.to_owned()).or_insert(s);
+    }
+    m
+}
+
+/// The shell scripts whose settings a `${NAME}` of the table may name.
+pub const SETTING_FILES: [&str; 2] = ["scripts/lib/common.sh", "scripts/setup.sh"];
 
 impl fmt::Debug for Ctx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1120,9 +1294,19 @@ impl Ctx {
         let p = root.join("versions.env");
         let t = fs::read_to_string(&p)
             .map_err(|e| format!("ERROR: cannot read {}: {e}", p.display()))?;
+        let mut shell = IndexMap::new();
+        for f in SETTING_FILES {
+            // A checkout without them (a test's) has no settings.
+            if let Ok(t) = fs::read_to_string(root.join(f)) {
+                for (k, v) in shell_settings(&t) {
+                    shell.entry(k).or_insert(v);
+                }
+            }
+        }
         Ok(Ctx {
             root: root.to_path_buf(),
             pins: versions_pins(&t),
+            shell,
             env,
         })
     }
@@ -1140,7 +1324,8 @@ impl Ctx {
         self.var(k)
     }
 
-    /// `${NAME}` from versions.env, `${NAME:-default}` from the environment.
+    /// `${NAME}` from versions.env, else from the settings of common.sh and
+    /// setup.sh; `${NAME:-default}` from the environment.
     pub fn expand(&self, s: &str, part: Option<&str>) -> Result<String, String> {
         let mut out = String::new();
         let mut rest = s;
@@ -1153,11 +1338,19 @@ impl Ctx {
             let inner = &after[..j];
             let v = if let Some((k, d)) = inner.split_once(":-") {
                 self.var(k).unwrap_or_else(|| d.to_owned())
+            } else if let Some(p) = self.pins.get(inner) {
+                p.clone()
             } else {
-                self.pins
-                    .get(inner)
-                    .cloned()
-                    .ok_or_else(|| format!("{inner} is not a pin of versions.env (in '{s}')"))?
+                match self.shell.get(inner) {
+                    Some(Setting::Fixed(v)) => v.clone(),
+                    Some(Setting::EnvOr(d)) => self.var(inner).unwrap_or_else(|| d.clone()),
+                    None => {
+                        return Err(format!(
+                            "{inner} is not a pin of versions.env or a setting of {} (in '{s}')",
+                            SETTING_FILES.join(" or ")
+                        ));
+                    }
+                }
             };
             out.push_str(&v);
             rest = &after[j + 1..];
@@ -1169,10 +1362,13 @@ impl Ctx {
         })
     }
 
-    /// The downloads folder: OG_DOWNLOADS, or GENOME_DIR/downloads.
+    /// The downloads folder: OG_DOWNLOADS, or GENOME_DIR/downloads. A
+    /// relative OG_DOWNLOADS is taken from the working directory, as
+    /// scripts/lib/common.sh takes it.
     pub fn downloads(&self) -> Result<PathBuf, String> {
         if let Some(d) = self.var("OG_DOWNLOADS") {
-            return Ok(PathBuf::from(d));
+            let d = PathBuf::from(d);
+            return Ok(std::path::absolute(&d).unwrap_or(d));
         }
         self.genome_dir().map(|g| g.join("downloads"))
     }
@@ -1209,6 +1405,25 @@ impl Ctx {
         }
     }
 
+    /// True when every file of the install row R (part PART) feeds is there
+    /// (a row with none: never).
+    pub fn installed(&self, r: &Source, part: Option<&str>) -> Result<bool, String> {
+        if r.installed.is_empty() {
+            return Ok(false);
+        }
+        let part = self.part_of(r, part)?;
+        let g = self.genome_dir()?;
+        for f in &r.installed {
+            let p = self
+                .expand(f, part)
+                .map_err(|e| format!("ERROR: {}: {e}", r.id))?;
+            if fs::metadata(g.join(p)).is_err() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub fn url(&self, r: &Source, part: Option<&str>) -> Result<String, String> {
         let part = self.part_of(r, part)?;
         self.expand(&r.url, part)
@@ -1225,6 +1440,40 @@ impl Ctx {
         self.expand(&r.value, part)
             .map_err(|e| format!("ERROR: {}: {e}", r.id))
     }
+}
+
+/// The table row that stores DEST: its label (the id, and the part of a
+/// family) and, for a row of one file, the `og setup prune` argument that
+/// deletes it alone. A folder row is named with no prune hint: pruning it
+/// would delete the whole folder.
+pub fn source_for(ctx: &Ctx, s: &Sources, dest: &Path) -> Option<(String, Option<String>)> {
+    let want = resolved(dest);
+    let mut folder = None;
+    for r in s.rows.values() {
+        let parts: Vec<Option<&str>> = if r.parts.is_empty() {
+            vec![None]
+        } else {
+            r.parts.iter().map(|p| Some(p.as_str())).collect()
+        };
+        for p in parts {
+            let Ok(at) = ctx.path(r, p) else { continue };
+            let at = resolved(&at);
+            if r.path.ends_with('/') {
+                // A file row inside a folder row is named by its own row.
+                if folder.is_none() && want.starts_with(&at) && want != at {
+                    folder = Some((r.id.clone(), None));
+                }
+            } else if want == at {
+                let label = match p {
+                    Some(p) => format!("{} {p}", r.id),
+                    None => r.id.clone(),
+                };
+                let prune = r.parts.is_empty().then(|| r.id.clone());
+                return Some((label, prune));
+            }
+        }
+    }
+    folder
 }
 
 /// Every pin of the table written out in it (not `${...}` or `@...`): its
@@ -1389,6 +1638,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             Some(p) => format!("{id} {p}"),
             None => id.clone(),
         };
+        let prune = part.is_none().then_some(id.as_str());
         let r = Fetch {
             url: &url,
             dest: &dest,
@@ -1396,6 +1646,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             want: &value,
             on_wrong: OnWrong::Refuse,
             source: Some(&label),
+            prune,
         };
         return match fetch(&r, &knobs, err) {
             Ok(_) => {
@@ -1427,13 +1678,19 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     } else {
         OnWrong::Replace
     };
+    // The row of the table that stores DEST names the download in messages.
+    let row = Ctx::from_env(&root_of(None))
+        .ok()
+        .and_then(|c| Sources::read(&c.root).ok().map(|s| (c, s)))
+        .and_then(|(c, s)| source_for(&c, &s, dest));
     let r = Fetch {
         url,
         dest,
         kind,
         want,
         on_wrong,
-        source: None,
+        source: row.as_ref().map(|(l, _)| l.as_str()),
+        prune: row.as_ref().and_then(|(_, p)| p.as_deref()),
     };
     u8::from(fetch(&r, &knobs, err).is_err())
 }

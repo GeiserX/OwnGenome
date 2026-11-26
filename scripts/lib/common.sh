@@ -84,8 +84,13 @@ if [ -n "${GENOME_DIR:-}" ]; then
   GENOME_DIR=${GENOME_DIR%/}
   # The downloads folder: every raw download of setup, kept (og setup fetch,
   # scripts/lib/common.sh fetch). OG_DOWNLOADS may name one folder that
-  # several installs share; og reads the same variable.
+  # several installs share; og reads the same variable. A relative one is
+  # taken from the working directory, so a container mount names a folder.
   OG_DOWNLOADS=${OG_DOWNLOADS:-}
+  case "$OG_DOWNLOADS" in
+    ""|/*) ;;
+    *) OG_DOWNLOADS="${PWD}/${OG_DOWNLOADS}" ;;
+  esac
   export OG_DOWNLOADS="${OG_DOWNLOADS:-${GENOME_DIR}/downloads}"
   OG_DOWNLOADS=${OG_DOWNLOADS%/}
   # A new file name on purpose: a reference with ALT contigs left from an
@@ -434,16 +439,20 @@ _get() {
 # fetch.rs, which says it all): URL goes to DEST.part (an interrupted one is
 # resumed), is checked, and only then renamed to DEST, so a DEST that exists
 # is whole. A DEST already there that matches its checksum is used with no
-# request. One that does not match is downloaded again, with a message, or,
-# in the downloads folder (OG_DOWNLOADS), refused and left as it is. A failed
+# download; when the checksum is a list on the server, that small list is
+# read first (and when it cannot be read, a kept file that matches the
+# checksum saved beside it, DEST.checksum, is used). One that does not match
+# is downloaded again, with a message, or, in the downloads folder
+# (OG_DOWNLOADS), refused and left as it is. A failed
 # try is tried FETCH_TRIES times (default 3), FETCH_WAIT seconds apart
 # (default 5, then 10, ...).
 fetch() {
   og_setup fetch "$@"
 }
 
-# source_of ID FIELD: one field (path, url, check, value, bytes) of row ID of
-# assets/data-sources.tsv, expanded: `og setup source`.
+# source_of ID [--part P] FIELD: one field (path, url, check, value, bytes)
+# of row ID of assets/data-sources.tsv, expanded: `og setup source`. An
+# installer reads a URL the table holds from here, never spells it again.
 source_of() {
   og_setup source "$@"
 }
@@ -457,13 +466,31 @@ dl() {
 # downloads folder, so a rerun, another install sharing OG_DOWNLOADS or
 # another use of the same data does not download it again; og setup prune
 # deletes the kept downloads later. With SETUP_KEEP_DOWNLOADS=false
-# (setup.sh --no-keep-downloads) each is deleted here instead.
+# (setup.sh --no-keep-downloads) each is deleted here instead, with the
+# checksum fetch saved beside it.
 done_with() {
   [ "${SETUP_KEEP_DOWNLOADS:-true}" = false ] || return 0
   local f
   for f in "$@"; do
     [ -e "$f" ] || continue
-    rm -rf -- "$f" "${f}.part" && echo "  Deleted the raw download ${f} (SETUP_KEEP_DOWNLOADS=false)."
+    rm -rf -- "$f" "${f}.part" "${f}.checksum" && echo "  Deleted the raw download ${f} (SETUP_KEEP_DOWNLOADS=false)."
+  done
+}
+
+# adopt OLD NEW: a raw download an older setup left at OLD (before the
+# downloads folder; an install stopped before it deleted it) moves to NEW in
+# the downloads folder, with its OLD.part, so fetch checks it there by its
+# checksum instead of downloading it again. When NEW is already there, OLD
+# is a second copy and goes.
+adopt() {
+  local old=$1 new=$2 x
+  for x in "" .part; do
+    [ -e "${old}${x}" ] || continue
+    if [ -e "${new}${x}" ]; then
+      rm -rf -- "${old}${x}"  # not kept: a second copy of a file in the downloads folder
+    elif mkdir -p "$(dirname "$new")" && mv -- "${old}${x}" "${new}${x}"; then
+      echo "  Moved ${old}${x}, left by an older setup, to ${new}${x}."
+    fi
   done
 }
 
@@ -532,13 +559,15 @@ install_data_file() {
       fi ;;
     hla_dat)
       url="https://raw.githubusercontent.com/ANHIG/IMGTHLA/v${HLA_DB_RELEASE}-alpha"
+      zip=$(source_of hla_dat path) || return 1
+      adopt "${out}.zip" "$zip"
       # md5checksum.txt lines read "MD5 (hla.dat.zip) = <md5>".
+      # net: checksum, the md5 of hla.dat.zip that the release lists
       md5=$(_get "${url}/md5checksum.txt" - 2>/dev/null | awk '$2 == "(hla.dat.zip)" {print $NF}') || md5=""
       if [ -z "$md5" ]; then
         echo "ERROR: no md5 for hla.dat.zip in ${url}/md5checksum.txt (is ${HLA_DB_RELEASE} an IPD-IMGT/HLA release?)" >&2
         return 1
       fi
-      zip=$(dl "IPD-IMGT-HLA_${HLA_DB_RELEASE}_hla.dat.zip")
       fetch "${url}/hla.dat.zip" "$zip" md5 "$md5" >&2 || return 1
       # The T1K image has Perl's unzip module; the host may have no unzip.
       # shellcheck disable=SC2154  # T1K_IMAGE comes from versions.env
@@ -562,12 +591,12 @@ install_data_file() {
 # each of gencode_genes and gencode_exons that is missing; the download is
 # kept (done_with). Fails when one of them cannot be written.
 _install_gencode() {
-  local genes exons url gz rc=0
+  local genes exons url gz md5s rc=0
   genes=$(data_file gencode_genes) || true
   exons=$(data_file gencode_exons) || true
-  url="https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${GENCODE_RELEASE}/gencode.v${GENCODE_RELEASE}.basic.annotation.gtf.gz"
-  gz=$(dl "${url##*/}")
-  fetch "$url" "$gz" md5 "$(dirname "$url")/MD5SUMS" >&2 || return 1
+  url=$(source_of gencode url) && gz=$(source_of gencode path) && md5s=$(source_of gencode value) || return 1
+  adopt "${genes}.download.gz" "$gz"
+  fetch "$url" "$gz" md5 "$md5s" >&2 || return 1
   # The download is in the downloads folder: the tables' own folder may not
   # be there yet.
   mkdir -p "$(dirname "$genes")" "$(dirname "$exons")"
@@ -614,9 +643,22 @@ _keep_lines() {
   fi
 }
 
-# vep_cache_url RELEASE: where Ensembl publishes the indexed GRCh38 VEP cache.
+# vep_cache_row RELEASE: the row of assets/data-sources.tsv of the VEP cache
+# of RELEASE, VEP_CACHE_RELEASE's (vep_cache) or PCGR_VEP_CACHE_RELEASE's
+# (pcgr_vep_cache).
+vep_cache_row() {
+  case "$1" in
+    "${VEP_CACHE_RELEASE:-}") printf 'vep_cache' ;;
+    "${PCGR_VEP_CACHE_RELEASE:-}") printf 'pcgr_vep_cache' ;;
+    *) echo "ERROR: VEP cache ${1} is neither VEP_CACHE_RELEASE nor PCGR_VEP_CACHE_RELEASE" >&2; return 1 ;;
+  esac
+}
+
+# vep_cache_url RELEASE: where Ensembl publishes the indexed GRCh38 VEP cache
+# of RELEASE (the url of its row).
 vep_cache_url() {
-  printf 'https://ftp.ensembl.org/pub/release-%s/variation/indexed_vep_cache/homo_sapiens_vep_%s_GRCh38.tar.gz' "$1" "$1"
+  local row
+  row=$(vep_cache_row "$1") && source_of "$row" url
 }
 
 # install_vep_cache DIR RELEASE: download the cache (checked against Ensembl's
@@ -624,9 +666,9 @@ vep_cache_url() {
 # DIR/homo_sapiens/RELEASE_GRCh38 only when complete. The tarball is kept in
 # the downloads folder (done_with).
 install_vep_cache() {
-  local dir=$1 rel=$2 url tarball tmp final
-  url=$(vep_cache_url "$rel")
-  tarball=$(dl "$(basename "$url")")
+  local dir=$1 rel=$2 row url tarball sums tmp final
+  row=$(vep_cache_row "$rel") || return 1
+  url=$(source_of "$row" url) && tarball=$(source_of "$row" path) && sums=$(source_of "$row" value) || return 1
   final="${dir}/homo_sapiens/${rel}_GRCh38"
   if [ -f "${final}/info.txt" ]; then
     echo "[OK] VEP ${rel} cache already present."
@@ -638,9 +680,11 @@ install_vep_cache() {
     return 1
   fi
   mkdir -p "${dir}/homo_sapiens"
+  adopt "${dir}/${tarball##*/}" "$tarball"
   # fetch uses a kept tarball that matches its CHECKSUMS line with no
-  # request, so an install stopped during extraction unpacks it again.
-  fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
+  # download (it reads that small list first), so an install stopped during
+  # extraction unpacks it again.
+  fetch "$url" "$tarball" sum "$sums" || return 1
   echo "  Extracting $(basename "$tarball")..."
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX")
@@ -705,9 +749,9 @@ install_pcgr_bundle() {
   echo "PCGR/CPSR reference data includes third-party databases with their own terms:"
   echo "  https://sigven.github.io/pcgr/articles/annotation_resources.html"
   echo "  Review those terms before use; --no-clinical-data skips this download."
-  url="https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  tarball=$(dl "${url##*/}")
+  url=$(source_of pcgr_bundle url) && tarball=$(source_of pcgr_bundle path) || return 1
   mkdir -p "$dir" || return 1
+  adopt "${dir}/${tarball##*/}" "$tarball"
   fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1

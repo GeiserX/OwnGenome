@@ -263,7 +263,7 @@ EOF
   echo "wget ${bad}/in-scripts-ci" > "${d}/scripts/ci/tool.sh"
   # The sources table: a family whose one part is a dead URL.
   mkdir -p "${d}/assets"
-  printf '# a table\nid\tinstallers\tsteps\tpath\tparts\turl\tcheck\tvalue\tbytes\tlicence\nx\tsetup\t1\tdownloads/x{part}\t7..7\t%s/in-the-table-{part}\t\t\t\t\n' "$bad" > "${d}/assets/data-sources.tsv"
+  printf '# a table\nid\tinstallers\tsteps\tpath\tparts\turl\tcheck\tvalue\tbytes\tlicence\tinstalled\nx\tsetup\t1\tdownloads/x{part}\t7..7\t%s/in-the-table-{part}\t\t\t\t\tx{part}.done\n' "$bad" > "${d}/assets/data-sources.tsv"
   cat > "${d}/docs/a.md" <<EOF
 Prose link, not checked: ${bad}/in-prose
 

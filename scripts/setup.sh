@@ -440,26 +440,32 @@ install_cyrius() {
 
 # install_parascopy_data: Parascopy's precomputed GRCh38 homology table and
 # the model parameters of 1000 Genomes populations (step 35), Zenodo record
-# PARASCOPY_DATA_RECORD, each archive checked against its md5 there.
+# PARASCOPY_DATA_RECORD (row parascopy_data of assets/data-sources.tsv reads
+# it from here), each archive checked against its md5 there.
+# shellcheck disable=SC2034  # og setup source reads it (and og dev freshness)
 PARASCOPY_DATA_RECORD=15019940
-PARASCOPY_FILES="GRCh38_v${PARASCOPY_DATA_VERSION}.tar.gz a95bf674f43317d3a4c1b8ddbb140945
-models_GRCh38_1KGP_v${PARASCOPY_DATA_VERSION}.tar.gz 244110d8fa883cf11334527ec2383498"
+PARASCOPY_FILES="GRCh38 a95bf674f43317d3a4c1b8ddbb140945
+models_GRCh38_1KGP 244110d8fa883cf11334527ec2383498"
 install_parascopy_data() {
-  local dest="${GENOME_DIR}/reference/parascopy-${PARASCOPY_DATA_VERSION}" name md5
+  local dest="${GENOME_DIR}/reference/parascopy-${PARASCOPY_DATA_VERSION}" part md5 url raw
   if [ -s "${dest}/homology_table/GRCh38.bed.gz" ] && [ -s "${dest}/models_GRCh38_1KGP/EUR/SMN1.gz" ]; then
     echo "[OK] Parascopy ${PARASCOPY_DATA_VERSION} homology table and models (step 35) already present."
     return 0
   fi
+  while read -r part md5; do
+    raw=$(source_of parascopy_data --part "$part" path) || return 1
+    adopt "${dest}.part/${raw##*/}" "$raw"
+  done <<<"$PARASCOPY_FILES"
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
-  while read -r name md5; do
-    if ! fetch "https://zenodo.org/records/${PARASCOPY_DATA_RECORD}/files/${name}" "$(dl "parascopy/${name}")" md5 "$md5" \
-        || ! tar -xzf "$(dl "parascopy/${name}")" -C "${dest}.part"; then
+  while read -r part md5; do
+    url=$(source_of parascopy_data --part "$part" url) && raw=$(source_of parascopy_data --part "$part" path) || return 1
+    if ! fetch "$url" "$raw" md5 "$md5" || ! tar -xzf "$raw" -C "${dest}.part"; then
       rm -rf "${dest}.part"
       echo "[WARN] Could not install Parascopy's data. Step 35 needs it; run: $0 --parascopy-data ${GENOME_DIR}"
       return 1
     fi
-    done_with "$(dl "parascopy/${name}")"
+    done_with "$raw"
   done <<<"$PARASCOPY_FILES"
   rm -rf "$dest"  # not kept: the older install, replaced
   mv "${dest}.part" "$dest"
@@ -477,6 +483,7 @@ install_kir_data() {
   fi
   url="https://raw.githubusercontent.com/ANHIG/IPDKIR/${branch}"
   # md5checksum.txt lines read "MD5 (kir.dat) = <md5>".
+  # net: checksum, the md5 of kir.dat that the release lists
   md5=$(_get "${url}/md5checksum.txt" - 2>/dev/null | awk '$2 == "(kir.dat)" {print $NF}') || md5=""
   if [ -z "$md5" ] || ! fetch "${url}/kir.dat" "$dest" md5 "$md5"; then
     echo "[WARN] Could not install IPD-KIR ${KIR_DB_RELEASE} (is it a release with a branch ${branch}?)."
@@ -504,12 +511,13 @@ install_kir_data() {
 # kept with no download, also when a new tree pin installs the tables again,
 # and one that fails is downloaded again on its own.
 install_yleaf_data() {
-  local dest="${GENOME_DIR}/reference/yleaf-${YLEAF_DATA_VERSION}" tgz
+  local dest="${GENOME_DIR}/reference/yleaf-${YLEAF_DATA_VERSION}" tgz url
   if [ -s "${dest}/data/hg38/new_positions.txt" ] && [ -s "${dest}/data/hg_prediction_tables/tree.json" ]; then
     echo "[OK] Yleaf ${YLEAF_DATA_VERSION} marker tables (step 37) already present."
   else
-    tgz=$(dl "yleaf-${YLEAF_DATA_VERSION}.tar.gz")
-    if ! fetch "https://github.com/genid/Yleaf/archive/refs/tags/v${YLEAF_DATA_VERSION}.tar.gz" "$tgz" sha256 "$YLEAF_DATA_SHA256"; then
+    url=$(source_of yleaf_data url) && tgz=$(source_of yleaf_data path) || return 1
+    adopt "${dest}.tar.gz" "$tgz"
+    if ! fetch "$url" "$tgz" sha256 "$YLEAF_DATA_SHA256"; then
       echo "[WARN] Could not download Yleaf ${YLEAF_DATA_VERSION}."
       return 1
     fi
@@ -517,12 +525,12 @@ install_yleaf_data() {
     mkdir -p "${dest}.part"
     tar -xzf "$tgz" -C "${dest}.part" --strip-components 2 \
       "Yleaf-${YLEAF_DATA_VERSION}/yleaf/data/hg38" "Yleaf-${YLEAF_DATA_VERSION}/yleaf/data/hg_prediction_tables"
-    done_with "$tgz"
     if [ ! -s "${dest}.part/data/hg38/new_positions.txt" ] || [ ! -s "${dest}.part/data/hg_prediction_tables/tree.json" ]; then
       echo "[WARN] The Yleaf ${YLEAF_DATA_VERSION} archive has no yleaf/data/hg38/new_positions.txt or hg_prediction_tables/tree.json."
       rm -rf "${dest}.part"
       return 1
     fi
+    done_with "$tgz"
     rm -rf "$dest"  # not kept: the older install, replaced
     mv "${dest}.part" "$dest"
     echo "[OK] Yleaf ${YLEAF_DATA_VERSION} marker tables and trees (step 37): ${dest}/data"
@@ -531,7 +539,9 @@ install_yleaf_data() {
   # version.txt names every pin (releases, commits, sha256), so a re-pin of
   # any of them, at the same tree release too, installs the tables again.
   local yt="${dest}/data/ytree" label="YFull YTree ${YTREE_VERSION} (CC BY 4.0)" want mask_ok=false
-  local mask_url="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/working/${YCALLABLE_MASK_RELEASE}_genome_mask_GRCh38/StrictMask/${YCALLABLE_MASK_RELEASE}.chrY.mask.fasta.gz"
+  local mask_url tree_url ftdna_url yfull_url
+  mask_url=$(source_of y_callable_mask url) && tree_url=$(source_of ytree url) \
+    && ftdna_url=$(source_of ytree_ftdna_positions url) && yfull_url=$(source_of ytree_yfull_positions url) || return 1
   local mask="${yt}/callable_mask_chrY.fasta.gz"
   if [ -s "$mask" ] && [ "$(_digest sha256 "$mask")" = "$YCALLABLE_MASK_SHA256" ]; then
     mask_ok=true
@@ -562,12 +572,9 @@ install_yleaf_data() {
   if $mask_ok; then
     cp "$mask" "${yt}.part/callable_mask_chrY.fasta.gz"
   fi
-  if ! fetch "https://raw.githubusercontent.com/YFullTeam/YTree/${YTREE_COMMIT}/current_tree.json" \
-         "${yt}.part/current_tree.json" sha256 "$YTREE_SHA256" \
-     || ! fetch "https://raw.githubusercontent.com/genid/Yleaf/${YTREE_POSITIONS_COMMIT}/yleaf/data/hg38/ftdna_positions_hg38.txt" \
-         "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256" \
-     || ! fetch "https://raw.githubusercontent.com/genid/Yleaf/${YTREE_POSITIONS_COMMIT}/yleaf/data/hg38/new_positions.txt" \
-         "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256" \
+  if ! fetch "$tree_url" "${yt}.part/current_tree.json" sha256 "$YTREE_SHA256" \
+     || ! fetch "$ftdna_url" "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256" \
+     || ! fetch "$yfull_url" "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256" \
      || { ! $mask_ok && ! fetch "$mask_url" "${yt}.part/callable_mask_chrY.fasta.gz" sha256 "$YCALLABLE_MASK_SHA256"; }; then
     # Yleaf's own data is in place, so step 37 still runs: it says the
     # current tree is not installed and writes Yleaf's result only. An older
@@ -593,14 +600,14 @@ install_yleaf_data() {
 # that order as one FASTA from NCBI's E-utilities, checked against
 # VIRAL_REF_SHA256. minimap2 indexes a file this small in a second at each run.
 install_viral_data() {
-  local dest="${GENOME_DIR}/reference/viral-${VIRAL_REF_VERSION}/viral_genomes.fa"
+  local dest="${GENOME_DIR}/reference/viral-${VIRAL_REF_VERSION}/viral_genomes.fa" url
   if [ -s "$dest" ] && [ "$(_digest sha256 "$dest")" = "$VIRAL_REF_SHA256" ]; then
     echo "[OK] Viral genomes ${VIRAL_REF_VERSION} (step 47) already present."
     return 0
   fi
-  rm -f "$dest"
-  if ! fetch "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&rettype=fasta&retmode=text&id=${VIRAL_REF_ACCESSIONS}" \
-      "$dest" sha256 "$VIRAL_REF_SHA256"; then
+  rm -f "$dest"  # not kept: an installed file that fails its sha256
+  url=$(source_of viral_genomes url) || return 1
+  if ! fetch "$url" "$dest" sha256 "$VIRAL_REF_SHA256"; then
     echo "[WARN] Could not install the viral genomes of step 47 (NCBI E-utilities)."
     return 1
   fi
@@ -694,7 +701,7 @@ install_masked_reference() {
 # on the host is needed; each member streams to disk), and kept in the downloads folder. A
 # folder is moved into place only once whole.
 install_exomiser_data() {
-  local dest="${GENOME_DIR}/reference/exomiser-${EXOMISER_DATA_VERSION}" part sha zip
+  local dest="${GENOME_DIR}/reference/exomiser-${EXOMISER_DATA_VERSION}" part sha zip url
   if [ -d "${dest}/${EXOMISER_DATA_VERSION}_hg38" ] && [ -d "${dest}/${EXOMISER_DATA_VERSION}_phenotype" ]; then
     echo "[OK] Exomiser ${EXOMISER_DATA_VERSION} data (step 48) already present: ${dest}"
     return 0
@@ -703,12 +710,13 @@ install_exomiser_data() {
   mkdir -p "$dest"
   while read -r part sha; do
     [ -d "${dest}/${EXOMISER_DATA_VERSION}_${part}" ] && continue
-    zip=$(dl "exomiser/${EXOMISER_DATA_VERSION}_${part}.zip")
+    url=$(source_of exomiser_data --part "$part" url) && zip=$(source_of exomiser_data --part "$part" path) || return 1
+    adopt "${dest}/${zip##*/}" "$zip"
     # A zip kept by an unpack that failed is used again once its sha256 still matches.
     if [ -f "$zip" ] && [ "$(_digest sha256 "$zip")" = "$sha" ]; then
       echo "Using the checked ${zip##*/} kept from the last run."
     elif echo "Downloading Exomiser's ${EXOMISER_DATA_VERSION}_${part}.zip (resumes when run again)..." \
-        && ! fetch "https://g-879a9f.f5dc97.75bc.dn.glob.us/data/${EXOMISER_DATA_VERSION}_${part}.zip" "$zip" sha256 "$sha"; then
+        && ! fetch "$url" "$zip" sha256 "$sha"; then
       echo "[WARN] Could not download Exomiser's ${part} data. Step 48 needs it; run: $0 --exomiser-data ${GENOME_DIR}"
       return 1
     fi
@@ -735,14 +743,14 @@ EOF2
 # the CHIP genes' MANE Select transcripts from it), checked against
 # ENSEMBL_GFF_SHA256. A file that is there with another sha256 is downloaded again.
 install_chip_data() {
-  local name="Homo_sapiens.GRCh38.${ENSEMBL_GFF_RELEASE}.chr.gff3.gz"
-  local dest="${GENOME_DIR}/reference/ensembl/${name}"
+  local dest url
+  dest=$(source_of ensembl_gff path) && url=$(source_of ensembl_gff url) || return 1
   if [ -s "$dest" ] && [ "$(_digest sha256 "$dest")" = "$ENSEMBL_GFF_SHA256" ]; then
     echo "[OK] Ensembl ${ENSEMBL_GFF_RELEASE} gene annotation (step 49) already present."
     return 0
   fi
   rm -f "$dest"  # not kept: an installed file that fails its sha256
-  if ! fetch "https://ftp.ensembl.org/pub/release-${ENSEMBL_GFF_RELEASE}/gff3/homo_sapiens/${name}" "$dest" sha256 "$ENSEMBL_GFF_SHA256"; then
+  if ! fetch "$url" "$dest" sha256 "$ENSEMBL_GFF_SHA256"; then
     echo "[WARN] Could not download Ensembl ${ENSEMBL_GFF_RELEASE}'s gene annotation. Step 49 needs it; run setup.sh --chip-data again."
     return 1
   fi
@@ -820,9 +828,10 @@ install_strchive_data() {
     no) ;;
     *) echo "[WARN] STR_EXTRA_LOCI is '${STR_EXTRA_LOCI}', not yes or no: the extra repeats are left out." ;;
   esac
-  # Whole URLs, one per line, so scripts/ci/check-links.sh asks each one.
-  local eh_url="https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-disease-loci-${STRCHIVE_VERSION}.hg38.expansionhunter.json"
-  local loci_url="https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-loci-${STRCHIVE_VERSION}.json"
+  # The URLs are rows strchive_eh and strchive_loci of assets/data-sources.tsv,
+  # which scripts/ci/check-links.sh asks too.
+  local eh_url loci_url
+  eh_url=$(source_of strchive_eh url) && loci_url=$(source_of strchive_loci url) || return 1
   local eh=${eh_url##*/} loci=${loci_url##*/}
   stamp="release=${STRCHIVE_VERSION} eh=${STRCHIVE_EH_SHA256} loci=${STRCHIVE_LOCI_SHA256} converter=${format} extra=${extra_sha}"
   if [ -s "${dir}/catalog.json" ] && [ -s "${dir}/str_ranges.tsv" ] && [ "$(cat "${dir}/catalog.stamp" 2>/dev/null)" = "$stamp" ]; then
@@ -895,25 +904,25 @@ install_tandem_repeats() {
 # The dbSNP file stays in the downloads folder (done_with). The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
 install_consumer_sites() {
-  local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped
+  local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped url
   out="${dir}/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
   dropped="${dir}/23andme_v5_dropped_dbsnp${CONSUMER_DBSNP_BUILD}.tsv"
   if [ -s "$out" ]; then
     consumer_sites_pin_check "$out" "already present"
     return 0
   fi
-  tpl="${dir}/23andme_v5_hg19_ref.txt.gz"
-  if ! fetch "https://raw.githubusercontent.com/arrogantrobot/23andme2vcf/${CONSUMER_SITES_COMMIT}/23andme_v5_hg19_ref.txt.gz" \
-       "$tpl" sha256 "$CONSUMER_SITES_SHA256"; then
+  tpl=$(source_of consumer_sites_template path) && url=$(source_of consumer_sites_template url) || return 1
+  if ! fetch "$url" "$tpl" sha256 "$CONSUMER_SITES_SHA256"; then
     echo "[WARN] Could not download the 23andMe v5 site list."
     return 1
   fi
   # In the downloads folder: fetch reuses a copy whose md5 matches the pin
   # (a rerun after a failed build, another install) and refuses one that does
   # not, so the table is never built from another file.
-  db=$(dl "dbsnp_${CONSUMER_DBSNP_BUILD}_GRCh38.vcf.gz")
+  db=$(source_of dbsnp path) && url=$(source_of dbsnp url) || return 1
+  adopt "${dir}/${db##*/}" "$db"
   echo "dbSNP ${CONSUMER_DBSNP_BUILD} for GRCh38 (about 30 GB, kept in ${OG_DOWNLOADS}; a copy already there with the pinned md5 is used)..."
-  if ! fetch "https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD}/VCF/GCF_000001405.40.gz" "$db" md5 "$CONSUMER_DBSNP_MD5"; then
+  if ! fetch "$url" "$db" md5 "$CONSUMER_DBSNP_MD5"; then
     echo "[WARN] Could not download dbSNP ${CONSUMER_DBSNP_BUILD}. Run this command again: the download resumes."
     return 1
   fi
@@ -973,8 +982,8 @@ consumer_sites_pin_check() {
 # staged in raw_<version> beside the panel and never in the downloads folder.
 HG19_TO_HG38_CHAIN_URL=https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 install_ancient_panel() {
-  local base="${GENOME_DIR}/reference/ancient" dir part raw chain e url md5 f src=${ANCIENT_SOURCE_DIR:-}
-  dir="${base}/aadr_${AADR_VERSION}" part="${base}/.aadr_${AADR_VERSION}.part" raw="${base}/raw_${AADR_VERSION}"
+  local base="${GENOME_DIR}/reference/ancient" dir part raw old chain e url md5 f src=${ANCIENT_SOURCE_DIR:-}
+  dir="${base}/aadr_${AADR_VERSION}" part="${base}/.aadr_${AADR_VERSION}.part" old="${base}/raw_${AADR_VERSION}"
   chain="${GENOME_DIR}/reference/liftover/hg19ToHg38.over.chain.gz"
   if [ -s "${dir}/DONE" ]; then
     echo "[OK] ancient populations panel AADR ${AADR_VERSION} (step 44) already present: ${dir}"
@@ -991,7 +1000,7 @@ install_ancient_panel() {
   need_og "chooses the ancient panel's people and places its sites" || return 1
   # ANCIENT_SOURCE_DIR's unchecked files are staged in raw_<version> here,
   # never in the downloads folder, where they would pass for AADR's.
-  [ -n "$src" ] || raw=$(dl "aadr-${AADR_VERSION}")
+  if [ -n "$src" ]; then raw=$old; else raw=$(dl "aadr-${AADR_VERSION}"); fi
   mkdir -p "$raw"
   for e in anno ind snp geno; do
     f="${raw}/aadr.${e}"
@@ -1007,6 +1016,11 @@ install_ancient_panel() {
       snp) url="https://dataverse.harvard.edu/api/access/datafile/${AADR_SNP_ID}" md5=$AADR_SNP_MD5 ;;
       geno) url="https://dataverse.harvard.edu/api/access/datafile/${AADR_GENO_ID}" md5=$AADR_GENO_MD5 ;;
     esac
+    # An older setup downloaded into raw_<version>: a file there that
+    # matches its md5 moves to the downloads folder (a staged copy does not).
+    if [ -s "${old}/aadr.${e}" ] && [ "$(_digest md5 "${old}/aadr.${e}")" = "$md5" ]; then
+      adopt "${old}/aadr.${e}" "$f"
+    fi
     [ "$e" != geno ] || echo "  Downloading the AADR genotypes (7.1 GB; an interrupted download resumes)..."
     if ! fetch "$url" "$f" md5 "$md5"; then
       echo "[WARN] Could not download the AADR ${AADR_VERSION} .${e} file; run: $0 --ancient-panel ${GENOME_DIR}"
@@ -1064,8 +1078,11 @@ install_ancient_panel() {
     "$(date -u '+%Y-%m-%d')" > "${part}/DONE"
   rm -rf "$dir"  # not kept: the older panel, replaced
   mv "$part" "$dir"
-  # The staged copy of ANCIENT_SOURCE_DIR is no download: it goes at once.
-  if [ -n "$src" ]; then rm -rf "$raw"; else done_with "$raw"; fi
+  # The staged copy of ANCIENT_SOURCE_DIR is no download: it goes at once,
+  # as does what an older setup left in raw_<version> (its AADR files were
+  # moved to the downloads folder above).
+  rm -rf "$old"  # not kept: the staged copy of ANCIENT_SOURCE_DIR, or an older setup's leftovers
+  [ -n "$src" ] || done_with "$raw"
   echo "[OK] ancient populations panel AADR ${AADR_VERSION} (step 44): ${dir} ($(wc -l < "${dir}/moderns.ind" | tr -d ' ') present-day people, $(($(wc -l < "${dir}/ancients.tsv") - 1)) ancient people)"
 }
 
@@ -1082,15 +1099,14 @@ ancient_smartpca_par() {
 
 # --- Step 25 and 26: pgsc_calc, its scores and its ancestry panel ---------------------
 PGS_BASE_URL=${PGS_BASE_URL:-https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores}
-PGSC_RESOURCES=https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources
 
 # install_pgsc_calc DIR: GitHub's archive of pgsc_calc PGSC_CALC_VERSION,
 # checked against PGSC_CALC_SHA256, unpacked into DIR. Step 25 holds the same.
 install_pgsc_calc() {
-  local dir=$1 tgz
-  tgz=$(dl "pgsc_calc-${PGSC_CALC_VERSION}.tar.gz")
-  fetch "https://github.com/PGScatalog/pgsc_calc/archive/refs/tags/${PGSC_CALC_VERSION}.tar.gz" "$tgz" \
-      sha256 "$PGSC_CALC_SHA256" || return 1
+  local dir=$1 tgz url
+  url=$(source_of pgsc_calc url) && tgz=$(source_of pgsc_calc path) || return 1
+  adopt "${dir}.tar.gz" "$tgz"
+  fetch "$url" "$tgz" sha256 "$PGSC_CALC_SHA256" || return 1
   rm -rf "${dir}.part"
   mkdir -p "${dir}.part"
   tar -xzf "$tgz" -C "${dir}.part" --strip-components 1 || { rm -rf "${dir}.part"; return 1; }
@@ -1165,7 +1181,7 @@ install_prs() {
 # step 25 genotypes them from the gVCF, so the projection counts the sites
 # where the sample matches the reference.
 install_ancestry_panel() {
-  local name=${ANCESTRY_PANEL_NAME:-$PGSC_PANEL} dir="${GENOME_DIR}/reference/pgsc_calc" panel sites
+  local name=${ANCESTRY_PANEL_NAME:-$PGSC_PANEL} dir="${GENOME_DIR}/reference/pgsc_calc" panel sites url md5s
   panel="${dir}/${name}.tar.zst"
   sites="${dir}/${name}_GRCh38_sites.tsv"
   if [ -s "$panel" ] && [ -s "$sites" ]; then
@@ -1173,8 +1189,11 @@ install_ancestry_panel() {
     return 0
   fi
   [ -s "$panel" ] || echo "Downloading pgsc_calc's ancestry panel ${name} (the 1000 Genomes panel is about 7 GB; an interrupted download resumes)..."
+  # Row pgsc_ancestry_panel; ANCESTRY_PANEL_NAME is another file of its folder.
+  url=$(source_of pgsc_ancestry_panel url) && md5s=$(source_of pgsc_ancestry_panel value) || return 1
+  url="${url%/*}/${name}.tar.zst"
   # fetch stores a download only once its md5 matches, so a panel that is there is whole.
-  if [ ! -s "$panel" ] && ! fetch "${PGSC_RESOURCES}/${name}.tar.zst" "$panel" md5 "${PGSC_RESOURCES}/md5s.txt"; then
+  if [ ! -s "$panel" ] && ! fetch "$url" "$panel" md5 "$md5s"; then
     echo "[WARN] Could not download the ancestry panel; run: $0 --ancestry-panel ${GENOME_DIR}"
     return 1
   fi
@@ -1243,11 +1262,8 @@ install_ancestry_panel() {
 # 2024): 4,091 people of 80 populations, open access. setup.sh streams the
 # common biallelic SNVs of chr1 to chr22 from gnomAD's public bucket (about
 # 19 GB is read; only the kept SNVs are stored) and keeps one per 2 kb.
-# One of the 22 files, named in full, so scripts/ci/check-links.sh can request
-# it; the others differ only in the chromosome.
-ANCESTRY_FINE_CHR22_URL=https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_chr22.filtered.SNV_INDEL.phased.shapeit5.bcf
-ANCESTRY_FINE_URL=${ANCESTRY_FINE_CHR22_URL%/*}
-ANCESTRY_FINE_SUFFIX=${ANCESTRY_FINE_CHR22_URL#*hgdp1kgp_chr22}
+# The 22 files are row ancestry_fine_bcf of assets/data-sources.tsv
+# (scripts/ci/check-links.sh asks each one).
 ANCESTRY_FINE_META_URL=https://storage.googleapis.com/gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg_v2/metadata_and_qc/gnomad_meta_updated.tsv
 # Beagle's GRCh38 PLINK genetic map (HapMap, lifted from GRCh37), for phasing and painting.
 # Beagle's server is its only host and was unreachable for hours on 2026-10-15;
@@ -1262,15 +1278,15 @@ ANCESTRY_FINE_MAP_MIRROR_URL=https://web.archive.org/web/20260306143720id_/https
 # it. bcftools reads the panel a region at a time, so the bytes cannot be
 # checked as they stream; the bucket's own checksum of each file can.
 ancestry_fine_pins() {
-  local c
+  local c u
   command -v curl >/dev/null 2>&1 || { echo "ERROR: --ancestry-fine-panel needs curl to check the panel's files" >&2; return 1; }
   for c in $(seq 1 22); do
-    curl -fsI --connect-timeout 20 --max-time 60 --retry 3 --retry-delay 5 \
-        "${ANCESTRY_FINE_URL}/hgdp1kgp_chr${c}${ANCESTRY_FINE_SUFFIX}" | tr -d '\r' \
+    u=$(source_of ancestry_fine_bcf --part "$c" url) || return 1
+    curl -fsI --connect-timeout 20 --max-time 60 --retry 3 --retry-delay 5 "$u" | tr -d '\r' \
       | awk -v c="chr${c}" 'tolower($1) == "x-goog-hash:" && $2 ~ /^crc32c=/ {h = substr($2, 8)}
                             tolower($1) == "content-length:" {n = $2}
                             END {if (h == "" || n == "") exit 1; print c "\t" h "\t" n}' \
-      || { echo "ERROR: no crc32c or size for the panel's chr${c} file (${ANCESTRY_FINE_URL})" >&2; return 1; }
+      || { echo "ERROR: no crc32c or size for the panel's chr${c} file (${u})" >&2; return 1; }
   done
 }
 
@@ -1330,8 +1346,10 @@ install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
   local regions=${ANCESTRY_FINE_REGIONS:-} exclude=${ANCESTRY_FINE_EXCLUDE:-} smap=${ANCESTRY_FINE_SAMPLE_MAP:-}
   local thin=${ANCESTRY_FINE_THIN:-2kb}
-  local v c e k m fit rstamp="" pstamp mstamp tmp chroms="" src bcf net
+  local v c e k m fit rstamp="" pstamp mstamp tmp chroms="" src bcf net chr22 folder
   cpath "$dir" >/dev/null || return 1
+  chr22=$(source_of ancestry_fine_bcf --part 22 url) || return 1
+  folder=${chr22%/*}
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
   echo "  Step 26b finds the fractions and paints the chromosomes with og."
   for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE BEAGLE_IMAGE; do ensure_image "$v" 26b || return 1; done
@@ -1343,11 +1361,11 @@ install_ancestry_fine_panel() {
   mkdir -p "${dir}/panel" "${dir}/maps" "${dir}/model"
   echo "  Checking the panel's files against ANCESTRY_FINE_PANEL_SHA256..."
   if ! ancestry_fine_pins > "${dir}/pins.tsv"; then
-    echo "[WARN] Could not read the panel's files at ${ANCESTRY_FINE_URL}; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
+    echo "[WARN] Could not read the panel's files at ${folder}; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
     return 1
   fi
   if [ "$(_digest sha256 "${dir}/pins.tsv")" != "$ANCESTRY_FINE_PANEL_SHA256" ]; then
-    echo "[WARN] The panel's files at ${ANCESTRY_FINE_URL} are not the ones ANCESTRY_FINE_PANEL_SHA256 pins (see ${dir}/pins.tsv)."
+    echo "[WARN] The panel's files at ${folder} are not the ones ANCESTRY_FINE_PANEL_SHA256 pins (see ${dir}/pins.tsv)."
     echo "       The bucket replaced a file: read what changed before moving the pin in versions.env."
     return 1
   fi
@@ -1381,7 +1399,7 @@ install_ancestry_fine_panel() {
   # bucket, saved as bcf_samples.txt. SC2016: $1 belongs to the inner sh.
   # shellcheck disable=SC2016
   if ! run_in --net --rw "$dir" "$BCFTOOLS_HTTPS_IMAGE" sh -c 'bcftools query -l "$1" 2>/dev/null' \
-        _ "$ANCESTRY_FINE_CHR22_URL" > "${dir}/bcf_samples.txt.part" \
+        _ "$chr22" > "${dir}/bcf_samples.txt.part" \
      || [ ! -s "${dir}/bcf_samples.txt.part" ]; then
     rm -f "${dir}/bcf_samples.txt.part"
     echo "[WARN] Could not read the panel's sample list; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
@@ -1421,9 +1439,10 @@ install_ancestry_fine_panel() {
       # done_with). With ANCESTRY_FINE_REGIONS only those regions are read
       # over https (htslib stores the remote index in the working directory,
       # so the container works in panel/ and deletes it after).
-      src="${ANCESTRY_FINE_URL}/hgdp1kgp_${c}${ANCESTRY_FINE_SUFFIX}" net=(--net) bcf=""
+      src=$(source_of ancestry_fine_bcf --part "${c#chr}" url) || return 1
+      net=(--net) bcf=""
       if [ -z "$rstamp" ]; then
-        bcf=$(dl "ancestry-fine-${ANCESTRY_FINE_PANEL}/hgdp1kgp_${c}${ANCESTRY_FINE_SUFFIX}")
+        bcf=$(source_of ancestry_fine_bcf --part "${c#chr}" path) || return 1
         if ! fetch "$src" "$bcf" crc32c "$(awk -F'\t' -v c="$c" '$1 == c {print $2}' "${dir}/pins.tsv")"; then
           echo "[WARN] Could not download ${c} of the panel; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
           return 1
@@ -1518,9 +1537,15 @@ install_mocha_data() {
   cpath "$dir" >/dev/null || return 1
   echo "Installing MoChA's phasing panel ${MOCHA_PANEL_VERSION} (step 51) in ${dir}"
   for c in MOCHA_IMAGE BEAGLE_IMAGE; do ensure_image "$c" 51 || return 1; done
-  local raw
+  local raw x row url
   raw=$(dl "mocha-${MOCHA_PANEL_VERSION}")
   mkdir -p "${dir}/panel" "${dir}/maps" "$raw"
+  # An older setup downloaded into raw/ here: those files move to the
+  # downloads folder, where fetch checks them.
+  for x in "${dir}/raw/"*; do
+    [ ! -e "$x" ] || adopt "$x" "${raw}/${x##*/}"
+  done
+  rmdir "${dir}/raw" 2>/dev/null || true
   if ! { [ -s "${dir}/manifest.txt" ] && [ "$(_digest sha256 "${dir}/manifest.txt")" = "$MOCHA_PANEL_MANIFEST_SHA256" ]; } \
      && ! fetch "${MOCHA_PANEL_URL}/20220804_manifest.txt" "${dir}/manifest.txt" sha256 "$MOCHA_PANEL_MANIFEST_SHA256"; then
     echo "[WARN] Could not read the panel's manifest (${MOCHA_PANEL_URL}); run: $0 --mocha-data ${GENOME_DIR}"
@@ -1541,12 +1566,15 @@ install_mocha_data() {
   for c in $chroms; do
     [ -s "${dir}/panel/${c}.vcf.gz.tbi" ] && [ -e "${dir}/panel/${c}.cnp.bed" ] \
       && [ "$(cat "${dir}/panel/${c}.stamp" 2>/dev/null)" = "$stamp" ] && continue
-    f="1kGP_high_coverage_Illumina.${c}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+    f=$(source_of mocha_panel --part "${c#chr}" path) || return 1
+    f=${f##*/}
     for e in "" .tbi; do
+      row=mocha_panel; [ -z "$e" ] || row=mocha_panel_index
+      url=$(source_of "$row" --part "${c#chr}" url) || return 1
       md5=$(awk -v n="${f}${e}" '$1 == n {print $2}' "${dir}/manifest.txt")
       [ -n "$md5" ] || { echo "[WARN] ${f}${e} is not in the panel's manifest"; return 1; }
       [ -s "${raw}/${f}${e}" ] && [ "$(_digest md5 "${raw}/${f}${e}")" = "$md5" ] && continue
-      fetch "${MOCHA_PANEL_URL}/${f}${e}" "${raw}/${f}${e}" md5 "$md5" \
+      fetch "$url" "${raw}/${f}${e}" md5 "$md5" \
         || { echo "[WARN] Could not download ${f}${e}; run: $0 --mocha-data ${GENOME_DIR}"; return 1; }
     done
     echo "  ${c}: the biallelic SNVs seen twice or more, genotypes only, and the common CNVs..."
@@ -1584,7 +1612,6 @@ install_mocha_data() {
     return 1
   fi
   for c in $chroms; do cat "${dir}/panel/${c}.cnp.bed"; done > "${dir}/cnps.bed.part" && mv "${dir}/cnps.bed.part" "${dir}/cnps.bed"
-  rmdir "${dir}/raw" 2>/dev/null || true
   echo "$stamp" > "${dir}/DONE"
   echo "[OK] MoChA's phasing panel (step 51, ${chroms% }): ${dir} ($(du -sh "$dir" | cut -f1), $(wc -l < "${dir}/cnps.bed" | tr -d ' ') common CNVs)"
 }
@@ -1785,6 +1812,7 @@ install_annotsv_bundle() {
   echo "Downloading AnnotSV ${ANNOTSV_ANNOTATIONS_VERSION} annotation data (~5.3 GB)..."
   echo "  The AnnotSV server is slow (about 0.8 MB/s measured from a GitHub runner), so this can take"
   echo "  1-2 hours. An interrupted download resumes when setup.sh runs again."
+  adopt "${GENOME_DIR}/${ANNOTSV_NAME}" "$ANNOTSV_TARBALL"
   if ! fetch "$ANNOTSV_URL" "$ANNOTSV_TARBALL"; then
     echo "[WARN] AnnotSV annotation download failed. Step 5 (AnnotSV) will be skipped until it is in place."
     echo "  Re-run setup.sh, or download it by hand:"
@@ -1841,6 +1869,7 @@ install_annotsv_gnomad_sv() {
   mkdir -p "$benign"
   # fetch checks a file already there and downloads only a missing one; a
   # wrong file in the downloads folder is refused.
+  adopt "${ANNOTSV_DIR}/${src##*/}" "$src"
   [ -s "$src" ] || echo "Downloading gnomAD-SV ${GNOMAD_SV_VERSION} sites (~1.7 GB)..."
   if ! fetch "$GNOMAD_SV_URL" "$src" sha256 "$GNOMAD_SV_SHA256"; then
     echo "[WARN] Could not download gnomAD-SV ${GNOMAD_SV_VERSION}. Step 5 stops until it is in place; run setup.sh again."
@@ -1950,6 +1979,7 @@ install_annotsv_mane() {
     echo "[OK] MANE ${MANE_RELEASE} Select transcripts for AnnotSV already present."
     return 0
   fi
+  adopt "${ANNOTSV_DIR}/${src##*/}" "$src"
   if ! fetch "$MANE_SUMMARY_URL" "$src" sha256 "$MANE_SUMMARY_SHA256"; then
     echo "[WARN] Could not download the MANE ${MANE_RELEASE} summary. Step 5 stops until it is in place; run setup.sh again."
     return 1
@@ -2075,9 +2105,15 @@ install_archaic() {
   for v in BCFTOOLS_IMAGE PICARD_IMAGE OG_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
-  local adl
+  local adl x
   adl=$(dl "archaic-${ARCHAIC_DATA_VERSION}")
   mkdir -p "${dir}/md5" "$adl" "${dir}/work" "${dir}/mask" "${dir}/exclude"
+  # An older setup downloaded into download/ here: those files move to the
+  # downloads folder, where fetch checks them.
+  for x in "${dir}/download/"*; do
+    [ ! -e "$x" ] || adopt "$x" "${adl}/${x##*/}"
+  done
+  rmdir "${dir}/download" 2>/dev/null || true
   for v in "Altai|${ARCHAIC_ALTAI_MD5SUMS_SHA256}" "Vindija33.19|${ARCHAIC_VINDIJA_MD5SUMS_SHA256}" "Denisova|${ARCHAIC_DENISOVA_MD5SUMS_SHA256}"; do
     IFS='|' read -r g k <<< "$v"
     [ -s "${dir}/md5/${g}.txt" ] && [ "$(_digest sha256 "${dir}/md5/${g}.txt")" = "$k" ] && continue
@@ -2257,7 +2293,7 @@ install_archaic() {
   for v in "${dir}"/chr*.tsv.gz; do
     [ -e "$v" ] || continue
     c=$(basename "$v" .tsv.gz); c=${c#chr}
-    [[ " ${chroms} " == *" ${c} "* ]] || rm -f "$v" "${dir}/chr${c}.stamp" "${dir}/mask/"*".chr${c}.bed.gz" "${dir}/exclude/chr${c}.bed.gz"
+    [[ " ${chroms} " == *" ${c} "* ]] || rm -f "$v" "${dir}/chr${c}.stamp" "${dir}/mask/"*".chr${c}.bed.gz" "${dir}/exclude/chr${c}.bed.gz"  # not kept: what was installed for a chromosome no longer chosen
   done
   rm -rf "${dir}/work"
   done_with "$sites" "${sites}.tbi"
@@ -2275,7 +2311,7 @@ install_vep_cache_opt_in() {
     echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
     return 0
   fi
-  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "$(dl "$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")")" || return 1
+  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "$(source_of vep_cache path)" || return 1
   echo "Installing the VEP ${VEP_CACHE_RELEASE} cache: ~26 GB download, ~30 GB unpacked, both on disk until it ends."
   if ! install_vep_cache "$dir" "$VEP_CACHE_RELEASE"; then
     echo "[WARN] Could not install the VEP ${VEP_CACHE_RELEASE} cache. Run this command again: the download resumes."
@@ -2294,7 +2330,7 @@ install_clinical_data() {
     if [ "${SETUP_EVERYTHING_SCOPE:-}" = row ] && [ "$rel" = "$VEP_CACHE_RELEASE" ]; then continue; fi
     if [ "$rel" = bundle ]; then
       [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
-      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "$(dl "pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz")"; then
+      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "$(source_of pcgr_bundle path)"; then
         install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || { missing=1; echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; }
       else
         missing=1
@@ -2305,7 +2341,7 @@ install_clinical_data() {
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
       [ "$rel" != "$PCGR_VEP_CACHE_RELEASE" ] || peak=52
-      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "$(dl "$(basename "$(vep_cache_url "$rel")")")"; then
+      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "$(source_of "$(vep_cache_row "$rel")" path)"; then
         if ! install_vep_cache "$dir" "$rel"; then
           missing=1
           echo "[WARN] Could not install VEP ${rel}. Run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\" (interrupted downloads resume)."
@@ -2863,7 +2899,8 @@ else
 
   if [ ! -f "$FASTA" ]; then
     case "$REF_FASTA_URL" in
-      *.gz) DL=$(dl "${REF_FASTA_URL##*/}") ;;
+      *.gz) DL=$(dl "${REF_FASTA_URL##*/}")
+        adopt "${FASTA}.download.gz" "$DL" ;;
       *) DL="$FASTA" ;;
     esac
     # shellcheck disable=SC2046  # the checksum arguments are dropped when REF_FASTA_MD5 is empty

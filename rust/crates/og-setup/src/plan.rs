@@ -4,9 +4,12 @@
 //!
 //! Presence is a file at the row's path; `og setup fetch` checks its
 //! checksum when it is reached, so the plan itself reads no file and makes
-//! no request.
+//! no request. A raw download that is not there but whose install is done
+//! (every file its `installed` column names is there: an install by an
+//! older setup, which deleted the raw files, or one pruned since) is not
+//! needed again, so it counts as nothing to download.
 
-use crate::fetch::{Ctx, Source, Sources, flag, root_of, take};
+use crate::fetch::{Ctx, Env, Source, Sources, flag, root_of, take};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -52,6 +55,8 @@ pub struct Line {
     pub path: String,
     pub files: usize,
     pub present: usize,
+    /// Files not there whose install is done: not downloaded again.
+    pub installed: usize,
     pub bytes: Option<u64>,
     /// Kept in the downloads folder (a raw download), not installed.
     pub download: bool,
@@ -66,7 +71,7 @@ pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
         } else {
             r.parts.iter().map(|p| Some(p.as_str())).collect()
         };
-        let mut present = 0;
+        let (mut present, mut installed) = (0, 0);
         for p in &parts {
             let f = ctx.path(r, *p)?;
             // A folder row (a path ending in /) is there when it holds a file.
@@ -77,6 +82,8 @@ pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
             };
             if there {
                 present += 1;
+            } else if ctx.installed(r, *p)? {
+                installed += 1;
             }
         }
         out.push(Line {
@@ -86,6 +93,7 @@ pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
                 .map_err(|e| format!("ERROR: {}: {e}", r.id))?,
             files: parts.len(),
             present,
+            installed,
             bytes: r.bytes,
             download: r.is_download(),
         });
@@ -127,14 +135,21 @@ pub fn write_plan(
         let state = if l.files == 1 {
             if l.present == 1 {
                 "present".to_owned()
+            } else if l.installed == 1 {
+                "installed, not kept".to_owned()
             } else {
                 "missing".to_owned()
             }
+        } else if l.installed > 0 {
+            format!(
+                "{} of {} files present, {} installed and not kept",
+                l.present, l.files, l.installed
+            )
         } else {
             format!("{} of {} files present", l.present, l.files)
         };
         w(out, format!("{}\t{}\t{size}\t{state}\n", l.id, l.path))?;
-        let missing = l.files - l.present;
+        let missing = l.files - l.present - l.installed;
         if missing > 0 {
             n_need += 1;
             match l.bytes {
@@ -233,7 +248,8 @@ const USAGE: &str =
     "usage: og setup plan [--for INSTALLER,...|--all] [--skip INSTALLER,...] [--check] [--root DIR]
   --check: exit 1 when the raw downloads still to come do not fit in the
   free disk of the downloads folder (unless SETUP_KEEP_DOWNLOADS=false);
-  an installer with no source then counts as nothing to download
+  a download whose install is done (its installed files are there) is not
+  to come; an installer with no source then counts as nothing to download
   --skip: leave out the sources of these installers (setup.sh
   --no-clinical-data is --skip clinical-data)
   INSTALLER: setup (a plain setup), or a setup.sh flag without its dashes
@@ -242,6 +258,12 @@ const USAGE: &str =
 
 /// `og setup plan`.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    cli_with(args, Box::new(|k| std::env::var(k).ok()), out, err)
+}
+
+/// `og setup plan` reading its settings (GENOME_DIR, OG_DOWNLOADS,
+/// SETUP_KEEP_DOWNLOADS) through ENV.
+pub fn cli_with(args: &[String], env: Env, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let mut a = args.to_vec();
     let all = flag(&mut a, "--all");
     let check = flag(&mut a, "--check");
@@ -261,7 +283,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         return 2;
     }
     let res = (|| -> Result<(), String> {
-        let ctx = Ctx::from_env(&root_of(root.as_deref()))?;
+        let ctx = Ctx::new(&root_of(root.as_deref()), env)?;
         let s = Sources::read(&ctx.root)?;
         let skip: Vec<&str> = skip
             .as_deref()
@@ -299,7 +321,8 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             && let Some(s) = free.and_then(|f| shortfall(need, f))
         {
             return Err(format!(
-                "ERROR: the raw downloads of this setup need {} more than is free in {}: free some disk, set OG_DOWNLOADS to a larger disk, or run with --no-keep-downloads. The check counts every raw download that is not there, even one whose install is done (after og setup prune): SETUP_DISK_CHECK=false skips it",
+                "ERROR: the raw downloads this setup still needs, {}, do not fit: they need {} more than is free in {}. Free some disk, set OG_DOWNLOADS to a larger disk, or run with --no-keep-downloads (SETUP_DISK_CHECK=false skips this check). A download whose install is already done is not counted.",
+                human(need),
                 human(s),
                 ctx.downloads()?.display()
             ));

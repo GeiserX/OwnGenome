@@ -4,7 +4,7 @@
 //! or `$GENOME_DIR/downloads`), so a rerun, a second install or another use
 //! of the same data does not download it again. Prune removes them on
 //! request: the files of the table's rows under `downloads/` (and their
-//! `.part`), all of them or the rows named. It never removes a file a step
+//! `.part` and saved `.checksum`), all of them or the rows named. It never removes a file a step
 //! reads (a row stored elsewhere in `GENOME_DIR`), and leaves any other file
 //! in the downloads folder alone.
 
@@ -45,8 +45,8 @@ pub fn rows<'a>(s: &'a Sources, ids: &[String]) -> Result<Vec<&'a Source>, Strin
     Ok(v)
 }
 
-/// The files prune would remove for ROWS: each existing download and
-/// `.part`, with its size.
+/// The files prune would remove for ROWS: each existing download, its
+/// `.part` and its saved `.checksum`, with its size.
 pub fn targets(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<(PathBuf, u64)>, String> {
     let mut out = vec![];
     let dl = ctx.downloads()?;
@@ -91,7 +91,11 @@ pub fn targets(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<(PathBuf, u64)>, Strin
                 }
                 continue;
             }
-            for c in [f.clone(), PathBuf::from(format!("{}.part", f.display()))] {
+            for c in [
+                f.clone(),
+                PathBuf::from(format!("{}.part", f.display())),
+                crate::fetch::saved_checksum_path(&f),
+            ] {
                 let m = match fs::symlink_metadata(&c) {
                     Ok(m) => m,
                     Err(e) if e.kind() == ErrorKind::NotFound => continue,

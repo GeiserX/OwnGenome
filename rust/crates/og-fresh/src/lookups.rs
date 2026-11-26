@@ -31,7 +31,8 @@ pub struct Ctx<'a> {
     pub versions: &'a Path,
     /// `scripts/setup.sh` (the ClinVar URL, Parascopy's Zenodo record).
     pub setup: &'a Path,
-    /// `scripts/lib/common.sh` (the VEP cache URL, HLA_DB_RELEASE).
+    /// `scripts/lib/common.sh`: HLA_DB_RELEASE, and the checkout whose
+    /// `assets/data-sources.tsv` holds the VEP cache URL.
     pub common: &'a Path,
     /// Now, for the ClinVar file's age.
     pub now: jiff::Timestamp,

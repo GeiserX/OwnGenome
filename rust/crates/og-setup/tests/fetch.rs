@@ -8,7 +8,8 @@
 //! assumed. `curl` does the transfers, as in setup.
 
 use og_setup::fetch::{
-    self, Bad, Ctx, Done, Fetch, Kind, Knobs, OnWrong, Sources, digest, literal_pins,
+    self, Bad, Ctx, Done, Fetch, Kind, Knobs, OnWrong, Setting, Sources, digest, literal_pins,
+    saved_checksum_path, shell_settings, source_for,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -26,6 +27,9 @@ struct File {
     fail_first: usize,
     /// Send only this many bytes of the first full answer, then close.
     cut_first: Option<usize>,
+    /// Answer every request with the whole body, as a server that cannot
+    /// resume does.
+    ignore_range: bool,
 }
 
 #[derive(Default)]
@@ -100,10 +104,14 @@ fn serve(mut c: TcpStream, s: &Mutex<State>) {
                 ("503 Service Unavailable", vec![], None)
             }
             Some(f) => {
-                let from = range
-                    .strip_prefix("bytes=")
-                    .and_then(|x| x.trim_end_matches('-').parse::<usize>().ok())
-                    .unwrap_or(0);
+                let from = if f.ignore_range {
+                    0
+                } else {
+                    range
+                        .strip_prefix("bytes=")
+                        .and_then(|x| x.trim_end_matches('-').parse::<usize>().ok())
+                        .unwrap_or(0)
+                };
                 let cut = f.cut_first.take();
                 if from > 0 {
                     (
@@ -182,7 +190,16 @@ fn plain<'a>(url: &'a str, dest: &'a Path, kind: Kind, want: &'a str) -> Fetch<'
         want,
         on_wrong: OnWrong::Replace,
         source: None,
+        prune: None,
     }
+}
+
+/// A URL on a port nothing listens on: a host that is down.
+fn down_url(path: &str) -> String {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let a = l.local_addr().unwrap();
+    drop(l);
+    format!("http://{a}{path}")
 }
 
 // --- the fetch behaviours ---------------------------------------------------
@@ -352,6 +369,7 @@ fn a_file_there_with_the_wrong_checksum_is_never_overwritten_silently() {
     // In the downloads folder: refused, left as it is, no request.
     let f = Fetch {
         source: Some("mine"),
+        prune: Some("mine"),
         on_wrong: OnWrong::Refuse,
         ..plain(&url, &dest, Kind::Sha256, &sha)
     };
@@ -362,8 +380,19 @@ fn a_file_there_with_the_wrong_checksum_is_never_overwritten_silently() {
         log.contains("is there but is not the file of mine"),
         "{log}"
     );
-    assert!(log.contains("og setup prune mine"), "{log}");
+    assert!(log.contains("(or run og setup prune mine)"), "{log}");
     assert!(s.requests("/mine.bin").is_empty());
+    // A file of no source of one file: no prune hint (prune would refuse it).
+    let f = Fetch {
+        on_wrong: OnWrong::Refuse,
+        ..plain(&url, &dest, Kind::Sha256, &sha)
+    };
+    let (r, log) = run(&f, &knobs(3));
+    assert_eq!(r, Err(()));
+    assert!(
+        log.contains("is not the file of mine.bin") && !log.contains("og setup prune"),
+        "{log}"
+    );
     // A file setup installs itself: replaced, and it says so.
     let (r, log) = run(&plain(&url, &dest, Kind::Sha256, &sha), &knobs(3));
     assert_eq!(r, Ok(Done::Downloaded), "{log}");
@@ -519,6 +548,144 @@ fn a_checksum_list_at_a_url_names_the_file() {
         1,
         "a list that names no checksum is not read again"
     );
+}
+
+#[test]
+fn a_server_that_cannot_resume_gets_one_fresh_download() {
+    let s = Server::start();
+    let b = body(6000);
+    let url = s.put(
+        "/norange.bin",
+        File {
+            body: b.clone(),
+            ignore_range: true,
+            ..File::default()
+        },
+    );
+    let d = tmp("norange");
+    let dest = d.join("norange.bin");
+    // A part left by a cut transfer: curl asks to resume it, the server sends
+    // the whole file (200, not 206), and curl stops with exit 33.
+    fs::write(d.join("norange.bin.part"), &b[..100]).unwrap();
+    let (r, log) = run(&plain(&url, &dest, Kind::Sha256, &sha256_of(&b)), &knobs(1));
+    assert_eq!(r, Ok(Done::Downloaded), "{log}");
+    assert_eq!(fs::read(&dest).unwrap(), b);
+    assert_eq!(
+        s.requests("/norange.bin"),
+        ["bytes=100-", ""],
+        "one resume, refused, then one fresh download"
+    );
+}
+
+#[test]
+fn a_checksum_list_that_fails_first_is_tried_again() {
+    let s = Server::start();
+    let b = body(1500);
+    let url = s.put(
+        "/r/x.gz.bin",
+        File {
+            body: b.clone(),
+            ..File::default()
+        },
+    );
+    let d = tmp("listretry");
+    let probe = d.join("probe");
+    fs::write(&probe, &b).unwrap();
+    let md5 = digest(Kind::Md5, &probe).unwrap();
+    let list = s.put(
+        "/r/MD5SUMS",
+        File {
+            body: format!("{md5}  x.gz.bin\n").into_bytes(),
+            fail_first: 2,
+            ..File::default()
+        },
+    );
+    let (r, log) = run(
+        &plain(&url, &d.join("x.gz.bin"), Kind::Md5, &list),
+        &knobs(3),
+    );
+    assert_eq!(r, Ok(Done::Downloaded), "{log}");
+    assert_eq!(s.requests("/r/MD5SUMS").len(), 3, "{log}");
+    assert!(
+        log.contains("Checksum download attempt 2/3 failed"),
+        "{log}"
+    );
+}
+
+#[test]
+fn a_kept_file_checked_against_a_list_is_used_when_the_list_cannot_be_read() {
+    let s = Server::start();
+    let b = body(2500);
+    let url = s.put(
+        "/k/x.gz.bin",
+        File {
+            body: b.clone(),
+            ..File::default()
+        },
+    );
+    let d = tmp("savedsum");
+    let probe = d.join("probe");
+    fs::write(&probe, &b).unwrap();
+    let md5 = digest(Kind::Md5, &probe).unwrap();
+    let list = s.put(
+        "/k/MD5SUMS",
+        File {
+            body: format!("{md5}  x.gz.bin\n").into_bytes(),
+            ..File::default()
+        },
+    );
+    let dest = d.join("downloads/x.gz.bin");
+    fn kept<'a>(url: &'a str, dest: &'a Path, want: &'a str) -> Fetch<'a> {
+        Fetch {
+            on_wrong: OnWrong::Refuse,
+            ..plain(url, dest, Kind::Md5, want)
+        }
+    }
+    // Downloaded and checked: the checksum it matched is saved beside it.
+    let (r, log) = run(&kept(&url, &dest, &list), &knobs(1));
+    assert_eq!(r, Ok(Done::Downloaded), "{log}");
+    assert_eq!(
+        fs::read_to_string(saved_checksum_path(&dest)).unwrap(),
+        format!("md5 {md5}\n")
+    );
+    // The list up: one small request for the list, none for the file.
+    let (r, log) = run(&kept(&url, &dest, &list), &knobs(1));
+    assert_eq!(r, Ok(Done::Reused), "{log}");
+    assert_eq!(s.requests("/k/MD5SUMS").len(), 2);
+    assert_eq!(s.requests("/k/x.gz.bin").len(), 1);
+    // The list's host down: the kept file matches what was saved, so it is used.
+    let gone = down_url("/k/MD5SUMS");
+    let (r, log) = run(&kept(&url, &dest, &gone), &knobs(2));
+    assert_eq!(r, Ok(Done::Reused), "{log}");
+    assert!(
+        log.contains("could not be read;")
+            && log.contains("matches the md5 saved when it was checked"),
+        "{log}"
+    );
+    assert_eq!(s.requests("/k/x.gz.bin").len(), 1, "{log}");
+    // A kept file changed since: the saved checksum proves nothing, refused.
+    fs::write(&dest, b"changed").unwrap();
+    let (r, log) = run(&kept(&url, &dest, &gone), &knobs(1));
+    assert_eq!(r, Err(()), "{log}");
+    assert!(
+        log.contains("ERROR: could not read the checksum of x.gz.bin"),
+        "{log}"
+    );
+    assert_eq!(fs::read(&dest).unwrap(), b"changed");
+    // No saved checksum (a file kept by an older setup): refused too.
+    fs::write(&dest, &b).unwrap();
+    fs::remove_file(saved_checksum_path(&dest)).unwrap();
+    let (r, log) = run(&kept(&url, &dest, &gone), &knobs(1));
+    assert_eq!(r, Err(()), "{log}");
+    // The list up again: checked, and the checksum saved again.
+    let (r, log) = run(&kept(&url, &dest, &list), &knobs(1));
+    assert_eq!(r, Ok(Done::Reused), "{log}");
+    assert!(saved_checksum_path(&dest).is_file());
+    // A file setup installs itself (not kept) saves nothing.
+    let other = d.join("installed/x.gz.bin");
+    let (r, log) = run(&plain(&url, &other, Kind::Md5, &list), &knobs(1));
+    assert_eq!(r, Ok(Done::Downloaded), "{log}");
+    assert!(!saved_checksum_path(&other).exists());
 }
 
 #[test]
@@ -735,7 +902,8 @@ fn bsd_sum_is_the_sum_command() {
 
 // --- the table, plan and prune ---------------------------------------------
 
-const TABLE_HEAD: &str = "id\tinstallers\tsteps\tpath\tparts\turl\tcheck\tvalue\tbytes\tlicence\n";
+const TABLE_HEAD: &str =
+    "id\tinstallers\tsteps\tpath\tparts\turl\tcheck\tvalue\tbytes\tlicence\tinstalled\n";
 
 fn checkout(rows: &str, versions: &str) -> PathBuf {
     let d = tmp("checkout");
@@ -760,10 +928,10 @@ fn ctx(root: &Path, env: &[(&str, String)]) -> Ctx {
 #[test]
 fn rows_expand_pins_parts_and_the_downloads_folder() {
     let root = checkout(
-        "vep\tsetup,vep-cache\t13\tdownloads/vep_${VEP}.tar.gz\t\thttps://h/release-${VEP}/v.tar.gz\tsum\thttps://h/release-${VEP}/CHECKSUMS\t26000000000\tEnsembl\n\
-         ref\tsetup\t02\treference/ref.fna.gz\t\t${REF_URL:-https://h/ref.fna.gz}\tmd5\thttps://h/md5\t900000000\tNCBI\n\
-         chr\tarchaic\t43\tdownloads/arch/{part}.vcf.gz\t21..22\thttps://h/chr{part}.vcf.gz\tmd5\t@list\t\tMPI\n\
-         list\tarchaic\t43\tdownloads/arch/md5.txt\t\thttps://h/md5.txt\tsha256\tabc\t10\tMPI\n",
+        "vep\tsetup,vep-cache\t13\tdownloads/vep_${VEP}.tar.gz\t\thttps://h/release-${VEP}/v.tar.gz\tsum\thttps://h/release-${VEP}/CHECKSUMS\t26000000000\tEnsembl\tvep/${VEP}/info.txt\n\
+         ref\tsetup\t02\treference/ref.fna.gz\t\t${REF_URL:-https://h/ref.fna.gz}\tmd5\thttps://h/md5\t900000000\tNCBI\t-\n\
+         chr\tarchaic\t43\tdownloads/arch/{part}.vcf.gz\t21..22\thttps://h/chr{part}.vcf.gz\tmd5\t@list\t\tMPI\tarch/chr{part}.done\n\
+         list\tarchaic\t43\tdownloads/arch/md5.txt\t\thttps://h/md5.txt\tsha256\tabc\t10\tMPI\tarch/DONE\n",
         "VEP=\"116\"\n",
     );
     let s = Sources::read(&root).unwrap();
@@ -814,7 +982,7 @@ fn rows_expand_pins_parts_and_the_downloads_folder() {
         format!("file://{}", g.join("downloads/arch/md5.txt").display())
     );
     let bad = checkout(
-        "x\tsetup\t1\tdownloads/x\t\thttps://h/${NOPE}\t\t\t\t\n",
+        "x\tsetup\t1\tdownloads/x\t\thttps://h/${NOPE}\t\t\t\t\tx.done\n",
         "",
     );
     let s2 = Sources::read(&bad).unwrap();
@@ -828,36 +996,36 @@ fn rows_expand_pins_parts_and_the_downloads_folder() {
 
 #[test]
 fn the_table_refuses_a_repeated_id_or_path_and_a_bad_check() {
-    let r = "a\tsetup\t1\tdownloads/a\t\thttps://h/a\t\t\t\t\n";
-    let again = "a\tsetup\t1\tdownloads/a2\t\thttps://h/a2\t\t\t\t\n";
+    let r = "a\tsetup\t1\tdownloads/a\t\thttps://h/a\t\t\t\t\ta.done\n";
+    let again = "a\tsetup\t1\tdownloads/a2\t\thttps://h/a2\t\t\t\t\ta.done\n";
     assert!(
         Sources::parse(&format!("{TABLE_HEAD}{r}{again}"))
             .unwrap_err()
             .contains("twice")
     );
-    let p = "b\tsetup\t1\tdownloads/a\t\thttps://h/b\t\t\t\t\n";
+    let p = "b\tsetup\t1\tdownloads/a\t\thttps://h/b\t\t\t\t\tb.done\n";
     assert!(
         Sources::parse(&format!("{TABLE_HEAD}{r}{p}"))
             .unwrap_err()
             .contains("also a's")
     );
-    let k = "c\tsetup\t1\tdownloads/c\t\thttps://h/c\tcrc64\t\t\t\n";
+    let k = "c\tsetup\t1\tdownloads/c\t\thttps://h/c\tcrc64\t\t\t\tc.done\n";
     assert!(
         Sources::parse(&format!("{TABLE_HEAD}{k}"))
             .unwrap_err()
             .contains("unknown checksum type")
     );
-    let up = "d\tsetup\t1\t../d\t\thttps://h/d\t\t\t\t\n";
+    let up = "d\tsetup\t1\t../d\t\thttps://h/d\t\t\t\t\t-\n";
     assert!(Sources::parse(&format!("{TABLE_HEAD}{up}")).is_err());
 }
 
 #[test]
 fn plan_lists_rows_sizes_state_kept_raw_size_and_free_disk() {
     let root = checkout(
-        "big\tsetup\t13\tdownloads/big.tar.gz\t\thttps://h/big.tar.gz\t\t\t26000000000\tEnsembl\n\
-         small\tsetup\t33\treference/small.vcf.gz\t\thttps://h/small.vcf.gz\t\t\t9800000\tMIT\n\
-         fam\tsetup\t43\tdownloads/f/{part}.gz\t1..4\thttps://h/{part}.gz\t\t\t4000\tMPI\n\
-         other\tarchaic\t43\tdownloads/o.gz\t\thttps://h/o.gz\t\t\t1\tMPI\n",
+        "big\tsetup\t13\tdownloads/big.tar.gz\t\thttps://h/big.tar.gz\t\t\t26000000000\tEnsembl\tbig/DONE\n\
+         small\tsetup\t33\treference/small.vcf.gz\t\thttps://h/small.vcf.gz\t\t\t9800000\tMIT\t-\n\
+         fam\tsetup\t43\tdownloads/f/{part}.gz\t1..4\thttps://h/{part}.gz\t\t\t4000\tMPI\tf/{part}.done\n\
+         other\tarchaic\t43\tdownloads/o.gz\t\thttps://h/o.gz\t\t\t1\tMPI\to.done\n",
         "",
     );
     let g = root.join("g");
@@ -901,11 +1069,283 @@ fn plan_lists_rows_sizes_state_kept_raw_size_and_free_disk() {
 }
 
 #[test]
+fn the_table_refuses_a_download_with_no_install_and_a_bad_installed_file() {
+    let row = |path: &str, parts: &str, installed: &str| {
+        format!("{TABLE_HEAD}a\tsetup\t1\t{path}\t{parts}\thttps://h/a\t\t\t\t\t{installed}\n")
+    };
+    assert!(
+        Sources::parse(&row("downloads/a", "", "-"))
+            .unwrap_err()
+            .contains("is a raw download: name the files of its install")
+    );
+    assert!(
+        Sources::parse(&row("reference/a", "", "reference/a.done"))
+            .unwrap_err()
+            .contains("'installed' is for a raw download")
+    );
+    assert!(
+        Sources::parse(&row("downloads/a", "", "a/{part}.done"))
+            .unwrap_err()
+            .contains("{part} in 'installed' goes with a parts list")
+    );
+    for bad in ["/a.done", "downloads/a.done", "x/../../a.done"] {
+        assert!(
+            Sources::parse(&row("downloads/a", "", bad))
+                .unwrap_err()
+                .contains("must be relative, in GENOME_DIR, outside downloads/"),
+            "{bad}"
+        );
+    }
+    let s = Sources::parse(&row("downloads/a", "", "a/x a/y")).unwrap();
+    assert_eq!(s.get("a").unwrap().installed, ["a/x", "a/y"]);
+}
+
+/// `og setup plan ARGS` on ROOT with ENV: (exit code, stdout, stderr).
+fn plan_cli(root: &Path, args: &[&str], env: &[(&str, String)]) -> (u8, String, String) {
+    let env: HashMap<String, String> = env
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    let mut a: Vec<String> = args.iter().map(|x| (*x).to_owned()).collect();
+    a.extend(["--root".to_owned(), root.display().to_string()]);
+    let (mut out, mut err) = (vec![], vec![]);
+    let rc = og_setup::plan::cli_with(
+        &a,
+        Box::new(move |k| env.get(k).cloned()),
+        &mut out,
+        &mut err,
+    );
+    (
+        rc,
+        String::from_utf8(out).unwrap(),
+        String::from_utf8(err).unwrap(),
+    )
+}
+
+#[test]
+fn plan_check_refuses_downloads_that_do_not_fit_and_nothing_else() {
+    // 10^18 bytes fit on no disk.
+    let root = checkout(
+        "huge\tsetup\t13\tdownloads/huge.tar.gz\t\thttps://h/huge.tar.gz\t\t\t1000000000000000000\tX\thuge/DONE\n\
+         big_installed\tbig\t13\treference/huge.vcf.gz\t\thttps://h/huge.vcf.gz\t\t\t1000000000000000000\tX\t-\n",
+        "",
+    );
+    let g = root.join("g");
+    let genome = ("GENOME_DIR", g.display().to_string());
+    let dl = g.join("downloads");
+    // Not there: refused, the shortfall named.
+    let (rc, out, err) = plan_cli(&root, &["--check"], std::slice::from_ref(&genome));
+    assert_eq!(rc, 1, "{out}{err}");
+    assert!(
+        err.contains(
+            "ERROR: the raw downloads this setup still needs, 1000000.0 TB, do not fit: they need "
+        ) && err.contains(&format!("TB more than is free in {}", dl.display()))
+            && err.contains("--no-keep-downloads"),
+        "{err}"
+    );
+    assert!(
+        out.contains("huge\tdownloads/huge.tar.gz\t1000000.0 TB\tmissing"),
+        "{out}"
+    );
+    // Deleted once installed: nothing is kept, so nothing is refused.
+    let (rc, _, err) = plan_cli(
+        &root,
+        &["--check"],
+        &[genome.clone(), ("SETUP_KEEP_DOWNLOADS", "false".into())],
+    );
+    assert_eq!(rc, 0, "{err}");
+    // An install with no download (a file setup installs, not kept): not counted.
+    let (rc, out, err) = plan_cli(
+        &root,
+        &["--for", "big", "--check"],
+        std::slice::from_ref(&genome),
+    );
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(out.contains("To download: 1 source, 1000000.0 TB"), "{out}");
+    // Its install done by an older setup, which deleted the download, and no
+    // downloads folder at all: nothing to download.
+    fs::create_dir_all(g.join("huge")).unwrap();
+    fs::write(g.join("huge/DONE"), b"").unwrap();
+    assert!(!dl.exists());
+    let (rc, out, err) = plan_cli(&root, &["--check"], std::slice::from_ref(&genome));
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(
+        out.contains("huge\tdownloads/huge.tar.gz\t1000000.0 TB\tinstalled, not kept"),
+        "{out}"
+    );
+    assert!(out.contains("To download: 0 sources, 0 bytes"), "{out}");
+    // The file there: nothing to download.
+    fs::remove_file(g.join("huge/DONE")).unwrap();
+    fs::create_dir_all(&dl).unwrap();
+    fs::write(dl.join("huge.tar.gz"), b"x").unwrap();
+    let (rc, out, err) = plan_cli(&root, &["--check"], std::slice::from_ref(&genome));
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(
+        out.contains("huge\tdownloads/huge.tar.gz\t1000000.0 TB\tpresent"),
+        "{out}"
+    );
+}
+
+/// A checkout holding the real table, versions.env and the two scripts whose
+/// settings it names, with EDIT applied to the file named first.
+fn real_checkout(edit: Option<(&str, &str, &str)>) -> PathBuf {
+    let d = tmp("real");
+    for f in [
+        "assets/data-sources.tsv",
+        "versions.env",
+        "scripts/lib/common.sh",
+        "scripts/setup.sh",
+    ] {
+        let mut t = read(f);
+        if let Some((file, from, to)) = edit
+            && file == f
+        {
+            assert_eq!(t.matches(from).count(), 1, "{from} in {f}");
+            t = t.replace(from, to);
+        }
+        fs::create_dir_all(d.join(f).parent().unwrap()).unwrap();
+        fs::write(d.join(f), t).unwrap();
+    }
+    d
+}
+
+#[test]
+fn a_rerun_of_an_install_built_by_the_shell_setup_needs_no_vep_download() {
+    // The VEP cache row made too large for any disk; the release is versions.env's.
+    let t = read("assets/data-sources.tsv");
+    let row = t.lines().find(|l| l.starts_with("vep_cache\t")).unwrap();
+    let mut f: Vec<&str> = row.split('\t').collect();
+    f[8] = "1000000000000000000";
+    let big = f.join("\t");
+    let root = real_checkout(Some(("assets/data-sources.tsv", row, &big)));
+    let rel = fetch::versions_pins(&read("versions.env"))["VEP_CACHE_RELEASE"].clone();
+    let g = tmp("vepdone");
+    let genome = ("GENOME_DIR", g.display().to_string());
+    let (rc, _, err) = plan_cli(
+        &root,
+        &["--for", "vep-cache", "--check"],
+        std::slice::from_ref(&genome),
+    );
+    assert_eq!(rc, 1, "with no cache the download is needed: {err}");
+    // What install_vep_cache_opt_in checks, as an older setup left it: the
+    // unpacked cache, no tarball and no downloads folder.
+    let info = g.join(format!("vep_cache/homo_sapiens/{rel}_GRCh38/info.txt"));
+    fs::create_dir_all(info.parent().unwrap()).unwrap();
+    fs::write(&info, b"").unwrap();
+    let (rc, out, err) = plan_cli(
+        &root,
+        &["--for", "vep-cache", "--check"],
+        std::slice::from_ref(&genome),
+    );
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(out.contains("\tinstalled, not kept"), "{out}");
+    assert!(!g.join("downloads").exists());
+}
+
+#[test]
+fn the_next_gencode_release_is_one_line_of_common_sh() {
+    let now = read("scripts/lib/common.sh");
+    let line = now
+        .lines()
+        .find(|l| l.starts_with("GENCODE_RELEASE="))
+        .expect("common.sh sets GENCODE_RELEASE");
+    let root = real_checkout(Some(("scripts/lib/common.sh", line, "GENCODE_RELEASE=99")));
+    let s = Sources::read(&root).unwrap();
+    let g = tmp("gencode99");
+    let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
+    let r = s.get("gencode").unwrap();
+    assert_eq!(
+        c.path(r, None).unwrap(),
+        g.join("downloads/gencode.v99.basic.annotation.gtf.gz")
+    );
+    assert!(c.url(r, None).unwrap().contains("/release_99/gencode.v99."));
+    assert!(c.value(&s, r, None).unwrap().contains("/release_99/"));
+    // And og setup plan sees that file.
+    fs::create_dir_all(g.join("downloads")).unwrap();
+    fs::write(
+        g.join("downloads/gencode.v99.basic.annotation.gtf.gz"),
+        b"x",
+    )
+    .unwrap();
+    let rows = og_setup::plan::chosen(&s, &["setup".to_owned()]);
+    let l = og_setup::plan::lines(&c, &rows).unwrap();
+    let gl = l.iter().find(|x| x.id == "gencode").unwrap();
+    assert_eq!(gl.present, 1, "{gl:?}");
+}
+
+#[test]
+fn shell_settings_are_read_as_the_shell_sets_them() {
+    let t = "A_B=12\nHLA=${HLA:-3.66.0}  # a comment\nQ=\"x y\"\nR=\"1.2\"\n  INDENTED=1\nlower=1\nS=$(date)\nT=${OTHER:-1}\nA_B=13\n";
+    let m = shell_settings(t);
+    assert_eq!(
+        m.get("A_B"),
+        Some(&Setting::Fixed("12".into())),
+        "the first one"
+    );
+    assert_eq!(m.get("HLA"), Some(&Setting::EnvOr("3.66.0".into())));
+    assert_eq!(m.get("R"), Some(&Setting::Fixed("1.2".into())));
+    for k in ["Q", "INDENTED", "lower", "S", "T"] {
+        assert!(!m.contains_key(k), "{k}");
+    }
+    let root = checkout("a\tsetup\t1\treference/${HLA}/${A_B}\t\t-\t\t\t\t\t-\n", "");
+    fs::create_dir_all(root.join("scripts/lib")).unwrap();
+    fs::write(root.join("scripts/lib/common.sh"), t).unwrap();
+    let s = Sources::read(&root).unwrap();
+    let r = s.get("a").unwrap();
+    let c = ctx(&root, &[("GENOME_DIR", "/g".into())]);
+    assert_eq!(
+        c.path(r, None).unwrap(),
+        PathBuf::from("/g/reference/3.66.0/12")
+    );
+    let o = ctx(
+        &root,
+        &[
+            ("GENOME_DIR", "/g".into()),
+            ("HLA", "3.70.0".into()),
+            ("A_B", "99".into()),
+        ],
+    );
+    assert_eq!(
+        o.path(r, None).unwrap(),
+        PathBuf::from("/g/reference/3.70.0/12"),
+        "the environment overrides HLA=${{HLA:-...}}, never A_B=12"
+    );
+}
+
+#[test]
+fn a_refusal_names_the_row_of_its_file() {
+    let root = checkout(
+        "one\tsetup\t1\tdownloads/one.zip\t\thttps://h/one.zip\t\t\t\t\tone.done\n\
+         fam\tsetup\t1\tdownloads/fam/{part}.gz\ta b\thttps://h/{part}.gz\t\t\t\t\tfam/{part}.done\n\
+         dir\tsetup\t1\tdownloads/dir/\t\t-\t\t\t\t\tdir.done\n\
+         inner\tsetup\t1\tdownloads/dir/inner.gz\t\t-\t\t\t\t\tdir.done\n",
+        "",
+    );
+    let s = Sources::read(&root).unwrap();
+    let g = tmp("sourcefor");
+    let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
+    let at = |p: &str| source_for(&c, &s, &g.join(p));
+    assert_eq!(
+        at("downloads/one.zip"),
+        Some(("one".into(), Some("one".into())))
+    );
+    assert_eq!(at("downloads/fam/b.gz"), Some(("fam b".into(), None)));
+    assert_eq!(at("downloads/dir/x/y.gz"), Some(("dir".into(), None)));
+    assert_eq!(
+        at("downloads/dir/inner.gz"),
+        Some(("inner".into(), Some("inner".into()))),
+        "a file row inside a folder row is its own"
+    );
+    assert_eq!(at("downloads/two.zip"), None);
+    assert_eq!(at("downloads/fam/c.gz"), None);
+}
+
+#[test]
 fn prune_removes_only_downloads() {
     let root = checkout(
-        "raw\tsetup\t13\tdownloads/raw.tar.gz\t\thttps://h/raw.tar.gz\t\t\t\t\n\
-         fam\tsetup\t43\tdownloads/f/{part}.gz\t1..2\thttps://h/{part}.gz\t\t\t\t\n\
-         inst\tsetup\t33\treference/inst.vcf.gz\t\thttps://h/inst.vcf.gz\t\t\t\t\n",
+        "raw\tsetup\t13\tdownloads/raw.tar.gz\t\thttps://h/raw.tar.gz\t\t\t\t\traw.done\n\
+         fam\tsetup\t43\tdownloads/f/{part}.gz\t1..2\thttps://h/{part}.gz\t\t\t\t\tf{part}.done\n\
+         inst\tsetup\t33\treference/inst.vcf.gz\t\thttps://h/inst.vcf.gz\t\t\t\t\t-\n",
         "",
     );
     let g = root.join("g");
@@ -1021,6 +1461,130 @@ fn a_pin_planted_twice_is_caught() {
     assert_eq!(dup, [(id, pin, "scripts/setup.sh".to_owned())]);
 }
 
+/// Defaults of the table, `${NAME:-default}`, for a NAME that versions.env,
+/// setup.sh or common.sh sets: (id, NAME, file). The default then lives twice.
+fn repeated_defaults(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, String)> {
+    let mut out = vec![];
+    for r in s.rows.values() {
+        let fields = [&r.path, &r.url, &r.value]
+            .into_iter()
+            .chain(r.installed.iter())
+            .cloned()
+            .collect::<Vec<String>>()
+            .join("\t");
+        for (i, _) in fields.match_indices("${") {
+            let inner = &fields[i + 2..];
+            let Some((name, _)) = inner.split_once(":-") else {
+                continue;
+            };
+            if name.contains('}') {
+                continue;
+            }
+            for (f, text) in files {
+                let sets = text.lines().any(|l| {
+                    let l = l.trim_start();
+                    let l = l
+                        .strip_prefix("export ")
+                        .or_else(|| l.strip_prefix("readonly "))
+                        .unwrap_or(l);
+                    l.strip_prefix(name).is_some_and(|x| x.starts_with('='))
+                });
+                if sets {
+                    out.push((r.id.clone(), name.to_owned(), (*f).to_owned()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// URLs of the table that setup.sh or common.sh also spell: a line holding
+/// the start of a row's URL up to its first `${` or `{part}` (at least a host
+/// and a folder) and, after it, the URL's end after its last `}` (the file
+/// name's tail): (id, prefix, file). A row whose installer builds its URL
+/// says `-`; every other installer reads its URL from the table.
+fn repeated_urls(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, String)> {
+    let mut out = vec![];
+    for r in s.rows.values() {
+        if r.url == "-" || r.url.starts_with("${") {
+            continue;
+        }
+        let end = [r.url.find("${"), r.url.find("{part}")]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(r.url.len());
+        let prefix = r.url[..end].trim_end_matches('/');
+        let tail = if end < r.url.len() {
+            r.url.rsplit('}').next().unwrap_or("")
+        } else {
+            ""
+        };
+        let host_and_folder = prefix
+            .split_once("://")
+            .is_some_and(|(_, rest)| rest.trim_end_matches('/').contains('/'));
+        if !host_and_folder {
+            continue;
+        }
+        for (f, text) in files {
+            let spelt = text.lines().any(|l| {
+                l.find(prefix)
+                    .is_some_and(|i| l[i + prefix.len()..].contains(tail))
+            });
+            if *f != "versions.env" && spelt {
+                out.push((r.id.clone(), prefix.to_owned(), (*f).to_owned()));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn no_default_or_url_of_the_table_is_written_again() {
+    let s = Sources::read(&repo()).unwrap();
+    let files = pin_files();
+    let d = repeated_defaults(&s, &files);
+    assert!(d.is_empty(), "defaults the table repeats: {d:#?}");
+    let u = repeated_urls(&s, &files);
+    assert!(
+        u.is_empty(),
+        "URLs of the table spelled again by an installer: {u:#?}"
+    );
+}
+
+#[test]
+fn a_planted_default_or_url_is_caught() {
+    let t = read("assets/data-sources.tsv");
+    let row = t.lines().find(|l| l.starts_with("gencode\t")).unwrap();
+    // (a) The GENCODE release written again as the table's own default.
+    let planted = t.replace(
+        row,
+        &row.replacen("${GENCODE_RELEASE}", "${GENCODE_RELEASE:-50}", 1),
+    );
+    let s = Sources::parse(&planted).unwrap();
+    assert_eq!(
+        repeated_defaults(&s, &pin_files()),
+        [(
+            "gencode".to_owned(),
+            "GENCODE_RELEASE".to_owned(),
+            "scripts/lib/common.sh".to_owned()
+        )]
+    );
+    // (b) An installer that builds the VEP URL again, as main's common.sh did.
+    let s = Sources::read(&repo()).unwrap();
+    let mut files = pin_files();
+    files[1].1.push_str(
+        "\n  printf 'https://ftp.ensembl.org/pub/release-%s/variation/indexed_vep_cache/homo_sapiens_vep_%s_GRCh38.tar.gz' \"$1\" \"$1\"\n",
+    );
+    let u = repeated_urls(&s, &files);
+    assert!(
+        u.iter().any(|(id, p, f)| id == "vep_cache"
+            && p == "https://ftp.ensembl.org/pub/release-"
+            && f == "scripts/setup.sh"),
+        "{u:#?}"
+    );
+}
+
 /// The shell functions of TEXT (and its top level, as one more block):
 /// (name, body lines with their line numbers).
 fn blocks(text: &str) -> Vec<(String, Vec<(usize, String)>)> {
@@ -1070,14 +1634,57 @@ fn norm(s: &str) -> String {
     out
 }
 
-/// The words of a shell line, quotes kept inside a word.
+/// The shape of a normalised path: its leading `${NAME}` kept, every later
+/// `${...}` or `$(...)` a `*`, so `${dir}/d/${g}.chr${c}.gz` and
+/// `${dir}/d/${v%%:*}.chr${c}.gz` compare equal.
+fn shape(p: &str) -> String {
+    let lead = if p.starts_with("${") {
+        p.find('}').map_or(0, |i| i + 1)
+    } else {
+        0
+    };
+    let (head, rest) = p.split_at(lead);
+    let mut out = head.to_owned();
+    let b: Vec<char> = rest.chars().collect();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == '$' && i + 1 < b.len() && (b[i + 1] == '{' || b[i + 1] == '(') {
+            let (open, close) = if b[i + 1] == '{' {
+                ('{', '}')
+            } else {
+                ('(', ')')
+            };
+            let mut depth = 0;
+            let mut j = i + 1;
+            while j < b.len() {
+                if b[j] == open {
+                    depth += 1;
+                } else if b[j] == close {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            out.push('*');
+            i = j + 1;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// The words of a shell line, quotes, `${...}` and `$(...)` kept inside a word.
 fn words(l: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
-    let (mut q, mut depth) = (None::<char>, 0i32);
+    let (mut q, mut depth, mut prev) = (None::<char>, 0i32, ' ');
     for c in l.chars() {
         match (q, c) {
-            (None, '"' | '\'') => {
+            (None, '"' | '\'') if depth == 0 => {
                 q = Some(c);
                 cur.push(c);
             }
@@ -1089,7 +1696,11 @@ fn words(l: &str) -> Vec<String> {
                 depth += 1;
                 cur.push(c);
             }
-            (_, ')') if depth > 0 => {
+            (_, '{') if prev == '$' || depth > 0 => {
+                depth += 1;
+                cur.push(c);
+            }
+            (_, ')' | '}') if depth > 0 => {
                 depth -= 1;
                 cur.push(c);
             }
@@ -1100,6 +1711,7 @@ fn words(l: &str) -> Vec<String> {
             }
             _ => cur.push(c),
         }
+        prev = c;
     }
     if !cur.is_empty() {
         out.push(cur);
@@ -1107,22 +1719,39 @@ fn words(l: &str) -> Vec<String> {
     out
 }
 
+/// The `NAME=VALUE` words of a line (after `local`, in a list, after `||`).
+fn assignments(l: &str) -> Vec<(String, String)> {
+    words(l)
+        .into_iter()
+        .filter_map(|w| {
+            let (k, v) = w.split_once('=')?;
+            let name = !k.is_empty()
+                && k.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            name.then(|| (k.to_owned(), v.to_owned()))
+        })
+        .collect()
+}
+
 /// Every place in TEXT that deletes a raw download: in one function, an
 /// `rm` (or a `find ... -delete`/`-exec rm`) whose argument is the
 /// destination of a `fetch` there, a folder holding it, or a path in the
-/// downloads folder. A fetch's own `.part`, which it resumes, is not a
-/// download. `done_with` is the one place that may: it deletes a download
-/// only when the user asked for it (`SETUP_KEEP_DOWNLOADS=false`). A line
-/// that says `# not kept:` and why deletes no raw download (a staging copy,
-/// an unpacked tree, a file no source of the table names).
+/// downloads folder (a variable set from `$(dl ...)`, `source_of` or
+/// OG_DOWNLOADS anywhere on a line, or from such a variable). Paths compare
+/// by their shape: `${dir}/x/${g}.gz` is `${dir}/x/${v%%:*}.gz`. A fetch's
+/// own `.part`, which it resumes, is not a download. `done_with` is the one
+/// place that may: it deletes a download only when the user asked for it
+/// (`SETUP_KEEP_DOWNLOADS=false`). A line that says `# not kept:` and why
+/// deletes no raw download (a staging copy, an unpacked tree, a file no
+/// source of the table names).
 fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
     let mut out = vec![];
     for (func, lines) in blocks(text) {
         if func == "done_with" {
             continue;
         }
+        let mut sets: Vec<(String, String)> = vec![];
         let mut dests: Vec<String> = vec![];
-        let mut dl_vars: Vec<String> = vec![];
         for (_, l) in &lines {
             if l.trim_start().starts_with('#') {
                 continue;
@@ -1133,15 +1762,36 @@ fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
                     dests.push(norm(&w[i + 2]));
                 }
             }
-            if let Some((lhs, rhs)) = l.trim().trim_start_matches("local ").split_once('=')
-                && !lhs.contains(' ')
-                && (rhs.contains("$(dl ")
-                    || rhs.contains("source_of ")
-                    || rhs.contains("OG_DOWNLOADS"))
-            {
-                dl_vars.push(format!("${{{lhs}}}"));
+            for (k, v) in assignments(l) {
+                sets.push((format!("${{{k}}}"), v));
             }
         }
+        // Downloads variables, and what they lead to.
+        let mut dl_vars: Vec<String> = vec![];
+        for _ in 0..4 {
+            for (k, v) in &sets {
+                let n = norm(v);
+                let from_dl = v.contains("$(dl ")
+                    || v.contains("$(source_of ")
+                    || v.contains("OG_DOWNLOADS")
+                    || dl_vars
+                        .iter()
+                        .any(|d| n == *d || n.starts_with(&format!("{d}/")));
+                if from_dl && !dl_vars.contains(k) {
+                    dl_vars.push(k.clone());
+                }
+            }
+            // A fetch into `$f` fetches into what f was set to.
+            for (k, v) in &sets {
+                if dests.contains(k) {
+                    let n = norm(v);
+                    if !dests.contains(&n) {
+                        dests.push(n);
+                    }
+                }
+            }
+        }
+        let dests: Vec<String> = dests.iter().map(|d| shape(d)).collect();
         for (n, l) in &lines {
             if l.trim_start().starts_with('#') || l.contains("# not kept:") {
                 continue;
@@ -1154,7 +1804,7 @@ fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
             });
             let Some(at) = del else { continue };
             for a in w[at + 1..].iter().filter(|a| !a.starts_with('-')) {
-                let a = norm(a);
+                let a = shape(&norm(a));
                 if a.ends_with(".part") {
                     continue;
                 }
@@ -1163,13 +1813,11 @@ fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
                     a == d
                         || a.starts_with(&format!("{d}/"))
                         || d.strip_prefix(a.as_str())
-                            .is_some_and(|r| r.starts_with('/') || r.starts_with("${"))
+                            .is_some_and(|r| r.starts_with('/') || r.starts_with('*'))
                 };
                 let hit = a.contains("OG_DOWNLOADS")
                     || a.contains("$(dl ")
-                    || dl_vars
-                        .iter()
-                        .any(|v| holds(v) || a.starts_with(&format!("{v}/")))
+                    || dl_vars.iter().any(|v| holds(v))
                     || dests.iter().any(|d| holds(d));
                 if hit {
                     out.push(format!("{name}:{n} ({func}): {}", l.trim()));
@@ -1210,34 +1858,91 @@ fn a_planted_delete_of_a_download_is_caught() {
             && bad[2].contains("install_z"),
         "{bad:#?}"
     );
+    // P1: the AADR files, a downloads folder set after `||`, deleted at once.
+    let p1 = "install_ancient_panel() {\n  local raw f src=${ANCIENT_SOURCE_DIR:-}\n  raw=\"${base}/raw_${AADR_VERSION}\"\n  [ -n \"$src\" ] || raw=$(dl \"aadr-${AADR_VERSION}\")\n  rm -rf \"$raw\"\n}\n";
+    assert_eq!(deleted_downloads("p1.sh", p1).len(), 1, "P1");
+    // main's AADR: the fetch into $f, f set from $raw, then raw deleted.
+    let aadr = "install_ancient_panel() {\n  raw=\"${base}/raw_${AADR_VERSION}\"\n  for e in anno ind; do\n    f=\"${raw}/aadr.${e}\"\n    fetch \"$url\" \"$f\" md5 \"$md5\"\n  done\n  rm -rf \"$raw\"\n}\n";
+    assert_eq!(deleted_downloads("aadr.sh", aadr).len(), 1, "main's AADR");
+    // main's archaic VCFs: the same path spelt with another variable.
+    let archaic = "install_archaic_data() {\n  for v in $genomes; do\n    g=${v%%:*}\n    fetch \"${ARCHAIC_URL}/${g}/chr${c}.vcf.gz\" \"${dir}/download/${g}.chr${c}.vcf.gz\" md5 \"file://${dir}/md5/${g}.txt\"\n  done\n  for v in $genomes; do rm -f \"${dir}/download/${v%%:*}.chr${c}.vcf.gz\"; done\n}\n";
+    assert_eq!(
+        deleted_downloads("archaic.sh", archaic).len(),
+        1,
+        "main's archaic VCFs"
+    );
+    // The staged copy, marked, deletes no download.
+    let staged = "install_ancient_panel() {\n  [ -n \"$src\" ] || raw=$(dl \"aadr-${AADR_VERSION}\")\n  if [ -n \"$src\" ]; then\n    rm -rf \"$raw\"  # not kept: the staged copy\n  else\n    done_with \"$raw\"\n  fi\n}\n";
+    assert!(deleted_downloads("staged.sh", staged).is_empty());
 }
 
-/// Every network read inside a container in TEXT that has no `# net:`
-/// comment in the three lines above it saying why it reads the network.
-/// A read of a source's data has to say `# net: slice`: it reads only the
-/// regions a user chose and keeps what it read, never a whole file unsaved.
+/// Why a network read may stream: `slice` (only the regions a user chose,
+/// kept), or a read of no source's data.
+const NET_REASONS: [&str; 6] = [
+    "slice",
+    "pip",
+    "git clone",
+    "plugin install",
+    "sample header",
+    "checksum",
+];
+
+/// True when one of the three lines above says `# net: REASON`, REASON one
+/// of NET_REASONS.
+fn says_why(above: &[&str]) -> bool {
+    above.iter().any(|a| {
+        a.trim_start().strip_prefix("# net:").is_some_and(|r| {
+            let r = r.trim_start();
+            NET_REASONS.iter().any(|x| {
+                r.strip_prefix(x)
+                    .is_some_and(|t| t.is_empty() || t.starts_with([',', ' ', ':']))
+            })
+        })
+    })
+}
+
+/// True when L pipes a body read to stdout (`_get URL -`, `og setup fetch
+/// --get URL -`) into another command.
+fn piped_get(l: &str) -> bool {
+    let at = l
+        .match_indices("_get ")
+        .map(|(i, _)| i)
+        .filter(|&i| {
+            i == 0
+                || !l[..i]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric())
+        })
+        .chain(l.find("fetch --get "))
+        .min();
+    let Some(at) = at else { return false };
+    let rest = &l[at..];
+    let Some(pipe) = rest.find('|') else {
+        return false;
+    };
+    words(&rest[..pipe]).iter().any(|w| w == "-")
+}
+
+/// Every network read in TEXT that saves nothing and has no `# net:` comment
+/// in the three lines above it saying why (NET_REASONS): a container's
+/// network read (`run_in --net`), a body read piped into a command, and curl
+/// or wget writing a body anywhere but through fetch.
 fn unsaved_streams(name: &str, text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.lines().collect();
     let mut out = vec![];
-    for (i, l) in lines.iter().enumerate() {
-        let w = words(l);
-        if !(w.iter().any(|x| x == "run_in")
-            && w.iter().any(|x| x == "--net" || x.contains("net[@]")))
-        {
-            continue;
-        }
-        let above = &lines[i.saturating_sub(3)..i];
-        if !above.iter().any(|a| a.trim_start().starts_with("# net:")) {
-            out.push(format!("{name}:{}: {}", i + 1, l.trim()));
-        }
-    }
     for (i, l) in lines.iter().enumerate() {
         let t = l.trim_start();
         if t.starts_with('#') {
             continue;
         }
-        // curl or wget writing a body anywhere but through fetch.
         let w = words(l);
+        let net = w.iter().any(|x| x == "run_in")
+            && w.iter().any(|x| x == "--net" || x.contains("net[@]"));
+        if (net || piped_get(l)) && !says_why(&lines[i.saturating_sub(3)..i]) {
+            out.push(format!("{name}:{}: {}", i + 1, l.trim()));
+            continue;
+        }
         let tool = w.iter().position(|x| x == "curl" || x == "wget");
         if let Some(p) = tool {
             let head_only = w[p + 1..]
@@ -1276,6 +1981,23 @@ fn a_planted_stream_is_caught() {
     let bad = unsaved_streams("planted.sh", planted);
     assert_eq!(bad.len(), 2, "{bad:#?}");
     assert!(bad[0].contains(":2:") && bad[1].contains(":9:"), "{bad:#?}");
+    // P3: a source unpacked straight from the network.
+    let p3 = "install_x() {\n  _get \"$URL\" - | tar -xzf - -C \"$d\"\n}\n";
+    assert_eq!(unsaved_streams("p3.sh", p3).len(), 1, "P3 _get");
+    for get in [
+        "  og_setup fetch --get \"$URL\" - | tar -xzf -\n",
+        "  fetch --get \"$URL\" - 2>/dev/null | gzip -dc > out\n",
+        "  md5=$(_get \"${url}/md5.txt\" - | awk '{print $1}')\n",
+    ] {
+        assert_eq!(unsaved_streams("p3.sh", get).len(), 1, "{get}");
+    }
+    let saved = "_get() {\n  og_setup fetch --get \"$@\"\n}\n  _get \"$URL\" \"$out\"\n  # net: checksum, the md5 of the release\n  md5=$(_get \"${url}/md5.txt\" - | awk '{print $1}')\n";
+    assert!(unsaved_streams("ok.sh", saved).is_empty());
+    // P4: a whole panel read with a comment that gives no reason.
+    let p4 = "y() {\n  # net: the panel\n  run_in --net \"$IMG\" bcftools view \"$URL\" > out\n}\n";
+    assert_eq!(unsaved_streams("p4.sh", p4).len(), 1, "P4");
+    let header = "y() {\n  # net: sample header, the sample list of the panel\n  run_in --net \"$IMG\" bcftools query -l \"$URL\"\n}\n";
+    assert!(unsaved_streams("header.sh", header).is_empty());
 }
 
 #[test]
@@ -1287,7 +2009,10 @@ fn common_sh_and_og_agree_on_the_downloads_folder() {
         c.contains("export OG_DOWNLOADS=\"${OG_DOWNLOADS:-${GENOME_DIR}/downloads}\""),
         "common.sh no longer sets the downloads folder as og does"
     );
-    let root = checkout("a\tsetup\t1\tdownloads/a\t\thttps://h/a\t\t\t\t\n", "");
+    let root = checkout(
+        "a\tsetup\t1\tdownloads/a\t\thttps://h/a\t\t\t\t\ta.done\n",
+        "",
+    );
     let s = Sources::read(&root).unwrap();
     let g = ctx(&root, &[("GENOME_DIR", "/g".into())]);
     assert_eq!(
