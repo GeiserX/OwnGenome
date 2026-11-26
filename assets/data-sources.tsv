@@ -1,0 +1,86 @@
+# assets/data-sources.tsv: every file setup downloads, one row each (or one
+# per family of files). og setup fetch, og setup plan and og setup prune read
+# it (rust/crates/og-setup/src/fetch.rs says how).
+#
+# id          the source's name (og setup fetch --source ID, og setup prune ID)
+# installers  setup (a plain setup) or the setup.sh flags without their dashes
+#             that download it; og setup plan --for picks rows by them
+# steps       the steps that read it
+# path        where it is kept: downloads/... is the downloads folder
+#             (OG_DOWNLOADS, default GENOME_DIR/downloads), a raw download
+#             setup keeps after installing it (og setup prune deletes those);
+#             anything else is a file setup installs under GENOME_DIR. A path
+#             ending in / is a folder of many files.
+# parts       a family's members, {part} in the path and URL (A..B: A to B)
+# url         where it comes from; - when the installer builds the URL
+# check       md5, sha256, sum (BSD, Ensembl's CHECKSUMS), gzip-ends, crc32c,
+#             or empty (a whole gzip file, else not empty)
+# value       the pinned checksum, a checksum list's URL, @ID (the list row
+#             ID stores), or - when the installer reads it (a manifest)
+# bytes       its size as the server gave it (HEAD or a GET, 2026-11-26), the sum of
+#             its parts for a family; aadr is the release's own figure; empty
+#             when the server gives none
+# licence     the terms the data comes with (the notices setup prints)
+#
+# ${NAME} is a pin of versions.env and ${NAME:-default} an environment
+# variable. A pin written out here (revel, alphamissense) lives only here:
+# tests/fetch.rs of og-setup fails when it is also in versions.env,
+# setup.sh or common.sh.
+id	installers	steps	path	parts	url	check	value	bytes	licence
+reference_fasta	setup	02	downloads/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz		-	md5	-	872949833	NCBI (public domain)
+reference_fai	setup	02	reference/GRCh38_no_alt_analysis_set.fasta.fai		-	md5	-	7804	NCBI (public domain)
+clinvar	setup	06	clinvar/clinvar.vcf.gz		-	md5	-	201647329	NCBI ClinVar (public domain)
+clinvar_index	setup	06	clinvar/clinvar.vcf.gz.tbi		-			611981	NCBI ClinVar (public domain)
+delly_exclude	setup	17,18	reference/delly_human.hg38.excl.tsv		-	sha256	-	84394	Delly (BSD-3-Clause)
+hla_dat	setup	08	downloads/IPD-IMGT-HLA_${HLA_DB_RELEASE:-3.66.0}_hla.dat.zip		-	md5	-	45493793	IPD-IMGT/HLA (CC BY-ND 4.0)
+gencode	setup	19,24	downloads/gencode.v${GENCODE_RELEASE:-50}.basic.annotation.gtf.gz		-	md5	-	79970394	GENCODE (open access)
+gnomad_mito	setup	20	gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz		${GNOMAD_MITO_URL}	sha256	${GNOMAD_MITO_SHA256}	5150029	gnomAD (CC0 1.0)
+roh_af_panel	setup	11	roh_af/roh_af_gnomad_v4.1.tsv.gz		${ROH_AF_PANEL_URL}	sha256	${ROH_AF_PANEL_SHA256}	207888195	gnomAD (CC0 1.0)
+somalier_sites	setup,sample-qc-data	33	reference/somalier/sites.hg38.vcf.gz		-	sha256	-	265818	somalier (MIT)
+verifybamid2_panel	setup,sample-qc-data	33	reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{part}	UD mu bed	-	sha256	-	9998849	VerifyBamID (MIT)
+strchive_eh	setup,strchive-data	09	reference/strchive-${STRCHIVE_VERSION}/STRchive-disease-loci-${STRCHIVE_VERSION}.hg38.expansionhunter.json		https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-disease-loci-${STRCHIVE_VERSION}.hg38.expansionhunter.json	sha256	${STRCHIVE_EH_SHA256}	12534	STRchive (CC BY 4.0)
+strchive_loci	setup,strchive-data	09	reference/strchive-${STRCHIVE_VERSION}/STRchive-loci-${STRCHIVE_VERSION}.json		https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/STRchive-loci-${STRCHIVE_VERSION}.json	sha256	${STRCHIVE_LOCI_SHA256}	526435	STRchive (CC BY 4.0)
+tandem_repeats	setup	04c	reference/GRCh38_AllTandemRepeats.bed.gz		${TANDEM_REPEATS_URL}	sha256	${TANDEM_REPEATS_SHA256}	9228465	GIAB (public domain)
+pgs_scores	setup,prs-academic	25	prs_scores/		-	md5	-		PGS Catalog (per score)
+pgsc_calc	setup	25	downloads/pgsc_calc-${PGSC_CALC_VERSION}.tar.gz		https://github.com/PGScatalog/pgsc_calc/archive/refs/tags/${PGSC_CALC_VERSION}.tar.gz	sha256	${PGSC_CALC_SHA256}	5491138	pgsc_calc (Apache-2.0)
+annotsv_bundle	setup,annotsv-data	15	downloads/Annotations_Human_${ANNOTSV_ANNOTATIONS_VERSION}.tar.gz		-			5313737411	AnnotSV bundle (third-party terms)
+gnomad_sv	setup,annotsv-data	15	downloads/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz		-	sha256	${GNOMAD_SV_SHA256}	1743544245	gnomAD (CC0 1.0)
+mane_summary	setup,annotsv-data	15	downloads/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz		-	sha256	${MANE_SUMMARY_SHA256}	1115288	NCBI MANE (public domain)
+vep_cache	setup,clinical-data,vep-cache	13	downloads/homo_sapiens_vep_${VEP_CACHE_RELEASE}_GRCh38.tar.gz		https://ftp.ensembl.org/pub/release-${VEP_CACHE_RELEASE}/variation/indexed_vep_cache/homo_sapiens_vep_${VEP_CACHE_RELEASE}_GRCh38.tar.gz	sum	https://ftp.ensembl.org/pub/release-${VEP_CACHE_RELEASE}/variation/indexed_vep_cache/CHECKSUMS	27644657162	Ensembl (Apache-2.0)
+pcgr_vep_cache	setup,clinical-data	17	downloads/homo_sapiens_vep_${PCGR_VEP_CACHE_RELEASE}_GRCh38.tar.gz		https://ftp.ensembl.org/pub/release-${PCGR_VEP_CACHE_RELEASE}/variation/indexed_vep_cache/homo_sapiens_vep_${PCGR_VEP_CACHE_RELEASE}_GRCh38.tar.gz	sum	https://ftp.ensembl.org/pub/release-${PCGR_VEP_CACHE_RELEASE}/variation/indexed_vep_cache/CHECKSUMS	25272957721	Ensembl (Apache-2.0)
+pcgr_bundle	setup,clinical-data	17	downloads/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz		https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz	sha256	${PCGR_DATA_SHA256}	7664082467	PCGR bundle (third-party terms)
+parascopy_data	parascopy-data	35	downloads/parascopy/{part}_v${PARASCOPY_DATA_VERSION}.tar.gz	GRCh38 models_GRCh38_1KGP	https://zenodo.org/records/15019940/files/{part}_v${PARASCOPY_DATA_VERSION}.tar.gz	md5	-	51725381	Parascopy (MIT)
+kir_dat	kir-data	36	kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat		-	md5	-	37073598	IPD-KIR (CC BY-ND 4.0)
+yleaf_data	yleaf-data	37	downloads/yleaf-${YLEAF_DATA_VERSION}.tar.gz		https://github.com/genid/Yleaf/archive/refs/tags/v${YLEAF_DATA_VERSION}.tar.gz	sha256	${YLEAF_DATA_SHA256}	152359452	Yleaf (GPL-3.0)
+ytree	yleaf-data	37	reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/current_tree.json		https://raw.githubusercontent.com/YFullTeam/YTree/${YTREE_COMMIT}/current_tree.json	sha256	${YTREE_SHA256}	15408762	YFull YTree (CC BY 4.0)
+ytree_ftdna_positions	yleaf-data	37	reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/positions_ftdna_hg38.txt		https://raw.githubusercontent.com/genid/Yleaf/${YTREE_POSITIONS_COMMIT}/yleaf/data/hg38/ftdna_positions_hg38.txt	sha256	${YTREE_FTDNA_SHA256}	34488216	Yleaf (GPL-3.0)
+ytree_yfull_positions	yleaf-data	37	reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/positions_yfull_hg38.txt		https://raw.githubusercontent.com/genid/Yleaf/${YTREE_POSITIONS_COMMIT}/yleaf/data/hg38/new_positions.txt	sha256	${YTREE_YFULL_SHA256}	9711935	Yleaf (GPL-3.0)
+y_callable_mask	yleaf-data	37	reference/yleaf-${YLEAF_DATA_VERSION}/data/ytree/callable_mask_chrY.fasta.gz		https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/working/${YCALLABLE_MASK_RELEASE}_genome_mask_GRCh38/StrictMask/${YCALLABLE_MASK_RELEASE}.chrY.mask.fasta.gz	sha256	${YCALLABLE_MASK_SHA256}	483245	1000 Genomes (open access)
+viral_genomes	viral-data	47	reference/viral-${VIRAL_REF_VERSION}/viral_genomes.fa		https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&rettype=fasta&retmode=text&id=${VIRAL_REF_ACCESSIONS}	sha256	${VIRAL_REF_SHA256}	1604330	NCBI RefSeq (public domain)
+grc_exclusions	masked-reference	02	reference/GCA_000001405.15_GRCh38_GRC_exclusions_T2Tv2.bed		${GRC_EXCLUSIONS_URL}	sha256	${GRC_EXCLUSIONS_SHA256}	296	GIAB (public domain)
+exomiser_data	exomiser-data	48	downloads/exomiser/${EXOMISER_DATA_VERSION}_{part}.zip	hg38 phenotype	https://g-879a9f.f5dc97.75bc.dn.glob.us/data/${EXOMISER_DATA_VERSION}_{part}.zip	sha256	-	37054559218	Exomiser bundles (third-party terms)
+ensembl_gff	chip-data	49	reference/ensembl/Homo_sapiens.GRCh38.${ENSEMBL_GFF_RELEASE}.chr.gff3.gz		https://ftp.ensembl.org/pub/release-${ENSEMBL_GFF_RELEASE}/gff3/homo_sapiens/Homo_sapiens.GRCh38.${ENSEMBL_GFF_RELEASE}.chr.gff3.gz	sha256	${ENSEMBL_GFF_SHA256}	108211474	Ensembl (Apache-2.0)
+consumer_sites_template	consumer-sites	40	reference/consumer/23andme_v5_hg19_ref.txt.gz		https://raw.githubusercontent.com/arrogantrobot/23andme2vcf/${CONSUMER_SITES_COMMIT}/23andme_v5_hg19_ref.txt.gz	sha256	${CONSUMER_SITES_SHA256}	5845972	23andme2vcf (MIT)
+dbsnp	consumer-sites	40	downloads/dbsnp_${CONSUMER_DBSNP_BUILD}_GRCh38.vcf.gz		https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD}/VCF/GCF_000001405.40.gz	md5	${CONSUMER_DBSNP_MD5}	29552227779	NCBI dbSNP (public domain)
+aadr	ancient-panel	44	downloads/aadr-${AADR_VERSION}/aadr.{part}	anno ind snp geno	-	md5	-	7300000000	AADR (CC BY 4.0)
+hg19_to_hg38_chain	ancient-panel	44	reference/liftover/hg19ToHg38.over.chain.gz		-	sha256	${HG19_TO_HG38_CHAIN_SHA256}	227698	UCSC (non-commercial)
+pgsc_ancestry_panel	ancestry-panel	25	reference/pgsc_calc/${PGSC_PANEL}.tar.zst		https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/${PGSC_PANEL}.tar.zst	md5	https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/md5s.txt	7434464202	PGS Catalog (EMBL-EBI terms)
+ancestry_fine_meta	ancestry-fine-panel	26b	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/meta.tsv		-	sha256	${ANCESTRY_FINE_META_SHA256}	6158624	gnomAD (CC0 1.0)
+genetic_map	ancestry-fine-panel,mocha-data	26b,51	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/maps/plink.GRCh38.map.zip		-	sha256	${ANCESTRY_FINE_MAP_SHA256}	47469980	Beagle maps (CC BY 4.0)
+ancestry_fine_bcf	ancestry-fine-panel	26b	downloads/ancestry-fine-${ANCESTRY_FINE_PANEL}/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	1..22	https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	crc32c	-	19099527953	gnomAD (CC0 1.0)
+mocha_manifest	mocha-data	51	reference/mocha-${MOCHA_PANEL_VERSION}/manifest.txt		${MOCHA_PANEL_URL}/20220804_manifest.txt	sha256	${MOCHA_PANEL_MANIFEST_SHA256}	5092	1000 Genomes (open access)
+mocha_panel	mocha-data	51	downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	1..22	${MOCHA_PANEL_URL}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	md5	@mocha_manifest	29764425089	1000 Genomes (open access)
+locityper_panel_index	locityper-data	53	reference/locityper-${LOCITYPER_PANEL_VERSION}/panel.remote.tbi		${LOCITYPER_PANEL_URL}.tbi	sha256	${LOCITYPER_PANEL_TBI_SHA256}	2222268	HPRC (CC0 1.0)
+archaic_md5sums	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/md5/{part}.txt	Altai Vindija33.19 Denisova	-	sha256	-		MPI-EVA (open access)
+archaic_vcf	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/		-	md5	-	150470457136	MPI-EVA (open access)
+archaic_1kg_sites	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/1kg_sites.vcf.gz		-	md5	${ARCHAIC_1KG_SITES_MD5}	1458224240	1000 Genomes (open access)
+archaic_chain	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/hg19ToHg38.over.chain.gz		-	sha256	${ARCHAIC_CHAIN_SHA256}	227698	UCSC (non-commercial)
+archaic_strict_mask	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/strict_GRCh38.bed		-	sha256	${ARCHAIC_STRICT_MASK_SHA256}	128218530	1000 Genomes (open access)
+archaic_segdups	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/segdups_hg19.txt.gz		-	sha256	${ARCHAIC_SEGDUPS_SHA256}	3002024	UCSC (non-commercial)
+archaic_filterbed	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/mask/		-	sha256	-		MPI-EVA (open access)
+cadd	annotation-scores	30	annotations/{part}	whole_genome_SNVs.tsv.gz whole_genome_SNVs.tsv.gz.tbi gnomad.genomes.r4.0.indel.tsv.gz gnomad.genomes.r4.0.indel.tsv.gz.tbi	${CADD_BASE_URL}/{part}			88735216521	CADD (non-commercial)
+spliceai_masked	annotation-scores	30	annotations/{part}	spliceai_scores.masked.snv.hg38.vcf.gz spliceai_scores.masked.snv.hg38.vcf.gz.tbi spliceai_scores.masked.indel.hg38.vcf.gz spliceai_scores.masked.indel.hg38.vcf.gz.tbi	${SPLICEAI_MASKED_BASE_URL}/{part}			97417995055	SpliceAI (academic use)
+revel	annotation-scores	30	downloads/revel-v1.3_all_chromosomes.zip		https://zenodo.org/records/7072866/files/revel-v1.3_all_chromosomes.zip	sha256	815801d832e4ab76922dddfd901d7f24a755df57078a7138aa14f615da86a8a2	667102707	REVEL (non-commercial; ODbL 1.0)
+alphamissense	annotation-scores	30	annotations/AlphaMissense_hg38.tsv.gz		https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz	sha256	0516cfd71c0767ac8f9c469252d429000e94e02c008b6e3a46d4b4646fcd3475	642961469	AlphaMissense (CC BY-NC-SA 4.0)
+somatic	somatic-data	29,49	somatic/{part}	af-only-gnomad.hg38.vcf.gz af-only-gnomad.hg38.vcf.gz.tbi 1000g_pon.hg38.vcf.gz 1000g_pon.hg38.vcf.gz.tbi small_exac_common_3.hg38.vcf.gz small_exac_common_3.hg38.vcf.gz.tbi	${SOMATIC_DATA_BASE_URL}/{part}			3207065956	GATK resources (BSD-3-Clause)
+cnvpytor	cnvpytor-data	18	reference/cnvpytor/{part}	gc_hg38.pytor mask_hg38.pytor gc_hg19.pytor mask_hg19.pytor gc_chm13v2.0.pytor gc_chm13v1.1.pytor gc_kn99.pytor	${CNVPYTOR_DATA_BASE_URL}/{part}			98819481	CNVpytor (MIT)

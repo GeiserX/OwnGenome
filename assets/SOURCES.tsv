@@ -30,6 +30,7 @@ assets/carrier_genes.tsv	GENCODE release 50 gene spans; Gregg et al., Genet Med 
 assets/chip_genes.tsv	OwnGenome, curated from the papers in the pmids column; Ensembl MANE Select codons and exons	-	GPL-3.0-or-later	Hand-curated from the papers in the pmids column
 assets/chip_genes_grch38.bed	GENCODE release 50 basic annotation gene records, https://www.gencodegenes.org/human/release_50.html	GENCODE 50	open access, no restriction on use (EMBL-EBI terms of use)	Source: GENCODE release 50
 assets/construct_variants.tsv	OwnGenome, curated from ClinVar (canonical SPDI, E-utilities) and the papers it cites	ClinVar queried 2026-11-04	GPL-3.0-or-later	ClinVar's alleles, from its canonical SPDI
+assets/data-sources.tsv	OwnGenome; the URLs, checksums and sizes of each source as its server publishes them	-	GPL-3.0-or-later	every file setup downloads
 assets/deep_intronic_sites.tsv	OwnGenome, curated from ClinVar (canonical SPDI, E-utilities) and the papers it cites	ClinVar queried 2026-11-04	GPL-3.0-or-later	ClinVar's alleles on the plus strand, from its canonical SPDI
 assets/everything.tsv	OwnGenome	-	GPL-3.0-or-later	-
 assets/families.example.tsv	OwnGenome, an example with made-up names	-	GPL-3.0-or-later	-

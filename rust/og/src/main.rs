@@ -48,6 +48,11 @@ Pipeline helpers (the steps run these):
   og map build --root DIR --run RUN --assets DIR --cache-dir DIR [--predicate-table]
   og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names)
   og map svg [args]
+  og setup fetch URL DEST [KIND VALUE] | --source ID [--part P] | --get URL OUT
+  og setup source ID [--part P] path|url|check|value|bytes
+  og setup path
+  og setup plan [--for INSTALLER,...|--all]
+  og setup prune [ID...] [--dry-run]
   og setup mask-fasta SRC BED DEST
   og setup unzip ZIP DEST
   og setup genetic-map --zip ZIP --out DIR CHROM...
@@ -354,6 +359,11 @@ fn main() -> ExitCode {
         "map" if rest.first().is_some_and(|v| v == "svg") => io(og_map::svg::cli, &rest[1..]),
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
+            Some("fetch") => io(og_setup::fetch::cli, &rest[1..]),
+            Some("source") => io(og_setup::fetch::source_cli, &rest[1..]),
+            Some("path") => io(og_setup::fetch::path_cli, &rest[1..]),
+            Some("plan") => io(og_setup::plan::cli, &rest[1..]),
+            Some("prune") => io(og_setup::prune::cli, &rest[1..]),
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
             Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
             Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
