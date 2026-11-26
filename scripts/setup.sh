@@ -234,8 +234,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "                Install only the STRchive ${STRCHIVE_VERSION:-} repeat catalog of steps 09 and 9b (~0.5 MB) and exit."
   echo "  --megane-kmers"
   echo "                Build MEGAnE's k-mer set of the reference for step 50 (Alu, L1 and SVA insertions; ~1.8 GB,"
-  echo "                about 10 minutes, and about 16 bytes of RAM per reference base: ~50 GB for GRCh38), pull its"
-  echo "                image (~6.4 GB) and exit."
+  echo "                a few minutes and about 5 GB of RAM, with og), pull MEGAnE's image (~6.4 GB) and exit."
   echo "  --mocha-data  Install MoChA's phasing panel for step 51 (1000 Genomes high coverage, ${MOCHA_PANEL_VERSION:-}: ~30 GB read,"
   echo "                one chromosome at a time) and the genetic map, pull its images and exit."
   echo "  --locityper-data"
@@ -709,14 +708,16 @@ megane_kmers_path() {
   printf '%s\n' "$p"
 }
 
-# install_megane_kmers: MEGAnE's build_kmerset on the reference (step 50):
-# every 32-mer seen more than once in it, which MEGAnE uses to drop reads
-# that map to many places. It is built from the reference itself, so a new
-# reference needs a new set; one newer than the reference is kept. The
-# builder holds two 8-byte k-mers per reference base in memory and sorts
-# them in one thread: about 50 GB for GRCh38 (MEGAnE's own figure: 48 GB).
+# install_megane_kmers: MEGAnE's k-mer set of the reference (step 50): every
+# 32-mer seen more than once in it, on either strand, which MEGAnE uses to
+# drop reads that map to many places. It is built from the reference itself,
+# so a new reference needs a new set; one newer than the reference is kept.
+# og builds it (`og setup megane-kmers`, in OG_IMAGE with bin/ mounted), byte
+# for byte the files MEGAnE's own build_kmerset writes, in og's 5 GB budget:
+# the genome at 4 bits per base, then one range of k-mers at a time.
+# MEGAnE's builder holds 16 bytes per base instead, about 50 GB for GRCh38.
 install_megane_kmers() {
-  local mk dir need have
+  local mk dir need=6 have log
   mk=$(megane_kmers_path); dir=$(dirname "$mk")
   if [ ! -s "$REF_FASTA" ] || [ ! -s "${REF_FASTA}.fai" ]; then
     echo "[WARN] Step 50's k-mer set is built from the reference, and ${REF_FASTA} (with its .fai) is not there yet: run ./scripts/setup.sh ${GENOME_DIR} first."
@@ -726,22 +727,24 @@ install_megane_kmers() {
     echo "[OK] MEGAnE k-mer set (step 50) already present: ${mk}"
     return 0
   fi
-  need=$(awk '{ b += $2 } END { printf "%d", b * 16 / 1e9 + 4 }' "${REF_FASTA}.fai")
   have=$("$CONTAINER_ENGINE" info --format '{{.MemTotal}}' 2>/dev/null | awk '{ printf "%d", $1 / 1e9 }')
   if [ -n "$have" ] && [ "$have" -gt 0 ] && [ "$have" -lt "$need" ]; then
-    echo "[WARN] MEGAnE's k-mer set of this reference needs about ${need} GB of RAM and ${CONTAINER_ENGINE} has ${have} GB."
+    echo "[WARN] MEGAnE's k-mer set needs about ${need} GB of RAM and ${CONTAINER_ENGINE} has ${have} GB."
     echo "       Build it on a machine with more memory (./scripts/setup.sh --megane-kmers <genome_dir> there) and copy ${dir#"$GENOME_DIR"/}/ here."
     return 1
   fi
+  need_og "builds MEGAnE's k-mer set" || return 1
   mkdir -p "$dir"
-  echo "Building MEGAnE's k-mer set of $(basename "$REF_FASTA") (step 50; about 10 minutes, about ${need} GB of RAM)..."
+  echo "Building MEGAnE's k-mer set of $(basename "$REF_FASTA") (step 50; a few minutes, about 5 GB of RAM)..."
   rm -f "$mk" "${mk%.mk}.mi"
-  if ! run_in --rw "$dir" --memory "${need}g" "$MEGANE_IMAGE" build_kmerset -fa "$REF_FASTA_C" \
-      -prefix "$(basename "${mk%.mk}")" -outdir "$(cpath "$dir")" || [ ! -s "$mk" ] || [ ! -s "${mk%.mk}.mi" ]; then
+  if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --memory "${need}g" "$OG_IMAGE" \
+        /pgp-bin/og setup megane-kmers --fa "$REF_FASTA_C" --out "$(cpath "$dir")" \
+        --prefix "$(basename "${mk%.mk}")" --mem 5) || [ ! -s "$mk" ] || [ ! -s "${mk%.mk}.mi" ]; then
     rm -f "$mk" "${mk%.mk}.mi"
-    echo "[WARN] Could not build MEGAnE's k-mer set (step 50); its log is ${dir}/megane_build_kmer_set.log."
+    echo "[WARN] Could not build MEGAnE's k-mer set (step 50); og's error is above."
     return 1
   fi
+  echo "  ${log}"
   echo "[OK] MEGAnE k-mer set (step 50, $(cat "${mk%.mk}.mi") repeated 32-mers): ${mk}"
 }
 

@@ -35,7 +35,36 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. 
 
 ## Reference data
 
-`./scripts/setup.sh --megane-kmers <genome_dir>` builds MEGAnE's k-mer set of the reference: every 32-mer seen more than once in it, which MEGAnE uses to drop reads that map to many places. It is written to `reference/megane/<reference name>.mk` with its count file `.mi` beside it (`MEGANE_KMERS` overrides the path, inside `GENOME_DIR`). The builder holds 16 bytes per reference base in memory: about 50 GB for GRCh38, which MEGAnE's authors give as 48 GB and about 10 minutes. `setup.sh` checks the memory Docker has and stops with a message when it is short; then build it on a larger machine and copy `reference/megane/` over. See [Reference data setup](00-reference-setup.md#megane-k-mer-set-optional-for-step-50).
+`./scripts/setup.sh --megane-kmers <genome_dir>` builds MEGAnE's k-mer set of the reference. The set holds every 32-mer that occurs more than once in the reference, on either strand. MEGAnE uses it to drop reads that map to many places. Setup writes it to `reference/megane/<reference name>.mk`, with its count file `.mi` beside it. `MEGANE_KMERS` overrides the path, inside `GENOME_DIR`. og builds the set (`og setup megane-kmers`, in `OG_IMAGE`), and both files are byte for byte the ones MEGAnE's own `build_kmerset` writes. For GRCh38, MEGAnE's builder needs about 50 GB of memory and og needs about 5 GB. `setup.sh` gives og 6 GB, and stops with a message when Docker has less. In that case, build the set on a larger machine and copy `reference/megane/` over. See [Reference data setup](00-reference-setup.md#megane-k-mer-set-optional-for-step-50).
+
+### How og builds the k-mer set
+
+The format comes from MEGAnE (RIKEN, MIT licence). og has its own implementation of it and copies no code.
+
+- `.mk` has no header. It is the k-mers as little-endian 64-bit numbers in increasing order, at 2 bits per base (A=0, T=1, G=2, C=3), with the first base in the top bits.
+- Every 32-base window of every contig in the `.fai` adds two k-mers: its forward k-mer and its reverse complement. A palindrome (a window that is its own reverse complement) adds one. A k-mer is kept when it was added twice or more.
+- `.mi` is the number of k-mers in `.mk`, then a line end.
+
+MEGAnE's builder keeps all 5.9 billion k-mers of GRCh38 in one list and sorts the list on one thread, which needs 16 bytes per reference base. og keeps the genome at 4 bits per base (1.55 GB for GRCh38). First it counts the k-mers by their first 10 bases. Then it builds one range of k-mers at a time: it finds every k-mer in the range again, sorts them, and keeps the repeated ones. The ranges are in increasing order, so og writes them one after the other. Several ranges run at once (`--threads`, default the CPU count, at most 8). `--mem` sets how many k-mers one range can hold (default 5 GB in all). The output does not depend on the thread count or on the range sizes.
+
+On GRCh38 (the no-ALT analysis set that setup installs), og counted 5,869,576,473 k-mers and kept 153,263,119, for a 1.2 GB `.mk`. With `--mem 5 --threads 4` on an Apple Silicon test machine, it took 150 seconds and its peak resident memory was 4.9 GB.
+
+og reads the input exactly as MEGAnE's builder does:
+
+- It reads each contig through its `.fai` line: from the offset, in lines of the stated byte count, all but the last byte of each line, until it has the stated length. A contig listed twice in the `.fai` counts twice.
+- Lowercase reads as uppercase.
+- N and n drop every window that holds them. There is one exception, which MEGAnE has: when the only N in a contig's first 32 bases is its first base, that first window is kept.
+- Other letters (IUPAC R, Y, K and the rest) do not drop a window. They read as A on the forward strand and as T in the reverse complement.
+- No window spans two contigs.
+
+og refuses input that MEGAnE's builder reads in an undefined way, or reads wrongly. It exits with a message and writes nothing:
+
+- Windows (CRLF) line ends. MEGAnE reads each carriage return as a base.
+- A byte of 0x80 or more. MEGAnE reads outside its table.
+- A stale `.fai`: a line end inside a contig's bases, or a FASTA shorter than the `.fai` says.
+- A gzip-compressed FASTA.
+
+`rust/crates/og-setup/tests/megane_kmers.rs` builds the synthetic FASTAs in `tests/rust/vectors/megane-kmers/`, one contig or more per rule above. It compares og's files with the ones MEGAnE's own builder wrote for them in `MEGANE_IMAGE`, on 1 to 8 threads and with ranges down to one prefix each. The vectors' README has the recording steps. The test fails if og uses canonical k-mers, codes the bases A C G T, adds two k-mers for a palindrome, drops the first window for an N at base 0, or lets an IUPAC letter drop windows. Each of these was tried once to show it.
 
 The catalog is `assets/mei_sites.tsv`: one row per insertion, with its GRCh38 site (the base after which the element is inserted, from the ClinVar record), a window of the site -/+ 500 bp, the element, the inheritance, the condition, the ClinVar id and the PubMed id. Checked on 2026-10-27 against ClinVar, PubMed and Ensembl.
 

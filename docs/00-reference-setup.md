@@ -28,7 +28,7 @@ See [Licences for downloads](licences.md) for the terms that apply to individual
 ./scripts/setup.sh --everything "$GENOME_DIR"
 ```
 
-This runs base setup, then installs the data listed in [the everything manifest](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv) in order. It includes the extra STR loci, even if `STR_EXTRA_LOCI` is unset. Setup prints the restricted-use terms before downloading. Review the terms and the [hardware requirements](hardware-requirements.md#shared-reference-data-one-time) before starting. MEGAnE alone needs about 50 GB of memory for the full reference.
+This runs base setup, then installs the data listed in [the everything manifest](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv) in order. It includes the extra STR loci, even if `STR_EXTRA_LOCI` is unset. Setup prints the restricted-use terms before downloading. Review the terms and the [hardware requirements](hardware-requirements.md#shared-reference-data-one-time) before starting. MEGAnE's k-mer set needs about 6 GB of memory.
 
 A failed installer goes on the missing list with a retry command, and setup continues through the manifest. An incomplete setup exits with status 3. After retrying, complete downloads and indexes stay in place. User inputs such as HPO terms and family relationships are still supplied when you run the pipeline.
 
@@ -314,7 +314,7 @@ Only needed for step 50, the mobile element insertions ([50-mei.md](50-mei.md)).
 # Creates: ${GENOME_DIR}/reference/megane/GRCh38_no_alt_analysis_set.mk and .mi
 ```
 
-It pulls `MEGANE_IMAGE` (about 6.4 GB) and runs MEGAnE's `build_kmerset` on `REF_FASTA`. The builder holds two 8-byte k-mers per reference base in memory, so GRCh38 needs about 50 GB of RAM (MEGAnE's authors give 48 GB and about 10 minutes); `setup.sh` checks the memory Docker has first and stops with a message when it is short. On a smaller machine, build it where the memory is and copy `reference/megane/` over. A set newer than the reference is kept; a new reference needs a new set.
+It pulls `MEGANE_IMAGE` (about 6.4 GB) for step 50. og builds the set from `REF_FASTA` (`og setup megane-kmers`), byte for byte the files MEGAnE's own `build_kmerset` writes. For GRCh38 it needs about 5 GB of memory and a few minutes, where MEGAnE's builder needs about 50 GB. `setup.sh` gives it 6 GB, checks the memory Docker has first, and stops with a message when it is short. [How og builds the k-mer set](50-mei.md#how-og-builds-the-k-mer-set) explains the method. On a smaller machine, build it where the memory is and copy `reference/megane/` over. A set newer than the reference is kept; a new reference needs a new set.
 
 ## Locityper Database (Optional, for Step 53)
 
