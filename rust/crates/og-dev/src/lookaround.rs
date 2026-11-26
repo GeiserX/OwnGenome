@@ -629,7 +629,7 @@ fn fold_class(class: &str) -> Result<String, ()> {
 pub(crate) mod vectors {
     use pycompat::json::{Value, loads};
     use std::collections::HashMap;
-    use std::io::{BufRead, Write};
+    use std::io::BufRead;
     use std::path::PathBuf;
     use std::sync::{LazyLock, Mutex};
 
@@ -651,8 +651,8 @@ pub(crate) mod vectors {
         let reader = og_io::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         for (n, line) in reader.lines().enumerate() {
             let line = line.unwrap();
-            let Value::Array(mut row) = loads(&line)
-                .unwrap_or_else(|e| panic!("{}:{}: {e:?}", path.display(), n + 1))
+            let Value::Array(mut row) =
+                loads(&line).unwrap_or_else(|e| panic!("{}:{}: {e:?}", path.display(), n + 1))
             else {
                 panic!("{}:{}: not an array", path.display(), n + 1);
             };
@@ -696,34 +696,15 @@ pub(crate) mod vectors {
         }
         format!("{h:016x}")
     }
-
-    /// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends
-    /// `[key, answer]` to `<dir>/<name>.jsonl`.
-    pub(crate) fn record(name: &str, key: &str, answer: Value) {
-        static LOCK: Mutex<()> = Mutex::new(());
-        let Some(out) = std::env::var_os("OG_RECORD_VECTORS") else {
-            return;
-        };
-        let line = pycompat::json::dumps(
-            &Value::Array(vec![Value::Str(key.to_owned()), answer]),
-            &pycompat::json::Dump::default(),
-        )
-        .unwrap();
-        let _g = LOCK.lock().unwrap();
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(PathBuf::from(out).join(format!("{name}.jsonl")))
-            .unwrap();
-        f.write_all(format!("{line}\n").as_bytes()).unwrap();
-    }
 }
 
+/// The matcher against the spans CPython's `re.finditer` found
+/// ([`vectors`]): `spans` holds each pattern and text of the named tests,
+/// `model` a fingerprint of each model pattern's spans over its texts.
 #[cfg(test)]
 mod python_tests {
-    use super::vectors::{fnv, record};
+    use super::vectors::{fnv, text as answer};
     use super::*;
-    use pycompat::json::Value;
 
     #[test]
     fn finditer_spans_match_real_python() {
@@ -746,14 +727,7 @@ mod python_tests {
             r"(?x) a + # comment",
         ] {
             for text in ["", "aa", "a\n", "a\n\n", "\u{301}aİıſK9\u{1c}\u{345}Ιι"] {
-                let output = std::process::Command::new("python3").args(["-I", "-c",
-                    "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
-                assert!(output.status.success(), "span oracle failed");
-                record(
-                    "spans",
-                    &format!("{pattern}\u{0}{text}"),
-                    Value::Str(String::from_utf8(output.stdout.clone()).unwrap().trim().to_owned()),
-                );
+                let python = answer("spans", &format!("{pattern}\u{0}{text}"));
                 let rule = PythonRule::compile(pattern, false).expect("supported span pattern");
                 let actual = rule
                     .find_iter(text)
@@ -767,7 +741,7 @@ mod python_tests {
                     })
                     .collect::<Vec<_>>()
                     .join(",");
-                assert_eq!(actual, String::from_utf8(output.stdout).unwrap().trim());
+                assert_eq!(actual, python, "{pattern:?} on {text:?}");
             }
         }
     }
@@ -778,15 +752,7 @@ mod python_tests {
             ("(a*|b*?){1,3}", "ba", "0:0,0:2,2:2"),
             ("(?:a*|[ab]{0,2}){0,3}", "baa", "0:0,0:3,3:3"),
         ] {
-            let output = std::process::Command::new("python3").args(["-I", "-c",
-                "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
-            assert!(output.status.success());
-            record(
-                "spans",
-                &format!("{pattern}\u{0}{text}"),
-                Value::Str(String::from_utf8(output.stdout.clone()).unwrap().trim().to_owned()),
-            );
-            assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), spans);
+            assert_eq!(answer("spans", &format!("{pattern}\u{0}{text}")), spans);
             assert!(
                 PythonRule::compile(pattern, false).is_err(),
                 "unsupported span case accepted"
@@ -891,88 +857,24 @@ mod python_tests {
             .join(",")
     }
 
+    /// Each pattern the matcher accepts, against every text: its spans,
+    /// joined in text order, must have the fingerprint CPython's spans had.
+    /// A pattern with no committed answer fails (the matcher accepts more
+    /// than when the answers were made). Returns the pairs compared.
     fn compare_model(label: &str, patterns: &[String], texts: &[String]) -> usize {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
         let (mut accepted, mut refused) = (0, 0);
-        for (batch, chunk) in patterns.chunks(128).enumerate() {
-            let rules: Vec<_> = chunk
-                .iter()
-                .filter_map(|p| match PythonRule::compile(p, false) {
-                    Ok(r) => Some((p, r)),
-                    Err(()) => {
-                        refused += 1;
-                        None
-                    }
-                })
-                .collect();
-            if rules.is_empty() {
+        for (index, pattern) in patterns.iter().enumerate() {
+            let Ok(rule) = PythonRule::compile(pattern, false) else {
+                refused += 1;
                 continue;
-            }
-            accepted += rules.len();
-            let array = |items: Vec<&str>| {
-                let mut out = String::from("[");
-                for (i, item) in items.iter().enumerate() {
-                    if i != 0 {
-                        out.push(',');
-                    }
-                    pycompat::json::quote(&mut out, item, true);
-                }
-                out.push(']');
-                out
             };
-            let input = format!(
-                "[{},{}]",
-                array(rules.iter().map(|(p, _)| p.as_str()).collect()),
-                array(texts.iter().map(String::as_str).collect())
+            accepted += 1;
+            let spans: Vec<String> = texts.iter().map(|text| span_list(&rule, text)).collect();
+            assert_eq!(
+                fnv(&spans.join("\n")),
+                answer("model", &format!("{}:{pattern}", texts.len())),
+                "{label}: pattern {index} {pattern:?}: its spans differ from CPython's"
             );
-            let mut child = Command::new("python3")
-                .args([
-                    "-I",
-                    "-c",
-                    r#"
-import json,re,sys
-patterns,texts=json.load(sys.stdin)
-for p in patterns:
-    r=re.compile(p)
-    for text in texts:
-        print(','.join(str(m.start())+':'+str(m.end()) for m in r.finditer(text)))
-"#,
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut stdin = child.stdin.take().unwrap();
-            let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
-            let output = child.wait_with_output().unwrap();
-            writer.join().unwrap().unwrap();
-            assert!(output.status.success(), "model oracle failed");
-            assert!(output.stderr.is_empty(), "model oracle diagnostic");
-            let oracle = String::from_utf8(output.stdout).unwrap();
-            {
-                let lines: Vec<&str> = oracle.lines().collect();
-                for (index, (pattern, _)) in rules.iter().enumerate() {
-                    let rows = &lines[index * texts.len()..(index + 1) * texts.len()];
-                    record(
-                        "model",
-                        &format!("{}:{pattern}", texts.len()),
-                        Value::Str(fnv(&rows.join("\n"))),
-                    );
-                }
-            }
-            let mut spans = oracle.lines();
-            for (index, (_, rule)) in rules.iter().enumerate() {
-                for (t, text) in texts.iter().enumerate() {
-                    assert_eq!(
-                        Some(span_list(rule, text).as_str()),
-                        spans.next(),
-                        "{label}: batch {batch}, accepted pattern {index}, text {t}"
-                    );
-                }
-            }
-            assert!(spans.next().is_none(), "extra oracle rows");
         }
         let pairs = accepted * texts.len();
         println!(

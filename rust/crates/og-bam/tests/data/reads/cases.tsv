@@ -1,4 +1,4 @@
-# case<TAB>tool<TAB>arguments...: made by ../../make_reads_parity.py; {d} tests/data, {r} the repository, {o} the output directory
+# case<TAB>tool<TAB>arguments...: made by make_reads_parity.py (commit 182811a7, see ../README.md); {d} tests/data, {r} the repository, {o} the output directory
 check-spliced	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv
 check-spliced-construct	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_spliced.bam	--exons	{d}/reads/in/exons.bed	--construct	{d}/reads/in/construct.tsv	--out	{o}/out.tsv
 check-genomic	cdna-check	--hits	{d}/reads/in/hits.tsv	--bam	{d}/reads/in/clip_genomic.bam	--exons	{d}/reads/in/exons.bed	--out	{o}/out.tsv

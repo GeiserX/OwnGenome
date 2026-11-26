@@ -1,6 +1,6 @@
 //! `rfc1 KIND OUT.sam [--samd12 UNIT]`: made-up reads at the GRCh38 RFC1
 //! repeat (chr4:39348425-39348479, the reference (AAAAG)11) with random
-//! flanks, the read sets of `tests/test_rfc1_motif.py`, as unsorted SAM:
+//! flanks, the read sets of the old `tests/test_rfc1_motif.py`, as unsorted SAM:
 //!
 //! - `benign`: reads across an expanded AAAAG allele, and reads whose AAAAG
 //!   part is soft-clipped;
@@ -304,7 +304,7 @@ mod tests {
 
     // The pins are of the bytes the inline Python of
     // tests/e2e/expansions-and-rfc1-1-motif.sh and str-catalog-1-strchive.sh
-    // wrote, from tests/test_rfc1_motif.py's case().
+    // wrote, from the old tests/test_rfc1_motif.py's case().
     #[test]
     fn writes_the_pythons_bytes() {
         assert_eq!(fnv(sam("pathogenic", None).as_bytes()), PIN_PATHOGENIC);

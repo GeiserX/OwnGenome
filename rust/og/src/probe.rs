@@ -1,6 +1,6 @@
 //! `og pycompat-probe`: reads one case per line and writes one result per
-//! line, for `tests/rust/pycompat-diff.sh` to compare with what CPython
-//! writes for the same cases (`tests/rust/pycompat_oracle.py`).
+//! line. The test at the end of this file holds the results to what CPython
+//! wrote for the same cases, frozen in `tests/rust/vectors/pycompat`.
 //!
 //! A case is tab-separated: the operation, then its arguments. Floats travel
 //! as the 16 hex digits of their bits, text as the hex of its UTF-8, so no
@@ -461,71 +461,287 @@ pub fn run(input: impl BufRead, output: impl Write) -> io::Result<()> {
     out.flush()
 }
 
-/// RECORD (this commit only): `tests/rust/vectors/make.sh` runs this to
-/// turn the oracle's `chars` answers (one entry per code point) into the
-/// compact table `pycompat/chars.tsv`: `R lo hi F` for a run of code points
-/// that are their own upper and lower case, need no escaping and share the
-/// flags F; `X cp F upper lower` (as the oracle wrote them) for the rest.
+/// `og pycompat-probe` against what CPython (`python3 -I` in PYTHON_IMAGE)
+/// answered: 1000 cases per operation, drawn once by the oracle of the
+/// commit that recorded them, frozen in `tests/rust/vectors/pycompat` (see
+/// its README). `cases.tsv.gz` holds each case line and the answer line
+/// after it; a `chars` answer is `@CHARS@`, spelled out from the table
+/// `chars.tsv.gz` (`R lo hi F`: a run of code points that are their own
+/// upper and lower case and need no escaping, flags F; `X cp F upper lower`
+/// for the rest). The glob, first, newest, mtime and mtimens cases walked a
+/// tree under `/tree`, listed in `tree.tsv.gz` (GNU find: type, path, link
+/// target, mtime); the test builds it again and runs those cases on Linux
+/// only (a case-insensitive file system cannot hold it). Directory order
+/// belongs to the file system, so glob answers are compared as sorted
+/// lists, and a `newest` answer may be any file tied with CPython's on
+/// mtime.
 #[cfg(test)]
-mod record {
-    use std::io::{BufRead, Write};
+mod vectors {
+    use super::{hex, run};
+    use std::collections::HashMap;
+    use std::ffi::OsStr;
+    use std::io::BufRead;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    const SPECIAL: &str = "%[],{}=~\\|";
+    const TREE_OPS: &[&str] = &["glob", "first", "newest", "mtime", "mtimens"];
+    /// "/tree", where the oracle built its tree, in hex.
+    const TREE_HEX: &str = "2f74726565";
+
+    fn dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rust/vectors/pycompat")
+    }
+
+    fn gz_lines(name: &str) -> Vec<Vec<u8>> {
+        og_io::open(dir().join(name))
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+            .split(b'\n')
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    /// The `chars` answer of each code point.
+    fn chars_table() -> HashMap<u32, String> {
+        let mut table = HashMap::new();
+        for line in gz_lines("chars.tsv.gz") {
+            let line = String::from_utf8(line).unwrap();
+            let f: Vec<&str> = line.split('\t').collect();
+            match f.as_slice() {
+                ["R", lo, hi, flags] => {
+                    for cp in lo.parse::<u32>().unwrap()..=hi.parse().unwrap() {
+                        let c = char::from_u32(cp).unwrap();
+                        assert!(table.insert(cp, format!("{flags}[{c},{c}]")).is_none());
+                    }
+                }
+                ["X", cp, flags, upper, lower] => {
+                    let entry = format!("{flags}[{upper},{lower}]");
+                    assert!(table.insert(cp.parse().unwrap(), entry).is_none());
+                }
+                _ => panic!("chars.tsv: {line:?}"),
+            }
+        }
+        table
+    }
+
+    /// `/tree` of a path in `bytes` written as `root`.
+    fn at_root(bytes: &[u8], root: &[u8]) -> Vec<u8> {
+        let tree = b"/tree";
+        if bytes.starts_with(tree) && matches!(bytes.get(tree.len()), None | Some(b'/')) {
+            [root, &bytes[tree.len()..]].concat()
+        } else {
+            bytes.to_vec()
+        }
+    }
+
+    /// Each hex path item of `text` (items start the text or follow a tab,
+    /// `,` or `|`) under `/tree` moved under the hex root `root`.
+    fn swap_root(text: &str, root: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut start = true;
+        let mut rest = text;
+        while !rest.is_empty() {
+            if start && rest.starts_with(TREE_HEX) {
+                let after = &rest[TREE_HEX.len()..];
+                if after.is_empty()
+                    || after.starts_with("2f")
+                    || after.starts_with(['\t', ',', '|'])
+                {
+                    out.push_str(root);
+                    rest = after;
+                    start = false;
+                    continue;
+                }
+            }
+            let c = rest.chars().next().unwrap();
+            out.push(c);
+            start = matches!(c, '\t' | ',' | '|');
+            rest = &rest[c.len_utf8()..];
+        }
+        out
+    }
+
+    /// `%T@` of GNU find (seconds, ten decimals, maybe negative) as a time.
+    fn find_time(s: &str) -> SystemTime {
+        let (neg, s) = s.strip_prefix('-').map_or((false, s), |s| (true, s));
+        let (sec, frac) = s.split_once('.').unwrap();
+        let ns = sec.parse::<u64>().unwrap() * 1_000_000_000 + frac[..9].parse::<u64>().unwrap();
+        assert!(
+            frac[9..].bytes().all(|b| b == b'0'),
+            "{s}: finer than a nanosecond"
+        );
+        let d = Duration::from_nanos(ns);
+        if neg { UNIX_EPOCH - d } else { UNIX_EPOCH + d }
+    }
+
+    /// The oracle's tree again under `root`: folders, empty files, symlinks
+    /// (their targets moved under `root`), then each folder's and file's
+    /// mtime, deepest first. A symlink's own mtime is never read (Python's
+    /// getmtime and stat follow it), so it is left as made.
+    fn build_tree(root: &Path) {
+        let rows: Vec<Vec<Vec<u8>>> = gz_lines("tree.tsv.gz")
+            .into_iter()
+            .map(|l| l.split(|b| *b == b'\t').map(<[u8]>::to_vec).collect())
+            .collect();
+        let path = |rel: &[u8]| {
+            if rel.is_empty() {
+                root.to_path_buf()
+            } else {
+                root.join(OsStr::from_bytes(rel))
+            }
+        };
+        let rb = root.as_os_str().as_bytes();
+        for r in &rows {
+            let [kind, rel, target, _] = r.as_slice() else {
+                panic!("tree.tsv: {r:?}");
+            };
+            match (kind.as_slice(), rel.is_empty()) {
+                (_, true) => {}
+                (b"d", _) => std::fs::create_dir(path(rel)).unwrap(),
+                (b"f", _) => drop(std::fs::File::create(path(rel)).unwrap()),
+                (b"l", _) => {
+                    std::os::unix::fs::symlink(OsStr::from_bytes(&at_root(target, rb)), path(rel))
+                        .unwrap()
+                }
+                _ => panic!("tree.tsv: kind {kind:?}"),
+            }
+        }
+        let mut timed: Vec<&Vec<Vec<u8>>> = rows.iter().filter(|r| r[0] != b"l").collect();
+        let depth = |r: &Vec<Vec<u8>>| {
+            if r[1].is_empty() {
+                0
+            } else {
+                1 + r[1].iter().filter(|b| **b == b'/').count()
+            }
+        };
+        timed.sort_by_key(|r| std::cmp::Reverse(depth(r)));
+        for r in timed {
+            let t = find_time(std::str::from_utf8(&r[3]).unwrap());
+            let times = std::fs::FileTimes::new().set_accessed(t).set_modified(t);
+            std::fs::File::open(path(&r[1]))
+                .unwrap()
+                .set_times(times)
+                .unwrap();
+        }
+    }
+
+    fn unhex(s: &str) -> PathBuf {
+        let b: Vec<u8> = (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect();
+        PathBuf::from(OsStr::from_bytes(&b))
+    }
+
+    /// Whether og's answer `got` stands for CPython's `want` on a case of `op`.
+    fn agrees(op: &str, want: &str, got: &str) -> bool {
+        if want == got {
+            return true;
+        }
+        match op {
+            "glob" => {
+                fn sorted(s: &str) -> Vec<&str> {
+                    let mut v: Vec<&str> = s.split('|').collect();
+                    v.sort_unstable();
+                    v
+                }
+                sorted(want) == sorted(got)
+            }
+            "newest" if want != "None" && got != "None" && !got.contains('|') => {
+                let t = |h: &str| pycompat::mtime::mtime(unhex(h)).ok();
+                t(want).is_some() && t(want) == t(got) && unhex(got).is_file()
+            }
+            _ => false,
+        }
+    }
 
     #[test]
-    #[ignore = "record only: tests/rust/vectors/make.sh"]
-    fn make_chars_table() {
-        let raw = std::env::var("PYCOMPAT_RAW").unwrap();
-        let out = std::env::var("PYCOMPAT_CHARS").unwrap();
-        let lines: Vec<String> = std::io::BufReader::new(std::fs::File::open(raw).unwrap())
-            .lines()
-            .map(Result::unwrap)
-            .collect();
-        let mut entries: Vec<(u32, String, String, String)> = Vec::new();
-        for pair in lines.chunks(2) {
-            let case: Vec<&str> = pair[0].split('\t').collect();
-            if case[0] != "chars" {
-                continue;
-            }
-            let (start, k): (u32, u32) = (case[1].parse().unwrap(), case[2].parse().unwrap());
-            let mut rest = pair[1].as_str();
-            for cp in (start..(start + k).min(0x11_0000)).filter(|c| !(0xD800..0xE000).contains(c)) {
-                let open = rest.find('[').unwrap();
-                let comma = rest.find(',').unwrap();
-                let close = rest.find(']').unwrap();
-                entries.push((
-                    cp,
-                    rest[..open].to_owned(),
-                    rest[open + 1..comma].to_owned(),
-                    rest[comma + 1..close].to_owned(),
-                ));
-                rest = &rest[close + 1..];
-            }
-            assert!(rest.is_empty(), "chars {start}: entries left over");
+    fn og_pycompat_probe_matches_cpython_on_the_committed_cases() {
+        let lines = gz_lines("cases.tsv.gz");
+        assert!(
+            lines.len() > 2 && lines.len().is_multiple_of(2),
+            "cases.tsv: pairs of lines"
+        );
+        let chars = chars_table();
+        let tree_ok = cfg!(target_os = "linux");
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("og-pycompat-vectors-{}", std::process::id()));
+        let root_s = root.to_str().unwrap();
+        assert!(
+            !root_s.contains(['*', '?', '[']),
+            "{root_s}: a glob character"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        if tree_ok {
+            build_tree(&root);
         }
-        entries.sort_by_key(|e| e.0);
-        let mut w = std::io::BufWriter::new(std::fs::File::create(out).unwrap());
-        let mut run: Option<(u32, u32, String)> = None;
-        for (cp, f, u, l) in entries {
-            let c = char::from_u32(cp).unwrap();
-            let own = c.to_string();
-            let plain = u == own && l == own && u32::from(c) >= 32 && !SPECIAL.contains(c);
-            match &mut run {
-                Some((_, hi, rf)) if plain && *rf == f && *hi + 1 == cp => *hi = cp,
-                _ => {
-                    if let Some((lo, hi, rf)) = run.take() {
-                        writeln!(w, "R\t{lo}\t{hi}\t{rf}").unwrap();
-                    }
-                    if plain {
-                        run = Some((cp, cp, f));
-                    } else {
-                        writeln!(w, "X\t{cp}\t{f}\t{u}\t{l}").unwrap();
-                    }
+        let root_hex = hex(root.as_os_str().as_bytes());
+        let (mut cases, mut want) = (Vec::new(), Vec::new());
+        let mut skipped = 0;
+        for pair in lines.chunks(2) {
+            let case = String::from_utf8(pair[0].clone()).unwrap();
+            let answer = String::from_utf8(pair[1].clone()).unwrap();
+            let op = case.split('\t').next().unwrap();
+            if TREE_OPS.contains(&op) {
+                if !tree_ok {
+                    skipped += 1;
+                    continue;
+                }
+                cases.push(swap_root(&case, &root_hex));
+                want.push(swap_root(&answer, &root_hex));
+            } else if op == "chars" {
+                assert_eq!(answer, "@CHARS@", "{case}");
+                let f: Vec<u32> = case
+                    .split('\t')
+                    .skip(1)
+                    .map(|x| x.parse().unwrap())
+                    .collect();
+                let line: String = (f[0]..(f[0] + f[1]).min(0x11_0000))
+                    .filter(|c| !(0xD800..0xE000).contains(c))
+                    .map(|c| chars[&c].as_str())
+                    .collect();
+                cases.push(case);
+                want.push(line);
+            } else {
+                cases.push(case);
+                want.push(answer);
+            }
+        }
+        let mut input = cases.join("\n");
+        input.push('\n');
+        let mut out = Vec::new();
+        run(input.as_bytes(), &mut out).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        let got: Vec<&str> = std::str::from_utf8(&out).unwrap().lines().collect();
+        assert_eq!(got.len(), cases.len(), "one answer per case");
+        let mut bad: std::collections::BTreeMap<&str, usize> = Default::default();
+        let mut report = String::new();
+        for ((case, want), got) in cases.iter().zip(&want).zip(&got) {
+            let op = case.split('\t').next().unwrap();
+            if !agrees(op, want, got) {
+                *bad.entry(op).or_default() += 1;
+                if bad.values().sum::<usize>() <= 20 {
+                    report.push_str(&format!(
+                        "case:     {case}\npython:   {want}\nog:       {got}\n\n"
+                    ));
                 }
             }
         }
-        if let Some((lo, hi, rf)) = run {
-            writeln!(w, "R\t{lo}\t{hi}\t{rf}").unwrap();
-        }
+        println!(
+            "pycompat: {} cases against CPython{}",
+            cases.len(),
+            if skipped > 0 {
+                format!("; {skipped} tree cases need Linux")
+            } else {
+                String::new()
+            }
+        );
+        assert!(
+            bad.is_empty(),
+            "{report}og pycompat-probe differs from CPython: {bad:?}"
+        );
     }
 }

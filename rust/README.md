@@ -34,7 +34,7 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 cargo test                                   # unit tests (needs the pinned toolchain)
 cargo clippy --all-targets -- -D warnings
 ../scripts/setup.sh --og                     # the binaries the pipeline runs, built in Docker
-cargo build --release && ../tests/rust/pycompat-diff.sh target/release/og   # pycompat against CPython
+cargo test -p og --bin og vectors            # pycompat against the committed CPython answers
 ```
 
 A binary from a plain `cargo build` is stamped `unknown`, and `rust/og.sh check` refuses it: only `scripts/setup.sh --og` stamps the source hash of `rust/` and its embedded imprinting table that the pipeline checks.

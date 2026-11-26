@@ -1,35 +1,28 @@
 //! `og run` against the Python it replaces, case by case, on the same
 //! files. The command lines of `bin/run_state.py`, `bin/run_headroom.py` and
-//! `bin/run_delta.py` are gone from the checkout, so their oracle is the
-//! last commit that had them ([`ORACLE`]), materialised once per test run
-//! with `git show` (fetched when a shallow checkout lacks it, as
-//! `scripts/ci/oracle-diff.sh` does). `og run eta` is held to the answers of
+//! `bin/run_delta.py` left the checkout at 630292bd; what they answered on
+//! each case (exit code, stdout, stderr and the files they wrote at `--out`)
+//! is frozen in `tests/rust/vectors/runlog.jsonl.gz`, recorded once from those
+//! tools themselves (see `tests/rust/vectors/README.md`). Paths in an answer
+//! are written as `{TMP:<name>}` (the folder [`tmp`] made for `<name>`) and
+//! `{REPO}`, and are put back from the case's own arguments.
+//! `og run eta` is held to the answers of
 //! `run_eta.estimate`, the module function the Python live server called,
 //! frozen in `tests/vectors/run_eta` from the last `bin/run_eta.py` before
 //! the module went with that server: the estimate and the step history it
 //! wrote, on the catalogue of that day (`steps.tsv` there), with the box's
 //! CPU count, which the history records, as `BOX_CPUS`.
-//! Outputs must agree byte for byte, except `generated_utc` (the clock), the
-//! disk numbers of `headroom` (free space moves between two calls) and the
-//! host memory line where Python can read the RAM and og cannot (not Linux).
+//! Outputs must agree byte for byte, except `generated_utc` (the clock), and
+//! the disk and host memory lines of `headroom`, which describe the machine
+//! the answers were recorded on.
 //! `og run state` says its one sentence on stderr where the Python said it on
-//! stdout.
-//!
-//! The Python is `OG_PYTHON`, else `python3`; it must be 3.9 or newer. A
-//! missing Python, or an oracle that cannot be materialised, fails the test:
-//! a parity test that skips proves nothing.
+//! stdout. A case whose answer is missing fails: its input changed.
 
 use jiff::tz::TimeZone;
 use og_runlog::cli::{Env, run};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-/// The last commit with the Python command lines (`main()`) of the four
-/// `bin/run_*.py` tools.
-const ORACLE: &str = "630292bd1aef8cb94bbed604e8961a98facdb47d";
 
 const TZ: &str = "Europe/Madrid";
 /// 2026-01-03 12:00:00 UTC: after every fixture time.
@@ -47,6 +40,14 @@ fn steps() -> String {
         .join("assets/steps.tsv")
         .to_string_lossy()
         .into_owned()
+}
+
+fn tmp_prefix() -> String {
+    format!(
+        "{}/og-runlog-parity-{}-",
+        std::env::temp_dir().canonicalize().unwrap().display(),
+        std::process::id()
+    )
 }
 
 fn tmp(name: &str) -> PathBuf {
@@ -80,137 +81,80 @@ struct Out {
     stderr: String,
 }
 
-fn git(args: &[&str]) -> std::process::Output {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo())
-        .args(args)
-        .output()
-        .unwrap_or_else(|e| panic!("cannot run git: {e}"))
+/// `text` with each `{TMP:<name>}` that a path in `args` names written back
+/// as that folder, and `{REPO}` as the repository.
+fn denorm(text: &str, args: &[&str]) -> String {
+    let pre = tmp_prefix();
+    let mut out = text.to_owned();
+    for arg in args {
+        let mut rest = *arg;
+        while let Some(i) = rest.find(&pre) {
+            let tail = &rest[i + pre.len()..];
+            let end = tail
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                .unwrap_or(tail.len());
+            let (name, _) = tail[..end].rsplit_once('-').unwrap();
+            out = out.replace(
+                &format!("{{TMP:{name}}}"),
+                &format!("{pre}{}", &tail[..end]),
+            );
+            rest = &tail[end..];
+        }
+    }
+    out.replace("{REPO}", &repo().display().to_string())
 }
 
-/// `bin/run_*.py` as they were at [`ORACLE`], beside today's
-/// `assets/steps.tsv` (their default catalogue), in a folder of its own.
-fn oracle_bin() -> &'static Path {
-    static DIR: OnceLock<PathBuf> = OnceLock::new();
-    DIR.get_or_init(|| {
-        let have = git(&["cat-file", "-e", &format!("{ORACLE}^{{commit}}")]);
-        if !have.status.success() {
-            let f = git(&["fetch", "-q", "--depth=1", "origin", ORACLE]);
-            assert!(
-                f.status.success(),
-                "commit {ORACLE} is not here and could not be fetched: {}",
-                String::from_utf8_lossy(&f.stderr)
-            );
-        }
-        let root = tmp("oracle");
-        fs::create_dir_all(root.join("bin")).unwrap();
-        fs::create_dir_all(root.join("assets")).unwrap();
-        for tool in ["run_state", "run_eta", "run_headroom", "run_delta"] {
-            let o = git(&["show", &format!("{ORACLE}:bin/{tool}.py")]);
-            assert!(
-                o.status.success(),
-                "git show {ORACLE}:bin/{tool}.py: {}",
-                String::from_utf8_lossy(&o.stderr)
-            );
-            fs::write(root.join("bin").join(format!("{tool}.py")), o.stdout).unwrap();
-        }
-        fs::copy(
-            repo().join("assets/steps.tsv"),
-            root.join("assets/steps.tsv"),
-        )
-        .unwrap();
-        root.join("bin")
-    })
-}
-
-/// The Python tool `<tool>.py` of [`ORACLE`] with `args`, in the zone [`TZ`].
+/// What the Python tool `<tool>.py` of 630292bd answered on case `label`
+/// (run with `args`, in the zone [`TZ`]), with the files it wrote at its
+/// `--out` written again where `args` put them.
 fn py(label: &str, tool: &str, args: &[&str]) -> Out {
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let o = Command::new(&exe)
-        .arg(oracle_bin().join(format!("{tool}.py")))
-        .args(args)
-        .env("TZ", TZ)
-        .env_remove("PGP_BOX")
-        .env_remove("OWNGENOME_DISK_WARN_PERCENT")
-        .env_remove("OWNGENOME_MEM_WARN_PERCENT")
-        .output()
-        .unwrap_or_else(|e| panic!("cannot run the Python oracle {exe}: {e}; set OG_PYTHON"));
-    let out = Out {
-        code: o.status.code().unwrap_or(-1),
-        stdout: String::from_utf8(o.stdout).unwrap(),
-        stderr: String::from_utf8(o.stderr).unwrap(),
-    };
-    record(label, args, &out);
-    out
-}
-
-/// `text` with each test folder written as `{TMP:<name>}` and the
-/// repository as `{REPO}`, so an answer does not hold this run's paths.
-fn norm(text: &str) -> String {
-    let pre = format!(
-        "{}/og-runlog-parity-{}-",
-        std::env::temp_dir().canonicalize().unwrap().display(),
-        std::process::id()
-    );
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some(i) = rest.find(&pre) {
-        out.push_str(&rest[..i]);
-        let tail = &rest[i + pre.len()..];
-        let end = tail
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
-            .unwrap_or(tail.len());
-        let (name, _) = tail[..end].rsplit_once('-').unwrap();
-        out.push_str(&format!("{{TMP:{name}}}"));
-        rest = &tail[end..];
-    }
-    out.push_str(rest);
-    out.replace(&repo().display().to_string(), "{REPO}")
-}
-
-/// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends the
-/// answer and every file the tool wrote at its `--out` to
-/// `<dir>/runlog.jsonl` under `label`.
-fn record(label: &str, args: &[&str], out: &Out) {
-    use pycompat::json::{Dump, Value, dumps};
-    use std::io::Write;
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let Some(dir) = std::env::var_os("OG_RECORD_VECTORS") else {
-        return;
-    };
-    let mut files = indexmap::IndexMap::new();
-    if let Some(i) = args.iter().position(|a| *a == "--out") {
-        let base = args[i + 1];
-        for p in [
-            base.to_owned(),
-            format!("{base}.txt"),
-            format!("{base}.html"),
-            format!("{base}.json"),
-        ] {
-            if let Ok(text) = fs::read_to_string(&p) {
-                files.insert(norm(&p), Value::Str(norm(&text)));
-            }
+    use pycompat::json::Value;
+    use std::collections::HashMap;
+    use std::io::BufRead;
+    static TABLE: std::sync::LazyLock<HashMap<String, Value>> = std::sync::LazyLock::new(|| {
+        let mut table = HashMap::new();
+        for line in og_io::open(repo().join("tests/rust/vectors/runlog.jsonl.gz"))
+            .unwrap()
+            .lines()
+        {
+            let line = line.unwrap();
+            let Value::Array(row) = pycompat::json::loads(&line).unwrap() else {
+                panic!("runlog: {line}");
+            };
+            let [Value::Str(label), answer]: [Value; 2] = row.try_into().unwrap() else {
+                panic!("runlog: {line}");
+            };
+            assert!(
+                table.insert(label, answer).is_none(),
+                "runlog: a label twice"
+            );
         }
+        table
+    });
+    let Some(Value::Object(answer)) = TABLE.get(label) else {
+        panic!("no committed {tool}.py answer in runlog.jsonl.gz for {label:?}");
+    };
+    let text = |key: &str| match answer.get(key) {
+        Some(Value::Str(s)) => denorm(s, args),
+        other => panic!("{label}: {key} is {other:?}"),
+    };
+    let Some(Value::Int(code)) = answer.get("code") else {
+        panic!("{label}: no code");
+    };
+    let Some(Value::Object(files)) = answer.get("files") else {
+        panic!("{label}: no files");
+    };
+    for (path, content) in files {
+        let Value::Str(content) = content else {
+            panic!("{label}: {path} is not text");
+        };
+        fs::write(denorm(path, args), denorm(content, args)).unwrap();
     }
-    let mut answer = indexmap::IndexMap::new();
-    answer.insert("code".to_owned(), Value::Int(out.code.into()));
-    answer.insert("stdout".to_owned(), Value::Str(norm(&out.stdout)));
-    answer.insert("stderr".to_owned(), Value::Str(norm(&out.stderr)));
-    answer.insert("files".to_owned(), Value::Object(files));
-    let line = dumps(
-        &Value::Array(vec![Value::Str(label.to_owned()), Value::Object(answer)]),
-        &Dump::default(),
-    )
-    .unwrap();
-    let _g = LOCK.lock().unwrap();
-    fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(PathBuf::from(dir).join("runlog.jsonl"))
-        .unwrap()
-        .write_all(format!("{line}\n").as_bytes())
-        .unwrap();
+    Out {
+        code: i32::try_from(*code).unwrap(),
+        stdout: text("stdout"),
+        stderr: text("stderr"),
+    }
 }
 
 /// `og run <args>` in the zone [`TZ`] at [`NOW`].
@@ -349,10 +293,13 @@ fn state_a_run_going() {
     let dir = tmp("state");
     let (s, events) = state_case(&dir);
     state_parity(
-"state-1", "S1", &s, &["--events", &events.to_string_lossy()]);
+        "state-1",
+        "S1",
+        &s,
+        &["--events", &events.to_string_lossy()],
+    );
     // Without the messages, from the trace alone.
-    state_parity(
-"state-2", "S1", &s, &[]);
+    state_parity("state-2", "S1", &s, &[]);
 }
 
 #[test]
@@ -369,20 +316,17 @@ fn state_a_run_that_ended() {
     let mut rs = fs::read_to_string(s.join("logs/run_status.tsv")).unwrap();
     rs.push_str("meta\tfinished_utc\t2026-01-03 05:12:00 UTC\n");
     fs::write(s.join("logs/run_status.tsv"), rs).unwrap();
-    state_parity(
-"state-3", "S1", &s, &[]);
+    state_parity("state-3", "S1", &s, &[]);
     // A run with no run-all.sh file: the process table alone says it ended.
     fs::remove_file(s.join("logs/run_status.tsv")).unwrap();
-    state_parity(
-"state-4", "S1", &s, &[]);
+    state_parity("state-4", "S1", &s, &[]);
 }
 
 #[test]
 fn state_not_started_and_the_live_fixture() {
     let dir = tmp("state-empty");
     fs::create_dir_all(dir.join("S9")).unwrap();
-    state_parity(
-"state-5", "S9", &dir.join("S9"), &[]);
+    state_parity("state-5", "S9", &dir.join("S9"), &[]);
     let live = tmp("state-live");
     copy_dir(
         &repo().join("tests/fixtures/live/DEMO-001"),
@@ -390,7 +334,8 @@ fn state_not_started_and_the_live_fixture() {
     );
     let ev = repo().join("tests/fixtures/live/demo-001.weblog.jsonl");
     state_parity(
-        "state-6", "DEMO-001",
+        "state-6",
+        "DEMO-001",
         &live.join("DEMO-001"),
         &["--events", &ev.to_string_lossy()],
     );
@@ -403,7 +348,8 @@ fn state_not_started_and_the_live_fixture() {
     .unwrap();
     let ev = repo().join("tests/fixtures/live/ops/events.jsonl");
     state_parity(
-        "state-7", "OPS-001",
+        "state-7",
+        "OPS-001",
         &ops.join("OPS-001"),
         &["--events", &ev.to_string_lossy()],
     );
@@ -548,16 +494,22 @@ fn eta_hours_left_of_a_run_going() {
 
 // ---- og run headroom ---------------------------------------------------
 
-/// Lines with the numbers of each disk line and, off Linux, the host
-/// memory line masked.
+/// Lines with the machine in them masked: each disk line's measure and its
+/// warning (how full and how big the disk is), and the host memory line
+/// (its size, and whether `max_memory` is above it).
 fn mask_host(text: &str) -> String {
     text.lines()
         .map(|l| {
             if l.starts_with("disk ") {
-                l.chars()
-                    .map(|c| if c.is_ascii_digit() { '#' } else { c })
-                    .collect()
-            } else if l.starts_with("memory host:") && !cfg!(target_os = "linux") {
+                // `disk <folders>: <use and size> (<note>); WARN: ...`: keep
+                // the folders and the note, mask the rest.
+                let line = l
+                    .split_once("; WARN: at or above ")
+                    .map_or(l, |(line, _)| line);
+                let (folders, rest) = line.split_once(": ").unwrap_or((line, ""));
+                let note = rest.find(" (").map_or("", |i| &rest[i..]);
+                format!("{folders}: MASKED{note}")
+            } else if l.starts_with("memory host:") {
                 "memory host: MASKED".to_owned()
             } else {
                 l.to_owned()
@@ -567,7 +519,7 @@ fn mask_host(text: &str) -> String {
         .join("\n")
 }
 
-fn headroom_parity(label: &str, args: &[&str]) {
+fn headroom_parity(label: &str, args: &[&str]) -> String {
     let st = steps();
     let mut oa = vec!["headroom", "--steps", &st];
     oa.extend_from_slice(args);
@@ -589,6 +541,7 @@ fn headroom_parity(label: &str, args: &[&str]) {
         };
         assert_eq!(last(&p.stderr), last(&o.stderr), "{}{}", p.stderr, o.stderr);
     }
+    o.stdout
 }
 
 #[test]
@@ -601,26 +554,37 @@ fn headroom_tasks_hosts_and_disks() {
             .into_owned(),
         fx.join("events.jsonl").to_string_lossy().into_owned(),
     );
-    headroom_parity("headroom-1", &["--trace", &tr, "--trace", &tr0]);
-    headroom_parity("headroom-2", &["--events", &ev, "--max-memory", "64.GB"]);
-    headroom_parity("headroom-3", &[
-        "--events",
-        &ev,
-        "--trace",
-        &tr,
-        "--mem-warn-percent",
-        "95",
-        "--max-memory",
-        "1 TB",
-    ]);
+    let _ = headroom_parity("headroom-1", &["--trace", &tr, "--trace", &tr0]);
+    let _ = headroom_parity("headroom-2", &["--events", &ev, "--max-memory", "64.GB"]);
+    let _ = headroom_parity(
+        "headroom-3",
+        &[
+            "--events",
+            &ev,
+            "--trace",
+            &tr,
+            "--mem-warn-percent",
+            "95",
+            "--max-memory",
+            "1 TB",
+        ],
+    );
     let d = tmp("headroom");
     let (w, r) = (
         d.join("work").to_string_lossy().into_owned(),
         d.join("not/yet").to_string_lossy().into_owned(),
     );
     fs::create_dir_all(&w).unwrap();
-    headroom_parity("headroom-4", &["--work-dir", &w, "--outdir", &r, "--disk-warn-percent", "1"]);
-    headroom_parity("headroom-5", &["--work-dir", &w, "--disk-warn-percent", "100"]);
+    // Every disk in use is at or above 1%: the warning masked above is here.
+    let at1 = headroom_parity(
+        "headroom-4",
+        &["--work-dir", &w, "--outdir", &r, "--disk-warn-percent", "1"],
+    );
+    assert!(at1.contains("; WARN: at or above 1%\n"), "{at1}");
+    let _ = headroom_parity(
+        "headroom-5",
+        &["--work-dir", &w, "--disk-warn-percent", "100"],
+    );
     // The weblog metadata names the folders: a relative outdir is under
     // the launch folder.
     let ops = d.join("ops.jsonl");
@@ -637,11 +601,14 @@ fn headroom_tasks_hosts_and_disks() {
             ),
     )
     .unwrap();
-    headroom_parity("headroom-6", &["--events", &ops.to_string_lossy()]);
-    headroom_parity("headroom-7", &[]);
+    let _ = headroom_parity("headroom-6", &["--events", &ops.to_string_lossy()]);
+    let _ = headroom_parity("headroom-7", &[]);
     for bad in ["0", "101", "x", "nan"] {
-        headroom_parity(&format!("headroom-disk-{bad}"), &["--disk-warn-percent", bad]);
-        headroom_parity(&format!("headroom-mem-{bad}"), &["--mem-warn-percent", bad]);
+        let _ = headroom_parity(
+            &format!("headroom-disk-{bad}"),
+            &["--disk-warn-percent", bad],
+        );
+        let _ = headroom_parity(&format!("headroom-mem-{bad}"), &["--mem-warn-percent", bad]);
     }
 }
 
@@ -717,7 +684,9 @@ fn delta_every_kind_of_change() {
         man.to_string_lossy().into_owned(),
         prev.to_string_lossy().into_owned(),
     );
-    delta_parity("delta-1", &d,
+    delta_parity(
+        "delta-1",
+        &d,
         &[
             "--sample",
             "S1",
@@ -730,7 +699,9 @@ fn delta_every_kind_of_change() {
         ],
     );
     // The same run again: no change. No previous run. An old re-check.
-    delta_parity("delta-2", &d,
+    delta_parity(
+        "delta-2",
+        &d,
         &[
             "--sample",
             "S1",
@@ -744,7 +715,9 @@ fn delta_every_kind_of_change() {
     );
     fs::copy(&cur, prev.join("summary.json")).unwrap();
     fs::copy(&man, prev.join("run_manifest.tsv")).unwrap();
-    delta_parity("delta-3", &d,
+    delta_parity(
+        "delta-3",
+        &d,
         &[
             "--sample",
             "S1",
@@ -756,7 +729,11 @@ fn delta_every_kind_of_change() {
             &p,
         ],
     );
-    delta_parity("delta-4", &d, &["--sample", "S1", "--summary", &c, "--manifest", &m]);
+    delta_parity(
+        "delta-4",
+        &d,
+        &["--sample", "S1", "--summary", &c, "--manifest", &m],
+    );
     fs::write(&man, "run\twritten_utc\t2026-01-04 10:00:00 UTC\n").unwrap();
     delta_parity("delta-5", &d, &["--sample", "S1", "--summary", &c]);
     // A summary that cannot be read exits 2.
@@ -820,32 +797,26 @@ fn delta_parity(label: &str, d: &Path, args: &[&str]) {
 }
 
 /// The history lock is the one `run_eta.py` and `flock(1)` take: while
-/// another process holds `<history>.lock`, og waits for it.
+/// another open file holds `<history>.lock`, og waits for it.
 #[test]
 fn eta_waits_for_the_history_lock() {
-    use std::io::{BufRead, BufReader};
     let d = eta_outdir("eta-lock");
     let lock = d.join("pipeline_info/step_history/held.tsv.lock");
     fs::create_dir_all(lock.parent().unwrap()).unwrap();
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let mut holder = Command::new(&exe)
-        .args([
-            "-c",
-            "import fcntl, sys, time\nf = open(sys.argv[1], 'a')\nfcntl.flock(f, fcntl.LOCK_EX)\nprint('held', flush=True)\ntime.sleep(1.5)",
-        ])
-        .arg(&lock)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
+    let held = fs::File::options()
+        .create(true)
+        .append(true)
+        .open(&lock)
         .unwrap();
-    let mut line = String::new();
-    BufReader::new(holder.stdout.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
-    assert_eq!(line, "held\n");
+    held.lock().unwrap();
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        held.unlock().unwrap();
+    });
     let t = std::time::Instant::now();
     let o = og_eta(&d, None, 8, "held");
     let waited = t.elapsed();
-    holder.wait().unwrap();
+    holder.join().unwrap();
     assert_eq!(o.code, 0, "{}", o.stderr);
     assert!(
         waited >= std::time::Duration::from_millis(1000),
