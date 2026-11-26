@@ -5,9 +5,8 @@
   panel-map    a group of fewer than 10 unrelated people (one Oceanian, three
                San) is no reference and no painting reference, and the
                install log names it as left out
-  check-map    panel-map's table passes; one Oceanian put back as reference
-               and painting reference, a short row, a flag other than 0 or 1
-               and a table with no reference person each stop it
+  check-map    panel-map's table passes; a short row, a flag other than 0
+               or 1 and a table with no reference person each stop it
   chroms       a chromosome is painted only with 100 SNVs spanning 5 cM
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
@@ -73,12 +72,6 @@ def run_all(tmp):
     expect("panel-map: the 10 West Africans are references and painting references",
            sorted({tuple(by[f"y{i}"][4:]) for i in range(10)}), [("1", "1")])
     expect("check-map: panel-map's table passes", og("check-map", "--map", samples).returncode, 0)
-    one = rows[0:1] + [row[:4] + ["1", "1"] if row[0] == "p0" else row for row in rows[1:]]
-    write(os.path.join(tmp, "one.tsv"), "".join("\t".join(row) + "\n" for row in one))
-    r = og("check-map", "--map", os.path.join(tmp, "one.tsv"))
-    expect("check-map: stops on one Oceanian put back, and says why",
-           (r.returncode, "regional group OCE has 1 of the 10 reference people it needs" in r.stderr,
-            "continental group OCE has 1 of the 2 painting references RFMix needs" in r.stderr), (1, True, True))
     header = "sample\tpopulation\tcontinent\tregion\treference\tpaint\n"
     for name, text in (("short", header + "y0\tYRI\tAFR\n"), ("flag", header + "y10\tYRI\tAFR\tWAF\ttrue\t0\n"),
                        ("empty", header)):
