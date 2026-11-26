@@ -1,0 +1,6 @@
+Sites of the .snp file: 223; on GRCh38: 57
+  dropped, alleles not two different bases: 2
+  dropped, moves to another chromosome: 18
+  dropped, neither allele is the GRCh38 base: 59
+  dropped, no single place on GRCh38: 84
+  dropped, not an autosome: 3

@@ -1,0 +1,5 @@
+  PGS000001: 4 GRCh38 rows, 1 on chrX scored, 1 off the autosomes dropped (strand check: 0 rows agree with the reference, 0 flipped) (label from the file)
+  PGS000003: 7 GRCh38 rows, 2 strand-ambiguous kept (strand check: 3 rows agree with the reference, 0 flipped), female only (Strand)
+  PGS000013: 4 GRCh38 rows, 1 off the autosomes dropped, 1 strand-ambiguous dropped, strand check failed (strand check: 0 rows agree with the reference, 0 flipped) (label from the file)
+  PGS000015: 8 GRCh38 rows, 1 on chrX scored (strand check: 1 rows agree with the reference, 0 flipped) (label from the file)
+  PGS000018: 1 GRCh38 rows (strand check: 0 rows agree with the reference, 0 flipped) (Coronary artery disease)

@@ -1,0 +1,3 @@
+  clinvar: clinvar_chr.vcf.gz (2026-10-05)
+  gnomad: gnomad.chrM.vcf.bgz
+  7 chrM alleles: 3 with a ClinVar record, 2 in gnomAD

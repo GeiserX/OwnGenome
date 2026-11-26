@@ -1,0 +1,10 @@
+== chr7:600: chr7:600 (GRCh38; from position)
+  genotype: G/A (heterozygous; REF G, ALT A)
+  evidence: depth 4, genotype quality 5, QUAL 3.1
+  filter: RefCall (the caller did not pass this call; read it as uncertain)
+  variant: chr7:600 G>A G/A (heterozygous)
+    ClinVar CLNSIG: Uncertain significance
+    ClinVar CLNDN: not provided
+    (no VEP annotation on this record)
+  in the reports:
+  none of the reports mentions it

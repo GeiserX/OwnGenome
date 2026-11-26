@@ -1,0 +1,17 @@
+metric	value
+status	assessed
+message	.
+depth	30.0
+het_sites	2090000
+phased_het_sites	2068000
+het_per_10mb	9500
+analysed_mb	2200.0
+chromosomes	chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22
+call_rate	0.9990
+baf_auto	0.0010
+floor_read	0.011
+floor_min	0.05
+floor	0.050
+calls_mocha	0
+calls_reported	0
+phasing	beagle

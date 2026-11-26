@@ -1,0 +1,7 @@
+rsid	chrom	pos37	reason
+i7001	1	3000	no rsID (a 23andMe internal id)
+rs12	1	4000	not in dbSNP (merged or withdrawn)
+rs13	1	5000	not an SNV in dbSNP
+rs14	1	6000	more than one GRCh38 position in dbSNP
+rs15	2	7000	on chromosome 3 in GRCh38
+rs16	1	8000	its GRCh37 base is not a dbSNP allele on either strand

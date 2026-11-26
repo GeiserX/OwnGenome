@@ -1,0 +1,1 @@
+ERROR: yd has no positions_ftdna_hg38.txt and no positions_yfull_hg38.txt: install the current Y tree with scripts/setup.sh --yleaf-data <genome_dir>

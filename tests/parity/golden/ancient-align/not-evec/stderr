@@ -1,0 +1,1 @@
+ERROR: stats.tsv is not a smartpca .evec file (no #eigvals: line or no rows)

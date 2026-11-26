@@ -1,0 +1,6 @@
+== chrX:1500: chrX:1500 (GRCh38; from position)
+  genotype: ref (homozygous reference, inside the reference block chrX:1001-2000)
+  evidence: lowest depth in the block 9
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  none of the reports mentions it

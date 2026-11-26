@@ -1,0 +1,40 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: SINGLE_POSITION_REF
+Date: 2026-11-25
+Source: PharmCAT  report (single-position-ref.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP4F2       Unknown/Unknown                No Result
+VKORC1       Unknown/Unknown                No Result
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  CYP4F2 -- No Result (not callable from available data)
+  VKORC1 -- No Result (not callable from available data)
+
+Single-Position Fallback (not a PharmCAT call):
+------------------------------------------------------------------------
+
+  PharmCAT has no result for CYP4F2; single-position fallback, not a PharmCAT call: rs2108622 reads C/C, no copy of the *3 variant (T, p.V433M). The CPIC warfarin rule for this position does not apply.
+  VKORC1 -- PharmCAT has no result; rs9923231 reads C/A, not two of C and T: not callable.
+  Read from the genotype PharmCAT lists at the position in its report.json. Confirm
+  it before acting on it: PharmCAT itself made no call for the gene.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

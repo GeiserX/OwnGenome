@@ -1,0 +1,124 @@
+== rs2002: chr7:150 (GRCh38; from the consumer site table (dbSNP positions))
+  genotype: A/A (homozygous reference, inside the reference block chr7:100-200)
+  evidence: lowest depth in the block 31, genotype quality 50
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  Traits panel (step 42) (stale: from an earlier run):
+    - rsid=rs2002, gene=GENEB, genotype=A/A, reading=synthétique xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
+
+== chr7:250: chr7:250 (GRCh38; from position as given)
+  genotype: C/T (heterozygous; REF C, ALT T)
+  evidence: depth 33, genotype quality 40, QUAL 42.5
+  variant: chr7:250 C>T C/T (heterozygous)
+    gene: GENEA
+    consequence: missense_variant, splice_region_variant
+    impact: MODERATE
+    HGVSc: ENST1:c.10C>T
+    HGVSp: ENSP1:p.Arg4Cys
+    known as: rs1001, COSV1
+    ClinVar (pipeline's ClinVar file): Pathogenic
+    ClinVar review status: criteria provided, multiple submitters
+    clinical significance (VEP cache): pathogenic, likely pathogenic
+    gnomAD genomes AF: 0.0003
+  in the reports:
+  PharmCAT (step 07):
+    - gene=GENEA, diplotype=*1/*2, phenotype=Intermediate, activity=1.0, alleles=*1,*2,3, calls=a: x; b: 2
+  many (step 99):
+    - gene=GENEA, diplotype=*1/*0, score=0.0, ok=True
+    - gene=GENEA, diplotype=*1/*1, score=0.1, ok=False
+    - gene=GENEA, diplotype=*1/*2, score=0.2, ok=True
+    - gene=GENEA, diplotype=*1/*3, score=0.30000000000000004, ok=False
+    - gene=GENEA, diplotype=*1/*4, score=0.4, ok=True
+    - gene=GENEA, diplotype=*1/*5, score=0.5, ok=False
+    - gene=GENEA, diplotype=*1/*6, score=0.6000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*7, score=0.7000000000000001, ok=False
+    - gene=GENEA, diplotype=*1/*8, score=0.8, ok=True
+    - gene=GENEA, diplotype=*1/*9, score=0.9, ok=False
+    - gene=GENEA, diplotype=*1/*10, score=1.0, ok=True
+    - gene=GENEA, diplotype=*1/*11, score=1.1, ok=False
+    - gene=GENEA, diplotype=*1/*12, score=1.2000000000000002, ok=True
+    - gene=GENEA, diplotype=*1/*13, score=1.3, ok=False
+    - gene=GENEA, diplotype=*1/*14, score=1.4000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*15, score=1.5, ok=False
+    - gene=GENEA, diplotype=*1/*16, score=1.6, ok=True
+    - gene=GENEA, diplotype=*1/*17, score=1.7000000000000002, ok=False
+    - gene=GENEA, diplotype=*1/*18, score=1.8, ok=True
+    - gene=GENEA, diplotype=*1/*19, score=1.9000000000000001, ok=False
+    - ... and 3 more in many/table.tsv
+  Prose (step None):
+    - gene=SMN exon 7-8 deletion (GENEZ), rsids=rs1001,x
+
+== GENEZ: chr7:640-660 (GRCh38; GENCODE 50 (GENEZ))
+  gVCF: 2 of 21 bases have a genotype call (9.5%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chr7:650 T>G G/G (homozygous; no rsID; depth 40, genotype quality 50, QUAL 50)
+      gene: GENEZ
+      consequence: intron_variant
+      impact: MODIFIER
+      gnomAD genomes AF: 0.5
+  in the reports:
+  Prose (step None):
+    - gene=SMN exon 7-8 deletion (GENEZ), rsids=rs1001,x
+
+
+
+== GENEX: chrX:900-1100 (GRCh38; GENCODE 50 (GENEX))
+  gVCF: 101 of 201 bases have a genotype call (50.2%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chrX:1000 G>A A (hemizygous; rs4004,rs4005; depth 12, QUAL 44)
+      gene: GENEX
+      consequence: synonymous_variant
+      impact: LOW
+      gnomAD genomes AF: 1e-05
+  in the reports:
+  none of the reports mentions GENEX
+
+== GENEX: chrY:900-1100 (GRCh38; GENCODE 50 (GENEX))
+  gVCF: 0 of 201 bases have a genotype call (0.0%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - none: the sample matches the reference wherever the gene has a call
+  in the reports:
+  none of the reports mentions GENEX
+
+== rs1001: chr7:250 (GRCh38; from the annotated VCF (a variant called in this sample))
+  genotype: C/T (heterozygous; REF C, ALT T)
+  evidence: depth 33, genotype quality 40, QUAL 42.5
+  variant: chr7:250 C>T C/T (heterozygous)
+    gene: GENEA
+    consequence: missense_variant, splice_region_variant
+    impact: MODERATE
+    HGVSc: ENST1:c.10C>T
+    HGVSp: ENSP1:p.Arg4Cys
+    known as: rs1001, COSV1
+    ClinVar (pipeline's ClinVar file): Pathogenic
+    ClinVar review status: criteria provided, multiple submitters
+    clinical significance (VEP cache): pathogenic, likely pathogenic
+    gnomAD genomes AF: 0.0003
+  in the reports:
+  PharmCAT (step 07):
+    - gene=GENEA, diplotype=*1/*2, phenotype=Intermediate, activity=1.0, alleles=*1,*2,3, calls=a: x; b: 2
+  many (step 99):
+    - gene=GENEA, diplotype=*1/*0, score=0.0, ok=True
+    - gene=GENEA, diplotype=*1/*1, score=0.1, ok=False
+    - gene=GENEA, diplotype=*1/*2, score=0.2, ok=True
+    - gene=GENEA, diplotype=*1/*3, score=0.30000000000000004, ok=False
+    - gene=GENEA, diplotype=*1/*4, score=0.4, ok=True
+    - gene=GENEA, diplotype=*1/*5, score=0.5, ok=False
+    - gene=GENEA, diplotype=*1/*6, score=0.6000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*7, score=0.7000000000000001, ok=False
+    - gene=GENEA, diplotype=*1/*8, score=0.8, ok=True
+    - gene=GENEA, diplotype=*1/*9, score=0.9, ok=False
+    - gene=GENEA, diplotype=*1/*10, score=1.0, ok=True
+    - gene=GENEA, diplotype=*1/*11, score=1.1, ok=False
+    - gene=GENEA, diplotype=*1/*12, score=1.2000000000000002, ok=True
+    - gene=GENEA, diplotype=*1/*13, score=1.3, ok=False
+    - gene=GENEA, diplotype=*1/*14, score=1.4000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*15, score=1.5, ok=False
+    - gene=GENEA, diplotype=*1/*16, score=1.6, ok=True
+    - gene=GENEA, diplotype=*1/*17, score=1.7000000000000002, ok=False
+    - gene=GENEA, diplotype=*1/*18, score=1.8, ok=True
+    - gene=GENEA, diplotype=*1/*19, score=1.9000000000000001, ok=False
+    - ... and 3 more in many/table.tsv
+  Prose (step None):
+    - gene=SMN exon 7-8 deletion (GENEZ), rsids=rs1001,x
+

@@ -1,0 +1,1 @@
+ERROR: empty.bed holds no interval on chromosome 22: a mask that matches nothing would make every site unknown

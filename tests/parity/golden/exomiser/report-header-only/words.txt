@@ -1,0 +1,3 @@
+Symptoms searched: Brachydactyly (HP:0001156).
+No gene passed Exomiser's filters with a variant that fits a mode of inheritance.
+A ranking to bring to a clinical geneticist, not a diagnosis. A high score means a rare variant, predicted to be damaging, in a gene linked to symptoms like the ones given; it does not show that the variant causes them. A low score or an empty list does not rule a genetic cause out: this search reads coding and splice variants against the terms given, and not structural variants, repeat expansions, mitochondrial heteroplasmy or variants outside genes.

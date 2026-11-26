@@ -1,0 +1,10 @@
+metric	value
+status	not assessed
+alpha_globin_genes	.
+estimate	4.00
+hba2_depth	30.0
+hba1_depth	30.0
+flank_left_depth	30.0
+flank_right_depth	30.0
+mapq0_share	0.010
+message	not assessed: reads of mapping quality 0 make up 1.0% of the depth over HBA1 and HBA2, so the aligner left out the reads that fit both genes (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM

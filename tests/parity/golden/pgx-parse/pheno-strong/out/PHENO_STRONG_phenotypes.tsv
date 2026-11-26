@@ -1,0 +1,3 @@
+Gene	Diplotype	Phenotype	Status	Phenoconverted_phenotype
+CYP2D6	*1/*2	Normal Metabolizer	normal	Poor Metabolizer (phenoconverted by paroxetine)
+CYP2C19	*1/*1	Normal Metabolizer	normal	not computed: fluconazole inhibits CYP2C19; CPIC has no CYP2C19 activity score

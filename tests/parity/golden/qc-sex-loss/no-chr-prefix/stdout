@@ -1,0 +1,16 @@
+  mosaic_sex: male
+  mosaic_sex_from: reads
+  mosaic_chrom: chrY
+  mosaic_depth_ratio: 0.351
+  mosaic_depth_ratio_expected: 0.5
+  mosaic_depth_blocks: 109
+  mosaic_loss_depth: 0.298
+  mosaic_loss_depth_low: 0.291
+  mosaic_loss_depth_high: 0.306
+  mosaic_x_het_sites: 
+  mosaic_loss_af: 
+  mosaic_loss_af_low: 
+  mosaic_loss_af_high: 
+  mosaic_floor: 0.100
+  mosaic_call: detected
+  mosaic_reason: the low end of the 95% range is above 10%: a share of the cells lost the Y

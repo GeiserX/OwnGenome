@@ -57,7 +57,7 @@ OwnGenome was called Personal-Genome-Pipeline until November 2026.
 - **Small variants:** SNPs and indels with DeepVariant; structural and copy-number variants with Manta, Delly and CNVpytor merged into one consensus set.
 - **Clinical screening:** known pathogenic variants from ClinVar, cancer predisposition panels with CPSR, VEP annotation with CADD, SpliceAI, REVEL and AlphaMissense, and slivar prioritisation of rare deleterious variants.
 - **Pharmacogenomics:** PharmCAT and pypgx star alleles (pypgx: 29 genes, 13 of them with copy number from the BAM), CYP2D6 structural alleles with Cyrius, CPIC dosing recommendations.
-- **Ancestry and lineage:** mitochondrial haplogroup and heteroplasmy, runs of homozygosity, ancestry placement against the 1000 Genomes panel (optional download), the Neanderthal and Denisovan segments you carry (optional download), polygenic risk scores for 15 conditions and traits.
+- **Ancestry and lineage:** mitochondrial haplogroup and heteroplasmy, runs of homozygosity, ancestry placement against the 1000 Genomes panel (optional download), the Neanderthal and Denisovan segments you carry (optional download), polygenic risk scores for 11 conditions and traits (4 more as an academic research opt-in).
 - **Everything else the reads hold:** clonal haematopoiesis (CHIP) in the blood, with the detection limit at your depth (opt-in), HLA type, repeat expansions at STRchive's 82 disease loci (Huntington's, Fragile X, ALS among them), telomere content, sex-chromosome check, coverage statistics, one HTML report and a MultiQC summary.
 
 <figure markdown="span">

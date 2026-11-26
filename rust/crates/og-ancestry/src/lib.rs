@@ -4,7 +4,7 @@
 //! - [`panel`]: `panel-map` writes the panel's sample table once, at setup;
 //!   `check-map` refuses a table given with `ANCESTRY_FINE_SAMPLE_MAP` that
 //!   has a group too small to model.
-//! - [`chroms`]: the chromosomes long enough for RFMix to paint.
+//! - [`chroms`]: the chromosomes with enough SNVs and span to paint.
 //! - [`report`]: the fractions table, the painting (BED and PNG) and the
 //!   plain-text summary.
 //! - [`freqs`]: each reference group's allele frequencies, counted at
@@ -22,7 +22,7 @@
 //! Each command writes what `bin/ancestry_fine_report.py` wrote (checked by
 //! `tests/parity`), with three deliberate changes: every output is written
 //! under a temporary name and renamed into place only once every input has
-//! been read and checked, so a failure leaves no partial ADMIXTURE input; a
+//! been read and checked, so a failure leaves no partial output; a
 //! missing or malformed input is an `ERROR:` line and exit 1, never a
 //! traceback; and the PNG's pixels are the contract, not its compressed
 //! bytes.
@@ -227,12 +227,10 @@ pub const COLOURS: &[(&str, [u8; 3])] = &[
     ("OCE", [86, 180, 233]),
 ];
 
-/// The fewest unrelated reference people a group needs to be modelled.
-/// RFMix fits its CRF weight on people it simulates from `floor(n / 10) +
-/// 1` of each group's references and leaves those parents out of the
-/// reference meanwhile, so a group of one has no reference haplotype at all
-/// and RFMix can segfault; two is its hard floor. We ask for 10 because a
-/// group is meant to stand for a population.
+/// The fewest unrelated reference people a group needs to be modelled. A
+/// group of fewer than 10 people does not stand for a population: its
+/// allele frequencies would be those of a few families. The painter alone
+/// needs much less, one reference haplotype of each group.
 pub const MIN_REFERENCES: usize = 10;
 
 /// Why a command stopped: printed as `ERROR: <message>`, exit 1.

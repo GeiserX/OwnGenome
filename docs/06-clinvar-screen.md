@@ -15,7 +15,7 @@ ClinVar is the most widely used public database of clinically reported variants.
 
 ## Docker Image
 - `BCFTOOLS_IMAGE`
-- `PYPGX_IMAGE`, where `og cdna check` and `og cdna scan` run. `og` reads the BAM itself; the image stays so that CI can run the Python these replaced beside them (`OG_SHADOW`, [Rust tools](rust.md))
+- `PYPGX_IMAGE`, where `og cdna check` and `og cdna scan` run. `og` reads the BAM itself. See [Rust tools](rust.md).
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 

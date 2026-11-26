@@ -1,0 +1,14 @@
+metric	value
+status	possible
+confidence	Low_Precision
+variant	59dupC
+flag	Not flagged
+alt_depth	416
+region_depth	7110
+depth_score	0.0585
+vntr_mean_depth	1075.32
+vntr_uncovered_pct	0.00
+coverage_qc	PASS
+sensitivity	Mean depth over the MUC1 VNTR: 1075x. At that depth (at 100x or more) VNtyper found the known variant in 160 of 161 runs (99%), in VNtyper 2.0.47's downsampling of 42 confirmed positive GRCh38 exomes (repeated runs, not independent tests).
+message	VNtyper calls a MUC1 VNTR frameshift (59dupC), Kestrel confidence Low_Precision, with caveats (low precision).
+advice	A research call, not a diagnosis. VNtyper's authors ask for confirmation by another method: SNaPshot for dupC, long-read sequencing for other variants. ADTKD-MUC1 is dominant: discuss it with a nephrologist or a clinical geneticist.

@@ -1,0 +1,6 @@
+== chr7:405: chr7:405 (GRCh38; from position)
+  genotype: no call (reference block chr7:400-410 has no genotype)
+  evidence: lowest depth in the block 0, genotype quality 0
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  none of the reports mentions it

@@ -1,0 +1,3 @@
+HLA-A: indeterminate (not passed; the second caller was asked for (HLA_QC), but there is no OptiType result: step 08 did not finish it)
+HLA-B: indeterminate (not passed; the second caller was asked for (HLA_QC), but there is no OptiType result: step 08 did not finish it)
+CYP2D6: indeterminate (not passed; no caller made a call)

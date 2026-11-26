@@ -1,0 +1,9 @@
+metric	value
+status	called
+reason	.
+chrm_reads	331380
+chrm_length	16569
+autosomal_reads	220000000
+autosomal_length	1100000000
+depth_ratio	100.0
+mtdna_copies	200.0

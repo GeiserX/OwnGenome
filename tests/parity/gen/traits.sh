@@ -4,21 +4,6 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../../.." && pwd)
 cp -f "$root/assets/traits.tsv" traits.tsv
 cp -f "$root/assets/genotype_rules.tsv" rules.tsv
-cat > oracle.sh <<'EOF'
-prog=$1; shift
-mode=$1; shift
-case "$mode" in
- table) exec python3 "$prog" "$@" ;;
- check) exec python3 "$prog" "${@/--table/--check-table}" ;;
- phase-sites)
-   args=()
-   while [ "$#" -gt 0 ]; do
-     if [ "$1" = --out ]; then args+=(--phase-sites "$2"); shift 2
-     else args+=("$1"); shift; fi
-   done
-   exec python3 "$prog" "${args[@]}" ;;
-esac
-EOF
 : > empty.tsv
 awk -F'\t' '$1 !~ /^#/ && $1 != "chrom" {print $1 "\t" $2 "\t" $5 "\t" $6 "\t" $5 "/" $5 "\t40"}' traits.tsv > reference.tsv
 for a in 0 1 2; do

@@ -1,0 +1,16 @@
+system	name	variant	rsid	chrom	pos	ref	alt	status	alt_copies	depth	note
+RhD	RHD_PSI_DUP	RHD c.487-19_504dup		chr1	25300925	T	TCTTACTGGGTTTTATTGCAGACAGACTACCACATGAA	covered	0	43.0	
+RhD	RHD_PSI_609	RHD c.609G>A	rs114032679	chr1	25301068	G	A	covered	0	42.0	
+RhD	RHD_FLANK_UP	flank 12 kb upstream of RHD, outside the RHD deletion		chr1	25200000-25260000			depth	.	40.9	
+RhD	RHD_FLANK_DOWN	flank downstream of RHD (TMEM50A), outside the RHD deletion		chr1	25335000-25360000			depth	.	38.4	
+RhD	RHD_GENE	RHD, first to last base (ENST00000328664)		chr1	25272393-25330445			depth	1.92	38.5	copies = 2 x depth / flank depth
+RhD	RHD_EX1	RHD exon 1		chr1	25272509-25272695			depth	2.11	42.3	copies = 2 x depth / flank depth
+RhD	RHD_EX2	RHD exon 2		chr1	25284573-25284759			depth	3.43	68.8	copies = 2 x depth / flank depth
+RhD	RHD_EX3	RHD exon 3		chr1	25290641-25290791			depth	1.88	37.7	copies = 2 x depth / flank depth
+RhD	RHD_EX4	RHD exon 4		chr1	25300946-25301093			depth	2.02	40.5	copies = 2 x depth / flank depth
+RhD	RHD_EX5	RHD exon 5		chr1	25301520-25301686			depth	1.91	38.4	copies = 2 x depth / flank depth
+RhD	RHD_EX6	RHD exon 6		chr1	25303322-25303459			depth	2.01	40.4	copies = 2 x depth / flank depth
+RhD	RHD_EX7	RHD exon 7		chr1	25306596-25306729			depth	2.53	50.8	copies = 2 x depth / flank depth
+RhD	RHD_EX8	RHD exon 8		chr1	25317000-25317079			depth	0.32	6.4	copies = 2 x depth / flank depth
+RhD	RHD_EX9	RHD exon 9		chr1	25321889-25321962			depth	1.25	25.1	copies = 2 x depth / flank depth
+RhD	RHD_EX10	RHD exon 10		chr1	25328898-25330445			depth	1.84	36.9	copies = 2 x depth / flank depth

@@ -1,7 +1,7 @@
 //! `report`: the step's outputs, from the `.Q` and the bootstrap replicates
 //! of each level (`og ancestry-fine project`, folder `--fractions`; the older
-//! name `--admixture` still works) and RFMix's `.msp.tsv` of each
-//! chromosome.
+//! name `--admixture` still works) and the `.msp.tsv` of each chromosome
+//! (`og ancestry-fine paint`).
 //!
 //! - `<S>_ancestry_fine.tsv`: each group's fraction with its bootstrap
 //!   standard error and 2.5 to 97.5 percentile range, each continental
@@ -208,7 +208,7 @@ pub struct Segment {
     pub code: String,
 }
 
-/// RFMix's `.msp.tsv`: the code of each group number, and the windows as
+/// The painting's `.msp.tsv`: the code of each group number, and the windows as
 /// (chrom, start, end, haplotype 1's number, haplotype 2's number).
 type Msp = (HashMap<i64, String>, Vec<(String, i64, i64, i64, i64)>);
 
@@ -254,7 +254,7 @@ fn read_msp(path: &Path) -> Result<Msp> {
     Ok((codes, segs))
 }
 
-/// The painting: RFMix's windows, neighbouring windows of one haplotype
+/// The painting: the `.msp.tsv` windows, neighbouring windows of one haplotype
 /// with the same group merged, sorted by chromosome, start and haplotype.
 pub fn painting(paint_dir: &Path) -> Result<Vec<Segment>> {
     let mut names: Vec<String> = std::fs::read_dir(paint_dir)
@@ -730,7 +730,7 @@ mod tests {
             "samples.tsv",
             "sample\tpopulation\tcontinent\tregion\treference\tpaint\ni1\tIBS\tWEA\tIBE\t1\t1\nt1\tTSI\tWEA\tITA\t1\t1\np0\tPapuanHighlands\tOCE\tOCE\t0\t0\n",
         );
-        d.put("admixture/S_continent.3.Q", "0.05 0.9 0.05\n");
+        d.put("fractions/S_continent.3.Q", "0.05 0.9 0.05\n");
         let boot: String = (0..11)
             .map(|i| {
                 format!(
@@ -740,15 +740,15 @@ mod tests {
                 )
             })
             .collect();
-        d.put("admixture/S_continent.boot.Q", &boot);
-        d.put("admixture/S_region.2.Q", "0.6 0.4\n");
+        d.put("fractions/S_continent.boot.Q", &boot);
+        d.put("fractions/S_region.2.Q", "0.6 0.4\n");
         d.put(
             "paint/chr20.msp.tsv",
             "#Subpopulation order/codes: AFR=0\tEAS=1\tWEA=2\n#chm\tspos\tepos\tsgpos\tegpos\tn snps\tS.0\tS.1\n\
              chr20\t1000\t5000\t1\t2\t10\t2\t2\nchr20\t5000\t9000\t2\t3\t10\t2\t0\nchr20\t9000\t11000\t3\t4\t10\t2\t0\n",
         );
         d.put("paint/failed.txt", "chr19\n");
-        (model, d.path("admixture"), d.path("paint"))
+        (model, d.path("fractions"), d.path("paint"))
     }
 
     #[test]
@@ -953,7 +953,7 @@ mod tests {
             "{err}"
         );
         assert!(!d.0.join("out").exists(), "nothing is written");
-        d.put("admixture/S_region.2.Q", "0.6 0.4 0.1\n");
+        d.put("fractions/S_region.2.Q", "0.6 0.4 0.1\n");
         let (rc, _, err) = args(&adm);
         assert_eq!(rc, 1);
         assert!(

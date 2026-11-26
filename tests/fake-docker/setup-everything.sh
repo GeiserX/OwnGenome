@@ -9,7 +9,7 @@ mkdir -p "${COPY}/scripts" "${COPY}/rust" "${COPY}/assets"
 ln -s "${REPO_ROOT}/scripts/lib" "${COPY}/scripts/lib"
 ln -s "${REPO_ROOT}/scripts/ci" "${COPY}/scripts/ci"
 ln -s "${REPO_ROOT}/bin" "${COPY}/bin"
-cp "${REPO_ROOT}/assets/everything.tsv" "${COPY}/assets/"
+cp "${REPO_ROOT}/assets/everything.tsv" "${REPO_ROOT}/assets/pgs_scores.tsv" "${COPY}/assets/"
 cp "${REPO_ROOT}/versions.env" "${COPY}/versions.env"
 cat > "${COPY}/rust/og.sh" <<'OG'
 #!/usr/bin/env bash
@@ -154,7 +154,7 @@ sed -n 's/^=== Everything installer: \(.*\) ===$/\1/p' "${CASE_WORK}/partial.out
 awk -F'\t' '$1=="setup" {print $2}' "${COPY}/assets/everything.tsv" > "${CASE_WORK}/expected"
 diff -u "${CASE_WORK}/expected" "${CASE_WORK}/ran"
 sed -n 's/^legacy //p' "$FAKE_DOCKER_LOG" > "${CASE_WORK}/legacy-ran"
-awk '$0 !~ /^--(cnvpytor-data|pypgx-data|annotation-scores|somatic-data|bwa-index)$/' "${CASE_WORK}/expected" > "${CASE_WORK}/legacy-expected"
+awk '$0 !~ /^--(cnvpytor-data|pypgx-data|annotation-scores|somatic-data|bwa-index|prs-academic)$/' "${CASE_WORK}/expected" > "${CASE_WORK}/legacy-expected"
 diff -u "${CASE_WORK}/legacy-expected" "${CASE_WORK}/legacy-ran"
 
 for name in CADD 'SpliceAI precomputed scores' REVEL AlphaMissense Cyrius PGS000014 PGS000016 PGS000017 PGS000027; do
@@ -175,6 +175,11 @@ for ext in amb ann bwt pac sa; do
 done
 [ -s "${G}/reference/cnvpytor/gc_hg38.pytor" ] || fail "CNVpytor did not install"
 [ -s "${G}/reference/pypgx-bundle/commit" ] || fail "PyPGx did not install"
+# --prs-academic runs its real installer: the four academic-only PGS scores, and no other score.
+for id in PGS000014 PGS000016 PGS000017 PGS000027; do
+  [ -s "${G}/prs_scores/${id}.txt.gz" ] || fail "--prs-academic did not install ${id}"
+done
+[ "$(find "${G}/prs_scores" -name 'PGS*.txt.gz' | wc -l)" -eq 4 ] || fail "--prs-academic installed other scores: $(ls "${G}/prs_scores")"
 docker_log_has '^wget .*/revel-v1.3_all_chromosomes.zip .*\.part$' 'REVEL did not use resumable fake wget'
 
 : > "$FAKE_DOCKER_LOG"

@@ -28,6 +28,10 @@ mod contains;
 mod cut_haplotype;
 mod hba_tiles;
 mod mito_sam;
+mod parity_clinvar;
+mod parity_consumer;
+mod parity_ibd;
+mod parity_vep;
 pub mod rfc1;
 mod str_extra;
 mod tas2r38;
@@ -38,7 +42,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 /// The usage lines of these kinds, one a line.
-pub const USAGE: &str = "       og dev fixture append-n SRC OUT CONTIG LENGTH\n       og dev fixture rfc1 KIND OUT.sam [--samd12 UNIT]\n       og dev fixture str-extra REF.fa HET_NAME HET.sam HOM_NAME HOM.sam\n       og dev fixture tas2r38 REF_DIR GENOME_DIR\n       og dev fixture mito-sam --fasta FA --header SAM --sample S --out OUT [--depth X] [--deletion FIRST-LAST] [--level F]\n       og dev fixture hba-tiles FASTA HEADER SAMPLE OUT\n       og dev fixture cut-haplotype START END FQ NAMES < SAM\n       og dev fixture contains FILE PART\n";
+pub const USAGE: &str = "       og dev fixture append-n SRC OUT CONTIG LENGTH\n       og dev fixture rfc1 KIND OUT.sam [--samd12 UNIT]\n       og dev fixture str-extra REF.fa HET_NAME HET.sam HOM_NAME HOM.sam\n       og dev fixture tas2r38 REF_DIR GENOME_DIR\n       og dev fixture mito-sam --fasta FA --header SAM --sample S --out OUT [--depth X] [--deletion FIRST-LAST] [--level F]\n       og dev fixture hba-tiles FASTA HEADER SAMPLE OUT\n       og dev fixture cut-haplotype START END FQ NAMES < SAM\n       og dev fixture contains FILE PART\n       og dev fixture parity-vep-500k OUT.vcf\n       og dev fixture parity-consumer GVCF.gz SITES.tsv.gz\n       og dev fixture parity-clinvar FASTA FAI VCF\n       og dev fixture parity-ibd DIRECTORY\n";
 
 /// What a kind ended in: written, a usage error, or a failure.
 pub enum Fail {
@@ -63,6 +67,10 @@ pub fn cli(kind: &str, args: &[String], out: &mut dyn Write, err: &mut dyn Write
         "hba-tiles" => hba_tiles::run(args),
         "cut-haplotype" => cut_haplotype::run(args, &mut io::stdin().lock(), out, err),
         "contains" => return Some(contains::run(args, err)),
+        "parity-vep-500k" => parity_vep::run(args),
+        "parity-consumer" => parity_consumer::run(args),
+        "parity-clinvar" => parity_clinvar::run(args),
+        "parity-ibd" => parity_ibd::run(args),
         _ => return None,
     };
     Some(

@@ -1,0 +1,16 @@
+4	chr1	100	C	T	het	G0,H0	Likely pathogenic	practice guideline	.	30	50	no
+3	chr1	101	C	T	het	G1,H1	Likely pathogenic	reviewed by expert panel	.	9	50	yes
+2	chr1	102	C	T	hom	G2,H2	Likely pathogenic	criteria provided, multiple submitters, no conflicts	.	10	29	yes
+1	chr1	103	C	T	one copy, other copy not called ref (1/.)	G3,H3	Likely pathogenic	criteria provided, single submitter	.	.	.	no
+1	chr1	104	C	T	one copy, other copy not called ref (.|2)	G4,H4	Likely pathogenic	criteria provided, conflicting classifications	.	.	.	no
+1	chr1	105	C	T	2/2	G5,H5	Likely pathogenic	criteria provided, conflicting interpretations	.	.	.	no
+0	chr1	106	C	T	0/0	G6,H6	Likely pathogenic	no assertion criteria provided	.	9	30	yes
+0	chr1	107	C	T	01/1	G7,H7	Likely pathogenic	no classification provided	.	.	.	no
+0	chr1	108	C	T	het	G8,H8	Likely pathogenic	Practice guideline	.	.	40	no
+0	chr1	109	C	T	12	.	Pathogenic	.	.	12	.	no
+3	chr1	200	AG	A	het	.	.	reviewed by expert panel	combined allele of chr1:200 A>G + chr1:203 C>T; unphased, so the parts may sit on different haplotypes	.	.	no
+0	chr1	201	G	A	het	.	Pathogenic	.	part of a combined allele: chr1:200 AG>A, chr1:199 TG>T	.	.	no
+0	chr1	202	G	A	het	Z	Benign	.	possibly one allele with chr1:209 C>A: check ClinVar for a combined record	.	.	no
+0	chr1	203	G	A	0/2	.	.	.	combined allele of chr1:1 A> + x: >; unphased, so the parts may sit on different haplotypes	.	.	no
+0	chr1	204	G	A		.	.	.	.	.	.	no
+0	chr1	205	G			.	.	.	.	.	.	no

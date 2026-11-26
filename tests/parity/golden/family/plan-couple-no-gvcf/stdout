@@ -1,0 +1,5 @@
+family_b joint_call       waiting  partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b trio_phasing     waiting  partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b inheritance_map  waiting  partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b shared_segments  waiting  partner_y has no gVCF yet: run run-all.sh partner_y first
+family_b couple_carrier   runs     carrier screen of partner_x and partner_y

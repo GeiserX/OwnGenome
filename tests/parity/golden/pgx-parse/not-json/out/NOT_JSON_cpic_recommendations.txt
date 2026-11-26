@@ -1,0 +1,9 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: NOT_JSON
+Date: 2026-11-25
+
+!! PARSING FAILED -- RESULTS CANNOT BE TRUSTED !!
+Could not read not-json.json: Expecting value: line 1 column 1 (char 0)
+This is NOT a clean result. Read the PharmCAT HTML report directly,
+and report this as a pipeline bug (likely a PharmCAT output-format change).

@@ -1,0 +1,13 @@
+# STRchive t1 repeat ranges, one row per ExpansionHunter locus (bin/strchive_convert.py)
+locus	source_id	normal_max	intermediate_min	intermediate_max	pathogenic_min	no_thresholds
+HTT	HD_HTT	26	27	35	36	
+EIEE1_ARX	EIEE1_ARX	16			20	
+PRTS_ARX	PRTS_ARX	12			20	
+SAMD12	FAME1_SAMD12	1			105	
+RFC1	CANVAS_RFC1	11			400	
+MUC1	MCKD1_MUC1					the reference repeat is 3734 bases, longer than 300: short reads cannot size it
+NOPATH	NOPATH_GENE					STRchive gives no pathogenic size
+GENE2	CONTRACT_GENE2					pathogenic from 8 units, below the benign maximum 12: a contraction, which Stranger does not grade
+GENE3	FLOAT_GENE3	10.0	11.5		40.0	
+GENE4	LOWER_GENE4	5			50	
+CFTR	CFTR_TG_T					read by its counts

@@ -1,0 +1,19 @@
+key	value
+sites	18
+called	11
+no_call	7
+from_reference_blocks	5
+from_variant_records	8
+reference_checked	9
+reference_mismatch	0
+template_sites	18
+table_dropped	0
+sex	female
+file_23andme	S_23andme_v5.zip
+file_ancestrydna	S_ancestrydna_layout.zip
+no_call: chrY site of a female sample	1
+no_call: filtered call	1
+no_call: inside a deletion or a longer allele	1
+no_call: no gVCF record	2
+no_call: no-call in the gVCF	1
+no_call: two alleles on a haploid site (chrM heteroplasmy, or male chrX/chrY)	1

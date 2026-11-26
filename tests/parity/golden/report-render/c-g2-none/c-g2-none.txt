@@ -1,0 +1,103 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+================================================================================
+
+################################################################################
+#  1. QUALITY: Can I trust this data?
+################################################################################
+
+## Variant Calling (DeepVariant)
+---
+  Total variants: 1
+  PASS variants:  1
+  SNPs: 1  Indels: 0
+  Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
+
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (neither step 35 nor step 35b ran)
+
+################################################################################
+#  6. TRAITS AND SCORES: What do studies say about my traits and risk scores?
+################################################################################
+
+## Traits Panel (step 42)
+---
+  Read: 1  No genotype at the position: 0  Other allele: 0
+  x (X rs1): A/A. r (PMID p)
+  Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how. Notes per row: traits/S_traits.tsv
+  Genotype rules (several sites read together; traits/S_genotype_rules.tsv):
+    kidney (APOL1 rs1): G0/G0. r (PMID 1)
+      With G2 (rs71785313): G0/G0 (no G2 call). G2 (rs71785313): no G2 deletion among the VCF's calls. No G1 and no G2 copy: no APOL1 kidney risk copy. No G2 deletion was called, but this VCF has no reference blocks, so a G2 copy at a position with no reads would not show.
+
+## Steps Not Run
+---
+  - Coverage (mosdepth)
+  - Gene callability (mosdepth)
+  - Sex check (indexcov)
+  - Sample identity and contamination (somalier, VerifyBamID2)
+  - Mosaic loss of chromosome Y or X
+  - ClinVar screen
+  - PharmCAT
+  - CPIC drug-gene recommendations
+  - pypgx
+  - Cyrius (CYP2D6)
+  - SMN1/SMN2 copy number (Parascopy, short reads)
+  - Paralog genes (Paraphase, PacBio HiFi)
+  - HLA typing (T1K)
+  - Polygenic risk scores
+  - Fine-grained ancestry
+  - Structural variants (Manta)
+  - Structural variants (Delly)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Structural variants, class 4 and 5 (AnnotSV)
+  - Repeat expansions (ExpansionHunter)
+  - Telomere content (TelomereHunter)
+  - Runs of homozygosity
+  - Mitochondrial haplogroup
+  - Y-chromosome haplogroup (Yleaf)
+  - Y placement on the current public tree
+  - Y-STR markers (HipSTR)
+  - Raw-data export (23andMe v5 layout)
+  - Blood groups (predicted)
+  - Lp(a): LPA KIV-2 repeat count
+  - MUC1 VNTR frameshifts (VNtyper)
+  - Locityper second opinion at hard loci
+  - Mitochondrial variants
+  - Archaic ancestry (IBDmix)
+  - Ancient populations (AADR PCA)
+  - Viral DNA in the unmapped reads
+  - Symptom-driven ranking (Exomiser)
+  - Clonal haematopoiesis (CHIP)
+  - Mobile element insertions (MEGAnE)
+  - Mosaic chromosomal alterations (MoChA)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

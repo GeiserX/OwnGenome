@@ -374,10 +374,8 @@ rm -f "$SITES_POS" "${DEEP_TSV}.vcf" "${DEEP_TSV}.gvcf"
 # It reads only the reads at the hits. Then og cdna scan reads the reads over
 # every exon and lists the loci with reads across two or more exon junctions
 # (the same contamination, or a processed retrocopy, where no ClinVar hit
-# is). og reads the BAM itself (docs/rust.md). It runs from OUTPUT_DIR and
-# writes relative paths, so bin/og's shadow mode (OG_SHADOW, set only in CI:
-# tests/parity/README.md) can run the Python it replaced beside it, which
-# needs the pysam of PYPGX_IMAGE.
+# is). og reads the BAM itself (docs/rust.md) and writes relative paths
+# from OUTPUT_DIR.
 if [ ! -f "$BAM" ] || [ ! -f "${BAM}.bai" ]; then
   CDNA_ARGS=(--skip "no BAM (${ALIGN_DIR:-aligned}/${SAMPLE}_sorted.bam with its .bai)")
 elif [ ! -s "$EXONS_BED" ]; then
@@ -388,10 +386,10 @@ fi
 SCAN_ARGS=("${CDNA_ARGS[@]}")
 [ "${CDNA_SCAN:-true}" = false ] && SCAN_ARGS=(--skip "CDNA_SCAN=false")
 run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" \
-  -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
   /pgp-bin/og cdna check --hits "$(cpath "$HITS_TSV")" --out "${CDNA_TSV##*/}.part" \
   --construct /pgp-assets/construct_variants.tsv "${CDNA_ARGS[@]}"
-run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
   /pgp-bin/og cdna scan --out "${SCAN_TSV##*/}.part" "${SCAN_ARGS[@]}"
 mv "${SCAN_TSV}.part" "$SCAN_TSV"
 mv "${CDNA_TSV}.part" "$CDNA_TSV"

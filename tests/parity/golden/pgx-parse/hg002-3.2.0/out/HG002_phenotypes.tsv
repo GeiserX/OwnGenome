@@ -1,0 +1,24 @@
+Gene	Diplotype	Phenotype	Status
+ABCG2	Unknown/Unknown	No Result	not called
+CACNA1S	Unknown/Unknown	No Result	not called
+CFTR	Unknown/Unknown	No Result	not called
+CYP2B6	*2/*5 (1 of 4 possible)	ambiguous: one of Normal Metabolizer, Intermediate Metabolizer, Indeterminate	ambiguous
+CYP2C19	*1/*1 (1 of 528 possible)	ambiguous: one of Normal Metabolizer, Intermediate Metabolizer, Likely Intermediate Metabolizer, Indeterminate, Rapid Metabolizer, ...	ambiguous
+CYP2C9	Unknown/Unknown	No Result	not called
+CYP2D6	Unknown/Unknown	No Result	not called
+CYP3A4	Unknown/Unknown	No Result	not called
+CYP3A5	Unknown/Unknown	No Result	not called
+CYP4F2	Unknown/Unknown	No Result	not called
+DPYD	Unknown/Unknown	No Result	not called
+G6PD	Unknown	No Result	not called
+HLA-A	Unknown/Unknown	No Result	not called
+HLA-B	Unknown/Unknown	No Result	not called
+IFNL3	Unknown/Unknown	No Result	not called
+MT-RNR1	Unknown	No Result	not called
+NAT2	Unknown/Unknown	No Result	not called
+NUDT15	Unknown/Unknown	No Result	not called
+RYR1	Unknown/Unknown	No Result	not called
+SLCO1B1	Unknown/Unknown	No Result	not called
+TPMT	Unknown/Unknown	No Result	not called
+UGT1A1	Unknown/Unknown	No Result	not called
+VKORC1	Unknown/Unknown	No Result	not called

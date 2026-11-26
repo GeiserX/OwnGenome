@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="754" font-family="sans-serif" font-size="11">
+<rect width="100%" height="100%" fill="#16181c"/>
+<text x="10" y="20" fill="#e6e6e6" font-size="14">DAD: which copy of each chromosome came from whom (GRCh38)</text>
+<text x="10" y="52" fill="#e6e6e6">1</text>
+<rect x="60" y="40" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="50" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="40" width="818.7" height="9" fill="#3b6fa8"><title>paternal chr1:100-869200, GF, 3137 sites</title></rect>
+<rect class="seg" x="60.2" y="50" width="818.8" height="9" fill="#a84870"><title>maternal chr1:200-869400, GM, 3225 sites</title></rect>
+<text x="10" y="80" fill="#e6e6e6">2</text>
+<rect x="60" y="68" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="78" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="68" width="818.4" height="9" fill="#3b6fa8"><title>paternal chr2:300-869100, GF, 3102 sites</title></rect>
+<rect class="seg" x="60.1" y="78" width="819.0" height="9" fill="#a84870"><title>maternal chr2:100-869500, GM, 3256 sites</title></rect>
+<text x="10" y="108" fill="#e6e6e6">3</text>
+<rect x="60" y="96" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="106" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.2" y="96" width="818.8" height="9" fill="#3b6fa8"><title>paternal chr3:200-869400, GF, 3218 sites</title></rect>
+<rect class="seg" x="60.1" y="106" width="819.0" height="9" fill="#a84870"><title>maternal chr3:100-869500, GM, 3166 sites</title></rect>
+<text x="10" y="136" fill="#e6e6e6">4</text>
+<rect x="60" y="124" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="134" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.7" y="124" width="818.3" height="9" fill="#3b6fa8"><title>paternal chr4:700-869400, GF, 3177 sites</title></rect>
+<rect class="seg" x="60.3" y="134" width="818.8" height="9" fill="#a84870"><title>maternal chr4:300-869500, GM, 3234 sites</title></rect>
+<text x="10" y="164" fill="#e6e6e6">5</text>
+<rect x="60" y="152" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="162" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="152" width="818.7" height="9" fill="#3b6fa8"><title>paternal chr5:300-869400, GF, 3122 sites</title></rect>
+<rect class="seg" x="60.2" y="162" width="818.7" height="9" fill="#a84870"><title>maternal chr5:200-869300, GM, 3109 sites</title></rect>
+<text x="10" y="192" fill="#e6e6e6">6</text>
+<rect x="60" y="180" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="190" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.6" y="180" width="818.5" height="9" fill="#3b6fa8"><title>paternal chr6:600-869500, GF, 3201 sites</title></rect>
+<rect class="seg" x="60.3" y="190" width="818.5" height="9" fill="#a84870"><title>maternal chr6:300-869200, GM, 3085 sites</title></rect>
+<text x="10" y="220" fill="#e6e6e6">7</text>
+<rect x="60" y="208" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="218" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="208" width="818.8" height="9" fill="#3b6fa8"><title>paternal chr7:300-869500, GF, 3186 sites</title></rect>
+<rect class="seg" x="60.4" y="218" width="818.7" height="9" fill="#a84870"><title>maternal chr7:400-869500, GM, 3149 sites</title></rect>
+<text x="10" y="248" fill="#e6e6e6">8</text>
+<rect x="60" y="236" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="246" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="61.1" y="236" width="817.9" height="9" fill="#3b6fa8"><title>paternal chr8:1200-869500, GF, 3178 sites</title></rect>
+<rect class="seg" x="60.1" y="246" width="818.3" height="9" fill="#a84870"><title>maternal chr8:100-868800, GM, 3221 sites</title></rect>
+<text x="10" y="276" fill="#e6e6e6">9</text>
+<rect x="60" y="264" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="274" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="264" width="818.2" height="9" fill="#3b6fa8"><title>paternal chr9:100-868700, GF, 3147 sites</title></rect>
+<rect class="seg" x="60.1" y="274" width="819.0" height="9" fill="#a84870"><title>maternal chr9:100-869500, GM, 3155 sites</title></rect>
+<text x="10" y="304" fill="#e6e6e6">10</text>
+<rect x="60" y="292" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="302" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="292" width="818.6" height="9" fill="#3b6fa8"><title>paternal chr10:100-869100, GF, 3142 sites</title></rect>
+<rect class="seg" x="60.1" y="302" width="818.9" height="9" fill="#a84870"><title>maternal chr10:100-869400, GM, 3179 sites</title></rect>
+<text x="10" y="332" fill="#e6e6e6">11</text>
+<rect x="60" y="320" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="330" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.6" y="320" width="818.4" height="9" fill="#3b6fa8"><title>paternal chr11:600-869400, GF, 3085 sites</title></rect>
+<rect class="seg" x="60.1" y="330" width="818.5" height="9" fill="#a84870"><title>maternal chr11:100-869000, GM, 3136 sites</title></rect>
+<text x="10" y="360" fill="#e6e6e6">12</text>
+<rect x="60" y="348" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="358" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.2" y="348" width="818.9" height="9" fill="#3b6fa8"><title>paternal chr12:200-869500, GF, 3181 sites</title></rect>
+<rect class="seg" x="60.6" y="358" width="818.0" height="9" fill="#a84870"><title>maternal chr12:600-869000, GM, 3209 sites</title></rect>
+<text x="10" y="388" fill="#e6e6e6">13</text>
+<rect x="60" y="376" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="386" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="376" width="818.9" height="9" fill="#3b6fa8"><title>paternal chr13:100-869400, GF, 3109 sites</title></rect>
+<rect class="seg" x="60.3" y="386" width="818.6" height="9" fill="#a84870"><title>maternal chr13:300-869300, GM, 3122 sites</title></rect>
+<text x="10" y="416" fill="#e6e6e6">14</text>
+<rect x="60" y="404" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="414" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="404" width="818.8" height="9" fill="#3b6fa8"><title>paternal chr14:300-869500, GF, 3186 sites</title></rect>
+<rect class="seg" x="60.1" y="414" width="818.8" height="9" fill="#a84870"><title>maternal chr14:100-869300, GM, 3176 sites</title></rect>
+<text x="10" y="444" fill="#e6e6e6">15</text>
+<rect x="60" y="432" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="442" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="432" width="819.0" height="9" fill="#3b6fa8"><title>paternal chr15:100-869500, GF, 3229 sites</title></rect>
+<rect class="seg" x="60.2" y="442" width="818.9" height="9" fill="#a84870"><title>maternal chr15:200-869500, GM, 3138 sites</title></rect>
+<text x="10" y="472" fill="#e6e6e6">16</text>
+<rect x="60" y="460" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="470" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="460" width="818.7" height="9" fill="#3b6fa8"><title>paternal chr16:300-869400, GF, 3158 sites</title></rect>
+<rect class="seg" x="60.4" y="470" width="818.5" height="9" fill="#a84870"><title>maternal chr16:400-869300, GM, 3142 sites</title></rect>
+<text x="10" y="500" fill="#e6e6e6">17</text>
+<rect x="60" y="488" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="498" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.2" y="488" width="818.9" height="9" fill="#3b6fa8"><title>paternal chr17:200-869500, GF, 3162 sites</title></rect>
+<rect class="seg" x="60.3" y="498" width="818.8" height="9" fill="#a84870"><title>maternal chr17:300-869500, GM, 3182 sites</title></rect>
+<text x="10" y="528" fill="#e6e6e6">18</text>
+<rect x="60" y="516" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="526" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="516" width="818.8" height="9" fill="#3b6fa8"><title>paternal chr18:300-869500, GF, 3207 sites</title></rect>
+<rect class="seg" x="60.1" y="526" width="819.0" height="9" fill="#a84870"><title>maternal chr18:100-869500, GM, 3209 sites</title></rect>
+<text x="10" y="556" fill="#e6e6e6">19</text>
+<rect x="60" y="544" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="554" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.5" y="544" width="818.5" height="9" fill="#3b6fa8"><title>paternal chr19:500-869400, GF, 3193 sites</title></rect>
+<rect class="seg" x="60.1" y="554" width="819.0" height="9" fill="#a84870"><title>maternal chr19:100-869500, GM, 3221 sites</title></rect>
+<text x="10" y="584" fill="#e6e6e6">20</text>
+<rect x="60" y="572" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="582" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.4" y="572" width="818.7" height="9" fill="#3b6fa8"><title>paternal chr20:400-869500, GF, 3113 sites</title></rect>
+<rect class="seg" x="60.2" y="582" width="818.7" height="9" fill="#a84870"><title>maternal chr20:200-869300, GM, 3253 sites</title></rect>
+<text x="10" y="612" fill="#e6e6e6">21</text>
+<rect x="60" y="600" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="610" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.1" y="600" width="818.9" height="9" fill="#3b6fa8"><title>paternal chr21:100-869400, GF, 3158 sites</title></rect>
+<rect class="seg" x="60.1" y="610" width="818.9" height="9" fill="#a84870"><title>maternal chr21:100-869400, GM, 3141 sites</title></rect>
+<text x="10" y="640" fill="#e6e6e6">22</text>
+<rect x="60" y="628" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="638" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.7" y="628" width="818.3" height="9" fill="#3b6fa8"><title>paternal chr22:700-869400, GF, 3123 sites</title></rect>
+<rect class="seg" x="60.1" y="638" width="819.0" height="9" fill="#a84870"><title>maternal chr22:100-869500, GM, 3143 sites</title></rect>
+<text x="10" y="668" fill="#e6e6e6">X</text>
+<rect x="60" y="656" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="666" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="60.3" y="666" width="9.1" height="9" fill="#a84870"><title>maternal chrX:300-10000, GM, 25 sites</title></rect>
+<text x="10" y="694" fill="#e6e6e6">Upper bar: the copy from the father. Lower bar: from the mother. Grey: not mapped.</text>
+<rect x="10" y="704" width="12" height="10" fill="#a84870"/><text x="28" y="713" fill="#e6e6e6">maternal side, from the parent</text>
+<rect x="10" y="724" width="12" height="10" fill="#3b6fa8"/><text x="28" y="733" fill="#e6e6e6">paternal side, from the parent</text>
+</svg>

@@ -1,0 +1,3 @@
+# ROH Summary for sample.1_A-b
+# Segments >=5MB on autosomes (excludes chrX/chrY)
+chrom	start	end	length_bp	length_mb

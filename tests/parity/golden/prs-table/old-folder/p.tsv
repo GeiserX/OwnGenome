@@ -1,0 +1,2 @@
+Condition	PGS_ID	Score_SUM	Variants_Matched	Variants_Total	Matched_Pct	Percentile	Ancestry_Group	ChrX	Ambiguous	Applies_To	Sex_Check	Input
+Old	PGS000001	62	2	1	200.0	NA	NA					gvcf

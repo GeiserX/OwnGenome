@@ -41,6 +41,7 @@ f "hla/IPD-IMGT-HLA_${HLA}/hla.dat" "reference/gencode.v${GC}.basic.genes.gtf" "
   "reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.UD" "reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.mu" \
   "reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.bed" \
   "reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz" "prs_scores/PGS000018.txt.gz" \
+  "prs_scores/PGS000014.txt.gz" "prs_scores/PGS000016.txt.gz" "prs_scores/PGS000017.txt.gz" "prs_scores/PGS000027.txt.gz" \
   "reference/pgsc_calc/${PGSC_PANEL}.tar.zst" "reference/pgsc_calc/${PGSC_PANEL}_GRCh38_sites.tsv" \
   "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE" "reference/yleaf-${YLEAF_DATA_VERSION}/data/hg38/new_positions.txt" \
   "reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz" \
@@ -72,6 +73,7 @@ $(diff <(echo "$WANT") <(tools_arg))"
 output_lacks all '^  [0-9]+b? .* skipped '
 has_args --kir true
 has_args --hla_qc true
+has_args --pgs_academic true
 output_has all '^\[Everything\] EVERYTHING=true'
 for s in 04a-tiddit 04b-gridss 14-imputation-prep 29-mutect2-somatic 03a-gatk-haplotypecaller 03b-freebayes \
          03c-strelka2-germline 03d-octopus benchmark-variants; do
@@ -108,6 +110,13 @@ run_expect 2 no-bwa env EVERYTHING=true "${SCRIPTS}/run-all.sh" sample1 male
 output_has no-bwa '^  04b GRIDSS \(GRIDSS=true\): classic BWA index not installed: reference/GRCh38_no_alt_analysis_set\.fasta\.amb; install: bwa index \(docs/04b-gridss\.md\)$'
 for e in $BWAX; do mv "${CASE_WORK}/GRCh38_no_alt_analysis_set.fasta.${e}" "${G}/reference/"; done
 
+# Without the academic-only PGS scores (PRS_ACADEMIC=true, setup.sh --prs-academic): the run stops first.
+mv "${G}/prs_scores/PGS000016.txt.gz" "${CASE_WORK}/"
+run_expect 2 no-academic env EVERYTHING=true "${SCRIPTS}/run-all.sh" sample1 male
+[ "$(nfcalls)" -eq $((n + 1)) ] || fail "nextflow started without the academic-only PGS scores"
+output_has no-academic '^  25 PRS academic-only scores \(PRS_ACADEMIC=true\): data not installed: PGS000016; install: setup.sh --prs-academic$'
+mv "${CASE_WORK}/PGS000016.txt.gz" "${G}/prs_scores/"
+
 # A BAM that is not PacBio HiFi: og paraphase check-bam exits 3, and step 35b is a skip, not a stop.
 cat > "${CASE_WORK}/not-hifi" <<'HOOK'
 #!/usr/bin/env bash
@@ -134,4 +143,5 @@ output_has none '^  43 Archaic ancestry \(IBDmix\): ARCHAIC_DIR=none: unset ARCH
 run_expect 0 default "${SCRIPTS}/run-all.sh" sample1 male
 output_has default '^  37 Y haplogroup \(Yleaf\) +skipped +\(opt-in: add y_haplogroup to TOOLS\)$'
 if grep -qE -- ' --kir true' <<<"$(last)"; then fail "a default run passed --kir true"; fi
+if grep -qE -- ' --pgs_academic true' <<<"$(last)"; then fail "a default run passed --pgs_academic true"; fi
 echo "EVERYTHING=true runs every optional step, and stops before Nextflow when one lacks its data."

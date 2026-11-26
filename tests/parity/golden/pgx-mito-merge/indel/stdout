@@ -1,0 +1,2 @@
+pgx_mito_merge: held back: an insertion or deletion (chrM:955 AC>A AF 0.990) at or near m.960, which this script does not map to PharmCAT's names
+pgx_mito_merge: no MT-RNR1 call passed to PharmCAT: it stays No Result; read the records above in the chrM call set

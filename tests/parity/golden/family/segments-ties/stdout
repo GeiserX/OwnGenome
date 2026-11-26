@@ -1,0 +1,8 @@
+
+## Chromosome map
+
+For each child, the stretches of each chromosome that came from each parent, from the sites where that parent is heterozygous and the genotypes give the allele passed on. When a parent's own parent is sequenced too, each stretch also says which of the parent's two copies it is (the grandfather's or the grandmother's), and a change between them is a crossover. `<child>_segments.tsv` lists them, `<child>_dnapainter.csv` is the same list in DNA Painter's import format (GRCh38 positions), `<child>_segments.svg` draws it.
+
+- kid: from the father (dad): 2 stretches over 1.6 Mb, told apart as the copy from gma or gpa; 1 crossover, 3 discordant sites absorbed
+
+A stretch starts and ends at its first and last informative site: a crossover lies somewhere between two stretches, not at a base. Short reads give no long-range phase, so without a sequenced grandparent the map says only which parent a stretch came from.

@@ -1,0 +1,1 @@
+ERROR: rs999 was not found in the consumer site table, the pipeline's tables, the annotated VCF. An rsID the sample does not carry is only known through the site table; look it up on dbSNP (https://www.ncbi.nlm.nih.gov/snp/) and ask for its GRCh38 position instead, as chr:pos.

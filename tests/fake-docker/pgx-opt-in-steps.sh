@@ -14,8 +14,8 @@
 #   steps 21 and 32     run the CYP2D6 depth check with og (og pgx cyp2d6-bed,
 #                       -measure in step 32, -check) from their output
 #                       directory with relative outputs. The bed and check
-#                       use OG_IMAGE and the measurement keeps its parity oracle;
-#                       mark a CYP2D6 call when the depth check fails, and a
+#                       use OG_IMAGE. The measurement runs in PYPGX_IMAGE.
+#                       Mark a CYP2D6 call when the depth check fails. A
 #                       caller that stops after writing its result leaves no
 #                       call where step 36 reads it
 #   step 27             passes step 36's table, even a missing one, to the
@@ -170,7 +170,7 @@ SUMMARY="${G}/sample1/pypgx/sample1_pypgx_summary.tsv"
 run_expect 0 pypgx-unreliable "${SCRIPTS}/32-pypgx.sh" sample1
 RUNS=$(grep '^run image=' "$FAKE_DOCKER_LOG")
 og_runs "step 32" /genome/sample1/pypgx
-grep -q -- "image=${PYPGX_IMAGE%%:*}[^ ]* .*-e OG_SHADOW -w /genome/sample1/pypgx/cyp2d6_depth .*/pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
+grep -Fq -- "-v ${REPO_ROOT}/bin:/pgp-bin:ro -w /genome/sample1/pypgx/cyp2d6_depth ${PYPGX_IMAGE} /pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
   || fail "step 32 did not run og pgx cyp2d6-measure in the pypgx image from cyp2d6_depth: ${RUNS}"
 [ "$(awk -F'\t' '$1 == "CYP2D6" {print $2 "|" $6}' "$SUMMARY" 2>/dev/null)" = "Indeterminate|no call (CYP2D6 depth check)" ] \
   || fail "step 32 did not mark CYP2D6 Indeterminate after a failed depth check: $(cat "$SUMMARY" 2>/dev/null)"

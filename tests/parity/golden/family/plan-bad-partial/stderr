@@ -1,0 +1,1 @@
+ERROR: fam-partial.tsv line 3: no family name, but other rows have one (line 2: 'fa'); fill the family column on every row, or leave it out of the file

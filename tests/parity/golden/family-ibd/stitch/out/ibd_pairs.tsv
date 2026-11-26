@@ -1,0 +1,7 @@
+sample_a	sample_b	declared	expected_relatedness	segments	shared_cm	ibd2_cm	longest_cm	analysed_cm	shared_fraction	relatedness	degree
+P	Q	not in the pedigree		2	88.00	0.00	59.00	98.00	0.8980	0.449	first degree (parent-child)
+P	R	not in the pedigree		1	45.00	0.00	45.00	98.00	0.4592	0.230	second degree
+P	S	not in the pedigree		1	98.00	0.00	98.00	98.00	1.0000	0.500	first degree (parent-child)
+Q	R	not in the pedigree		0	0.00	0.00	0.00	98.00	0.0000	0.000	no shared segment
+Q	S	not in the pedigree		0	0.00	0.00	0.00	98.00	0.0000	0.000	no shared segment
+R	S	not in the pedigree		0	0.00	0.00	0.00	98.00	0.0000	0.000	no shared segment

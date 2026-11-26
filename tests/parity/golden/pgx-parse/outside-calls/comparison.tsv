@@ -1,0 +1,7 @@
+Gene	PharmCAT_diplotype	pypgx_diplotype	Match	Called_by	PharmCAT_phenotype	pypgx_phenotype
+CYP2C19	Not called	*1/*1	pypgx only	pypgx only		Normal Metabolizer
+CYP2C9	Not called	*1/*1	pypgx only	pypgx only		Normal Metabolizer
+CYP2D6	*1/*4	*1/*4	pypgx only	pypgx only	outside call not confirmed by step 36	Intermediate Metabolizer
+CYP3A5	Not called	*3/*3	pypgx only	pypgx only		
+HLA-B	*57:01/*08:01	Not called	PharmCAT only	PharmCAT only	*57:01 positive	
+MT-RNR1	m.1555A>G	Not called	PharmCAT only	PharmCAT only	increased risk of aminoglycoside-induced hearing loss	

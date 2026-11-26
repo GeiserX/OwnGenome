@@ -1,0 +1,12 @@
+id	group	date_bp	date_sd	full_date	locality	country	lat	lon	snps
+A41	Türkiye_Neolithic	6117	50	2500-2000 BCE	Site 2	Country1	31	21	141000
+A43	England_BellBeaker	6391	50	2500-2000 BCE	Site 1	Country1	33	23	143000
+A45	<Mixed&Group>	6665	50	2500-2000 BCE	Site 0	Country1	35	25	145000
+A47	Hungary_LBA_with_a_very_long_name_that_runs_past_45	6939	50	2500-2000 BCE	Site 2	Country1	37	27	147000
+A49	Germany_CordedWare	7213	50	2500-2000 BCE	Site 1	Country1	39	29	149000
+A50	England_BellBeaker	7350	50	2500-2000 BCE	Site 2	Country0	40	30	150000
+A51	Turkey_N	7487	50	2500-2000 BCE	Site 0	Country1	41	31	151000
+A53	Italy_Imperial_Rome	7761	50	2500-2000 BCE	Site 2	Country1	43	33	153000
+A54	Hungary_LBA_with_a_very_long_name_that_runs_past_45	7898	50	2500-2000 BCE	Site 0	Country0	44	34	154000
+A59	<Mixed&Group>	8583	50	2500-2000 BCE	Site 2	Country1	49	39	159000
+A60	Italy_Imperial_Rome	8720	50	2500-2000 BCE	Site 0	.	50	40	160000

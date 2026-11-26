@@ -1,0 +1,1 @@
+ERROR: bad.bed:1: want chrom, start, end, name (tab separated)

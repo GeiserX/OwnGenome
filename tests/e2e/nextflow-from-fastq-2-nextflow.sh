@@ -152,8 +152,9 @@ GENE=$(planted gene)
 check_ge "CLINVAR_SCREEN names the planted hit's gene (${GENE})" "$(sample_side_hits "${G}/${R}/clinvar" "$GENE")" 1
 JSON="${G}/${R}/pharmcat/${P}.report.json"
 check_pharmcat_called "PHARMCAT genes called" "$JSON"
-check_eq "PRS scores in the summary (one per id of assets/pgs_scores.tsv)" "$(awk 'NR > 1' "${G}/${R}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
-  "$(awk -F'\t' '$1 ~ /^PGS[0-9]+$/' "${REPO}/assets/pgs_scores.tsv" | wc -l | tr -d ' ')"
+check_eq "PRS scores in the summary (one per author-terms score)" "$(awk 'NR > 1' "${G}/${R}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
+  "$(awk -F'\t' '$1 == "pgs_id" { for (i=1; i<=NF; i++) col[$i]=i; next }
+    $1 ~ /^PGS[0-9]+$/ && $col["licence"] == "author" { n++ } END { print n+0 }' "${REPO}/assets/pgs_scores.tsv")"
 check_eq "PRS input (hom-ref sites from the gVCF)" "$(awk -F'\t' 'NR == 2 {print $NF}' "${G}/${R}/prs/${P}_prs_summary.tsv" 2>/dev/null)" gvcf
 check "MOSDEPTH summary has a chr20 row" grep -q '^chr20' "${G}/${R}/coverage/${P}.mosdepth.summary.txt"
 check_ge "ROH output lines" "$(cat "${G}/${R}"/roh/*_roh.txt 2>/dev/null | grep -vc '^#' || true)" 1
@@ -163,6 +164,9 @@ for g in HLA-A HLA-B HLA-C; do
   check_ge "${g} rows with a called allele" "$(awk -F'\t' -v g="$g" '$1 == g && $3 ~ /^HLA-/' "$GT_HLA" 2>/dev/null | wc -l | tr -d ' ')" 1
 done
 check "the HTML report is written" nonempty "${R}/${P}_report.html"
+check_eq "the report summary names the academic-only scores left out" \
+  "$(jq -r '.sections.prs.data.skipped[].pgs_id' "${G}/${R}/summary.json" | LC_ALL=C sort | paste -sd, -)" \
+  "PGS000014,PGS000016,PGS000017,PGS000027"
 check "MultiQC report is written" nonempty "nf-fastq/multiqc/multiqc_report.html"
 
 finish

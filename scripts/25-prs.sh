@@ -2,7 +2,7 @@
 # 25-prs.sh — Polygenic scores with pgsc_calc, the PGS Catalog's calculator
 # Usage: ./scripts/25-prs.sh <sample_name> [sex: male|female]
 #
-# Scores the sample with every score in assets/pgs_scores.tsv. pgsc_calc
+# Scores the sample with the scores of assets/pgs_scores.tsv. pgsc_calc
 # (PGSC_CALC_VERSION in versions.env, a Nextflow pipeline of the PGS Catalog
 # team) matches each score's variants to your genotypes and sums them. With
 # the ancestry reference panel installed (scripts/setup.sh --ancestry-panel)
@@ -27,6 +27,12 @@
 # plink2 gets the sex with the genotypes. Without it they are left out (plink2
 # refuses chrX without a sex), and the summary's ChrX column says so.
 #
+# Four scores (licence academic-research in assets/pgs_scores.tsv: PGS000014,
+# PGS000016, PGS000017, PGS000027) are free for academic research use only.
+# They are left out unless PRS_ACADEMIC=true: not downloaded, not scored, and
+# og prs format prints one "not scored" line for each. summary.json lists
+# them as skipped with that reason.
+#
 # A score built for one sex (applies_to in assets/pgs_scores.tsv: breast
 # cancer for women, prostate cancer for men) is marked "not applicable to the
 # declared sex" for the other one: its raw sum stays, its percentile goes.
@@ -42,6 +48,8 @@
 #                      the forward strand (pgsc_calc --keep_ambiguous); a score
 #                      that fails keeps dropping them. Needs the gVCF (WGS).
 #                      Default false: pgsc_calc drops them all.
+#      PRS_ACADEMIC    true: also download and score the four academic-only
+#                      scores (og prs format --academic). Default false.
 #      PGSC_MAX_MEMORY memory pgsc_calc may use, e.g. 12.GB (default: 3/4 of the RAM)
 #      PGSC_CALC_DIR   pgsc_calc's code (default tools/pgsc_calc-${PGSC_CALC_VERSION},
 #                      which setup.sh or this step installs)
@@ -61,6 +69,11 @@ KEEP_AMBIGUOUS=${PRS_KEEP_AMBIGUOUS:-false}
 case "$KEEP_AMBIGUOUS" in
   true|false) ;;
   *) echo "ERROR: PRS_KEEP_AMBIGUOUS must be 'true' or 'false', got '${KEEP_AMBIGUOUS}'" >&2; exit 1 ;;
+esac
+ACADEMIC=${PRS_ACADEMIC:-false}
+case "$ACADEMIC" in
+  true|false) ;;
+  *) echo "ERROR: PRS_ACADEMIC must be 'true' or 'false', got '${ACADEMIC}'" >&2; exit 1 ;;
 esac
 require_image OG_IMAGE BCFTOOLS_IMAGE PLINK2_IMAGE PGSC_UTILS_IMAGE PGSC_FRAPOSA_IMAGE \
   PGSC_PYYAML_IMAGE PGSC_ZSTD_IMAGE PGSC_REPORT_IMAGE
@@ -115,6 +128,7 @@ echo "  Sample: ${SAMPLE}"
 echo "  Input:  ${VCF}"
 echo "  Sex:    ${SEX:-not given (chrX rows of the scores are left out)}"
 echo "  Strand-ambiguous rows: $($KEEP_AMBIGUOUS && echo "kept for scores that pass the strand check (PRS_KEEP_AMBIGUOUS)" || echo "dropped")"
+echo "  Academic-only scores: $($ACADEMIC && echo "scored (PRS_ACADEMIC=true)" || echo "left out (PRS_ACADEMIC=true to include)")"
 if $USE_PANEL; then
   echo "  Ancestry panel: ${PANEL}"
 else
@@ -134,12 +148,21 @@ if [ "${#PGS_IDS[@]}" -eq 0 ]; then
   echo "ERROR: no PGS id in ${SCORE_LIST}" >&2
   exit 1
 fi
+# The academic-only ids (licence academic-research): downloaded only with
+# PRS_ACADEMIC=true. og prs format gets every id and leaves them out itself
+# without --academic, so a folder that still holds their files from an older
+# setup is not scored either.
+mapfile -t ACADEMIC_IDS < <(awk -F'\t' '!h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+  h && c["licence"] && $1 ~ /^PGS[0-9]+$/ && $c["licence"] == "academic-research" {print $1}' "$SCORE_LIST")
 # Prints the genome build recorded in a scoring file's #HmPOS_build header (empty if none).
 hm_build() {
   { gzip -cd "$1" 2>/dev/null || true; } | awk -F= '/^#HmPOS_build=/ {b=$2} !/^#/ {exit} END {print b}'
 }
 echo "[1/5] PGS Catalog scoring files (${#PGS_IDS[@]} scores, ${SCORE_LIST#"${PGP_ROOT}/"})..."
 for PGS_ID in "${PGS_IDS[@]}"; do
+  if ! $ACADEMIC && [[ " ${ACADEMIC_IDS[*]-} " == *" ${PGS_ID} "* ]]; then
+    continue
+  fi
   SCORE_FILE="${SCORING_DIR}/${PGS_ID}.txt.gz"
   # A cached file from an older version may be the author-reported build.
   if [ -f "$SCORE_FILE" ] && [ "$(hm_build "$SCORE_FILE")" != "GRCh38" ]; then
@@ -193,11 +216,13 @@ KEEP_X=()
 if [ -n "$SEX" ]; then KEEP_X=(--keep-x); fi
 KEEP_AMB=()
 if $KEEP_AMBIGUOUS; then KEEP_AMB=(--keep-ambiguous --reference "$REF_FASTA_C"); fi
+ACAD=()
+if $ACADEMIC; then ACAD=(--academic); fi
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SCORE_LIST}:/pgs_scores.tsv:ro" "$OG_IMAGE" \
   /pgp-bin/og prs format \
     --scores "$(cpath "$SCORING_DIR")" --ids "$IDS" --labels /pgs_scores.tsv \
     --out "$(cpath "${WORK}/scores")" --alleles "$(cpath "${WORK}/score_alleles.tsv")" \
-    ${KEEP_X[@]+"${KEEP_X[@]}"} ${KEEP_AMB[@]+"${KEEP_AMB[@]}"}
+    ${KEEP_X[@]+"${KEEP_X[@]}"} ${KEEP_AMB[@]+"${KEEP_AMB[@]}"} ${ACAD[@]+"${ACAD[@]}"}
 
 # --- 3. The genotypes pgsc_calc scores ---------------------------------------------
 # Both inputs end as target.vcf.gz: the score positions (and with the panel the

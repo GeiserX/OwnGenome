@@ -1,0 +1,2 @@
+bad-crlf.txt: carriage returns (CRLF line ends)
+bad-crlf.txt: the column header '# rsid\tchromosome\tposition\tgenotype' is missing after the comment lines

@@ -1,0 +1,6 @@
+Family: 4 people in the pedigree, 3 sequenced (dad, kid, mum)
+  dad and kid: declared parent-child (expected relatedness 0.500)
+  dad and mum: declared partners (expected relatedness 0.000)
+  kid and mum: declared parent-child (expected relatedness 0.500)
+  child kid: dad and mum sequenced
+Trios WhatsHap phases: kid

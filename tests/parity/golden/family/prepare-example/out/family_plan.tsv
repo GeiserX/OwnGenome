@@ -1,0 +1,6 @@
+family	analysis	members	decision	reason
+family	joint_call	child_a,father_a,mother_a	runs	GLnexus joint call, somalier relationship check and the family report of child_a, father_a, mother_a
+family	trio_phasing	child_a	runs	WhatsHap phases child_a by inheritance from both parents
+family	inheritance_map	child_a	runs	the allele each sequenced parent passed on, and the chromosome map, of child_a
+family	shared_segments	child_a,father_a,mother_a	skipped	no phasing panel: install it with setup.sh --ancestry-fine-panel
+family	couple_carrier	father_a,mother_a	waiting	father_a has no ClinVar hits yet (step 06 writes clinvar/father_a_clinvar_hits.vcf): run run-all.sh father_a first; mother_a has no ClinVar hits yet (step 06 writes clinvar/mother_a_clinvar_hits.vcf): run run-all.sh mother_a first

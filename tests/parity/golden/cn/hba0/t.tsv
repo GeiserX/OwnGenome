@@ -1,0 +1,10 @@
+metric	value
+status	called
+alpha_globin_genes	0
+estimate	0.00
+hba2_depth	0.0
+hba1_depth	0.0
+flank_left_depth	30.0
+flank_right_depth	30.0
+mapq0_share	0.000
+message	no alpha-globin gene: the pattern of Hb Bart's hydrops fetalis (--/--); unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything

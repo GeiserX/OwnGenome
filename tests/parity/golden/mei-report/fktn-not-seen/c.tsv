@@ -1,0 +1,2 @@
+chrom	pos	end	element	subfamily	copies	filter	confidence	genes	location	benign_af	acmg_class
+chr20	5040478	5040486	Alu	AluYa5	1	PASS	H	.	.	.	.

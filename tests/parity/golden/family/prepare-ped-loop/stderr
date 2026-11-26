@@ -1,0 +1,2 @@
+ERROR: 'kid' is among its own ancestors: the parent columns form a loop
+ERROR: 'dad' is among its own ancestors: the parent columns form a loop

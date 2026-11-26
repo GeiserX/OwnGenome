@@ -1,0 +1,4 @@
+ERROR: the data disagree with the pedigree:
+ERROR:   dad and mum: declared parent-child (first degree), but somalier measures unrelated
+ERROR:   kid and mum: declared partners, but somalier measures first degree
+ERROR: A sample swap (at the lab or in the samplesheet), or a wrong line in the pedigree. Check the pedigree and the samplesheet; somalier's own tables are beside relationships.tsv.

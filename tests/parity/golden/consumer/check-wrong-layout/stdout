@@ -1,0 +1,2 @@
+good.txt: the column header 'rsid\tchromosome\tposition\tallele1\tallele2' is missing after the comment lines
+good.txt: the first line is not '#AncestryDNA raw data download'

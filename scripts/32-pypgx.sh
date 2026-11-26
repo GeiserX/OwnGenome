@@ -149,8 +149,8 @@ GQ_FLOOR=${PYPGX_GQ_FLOOR:-20}
 # MAPQ >= 1, judged by og pgx cyp2d6-check (the regions come from
 # og pgx cyp2d6-bed). Beside the verdict, og pgx cyp2d6-measure counts the
 # MAPQ >= 20 depth and the gene body without REP6 from the BAM, as the PYPGX
-# module does; it runs in the pypgx image, where the Python it replaced ran.
-# The measurement uses relative paths for the parity oracle (OG_SHADOW).
+# module does. The measurement runs in PYPGX_IMAGE and writes a relative
+# path from DEPTH_DIR.
 # A missing og stops the step (exit 127), even in `measure`.
 DEPTH_DIR="${OUTPUT_DIR}/cyp2d6_depth"
 CHECK="${OUTPUT_DIR}/${SAMPLE}_cyp2d6_depth_check.tsv"
@@ -167,7 +167,7 @@ for Q in 0 1; do
 done
 MEASURE=()
 rc=0
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$DEPTH_DIR")" "${PYPGX_IMAGE}" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$DEPTH_DIR")" "${PYPGX_IMAGE}" \
   /pgp-bin/og pgx cyp2d6-measure --bam "$(cpath "$BAM")" --out mapq_shares.tsv || rc=$?
 [ "$rc" -ne 127 ] || exit 1
 if [ "$rc" -eq 0 ] && [ -s "$SHARES" ]; then

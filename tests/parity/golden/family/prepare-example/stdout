@@ -1,0 +1,6 @@
+Family: 3 people in the pedigree, 3 sequenced (child_a, father_a, mother_a)
+  child_a and father_a: declared parent-child (expected relatedness 0.500)
+  child_a and mother_a: declared parent-child (expected relatedness 0.500)
+  father_a and mother_a: declared partners (expected relatedness 0.000)
+  child child_a: father_a and mother_a sequenced
+Trios WhatsHap phases: child_a

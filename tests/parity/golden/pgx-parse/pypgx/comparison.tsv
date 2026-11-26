@@ -1,0 +1,5 @@
+Gene	PharmCAT_diplotype	pypgx_diplotype	Match	Called_by	PharmCAT_phenotype	pypgx_phenotype
+CYP2C19	*1/*1	*1/*1	Yes	both	Normal Metabolizer	Normal Metabolizer
+CYP2C9	Unknown/Unknown	*1/*1	pypgx only	pypgx only	No Result	Normal Metabolizer
+CYP2D6	Unknown/Unknown	*1/*4	pypgx only	pypgx only	No Result	Intermediate Metabolizer
+CYP3A5	Unknown/Unknown	*3/*3	pypgx only	pypgx only	No Result	

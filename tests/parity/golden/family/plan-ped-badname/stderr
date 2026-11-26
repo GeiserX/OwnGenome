@@ -1,0 +1,1 @@
+ERROR: ped-badname.tsv line 5: sample name '-bad' may hold only letters, digits, '.', '_' and '-' and may not start with '-'

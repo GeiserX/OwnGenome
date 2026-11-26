@@ -1,0 +1,1 @@
+ERROR: BROKEN_CONTROL: control segment flank_left of HBA has no read while the other controls have 30.0x; check its coordinates in bin/cn_loci.tsv (or the sample lacks that stretch)

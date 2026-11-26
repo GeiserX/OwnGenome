@@ -1,0 +1,11 @@
+metric	value
+status	not assessed
+kiv2_copies	.
+ci95_low	.
+ci95_high	.
+class	.
+kiv2_depth	.
+flank_depth	.
+mapq0_share	.
+message	not assessed: the BAM has no chr6, so LPA has no reads
+advice	A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.

@@ -1,0 +1,11 @@
+== MT-RNR1: chrM:70-1000 (GRCh38; GENCODE_50_(MT-RNR1))
+  gVCF: 1 of 931 bases have a genotype call (0.1%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chrM:73 A>G G/G (homozygous; rs3003; depth 900, QUAL 60)
+      gene: MT-RNR1
+      consequence: non_coding_transcript_exon_variant
+      impact: MODIFIER
+      known as: rs3003
+  in the reports:
+  Loci (step None):
+    - locus=MT-RNR1, region=chrM:1-2

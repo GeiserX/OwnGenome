@@ -1,0 +1,12 @@
+# sample	S
+# gates	min_depth=10 min_gq=20 min_fraction=0.9 max_depth_factor=2.0 median_chrY_depth=30 callable_mask=mask-plain.fa
+# dropped	PAR=2 outside_callable=5 not_PASS=1 genotype=1 depth=1 quality=1 alt_fraction=1 excess_depth=1 on_public_lists=2
+Pos	Ref	Alt	Depth	Alt_fraction	GQ	Genotype
+2781480	C	T	30	1.000	50	1
+3100300	C	T	30	1.000	50	1
+3100400	C	T	30	0.967	50	1/1
+3101249	A	G	30	1.000	50	1
+3101351	A	G	30	1.000	50	1
+3101500	C	T	31	1.000	20	1|1
+3101600	C	T	33	1.000	99	1
+3102000	A	G	30	1.000	50	1

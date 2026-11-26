@@ -1,0 +1,6 @@
+family	analysis	members	decision	reason
+family_a	joint_call	child_a,mother_a	runs	GLnexus joint call, somalier relationship check and the family report of child_a, mother_a; left out: father_a has no gVCF yet: run run-all.sh father_a first (run step 38 again after its run)
+family_a	trio_phasing	child_a	skipped	no child has both parents sequenced (child_a has one); phasing by inheritance needs a trio
+family_a	inheritance_map	child_a	runs	the allele each sequenced parent passed on, and the chromosome map, of child_a
+family_a	shared_segments	child_a,mother_a	skipped	no phasing panel: install it with setup.sh --ancestry-fine-panel
+family_a	couple_carrier	father_a,mother_a	waiting	father_a has no ClinVar hits yet (step 06 writes clinvar/father_a_clinvar_hits.vcf): run run-all.sh father_a first

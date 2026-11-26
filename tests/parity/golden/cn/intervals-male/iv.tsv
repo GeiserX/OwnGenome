@@ -1,0 +1,91 @@
+locus	name	chrom	start	end	status	copies	expected	change	estimate	reason
+1q21.1_TAR_syndrome_proximal_BP2-BP3	1q21.1 recurrent (TAR syndrome) region (proximal, BP2-BP3) (includes RBM8A)	chr1	145686999	146048495	called	1	2	deletion	1.00	.
+1q21.1_TAR_syndrome_proximal_and_distal_BP1-BP4	1q21.1 recurrent (TAR syndrome) region (proximal and distal, BP1-BP4) (includes RBM8A and GJA5)	chr1	145687000	147917509	called	2	2	no change	2.00	.
+1q21.1_distal_BP3-BP4	1q21.1 recurrent region (distal, BP3-BP4) (includes GJA5)	chr1	147105904	147917509	called	2	2	no change	2.00	.
+2p11.2	2p11.2 recurrent region (includes EIF2AK3, RPIA)	chr2	88022824	88755713	called	2	2	no change	2.00	.
+2q11.2	2q11.2 recurrent region (includes ARID5A, TMEM127)	chr2	96073264	97005692	called	2	2	no change	2.00	.
+2q13_proximal	2q13 recurrent region (proximal) (includes NPHP1)	chr2	110104531	110228181	called	3	2	duplication	3.00	.
+2q13_distal	2q13 recurrent region (distal) (includes BCL2L11)	chr2	110634616	112347165	called	2	2	no change	2.00	.
+2q21.1	2q21.1 recurrent region (includes ARHGEF4, GPR148)	chr2	130719936	131172120	called	2	2	no change	2.00	.
+3q29	3q29 recurrent region (includes DLG1)	chr3	196029183	197617791	called	2	2	no change	2.00	.
+5q35_Sotos_syndrome	5q35 recurrent (Sotos syndrome) region (includes NSD1)	chr5	176301976	177620792	not assessed	.	2	.	.	broken_control
+7q11.23_Williams-Beuren_syndrome	7q11.23 recurrent (Williams-Beuren syndrome) region (includes ELN)	chr7	73330452	74728173	called	2	2	no change	2.00	.
+7q11.23	7q11.23 recurrent distal region (includes HIP1, YWHAG)	chr7	75528718	76433859	called	2	2	no change	2.00	.
+8p23.1	8p23.1 recurrent region (includes GATA4)	chr8	8242542	11908820	called	2	2	no change	2.00	.
+10q11.2_LCR_C-LCR_D	10q11.2 recurrent region (LCR C-LCR D)	chr10	48181660	49845537	called	2	2	no change	2.00	.
+10q11.2_LCR_C-LCR_F	10q11.2 recurrent region (LCR C-LCR F)	chr10	48181661	50655358	called	2	2	no change	2.00	.
+10q22.3q23.2	10q22.3q23.2 recurrent region (includes BMPR1A)	chr10	79923087	86979631	called	2	2	no change	2.00	.
+11q13.2q13.4	11q13.2q13.4 recurrent region (includes SHANK2, FGFs)	chr11	67996175	71525885	called	2	2	no change	2.00	.
+13q12.12	13q12.12 recurrent region (includes SACS, SGCG)	chr13	22970443	24307222	called	2	2	no change	2.00	.
+15q11.2_BP1-BP2	15q11.2 recurrent region (BP1-BP2) (includes NIPA1)	chr15	22782170	23040134	called	2	2	no change	2.00	.
+15q11.2q13_PWS_AS_Class_I_BP1-BP3	15q11.2q13 recurrent (PWS/AS) region (Class I, BP1-BP3)	chr15	22782170	28134728	called	2	2	no change	2.00	.
+15q11.2q13_PWS_AS_BP1-BP4	15q11.2q13 recurrent (PWS/AS) region (BP1-BP4)	chr15	22782171	30076787	called	2	2	no change	2.00	.
+15q11.2q13_PWS_AS_Class_II_BP2-BP3	15q11.2q13 recurrent (PWS/AS) region (Class II, BP2-BP3)	chr15	23465365	28134728	called	2	2	no change	2.00	.
+15q11.2q13_PWS_AS_BP2-BP4	15q11.2q13 recurrent (PWS/AS) region (BP2-BP4)	chr15	23465366	30076787	called	2	2	no change	2.00	.
+15q13_BP3-BP4	15q13 recurrent region (BP3-BP4) (includes APBA2)	chr15	28916886	30076787	called	2	2	no change	2.00	.
+15q13.1q13.3_BP3-BP5	15q13.1q13.3 recurrent region (BP3-BP5) (includes CHRNA7)	chr15	28916887	32153204	called	2	2	no change	2.00	.
+15q13.3_BP4-BP5	15q13.3 recurrent region (BP4-BP5) (includes CHRNA7)	chr15	30900686	32153204	called	2	2	no change	2.00	.
+15q13.3_D-CHRNA7_to_BP5	15q13.3 recurrent region (D-CHRNA7 to BP5) (includes CHRNA7, OTUD7A)	chr15	31735058	32153204	called	2	2	no change	2.00	.
+15q13.3q14_BP5-BP6	15q13.3q14 recurrent region (BP5-BP6) (includes GREM1)	chr15	32607509	34378800	called	2	2	no change	2.00	.
+15q24_LCR_A-LCR_C	15q24 recurrent region (LCR A-LCR C)	chr15	72671374	75215971	called	2	2	no change	2.00	.
+15q24_LCR_A-LCR_D	15q24 recurrent region (LCR A-LCR D) (includes SIN3A)	chr15	72671374	75680568	called	2	2	no change	2.00	.
+15q24_LCR_A-LCR_B	15q24 recurrent region (LCR A-LCR B)	chr15	72671375	74051743	called	2	2	no change	2.00	.
+15q24_LCR_B-LCR_C	15q24 recurrent region (LCR B-LCR C)	chr15	74120302	75215971	called	2	2	no change	2.00	.
+15q24_LCR_B-LCR_D	15q24 recurrent region (LCR B-LCR D) (includes SIN3A)	chr15	74120302	75680568	called	2	2	no change	2.00	.
+15q24_LCR_B-LCR_E	15q24 recurrent region (LCR B-LCR E) (includes SIN3A)	chr15	74120302	77858909	called	2	2	no change	2.00	.
+15q24_LCR_C-LCR_D	15q24 recurrent region (LCR C-LCR D) (includes SIN3A)	chr15	75339446	75680568	called	2	2	no change	2.00	.
+15q24_LCR_D-LCR_E	15q24 recurrent region (LCR D-LCR E)	chr15	75822911	77858909	called	2	2	no change	2.00	.
+15q25.2q25.3_proximal_and_distal_LCR_A_B-D	15q25.2q25.3 recurrent region (proximal and distal, LCR A/B-D) (includes RPS17)	chr15	82534139	85169770	called	2	2	no change	2.00	.
+15q25.2_proximal_LCR_A_B-C	15q25.2 recurrent region (proximal, LCR A/B-C) (includes RPS17)	chr15	82534140	84045981	called	2	2	no change	2.00	.
+15q25.2q25.3_distal_LCR_C-D	15q25.2q25.3 recurrent region (distal, LCR C-D)	chr15	84596421	85169770	called	2	2	no change	2.00	.
+16p13.11_BP1-BP3	16p13.11 recurrent region (BP1-BP3) (includes MYH11)	chr16	15030912	16198408	called	2	2	no change	2.00	.
+16p13.11_BP1-BP4	16p13.11 recurrent region (BP1-BP4) (includes MYH11)	chr16	15030912	18073542	called	2	2	no change	2.00	.
+16p13.11_BP2-BP3	16p13.11 recurrent region (BP2-BP3) (includes MYH11)	chr16	15417854	16198408	called	2	2	no change	2.00	.
+16p13.11_BP2-BP4	16p13.11 recurrent region (BP2-BP4) (includes MYH11)	chr16	15417855	18073542	called	2	2	no change	2.00	.
+16p12.3_BP3-BP4	16p12.3 recurrent region (BP3-BP4) (includes XYLT1)	chr16	16762939	18073542	called	2	2	no change	2.00	.
+16p12.2_distal_BP1-BP2	16p12.2 recurrent region (distal, BP1-BP2) (includes OTOA)	chr16	21558792	21728000	called	2	2	no change	2.00	.
+16p12.2p11.2	16p12.2p11.2 recurrent region (includes PALB2)	chr16	21558793	29303936	called	2	2	no change	2.00	.
+16p12.2_proximal_BP2-BP3	16p12.2 recurrent region (proximal, BP2-BP3) (includes EEF2K, CDR2)	chr16	21937124	22419483	called	2	2	no change	2.00	.
+16p11.2_distal_BP1-BP3	16p11.2 recurrent region (distal, BP1-BP3) (includes SH2B1)	chr16	28471894	29035178	called	2	2	no change	2.00	.
+16p11.2_proximal_BP1-BP4	16p11.2 recurrent region (proximal, BP1-BP4) (includes SH2B1)	chr16	28471894	29303936	called	2	2	no change	2.00	.
+16p11.2_proximal_and_distal_BP1-BP5	16p11.2 recurrent region (proximal and distal, BP1-BP5) (includes SH2B1 and TBX6)	chr16	28471894	30188531	called	2	2	no change	2.00	.
+16p11.2_distal_BP2-BP3	16p11.2 recurrent region (distal, BP2-BP3) (includes SH2B1)	chr16	28811314	29035178	called	2	2	no change	2.00	.
+16p11.2_proximal_BP4-BP5	16p11.2 recurrent region (proximal, BP4-BP5) (includes TBX6)	chr16	29638676	30188531	called	2	2	no change	2.00	.
+17p12_HNPP_CMT1A	17p12 recurrent (HNPP/CMT1A) region (includes PMP22)	chr17	14194700	15519000	called	2	2	no change	2.00	.
+17p11.2_SMS_PLS	17p11.2 recurrent (SMS/PLS) region (includes RAI1)	chr17	16906714	20309889	called	2	2	no change	2.00	.
+17p11.2_REPD-REPM	17p11.2 recurrent region (REPD-REPM) (includes RAI1)	chr17	16906715	18375627	called	2	2	no change	2.00	.
+17q11.2_Type_1_REPA-REPC	17q11.2 recurrent region (Type 1, REPA-REPC) (includes NF1)	chr17	30780078	31936301	called	2	2	no change	2.00	.
+17q11.2_Type_2_SUZ12P1-SUZ12	17q11.2 recurrent region (Type 2, SUZ12P1-SUZ12) (includes NF1)	chr17	30780079	31936301	called	2	2	no change	2.00	.
+17q11.2_Type_3_REPB-REPC	17q11.2 recurrent region- (Type 3, REPB-REPC) (includes NF1)	chr17	31051211	31936301	called	2	2	no change	2.00	.
+17q12_RCAD_syndrome	17q12 recurrent (RCAD syndrome) region (includes HNF1B)	chr17	36458167	37854616	called	2	2	no change	2.00	.
+17q21.31	17q21.31 recurrent (KdVS region (includes KANSL1)	chr17	45627800	46087514	called	2	2	no change	2.00	.
+17q23.1q23.2	17q23.1q23.2 recurrent region (includes TBX2, TBX4)	chr17	60035641	62198448	called	2	2	no change	2.00	.
+22q11.21_CES	22q11.21 recurrent (CES) region (includes CECR2)	chr22	16912063	18159723	called	2	2	no change	2.00	.
+22q11.2_DGS_proximal_A-B	22q11.2 recurrent (DGS) region (proximal, A-B) (includes TBX1)	chr22	18939750	20299685	called	2	2	no change	2.00	.
+22q11.2_DGS_proximal_A-C	22q11.2 recurrent (DGS) region (proximal, A-C) (includes TBX1)	chr22	18939750	20667579	called	2	2	no change	2.00	.
+22q11.2_DGS_proximal_A-D	22q11.2 recurrent (DGS) region (proximal, A-D) (includes TBX1)	chr22	18939750	21111383	called	2	2	no change	2.00	.
+22q11.2_central_B-D	22q11.2 recurrent region (central, B-D) (includes CRKL)	chr22	20377696	21111383	called	2	2	no change	2.00	.
+22q11.2_central_C-D	22q11.2 recurrent region (central, C-D) (includes CRKL)	chr22	20738050	21111383	called	2	2	no change	2.00	.
+22q11.2_C-E	22q11.2 recurrent region (C-E) (includes CRKL)	chr22	20738051	22620607	called	2	2	no change	2.00	.
+22q11.2_distal_type_I_D-E	22q11.2 recurrent region (distal type I, D-E)	chr22	21562828	22620607	called	2	2	no change	2.00	.
+22q11.2_distal_type_I_D-F	22q11.2 recurrent region (distal type I, D-F)	chr22	21562828	23306924	called	2	2	no change	2.00	.
+22q11.2_distal_type_III_D-H	22q11.2 recurrent region (distal type III, D-H) (includes SMARCB1)	chr22	21562828	24598466	called	2	2	no change	2.00	.
+22q11.2_distal_type_III_D-G	22q11.2 recurrent region (distal type III D-G) (includes SMARCB1)	chr22	21562829	24236853	called	2	2	no change	2.00	.
+22q11.2_distal_type_II_E-F	22q11.2 recurrent region (distal type II, E-F)	chr22	22776924	23306924	called	2	2	no change	2.00	.
+22q11.2_distal_type_III_E-H	22q11.2 recurrent region (distal type III E-H) (includes SMARCB1)	chr22	22776925	24598466	called	2	2	no change	2.00	.
+22q11.2_distal_type_III_F-G	22q11.2 recurrent region (distal type III, F-G) (includes SMARCB1)	chr22	23489015	24236853	called	2	2	no change	2.00	.
+22q11.2_distal_type_III_F-H	22q11.2 recurrent region (distal type III F-H) (includes SMARCB1)	chr22	23489016	24598466	called	2	2	no change	2.00	.
+Xp22.31	Xp22.31 recurrent region (includes STS)	chrX	6537771	8156913	called	1	1	no change	1.00	.
+Xp11.22p11.23	Xp11.22p11.23 recurrent region (includes SHROOM4)	chrX	48447780	52444264	called	1	1	no change	1.00	.
+Xq28	Xq28 recurrent region (includes GDI1)	chrX	154396223	154555683	called	1	1	no change	1.00	.
+Xq28_int22h1_int22h2-flanked	Xq28 recurrent region (int22h1/int22h2-flanked) (includes RAB39B)	chrX	154890328	155335092	called	1	1	no change	1.00	.
+1p36_terminal	1p36 terminal region (includes GABRD), ClinGen ISCA-37434	chr1	898702	6229913	called	2	2	no change	2.00	.
+Xq28_MECP2	Xq28 region (includes MECP2), ClinGen ISCA-46304: the MECP2 duplication	chrX	154008528	154110279	called	1	1	no change	1.00	.
+GJB6_D13S1830	del(GJB6-D13S1830), ClinVar 5546	chr13	20223037	20531806	called	2	2	no change	2.00	.
+CFTR_dele2_3	CFTRdele2,3 (21 kb), ClinVar 66105	chr7	117498312	117519392	called	2	2	no change	2.00	.
+HBB_exon3_del	HBB deletion of exon 3 (621 bp), ClinVar 3769040	chr11	5225254	5225875	called	2	2	no change	2.00	.
+HBB_619bp_del	HBB 619 bp deletion (South Asian), HbVar 979	chr11	5225388	5226007	called	2	2	no change	2.00	.
+HBD_HBB_Sicilian_del	Sicilian (delta-beta)0 deletion (13.4 kb, HBD to HBB 3'), HbVar 1035	chr11	5219877	5233280	called	2	2	no change	2.00	.
+AZFa	AZFa (USP9Y and DDX3Y)	chrY	12537649	12920478	called	1	1	no change	1.00	.
+AZFb	AZFb (KDM5D and EIF1AY)	chrY	19702297	20593154	called	1	1	no change	1.00	.
+AZFc_DAZ	AZFc (DAZ1 to DAZ4 added up, gr/gr and b2/b3 leave two)	chrY	23129354	24907040	called	4	4	no change	4.00	.

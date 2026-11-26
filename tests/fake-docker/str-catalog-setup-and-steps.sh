@@ -23,7 +23,7 @@
 #      the loci it does not grade (MUC1) and copies the catalog beside the
 #      VCF; step 9b grades with that copy and counts the motif of the
 #      flagged FAME locus with it (og str motif, from expansion_hunter/ with
-#      a relative output and OG_SHADOW passed on, never bin/rfc1_motif.py);
+#      a relative output);
 #      STRANGER_REPEATS=bundled goes back to
 #      Stranger's GRCh38 catalog.
 #   4. EH_CATALOG=bundled: the ExpansionHunter call is the one step 09 makes
@@ -168,7 +168,7 @@ run_expect 0 stranger-strchive "${SCRIPTS}/09b-stranger.sh" sample1
 output_has stranger-strchive "Repeat catalog: the one step 09 ran on, .*sample1_eh_catalog\.json \(STRchive-${STRCHIVE_VERSION//./\\.}\)"
 docker_log_has "stranger --repeats-file /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json " \
   "step 9b did not grade with the catalog step 09 ran on"
-docker_log_has "-e OG_SHADOW -w /genome/sample1/expansion_hunter .*/pgp-bin/og str motif .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged --out sample1_str_motifs\\.tsv\\.part " \
+docker_log_has "-v [^ ]*/bin:/pgp-bin:ro -w /genome/sample1/expansion_hunter ${PYPGX_IMAGE//./[.]} /pgp-bin/og str motif .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged --out sample1_str_motifs\\.tsv\\.part " \
   "step 9b did not count the motif of the flagged FAME locus with og, from expansion_hunter/, with the catalog"
 if grep -q 'rfc1_motif\.py' "$FAKE_DOCKER_LOG"; then fail "step 9b still calls bin/rfc1_motif.py"; fi
 grep -q $'^SAMD12\tpathogenic_motif' "${EH_DIR}/sample1_str_motifs.tsv" 2>/dev/null || fail "step 9b wrote no sample1_str_motifs.tsv"

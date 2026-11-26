@@ -228,7 +228,6 @@ tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= c
 tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= allow= skip= patterns= cached=
 tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= exempt= pairs=
 tests/parity/inputs/dev-scanners/oracle.sh	SC1007	root= exempt= pairs=
-tests/parity/shadow-self-test.sh	SC2001	sed 's/^/ /' <<< "$out"
 tests/smoke/locityper.sh	SC2016	PAF_TAGS='function tags( i, j, t) {
 tests/smoke/parascopy.sh	SC2086	set -- $f
 tests/smoke/t1k.sh	SC2012	SEQ=$(ls hlaidx/*_dna_seq.fa 2>/dev/null | head -n 1)

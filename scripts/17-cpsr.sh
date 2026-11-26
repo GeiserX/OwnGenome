@@ -122,10 +122,8 @@ else
   else
     CDNA_ARGS=(--bam "$(cpath "$BAM")" --exons "$(cpath "$EXONS_BED")")
   fi
-  # og reads the BAM itself. It runs from OUTPUT_DIR with a relative output,
-  # so bin/og's shadow mode (OG_SHADOW, CI only) can run the Python it
-  # replaced beside it, which needs the pysam of PYPGX_IMAGE.
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  # og reads the BAM itself and writes a relative path from OUTPUT_DIR.
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
     /pgp-bin/og cdna check --cpsr "$(cpath "$CLASS_TSV")" --out "${CDNA_TSV##*/}.part" "${CDNA_ARGS[@]}"
   mv "${CDNA_TSV}.part" "$CDNA_TSV"
 fi

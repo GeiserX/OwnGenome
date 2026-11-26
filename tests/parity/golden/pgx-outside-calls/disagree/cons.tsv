@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	not typed	no	HLA typing (step 08) did not run	-
+HLA-B	not typed	no	HLA typing (step 08) did not run	-
+CYP2D6	indeterminate	no	pypgx and Cyrius disagree	pypgx: *1/*4; Cyrius: *1/*2; depth check: ok

@@ -1,0 +1,2 @@
+anc-bad.txt line 6: chromosome is not a code from 1 to 26: 'i3\t27\t9\tT\tN'
+anc-bad.txt: the first line is not '#AncestryDNA raw data download'

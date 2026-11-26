@@ -1,0 +1,2 @@
+rank	gene	moi	exomiser_score	phenotype_score	variant_score	p_value	variant	genotype	consequence	hgvs	acmg	acmg_evidence	disease	clinvar	max_frequency
+1	GENEA	AD	0.998	0.800	0.950	0.0010	chr10:123256215 T>G	0/1	missense_variant	GENEA:ENST1:c.1688A>C:p.(Glu563Ala)	LIKELY_PATHOGENIC	PM2,PP3_Strong,PP4	Synthetic syndrome one (OMIM:100001)	LIKELY_PATHOGENIC (1 star)	not seen

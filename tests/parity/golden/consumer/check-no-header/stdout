@@ -1,0 +1,1 @@
+bad-no-header.txt: the column header '# rsid\tchromosome\tposition\tgenotype' is missing after the comment lines

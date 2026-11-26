@@ -1,0 +1,10 @@
+key	value
+sample	S
+reference_panel	pgsc_1000G_v1
+population	EUR
+population_low_confidence	False
+probability_AFR	0.05
+probability_EUR	0.95
+PC1	0.012
+PC2	-0.034
+PC10	0.5

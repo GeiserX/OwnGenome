@@ -1,0 +1,5 @@
+== chr7:350: chr7:350 (GRCh38; from position)
+  genotype: no call (no gVCF record covers this position: no reads there, or the caller made no call)
+  annotation: no variant of this sample here in the annotated VCF (it holds only the sample's variant calls); ClinVar and gnomAD are not read for a reference or no-call site
+  in the reports:
+  none of the reports mentions it

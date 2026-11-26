@@ -1,0 +1,44 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: AMBIGUOUS
+Date: 2026-11-25
+Source: PharmCAT  report (ambiguous.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2C19      *1/*1 (1 of 2 possible)        ambiguous: one of Normal Metabolizer, Intermediate Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Genes With More Than One Possible Result:
+------------------------------------------------------------------------
+
+  CYP2C19 -- 2 possible diplotypes with different phenotypes (Normal Metabolizer, Intermediate Metabolizer).
+  The data cannot tell them apart (often positions missing from the VCF), so no
+  drug guidance is given for them here. See the PharmCAT HTML report.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+PharmCAT and pypgx:
+------------------------------------------------------------------------
+
+  WARNING: PharmCAT has no single result (2 possible diplotypes) for CYP2C19, but pypgx (step 32) called *1/*2 (Intermediate Metabolizer). The medications above do not cover CYP2C19.
+    Drugs affected by CYP2C19: clopidogrel, voriconazole, escitalopram, citalopram, sertraline, amitriptyline, clomipramine, doxepin, imipramine, trimipramine, lansoprazole, omeprazole, pantoprazole, dexlansoprazole
+    Review them with the pypgx call and docs/32-pypgx.md.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

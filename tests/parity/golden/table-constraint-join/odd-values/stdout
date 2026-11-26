@@ -1,0 +1,15 @@
+A	GENE	B	GENE	LOEUF	pLI	mis_z	CONSTRAINED
+1	x	2	X1	 0.2	abc	1	YES
+1	x	2	X2	0x0.1	0.95	2	YES
+1	x	2	X3	inf	nan	3	NO
+1	x	2	X4	-1	.	4	YES
+1	x	2	X5	2.	1e0	5	YES
+1	x	2	X6	.3	0.9	6	YES
+1	x	2	X7	.	.	.	.
+1	x	2	X8	.	.	.	.
+1	x	.	.	.	.
+1	x	2		.	.	.	.
+1	x	2	.	.	.	.	.
+1	x	2	X9	0.1	0.1	9	YES
+1	x	2	G1	.	.	.	.
+GENEA	x	.	.	.	.

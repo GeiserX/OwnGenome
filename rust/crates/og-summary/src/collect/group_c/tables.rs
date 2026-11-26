@@ -228,6 +228,33 @@ pub fn prs(c: &Ctx<'_>) -> Out {
     let mut out = Obj::new()
         .set("scores", Value::Array(rows))
         .set("adjusted", Value::Bool(adjusted));
+    // The academic-only scores this run did not score, by the rule og prs
+    // format uses (the list's licence column, or the shipped four): it
+    // leaves them out without --academic (PRS_ACADEMIC=true). Only when the
+    // list is there to say which they are.
+    let list = c.asset("pgs_scores.tsv");
+    if crate::is_file(&list) {
+        let labels = og_steps::prs::Labels::read(std::path::Path::new(&list))?;
+        let scored: Vec<&str> = t
+            .rows
+            .iter()
+            .filter_map(|r| r.get("PGS_ID").flatten())
+            .collect();
+        let skipped: Vec<Value> = og_steps::prs::academic_ids(&labels)
+            .iter()
+            .filter(|id| !scored.contains(&id.as_str()))
+            .map(|id| {
+                Obj::new()
+                    .set("pgs_id", s(id))
+                    .set("condition", s(labels.trait_of(id).unwrap_or("")))
+                    .set("reason", s(og_steps::prs::ACADEMIC_REASON))
+                    .val()
+            })
+            .collect();
+        if !skipped.is_empty() {
+            out.put("skipped", Value::Array(skipped));
+        }
+    }
     if let Some(a) = c.find(&[
         format!("ancestry/{s_}_ancestry.tsv"),
         format!("prs/{s_}_ancestry.tsv"),

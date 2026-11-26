@@ -1,0 +1,6 @@
+== chr7:250: chr7:250 (GRCh38; from position)
+  genotype: C/T (heterozygous; REF C, ALT T)
+  evidence: depth 33, genotype quality 40, QUAL 42.5
+  annotation: no annotated VCF (step 13), so no consequence, ClinVar or gnomAD
+  in the reports:
+  none of the reports mentions it
