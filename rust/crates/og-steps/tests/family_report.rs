@@ -58,8 +58,8 @@ fn child_entry() {
     std::process::exit(i32::from(code));
 }
 
-/// `og family ARGS` in a child process: (exit code, stdout then stderr).
-fn run(args: &[&str]) -> (i32, String) {
+/// `og family ARGS` in a child process: (exit code, stdout, stderr).
+fn run3(args: &[&str]) -> (i32, String, String) {
     let res = Command::new(std::env::current_exe().unwrap())
         .args([
             "child_entry",
@@ -80,8 +80,15 @@ fn run(args: &[&str]) -> (i32, String) {
         .unwrap_or(&stdout);
     (
         res.status.code().unwrap_or(-1),
-        format!("{stdout}{}", String::from_utf8_lossy(&res.stderr)),
+        stdout.to_owned(),
+        String::from_utf8_lossy(&res.stderr).into_owned(),
     )
+}
+
+/// `og family ARGS` in a child process: (exit code, stdout then stderr).
+fn run(args: &[&str]) -> (i32, String) {
+    let (rc, out, err) = run3(args);
+    (rc, out + &err)
 }
 
 fn owned(v: &[String]) -> Vec<&str> {
@@ -119,6 +126,11 @@ fn write(path: &str, text: &str) -> String {
 
 fn read(path: &str) -> String {
     fs::read_to_string(path).unwrap_or_default()
+}
+
+/// The file must exist: a missing or unreadable one fails the test.
+fn read_req(path: &str) -> String {
+    fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"))
 }
 
 fn gz(path: &str, text: &str) {
@@ -247,7 +259,11 @@ fn prepare_writes_the_pedigrees_and_stops_on_a_bad_one() {
         // a duo: no trio for WhatsHap
         let (rc, out) = prepare(&d, TRIO, &["kid", "mum"], &[]);
         assert!(rc == 0, "prepare: a duo passes: {out}");
-        assert_eq!(read(&d.j("out/trios.ped")), "", "a duo has no trio: {out}");
+        assert_eq!(
+            read_req(&d.j("out/trios.ped")),
+            "",
+            "a duo has no trio: {out}"
+        );
     }
 
     let bad: Vec<(&str, String, &str)> = vec![
@@ -432,7 +448,7 @@ fn check_against_somalier() {
     ]);
     let rows = tsv(&out_tsv);
     assert!(
-        rc == 0 && rows.iter().all(|r| get(r, "verdict") == "not_checked"),
+        rc == 0 && rows.len() == 3 && rows.iter().all(|r| get(r, "verdict") == "not_checked"),
         "check: 300 sites is not_checked and does not stop (exit {rc}): {out}"
     );
     let mut sib_rows = vec![("dad", "kid", "0.5", 400, 5000)];
@@ -703,11 +719,13 @@ fn report_alleles_de_novo_compound_het_phase() {
             "the report states the de novo count and the pairs: {md}"
         );
 
-        let first = fs::read(d.j("out/kid_inheritance.tsv.gz")).unwrap();
-        run(&args);
+        let gz_out = d.j("out/kid_inheritance.tsv.gz");
+        let first = fs::read(&gz_out).unwrap();
+        fs::remove_file(&gz_out).unwrap();
+        let (rc2, out2) = run(&args);
         assert!(
-            fs::read(d.j("out/kid_inheritance.tsv.gz")).unwrap() == first,
-            "a second run writes the same bytes"
+            rc2 == 0 && fs::read(&gz_out).ok().as_deref() == Some(first.as_slice()),
+            "a second run writes the same bytes (exit {rc2}): {out2}"
         );
 
         // A low-quality copy of the planted site: still listed, quality low
@@ -934,6 +952,17 @@ fn plan(args: &[&str]) -> (i32, String) {
     run(&a)
 }
 
+/// `og family plan ARGS` that must exit 0 and write a new OUT: the old OUT
+/// is removed first, so a failed run cannot leave the last scenario's rows.
+fn plan_fresh(out: &str, args: &[&str]) {
+    let _ = fs::remove_file(out);
+    let (rc, log) = plan(args);
+    assert!(
+        rc == 0 && Path::new(out).exists(),
+        "plan {args:?} writes {out} (exit {rc}): {log}"
+    );
+}
+
 /// The plan table by analysis.
 fn by_analysis(path: &str) -> BTreeMap<String, Vec<Row>> {
     let mut out: BTreeMap<String, Vec<Row>> = BTreeMap::new();
@@ -1088,9 +1117,10 @@ fn families_file() {
             rc == 0 && out.trim().lines().last() == Some("family_b"),
             "--which prints the family of the sample: {out}"
         );
-        let (rc, out) = plan(&["--families", &two, "--sample", "nobody", "--which"]);
+        let (rc, so, se) = run3(&["plan", "--families", &two, "--sample", "nobody", "--which"]);
+        let out = format!("{so}{se}");
         assert!(
-            rc == 0 && !out.contains("family_"),
+            rc == 0 && so.trim().is_empty(),
             "--which: a sample in no family prints no family and exits 0: {out}"
         );
     }
@@ -1198,24 +1228,27 @@ fn plan_runs_skips_and_waits() {
     );
 
     // the trio: phasing runs
-    plan(&[
-        "--families",
-        &two,
-        "--family",
-        "family_a",
-        "--have-gvcf",
-        "child_a",
-        "father_a",
-        "mother_a",
-        "--have-clinvar",
-        "child_a",
-        "father_a",
-        "mother_a",
-        "--ibd-panel",
-        "yes",
-        "--out",
+    plan_fresh(
         &out,
-    ]);
+        &[
+            "--families",
+            &two,
+            "--family",
+            "family_a",
+            "--have-gvcf",
+            "child_a",
+            "father_a",
+            "mother_a",
+            "--have-clinvar",
+            "child_a",
+            "father_a",
+            "mother_a",
+            "--ibd-panel",
+            "yes",
+            "--out",
+            &out,
+        ],
+    );
     let p = by_analysis(&out);
     assert!(
         first(&p, "joint_call", "decision") == "runs"
@@ -1250,21 +1283,24 @@ fn plan_runs_skips_and_waits() {
     );
 
     // a duo: phasing skipped, the map runs; no panel: segments skipped; a partner without ClinVar: couple skipped
-    plan(&[
-        "--families",
-        &two,
-        "--family",
-        "family_a",
-        "--have-gvcf",
-        "child_a",
-        "mother_a",
-        "--have-clinvar",
-        "mother_a",
-        "--ibd-panel",
-        "no",
-        "--out",
+    plan_fresh(
         &out,
-    ]);
+        &[
+            "--families",
+            &two,
+            "--family",
+            "family_a",
+            "--have-gvcf",
+            "child_a",
+            "mother_a",
+            "--have-clinvar",
+            "mother_a",
+            "--ibd-panel",
+            "no",
+            "--out",
+            &out,
+        ],
+    );
     let p = by_analysis(&out);
     assert!(
         first(&p, "joint_call", "decision") == "runs"
@@ -1294,19 +1330,22 @@ fn plan_runs_skips_and_waits() {
                     run run-all.sh father_a first",
         "a partner without ClinVar hits: the couple screen waits for him: {p:?}"
     );
-    plan(&[
-        "--families",
-        &two,
-        "--family",
-        "family_b",
-        "--have-gvcf",
-        "partner_x",
-        "partner_y",
-        "--have-clinvar",
-        "partner_x",
-        "--out",
+    plan_fresh(
         &out,
-    ]);
+        &[
+            "--families",
+            &two,
+            "--family",
+            "family_b",
+            "--have-gvcf",
+            "partner_x",
+            "partner_y",
+            "--have-clinvar",
+            "partner_x",
+            "--out",
+            &out,
+        ],
+    );
     let p = by_analysis(&out);
     assert!(
         first(&p, "couple_carrier", "decision") == "waiting"
@@ -1319,19 +1358,22 @@ fn plan_runs_skips_and_waits() {
         "partners only: no child, so no phasing and no map: {p:?}"
     );
     // step 39 never reads a gVCF: a partner run from a VCF alone, with ClinVar hits, still gets the screen
-    plan(&[
-        "--families",
-        &two,
-        "--family",
-        "family_b",
-        "--have-gvcf",
-        "partner_x",
-        "--have-clinvar",
-        "partner_x",
-        "partner_y",
-        "--out",
+    plan_fresh(
         &out,
-    ]);
+        &[
+            "--families",
+            &two,
+            "--family",
+            "family_b",
+            "--have-gvcf",
+            "partner_x",
+            "--have-clinvar",
+            "partner_x",
+            "partner_y",
+            "--out",
+            &out,
+        ],
+    );
     let p = by_analysis(&out);
     assert_eq!(
         (
@@ -1346,19 +1388,22 @@ fn plan_runs_skips_and_waits() {
         "waiting",
         "while the joint call waits for partner_y's gVCF: {p:?}"
     );
-    plan(&[
-        "--families",
-        &two,
-        "--family",
-        "family_b",
-        "--have-gvcf",
-        "partner_x",
-        "partner_y",
-        "--have-clinvar",
-        "partner_x",
-        "--out",
+    plan_fresh(
         &out,
-    ]);
+        &[
+            "--families",
+            &two,
+            "--family",
+            "family_b",
+            "--have-gvcf",
+            "partner_x",
+            "partner_y",
+            "--have-clinvar",
+            "partner_x",
+            "--out",
+            &out,
+        ],
+    );
     let p = by_analysis(&out);
     assert!(
         first(&p, "trio_phasing", "decision") == "skipped"
@@ -1367,6 +1412,7 @@ fn plan_runs_skips_and_waits() {
     );
 
     // prepare writes the same table as plan, for the same members
+    let _ = fs::remove_file(&out);
     let (rc, log) = plan(&[
         "--families",
         &two,
