@@ -145,7 +145,7 @@
         <li><a href="#exomiser"><span class="dot dot-ok" title="Complete"></span>Symptom-driven ranking</a></li>
         <li><a href="#structural-variants"><span class="dot dot-stale" title="Stale"></span>Structural variants</a></li>
         <li><a href="#mei"><span class="dot dot-ok" title="Complete"></span>Mobile element insertions</a></li>
-        <li><a href="#expansions"><span class="dot dot-failed" title="Failed"></span>Repeat expansions</a></li>
+        <li><a href="#expansions"><span class="dot dot-ok" title="Complete"></span>Repeat expansions</a></li>
         <li><a href="#vntyper"><span class="dot dot-ok" title="Complete"></span>MUC1 repeat (ADTKD)</a></li>
         <li><a href="#mito"><span class="dot dot-ok" title="Complete"></span>Mitochondrial variants</a></li>
         <li><a href="#lpa"><span class="dot dot-ok" title="Complete"></span>Lp(a)</a></li>
@@ -165,7 +165,7 @@
         <li><a href="#pharmcat"><span class="dot dot-ok" title="Complete"></span>PharmCAT</a></li>
         <li><a href="#cpic"><span class="dot dot-stale" title="Stale"></span>CPIC recommendations</a></li>
         <li><a href="#cyp2d6"><span class="dot dot-ok" title="Complete"></span>pypgx, Cyrius and CYP2D6</a></li>
-        <li><a href="#hla"><span class="dot dot-failed" title="Failed"></span>HLA typing</a></li>
+        <li><a href="#hla"><span class="dot dot-ok" title="Complete"></span>HLA typing</a></li>
         <li><a href="#locityper"><span class="dot dot-stale" title="Stale"></span>Locityper second opinion</a></li>
       </ol>
     </li>
@@ -399,9 +399,17 @@
   <section class="sec" id="expansions">
   <div class="card">
     <h2>Repeat Expansions</h2>
-    <p class="sec-meta">Step 09 &middot; <span class="badge badge-red">Failed</span> &middot; <a class="anchor" href="#expansions">link to this section</a></p>
-    <div class="stale">could not be read: FileNotFoundError: [Errno 2] No such file or directory: &#x27;bin/str_intermediate_ranges.tsv&#x27;</div>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Unreadable</span></span></div>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <p class="caveat">Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">Outside the normal range (Stranger)</span><span class="value"><span class="badge badge-yellow">older than ExpansionHunter&#x27;s result: rerun step 9b</span></span></div>
+    <div class="stat"><span class="label">CFTR intron 9 (legacy IVS8) TG and poly-T tract</span><span class="value"><span class="badge badge-yellow">TG12-5T/TG12-5T</span></span></div>
+    <p class="note">5T: 2 copys with the 5T poly-T tract, TG12 on the 5T copies. 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the 5T copy is not known. (Deignan et al. 2020, PMID 32404922)</p>
+    <div class="stat"><span class="label">UGT1A1 promoter TA repeat</span><span class="value"><span class="badge badge-gray">*28/TA9</span></span></div>
+    <p class="note">*28/TA9 (TA7/TA9, 8/10 TA units as ExpansionHunter counts them): a TA length outside TA5 to TA8 is not a named allele here, so its function is not read and it is not compared with PharmCAT (step 7). (Gammal et al. 2016, PMID 26417955)</p>
+    <div class="stat"><span class="label">SLC6A4 5-HTTLPR promoter length polymorphism</span><span class="value"><span class="badge badge-gray">not tested</span></span></div>
+    <p class="note">not tested by any step. CPIC&#x27;s 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)</p>
+    <div class="tscroll" role="region" aria-label="Repeat Expansions" tabindex="0"><table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>HTT</td><td>not in output</td><td></td><td></td></tr><tr><td>FMR1</td><td>not in output</td><td></td><td></td></tr><tr><td>C9ORF72</td><td>not in output</td><td></td><td></td></tr><tr><td>ATXN1</td><td>not in output</td><td></td><td></td></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>CFTR_T</td><td>5/5</td><td></td><td></td></tr><tr><td>CFTR_TG</td><td>12/12</td><td></td><td></td></tr><tr><td>UGT1A1</td><td>8/10</td><td></td><td></td></tr></table></div>
   </div>
   </section>
   <section class="sec" id="vntyper">
@@ -589,9 +597,32 @@
   <section class="sec" id="hla">
   <div class="card">
     <h2>HLA Typing</h2>
-    <p class="sec-meta">Step 08 &middot; <span class="badge badge-red">Failed</span> &middot; <a class="anchor" href="#hla">link to this section</a></p>
-    <div class="stale">could not be read: FileNotFoundError: [Errno 2] No such file or directory: &#x27;bin/hla_alleles.tsv&#x27;</div>
-    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Unreadable</span></span></div>
+    <p class="sec-meta">Step 08 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#hla">link to this section</a></p>
+    <p class="caveat">Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.</p>
+    <p class="caveat">HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).</p>
+    <p class="caveat">KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.</p>
+    <div class="stat"><span class="label">HLA-DQA1</span><span class="value">DQA1*03:01 (quality 0) / DQA1*01:01 (quality 30); low confidence (T1K quality 0 or below)</span></div>
+    <div class="stat"><span class="label">HLA-DQB1</span><span class="value">DQB1*02:01 (quality 40)</span></div>
+    <div class="stat"><span class="label">HLA-DRB1</span><span class="value">DRB1*04:01 (quality 40) / DRB1*07:01 (quality 40)</span></div>
+    <p class="note">Coeliac DQ: not determined (HLA-DQA1 low confidence)</p>
+    <p class="note">DQB1*02 copies: 2</p>
+    <p class="note">DRB1*04:01 present: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DQB1*06:02 absent: narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)</p>
+    <p class="note">DRB1*15:01 absent: multiple sclerosis (Barcellos 2003, Am J Hum Genet)</p>
+    <p class="note">DRB1*01:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:04 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:05 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:08 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*14:02 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">A*31:01 not determined (HLA-A not typed): carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)</p>
+    <p class="note">B*15:02 not determined (HLA-B not typed): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)</p>
+    <p class="note">B*57:01 not determined (HLA-B not typed): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)</p>
+    <p class="note">B*58:01 not determined (HLA-B not typed): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)</p>
+    <p class="note">B*27 not determined (HLA-B not typed): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)</p>
+    <p class="note">C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006, Am J Hum Genet)</p>
+    <div class="stat"><span class="label">HLA database</span><span class="value">unknown</span></div>
+    <div class="stat"><span class="label">OptiType check</span><span class="value">not compared: OptiType did not run: no class I reads</span></div>
+    <p class="note">too few KIR reads</p>
   </div>
   </section>
   <section class="sec full-width" id="locityper">
@@ -601,7 +632,7 @@
     <p class="caveat">A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (&lt;sample&gt;.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors&#x27; HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/&lt;sample&gt;_locityper.tsv.</p>
     <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 53 was skipped in the run of 2020-01-01 00:00 UTC</div>
     <div class="stat"><span class="label">Loci called</span><span class="value">3 of 3 (3 pass the filter)</span></div>
-    <div class="tscroll" role="region" aria-label="Locityper Second Opinion at Hard Loci" tabindex="0"><table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DRB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08) did not run</td></tr><tr><td>HLA-DQB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08) did not run</td></tr><tr><td>CYP2D6</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>pypgx (step 32): *1/*2; Cyrius (step 21): *1/*2 (not usable: Filter LowQ)</td></tr></table></div>
+    <div class="tscroll" role="region" aria-label="Locityper Second Opinion at Hard Loci" tabindex="0"><table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DRB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DRB1*04:01/DRB1*07:01</td></tr><tr><td>HLA-DQB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DQB1*02:01</td></tr><tr><td>CYP2D6</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>pypgx (step 32): *1/*2; Cyrius (step 21): *1/*2 (not usable: Filter LowQ)</td></tr></table></div>
   </div>
   </section>
   </div>
@@ -843,6 +874,7 @@
       <li><strong>ATAD3B</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>ATF4</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>ATPAF2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>ATXN1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>AXIN1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>B3GAT3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>BAX</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -872,6 +904,7 @@
       <li><strong>C4A</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>C4B</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>C4B_2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>C9ORF72</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>CA5A</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CALR3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CANT1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -919,8 +952,10 @@
       <li><strong>CFC1B</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CFHR1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CFHR3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
-      <li><strong>CFTR</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a></li>
+      <li><strong>CFTR</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>CFTR_DEL</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>CFTR_T</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR_TG</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>CGB1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CGB2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>CGB3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -1043,7 +1078,7 @@
       <li><strong>DHRS4L2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>DHX32</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>DHX40</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
-      <li><strong>DMPK</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>DMPK</strong>: <a href="#callability">Gene callability (mosdepth)</a>, <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>DMRTC1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>DMRTC1B</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>DND1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -1142,6 +1177,7 @@
       <li><strong>FKTN</strong>: <a href="#mei">Mobile element insertions (MEGAnE)</a></li>
       <li><strong>FLAD1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>FLT4</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>FMR1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>FOLH1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>FOXD4</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>FOXD4L1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -1294,8 +1330,9 @@
       <li><strong>HFE</strong>: <a href="#clinvar">ClinVar screen</a>, <a href="#carrier-list">Carrier list</a>, <a href="#clinical-filter">Clinical variant filter</a> (2)</li>
       <li><strong>HIC2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HLA-A</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
-      <li><strong>HLA-DQB1</strong>: <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
-      <li><strong>HLA-DRB1</strong>: <a href="#callability">Gene callability (mosdepth)</a>, <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
+      <li><strong>HLA-DQA1</strong>: <a href="#hla">HLA typing (T1K)</a></li>
+      <li><strong>HLA-DQB1</strong>: <a href="#hla">HLA typing (T1K)</a>, <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
+      <li><strong>HLA-DRB1</strong>: <a href="#callability">Gene callability (mosdepth)</a>, <a href="#hla">HLA typing (T1K)</a>, <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
       <li><strong>HLA-DRB3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HLA-DRB4</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HLA-G</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -1328,6 +1365,7 @@
       <li><strong>HSPA8</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HTN1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HTN3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>HTT</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>HYAL1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>HYDIN</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>IFITM3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -1857,6 +1895,7 @@
       <li><strong>SLC35G5</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>SLC35G6</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>SLC6A3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
+      <li><strong>SLC6A4</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
       <li><strong>SLC6A8</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>SLC71A2</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>SLC9B1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
@@ -2052,7 +2091,7 @@
       <li><strong>UBB</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>UBE2NL</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>UBTFL1</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
-      <li><strong>UGT1A1</strong>: <a href="#cyp2d6">pypgx</a></li>
+      <li><strong>UGT1A1</strong>: <a href="#cyp2d6">pypgx</a>, <a href="#expansions">Repeat expansions (ExpansionHunter)</a> (2)</li>
       <li><strong>UGT1A3</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>UGT1A5</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>
       <li><strong>UGT1A6</strong>: <a href="#callability">Gene callability (mosdepth)</a></li>

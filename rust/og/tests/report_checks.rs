@@ -1648,7 +1648,7 @@ fn the_blood_group_and_couple_cards() {
 
 /// The card titles of DEMO-001's HTML report: the chapters move cards, they
 /// never add, drop or rename one.
-const GOLDEN_TITLES: [&str; 47] = [
+const GOLDEN_TITLES: [&str; 48] = [
     "Quality Control",
     "Mosaic Loss of Chromosome Y or X",
     "Variant Calling",
@@ -1686,6 +1686,7 @@ const GOLDEN_TITLES: [&str; 47] = [
     "Telomere content (relative)",
     "Mitochondrial Analysis",
     "Clinical Variant Filter",
+    "Secondary-Findings Genes (ACMG SF v3.3; ClinVar only, HIGH-impact not checked)",
     "Variant Prioritization (slivar)",
     "Symptom-Driven Ranking (Exomiser)",
     "Polygenic Risk Scores",
