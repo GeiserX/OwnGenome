@@ -1313,7 +1313,7 @@ fn step_16b_reads_the_genes_not_read_and_both_reports_list_them() {
     let (txt, html) = reports(&summ);
     let line = format!("Not read, and no other step calls them ({n}): ");
     assert!(txt.contains(&line), "text: {line}");
-    assert!(txt.contains(&format!("{MAPQ0} (0%)")));
+    assert!(txt.contains(&format!("{MAPQ0} (0.0%)")));
     assert!(txt.contains("HLA-DRB3 (not on this reference)"));
     assert!(html.contains(&*og_render::escape::e(&line)), "HTML: {line}");
     assert!(html.contains("Genes This Genome Could Not Read Reliably"));

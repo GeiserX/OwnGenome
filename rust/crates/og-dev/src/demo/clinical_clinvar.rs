@@ -1,8 +1,12 @@
 //! The demo sample's ClinVar results: the ClinVar screen (step 06), with
-//! the son's planted result to act on, and the couple carrier screen
-//! (step 39) the carrier chapter shows.
+//! the son's planted result to act on and one conflicting record to review,
+//! and the couple carrier screen (step 39) the carrier chapter shows.
 
 use super::{Ctx, Rng, Scratch, arg, cell, chrom_index, copy, put, put_gz, read, table};
+
+/// The demo's conflicting ClinVar record: an invented gene, never a
+/// finding, so its chromosome holds no other demo hit.
+pub const CONFLICTING: (&str, &str, i64) = ("DEMOD", "chr5", 31_400_123);
 
 /// The son's results to act on (DEMO-003, finding "act"): a pathogenic
 /// ClinVar hit in KCNH2, an ACMG secondary-findings gene that is on no
@@ -91,6 +95,7 @@ pub fn clinvar(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
         &ctx.path(&format!("clinvar/{}_clinvar_hits.vcf", ctx.sample)),
         &body,
     )?;
+    conflicting(ctx)?;
     put_gz(
         &ctx.genome_dir.join("clinvar/clinvar.vcf.gz"),
         "##fileformat=VCFv4.1\n##fileDate=2026-09-28\n##source=ClinVar\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
@@ -169,4 +174,30 @@ pub fn couple(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
     ctx.og(&call)?;
     let name = format!("{}_couple_carrier.tsv", ctx.sample);
     copy(&work.join(&name), &ctx.path(&format!("couple/{name}")))
+}
+
+/// Step 06's conflicting records to review: one heterozygous record of an
+/// invented gene that two labs call pathogenic and one of uncertain
+/// significance, written by `og clinvar conflicting-hits` as step 06 writes
+/// it. No count, card or carrier list reads it.
+fn conflicting(ctx: &Ctx) -> Result<(), String> {
+    let (gene, chrom, pos) = CONFLICTING;
+    let work = Scratch::new("conflicting")?;
+    let vcf = work.join("conflicting.vcf");
+    put(
+        &vcf,
+        &format!(
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n\
+             {chrom}\t{pos}\t90004\tG\tA\t50\tPASS\tGENEINFO={gene}:90004;\
+             CLNSIG=Conflicting_classifications_of_pathogenicity;\
+             CLNSIGCONF=Pathogenic_(2)|Uncertain_significance_(1);\
+             CLNREVSTAT=criteria_provided,_conflicting_classifications;\
+             CLNDN=Demo_condition_D;CLNDISDB=MONDO:MONDO:0000001\tGT:DP:GQ\t0/1:31:48\n"
+        ),
+    )?;
+    let table = ctx.og_output(&["clinvar", "conflicting-hits", arg(&vcf)])?;
+    put(
+        &ctx.path(&format!("clinvar/{}_clinvar_conflicting.tsv", ctx.sample)),
+        &table,
+    )
 }

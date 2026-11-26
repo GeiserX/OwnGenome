@@ -19,6 +19,24 @@ fn hemi(x: &D<'_>) -> Result<String, Malformed> {
     })
 }
 
+/// The marks of a row: a call below the hits file's call floor, then the
+/// pair word of two heterozygous hits in one recessive gene with its phase
+/// (a pair on one copy has a phase and no word). `""` for a row with none,
+/// or a summary written before the marks.
+fn marks(x: &D<'_>) -> Result<String, Malformed> {
+    let mut out = String::new();
+    if x.flag("low_confidence")? {
+        out += "; low-confidence call: check the reads";
+    }
+    match (x.opt("pair")?, x.opt("phase")?) {
+        (Some(p), Some(ph)) => out += &format!("; {}: {}", p.text()?, ph.text()?),
+        (Some(p), None) => out += &format!("; {}", p.text()?),
+        (None, Some(ph)) => out += &format!("; {}", ph.text()?),
+        (None, None) => {}
+    }
+    Ok(out)
+}
+
 /// The list's lines, the same in both reports.
 pub fn lines(c: &D<'_>) -> Result<Vec<String>, Malformed> {
     if c.flag("unavailable")? {
@@ -49,14 +67,15 @@ pub fn lines(c: &D<'_>) -> Result<Vec<String>, Malformed> {
     let mut out = vec![head];
     for x in &carriers {
         out.push(format!(
-            "{} ({}; {}): {} {}{}, ClinVar {}",
+            "{} ({}; {}): {} {}{}, ClinVar {}{}",
             x.s("gene")?,
             x.s("condition")?,
             x.s("inheritance")?,
             x.s("variant")?,
             x.s("genotype")?,
             hemi(x)?,
-            x.s("significance")?
+            x.s("significance")?,
+            marks(x)?
         ));
     }
     for x in &both {
@@ -66,14 +85,15 @@ pub fn lines(c: &D<'_>) -> Result<Vec<String>, Malformed> {
             "the only copy changed"
         };
         out.push(format!(
-            "{} ({}; {}): {} {}{}, ClinVar {}: {copies}, not the pattern of a carrier",
+            "{} ({}; {}): {} {}{}, ClinVar {}: {copies}, not the pattern of a carrier{}",
             x.s("gene")?,
             x.s("condition")?,
             x.s("inheritance")?,
             x.s("variant")?,
             x.s("genotype")?,
             hemi(x)?,
-            x.s("significance")?
+            x.s("significance")?,
+            marks(x)?
         ));
     }
     for x in set_aside.items()? {

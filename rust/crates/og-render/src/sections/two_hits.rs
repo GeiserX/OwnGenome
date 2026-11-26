@@ -35,9 +35,17 @@ pub fn lines(t: Option<&D<'_>>) -> Result<Vec<String>, Malformed> {
             Some(a) => format!(" ({})", a.text()?),
             None => String::new(),
         };
+        // A biallelic verdict is proven (read-backed phase, or a call
+        // homozygous inside the deletion); every other verdict is a maybe.
+        let verdict = x.at("verdict")?.string()?;
+        let hit = if verdict == "biallelic" {
+            "both copies are hit"
+        } else {
+            "both copies may be hit"
+        };
         out.push(format!(
-            "{}: {} ({}; AR), both copies may be hit: {} and {} {}{allele}; {}",
-            capitalize(x.at("verdict")?.string()?),
+            "{}: {} ({}; AR), {hit}: {} and {} {}{allele}; {}",
+            capitalize(verdict),
             x.s("gene")?,
             x.s("condition")?,
             x.s("deletion")?,

@@ -265,11 +265,11 @@
     <p class="caveat">A list to review with a clinician, not a diagnosis. Each gene&#x27;s ACMG SF v3.3 reporting rule (assets/acmg_sf.tsv) is applied: one variant in a dominant gene; two in a recessive gene such as MUTYH, BTD or ATP7B, even when their phase is unknown; HFE only as homozygous p.C282Y. A variant the rule does not report is listed apart with the reason. A rare HIGH-impact record is not a ClinVar classification.</p>
     <div class="tscroll" role="region" aria-label="Secondary-Findings Genes (ACMG SF v3.3)" tabindex="0"><table>
       <tr><th>Gene</th><th>Variant</th><th>Genotype</th><th>Evidence</th><th>Viewer</th></tr>
-<tr><td>MUTYH</td><td>chr1:45331556 C&gt;T</td><td>het</td><td>ClinVar Pathogenic</td><td><a class="locus" href="http://127.0.0.1:8765/#chr1:45331556" target="_blank" rel="noopener noreferrer">chr1:45331556</a></td></tr>
+<tr><td>MUTYH</td><td>chr1:45331556 C&gt;T</td><td>het</td><td>ClinVar Pathogenic; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)</td><td><a class="locus" href="http://127.0.0.1:8765/#chr1:45331556" target="_blank" rel="noopener noreferrer">chr1:45331556</a></td></tr>
 <tr><td>BRCA1</td><td>chr17:43057100 C&gt;T</td><td>het</td><td>ClinVar Pathogenic</td><td><a class="locus" href="http://127.0.0.1:8765/#chr17:43057100" target="_blank" rel="noopener noreferrer">chr17:43057100</a></td></tr>
 <tr><td>GLA</td><td>chrX:101398000 C&gt;T</td><td>1</td><td>ClinVar Pathogenic</td><td><a class="locus" href="http://127.0.0.1:8765/#chrX:101398000" target="_blank" rel="noopener noreferrer">chrX:101398000</a></td></tr>
-<tr><td>MUTYH</td><td>chr1:45332000 G&gt;A</td><td>het</td><td>stop_gained</td><td><a class="locus" href="http://127.0.0.1:8765/#chr1:45332000" target="_blank" rel="noopener noreferrer">chr1:45332000</a></td></tr>
-<tr><td>MYBPC3</td><td>chr11:47332000 G&gt;A</td><td>het</td><td>splice_donor_variant,intron_variant</td><td><a class="locus" href="http://127.0.0.1:8765/#chr11:47332000" target="_blank" rel="noopener noreferrer">chr11:47332000</a></td></tr>
+<tr><td>MUTYH</td><td>chr1:45332000 G&gt;A</td><td>het</td><td>stop_gained; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)</td><td><a class="locus" href="http://127.0.0.1:8765/#chr1:45332000" target="_blank" rel="noopener noreferrer">chr1:45332000</a></td></tr>
+<tr><td>MYBPC3</td><td>chr11:47332000 G&gt;A</td><td>het</td><td>splice_donor_variant,intron_variant; no GQ, DP or AD to judge the call, not counted as rare</td><td><a class="locus" href="http://127.0.0.1:8765/#chr11:47332000" target="_blank" rel="noopener noreferrer">chr11:47332000</a></td></tr>
 <tr><td>MSH2</td><td>chr2:47414000 A&gt;AT</td><td>het</td><td>frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3&#x27; end of EPCAM silences MSH2 and counts as an MSH2 finding.</td><td><a class="locus" href="http://127.0.0.1:8765/#chr2:47414000" target="_blank" rel="noopener noreferrer">chr2:47414000</a></td></tr>
     </table></div>
     <p>HFE chr6:26092913 G&gt;A het (ClinVar): not reported, HFE is reported only for: HFE p.C282Y homozygotes only</p>
@@ -378,8 +378,8 @@
     <p>Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside</p>
     <p>MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C&gt;T het, ClinVar Pathogenic</p>
     <p>HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G&gt;A het, ClinVar Pathogenic</p>
-    <p>CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT&gt;A het, ClinVar Pathogenic</p>
-    <p>GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C&gt;T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic</p>
+    <p>CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT&gt;A het, ClinVar Pathogenic; low-confidence call: check the reads</p>
+    <p>GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C&gt;T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic; low-confidence call: check the reads</p>
     <p>BRCA1 (Fanconi anemia; AR): chr17:43057100 C&gt;T het, ClinVar Pathogenic</p>
     <p>HBA1 (Alpha-thalassemia; AR): chr16:176700 G&gt;A het, ClinVar Pathogenic</p>
     <p>GLA (Fabry disease; XL): chrX:101398000 C&gt;T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier</p>
