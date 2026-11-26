@@ -32,6 +32,10 @@ Before implementing a new step, open an issue to discuss it. Include:
 
 ## Conventions
 
+### Code
+
+OwnGenome's own code is Rust: the `og` binary under [`rust/`](rust/) ([docs/rust.md](docs/rust.md)), with shell and Nextflow glue in the step scripts and modules. Write new code in Rust, and write a test as a cargo test or a `tests/test_*.sh`. Do not add Python. Guard's `og dev python-gate` fails on any Python file, Python heredoc or python call that [`tests/python-allow.tsv`](tests/python-allow.tsv) does not name, and that list holds only third-party tools that run Python inside their own pinned images.
+
 ### Scripts
 
 Every script starts like this:
