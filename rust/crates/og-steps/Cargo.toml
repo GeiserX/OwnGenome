@@ -29,3 +29,8 @@ zlib-rs.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# tests/family_report.rs reads a written pedigree back as the live family
+# page does (og live family state).
+og-live.workspace = true
