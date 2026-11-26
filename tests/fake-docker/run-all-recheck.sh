@@ -49,13 +49,12 @@ second=$(nf_lines | tail -1)
 [ "$(nf_lines | wc -l)" -eq 2 ] || fail "want two nextflow runs, got: $(nf_lines)"
 [ "$second" = "$first" ] || fail "the rerun did not replay the run: was ${first}, now ${second}"
 output_has rerun '^Rerunning: '
-python3 - "${S}/recheck/state.json" <<'PY' || fail "recheck/state.json has no rerun record"
-import json, sys
-s = json.load(open(sys.argv[1]))
-r = s["rerun"]
-assert r["rc"] == 0 and r["command"] and r["finished_utc"] and "predicted_vs_redone" in r, r
-assert all(i["class"] == "no-newer-release" for i in s["items"]), s["items"]
-PY
+# The rerun record: exit 0, a command, an end time and the comparison; every
+# item still "no-newer-release".
+jq -e 'def set: . != null and . != false and . != "" and . != 0 and . != [] and . != {};
+  (.rerun | .rc == 0 and (.command | set) and (.finished_utc | set) and has("predicted_vs_redone"))
+  and all(.items[]; .class == "no-newer-release")' "${S}/recheck/state.json" > /dev/null \
+  || fail "recheck/state.json has no rerun record: $(jq -c '{rerun, items}' "${S}/recheck/state.json" 2>&1)"
 rows1=$(wc -l < "${S}/recheck/log.tsv")
 for e in rerun-start rerun-end; do grep -q $'\t'"$e"$'\t' "${S}/recheck/log.tsv" || fail "log.tsv lacks the ${e} row"; done
 

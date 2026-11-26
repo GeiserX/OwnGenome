@@ -1,0 +1,114 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+================================================================================
+
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (neither step 35 nor step 35b ran)
+
+################################################################################
+#  4. MEDICINES: How might I respond to medicines?
+################################################################################
+
+## CPIC Drug-Gene Recommendations
+---
+  The PharmCAT report could not be parsed: see the CPIC report.
+  Genes with a non-normal phenotype: 0  More than one possible result: 0  Not called: 0  Called without a function phenotype (no drug guidance): 0
+  Drugs per gene: cpic/S_cpic_recommendations.txt
+  CPIC recommendations follow the phenotype PharmCAT called. They are guidance for prescribers, not a prescription. A gene that was not called has no recommendation here, and that is not the same as a typical response.
+
+## pypgx Pharmacogenomics
+---
+  Genes called: 3/6
+  CYP2D6 diplotype: *1/*2
+  Not assessable on this reference: CYP2E1 (see docs/32-pypgx.md)
+  Low-confidence: UGT1A1 Indeterminate rests on chr2:1:A:G: check the reads
+  Low-confidence: SLCO1B1 *1/*5 rests on a low-GQ variant: check the reads
+  CYP2D6 depth check: ok; share of the depth at MAPQ >= 1 / >= 20: Cyrius's region with REP6 0.99 / not measured, gene body without REP6 not measured / 0.95
+
+## PGx copy number
+---
+  CYP2D6   Normal (pypgx, read depth)
+  CYP2A6   not called: pypgx failed (pypgx, read depth)
+  CYP2B6   not called: the CYP2D6 depth check failed (pypgx, read depth)
+  SLCO1B1  not called: pypgx gave no copy-number call (pypgx, read depth)
+
+## CYP2D6 across callers
+---
+  PharmCAT (step 36's call)  not run
+  pypgx                      *1/*2
+  Cyrius                     *1/*3 (not usable: Filter LowQ)
+  pypgx and Cyrius agree: fewer than two usable calls
+  Probable (one caller: pypgx): *1/*2, Normal Metabolizer; not passed to PharmCAT, so no drug guidance rests on it
+  CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means the gene was not read reliably here; a clinical CYP2D6 test settles it.
+
+## Steps Not Run
+---
+  - Coverage (mosdepth)
+  - Gene callability (mosdepth)
+  - Sex check (indexcov)
+  - Sample identity and contamination (somalier, VerifyBamID2)
+  - Mosaic loss of chromosome Y or X
+  - Variant calling
+  - ClinVar screen
+  - PharmCAT
+  - SMN1/SMN2 copy number (Parascopy, short reads)
+  - Paralog genes (Paraphase, PacBio HiFi)
+  - HLA typing (T1K)
+  - Polygenic risk scores
+  - Fine-grained ancestry
+  - Structural variants (Manta)
+  - Structural variants (Delly)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Structural variants, class 4 and 5 (AnnotSV)
+  - Repeat expansions (ExpansionHunter)
+  - Telomere content (TelomereHunter)
+  - Runs of homozygosity
+  - Mitochondrial haplogroup
+  - Y-chromosome haplogroup (Yleaf)
+  - Y placement on the current public tree
+  - Y-STR markers (HipSTR)
+  - Raw-data export (23andMe v5 layout)
+  - Blood groups (predicted)
+  - Lp(a): LPA KIV-2 repeat count
+  - MUC1 VNTR frameshifts (VNtyper)
+  - Locityper second opinion at hard loci
+  - Mitochondrial variants
+  - Traits panel
+  - Archaic ancestry (IBDmix)
+  - Ancient populations (AADR PCA)
+  - Viral DNA in the unmapped reads
+  - Symptom-driven ranking (Exomiser)
+  - Clonal haematopoiesis (CHIP)
+  - Mobile element insertions (MEGAnE)
+  - Mosaic chromosomal alterations (MoChA)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

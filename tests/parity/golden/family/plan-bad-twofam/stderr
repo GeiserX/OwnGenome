@@ -1,0 +1,1 @@
+ERROR: fam-twofam.tsv line 3: sample 'kid' is in family 'fb' here and in family 'fa' on line 2; a person belongs to one family

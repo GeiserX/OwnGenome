@@ -204,27 +204,57 @@ pub fn prs(c: &Ctx<'_>) -> Out {
             Some(Some(x)) => strs(x.split(';').filter(|x| !x.is_empty())),
             _ => Value::Null,
         };
-        rows.push(
-            Obj::new()
-                .set("condition", get_default(r, "Condition", ""))
-                .set("pgs_id", get_default(r, "PGS_ID", ""))
-                .set("score", get_default(r, "Score_SUM", ""))
-                .set("matched", get_default(r, "Variants_Matched", ""))
-                .set("total", get_default(r, "Variants_Total", ""))
-                .set("chrx", get_default(r, "ChrX", ""))
-                .set("ambiguous", get_default(r, "Ambiguous", ""))
-                .set("applies_to", get_default(r, "Applies_To", ""))
-                .set("sex_check", get_default(r, "Sex_Check", ""))
-                .set("percentile", s(&pct))
-                .set("group", group)
-                .set("evaluated_in", evaluated)
-                .set("effect", s(&or(r, "Effect", "")))
-                .val(),
-        );
+        let mut row = Obj::new()
+            .set("condition", get_default(r, "Condition", ""))
+            .set("pgs_id", get_default(r, "PGS_ID", ""))
+            .set("score", get_default(r, "Score_SUM", ""))
+            .set("matched", get_default(r, "Variants_Matched", ""))
+            .set("total", get_default(r, "Variants_Total", ""))
+            .set("chrx", get_default(r, "ChrX", ""))
+            .set("ambiguous", get_default(r, "Ambiguous", ""))
+            .set("applies_to", get_default(r, "Applies_To", ""))
+            .set("sex_check", get_default(r, "Sex_Check", ""))
+            .set("percentile", s(&pct))
+            .set("group", group)
+            .set("evaluated_in", evaluated)
+            .set("effect", s(&or(r, "Effect", "")));
+        // Why a panel run gave no percentile (og prs table --target writes
+        // the column): the input listed variants only. Older tables have none.
+        if r.get("Percentile_Note").is_some() {
+            row.put("percentile_note", s(&or(r, "Percentile_Note", "")));
+        }
+        rows.push(row.val());
     }
     let mut out = Obj::new()
         .set("scores", Value::Array(rows))
         .set("adjusted", Value::Bool(adjusted));
+    // The academic-only scores this run did not score, by the rule og prs
+    // format uses (the list's licence column, or the shipped four): it
+    // leaves them out without --academic (PRS_ACADEMIC=true). Only when the
+    // list is there to say which they are.
+    let list = c.asset("pgs_scores.tsv");
+    if crate::is_file(&list) {
+        let labels = og_steps::prs::Labels::read(std::path::Path::new(&list))?;
+        let scored: Vec<&str> = t
+            .rows
+            .iter()
+            .filter_map(|r| r.get("PGS_ID").flatten())
+            .collect();
+        let skipped: Vec<Value> = og_steps::prs::academic_ids(&labels)
+            .iter()
+            .filter(|id| !scored.contains(&id.as_str()))
+            .map(|id| {
+                Obj::new()
+                    .set("pgs_id", s(id))
+                    .set("condition", s(labels.trait_of(id).unwrap_or("")))
+                    .set("reason", s(og_steps::prs::ACADEMIC_REASON))
+                    .val()
+            })
+            .collect();
+        if !skipped.is_empty() {
+            out.put("skipped", Value::Array(skipped));
+        }
+    }
     if let Some(a) = c.find(&[
         format!("ancestry/{s_}_ancestry.tsv"),
         format!("prs/{s_}_ancestry.tsv"),
@@ -238,14 +268,38 @@ pub fn prs(c: &Ctx<'_>) -> Out {
             }
         }
         let g = |k: &str| kv.get(k).cloned().unwrap_or_else(|| s(""));
-        out.put(
-            "ancestry",
-            Obj::new()
-                .set("population", g("population"))
-                .set("panel", g("reference_panel"))
-                .set("low_confidence", g("population_low_confidence"))
-                .val(),
-        );
+        // A sample whose two most probable groups each reach 0.2 sits
+        // between them, so its match to one group is low-confidence too,
+        // though pgsc_calc flags only a top probability under 0.5. A table
+        // without two probabilities says nothing either way.
+        let population = match kv.get("population") {
+            Some(Value::Str(p)) => p.as_str(),
+            _ => "",
+        };
+        let probs = crate::prs::probabilities(kv.iter().filter_map(|(k, v)| match v {
+            Value::Str(v) => Some((k.as_str(), v.as_str())),
+            _ => None,
+        }));
+        let mixed = crate::prs::mixed(&probs, population);
+        let between = matches!(mixed, Some((true, _)));
+        let mut anc = Obj::new()
+            .set("population", g("population"))
+            .set("panel", g("reference_panel"))
+            .set(
+                "low_confidence",
+                if between {
+                    s("True")
+                } else {
+                    g("population_low_confidence")
+                },
+            );
+        if let Some((between, second)) = mixed {
+            let flag = if between { "True" } else { "False" };
+            anc = anc
+                .set("mixed", s(flag))
+                .set("second_population", s(&second));
+        }
+        out.put("ancestry", anc.val());
     }
     Ok(Some((p, out.val())))
 }
@@ -769,14 +823,17 @@ pub fn bloodtype(c: &Ctx<'_>) -> Out {
         let system = r.get("system").flatten();
         let pheno = or_dot(r, "phenotype");
         by.insert(system.map(str::to_owned), pheno.clone());
-        systems.push(
-            Obj::new()
-                .set("system", opt_s(system))
-                .set("phenotype", s(&pheno))
-                .set("genotype", s(&or_dot(r, "genotype")))
-                .set("confidence", s(&or_dot(r, "confidence")))
-                .val(),
-        );
+        let mut row = Obj::new()
+            .set("system", opt_s(system))
+            .set("phenotype", s(&pheno))
+            .set("genotype", s(&or_dot(r, "genotype")))
+            .set("confidence", s(&or_dot(r, "confidence")));
+        if let Some(note) = r.get("note").flatten()
+            && !matches!(note.trim(), "" | ".")
+        {
+            row.put("note", s(note));
+        }
+        systems.push(row.val());
     }
     let get = |k: &str| s(by.get(&Some(k.to_owned())).map_or(".", String::as_str));
     let v = Obj::new()
@@ -1188,15 +1245,21 @@ pub fn viral(c: &Ctx<'_>) -> Out {
         Some(Value::Str(x)) => x.clone(),
         _ => String::new(),
     };
-    let ici = keep
+    // Every species called: og viral report calls both when both pass.
+    let ici: Vec<String> = keep
         .iter()
-        .find(|r| get(r, "call") == "inherited integrated HHV-6 likely")
-        .map(|r| get(r, "virus"));
+        .filter(|r| get(r, "call") == "inherited integrated HHV-6 likely")
+        .map(|r| get(r, "virus"))
+        .collect();
     let human = get(&keep[0], "human_depth");
-    let hhv6 = match ici {
-        Some(v) => format!("inherited integrated {v} likely"),
-        None if human == "." => "not assessed (no human depth)".to_owned(),
-        None => "no integrated HHV-6".to_owned(),
+    let hhv6 = if !ici.is_empty() {
+        format!("inherited integrated {} likely", ici.join(" and "))
+    } else if keep.iter().any(|r| get(r, "call") == "not assessed") {
+        "not assessed (the BAM has no unplaced unmapped reads)".to_owned()
+    } else if human == "." {
+        "not assessed (no human depth)".to_owned()
+    } else {
+        "no integrated HHV-6".to_owned()
     };
     let found: Vec<Value> = keep
         .iter()
@@ -1258,8 +1321,19 @@ pub fn chip(c: &Ctx<'_>) -> Out {
         .map(|r| dots(r, &need))
         .collect();
     let mut covered = Vec::new();
+    let mut limits = Vec::new();
     for r in &depth.rows {
         if r.get("status").flatten() == Some("covered") {
+            // A covered gene's own limit, from each coding base's depth
+            // (og chip report); a cell that is not a finite number adds none.
+            if let Some(l) = r
+                .get("detection_limit_vaf")
+                .flatten()
+                .and_then(|x| pycompat::num::parse_float(x).ok())
+                .filter(|l| l.is_finite())
+            {
+                limits.push(l);
+            }
             let x = r.get("mean_depth").flatten().ok_or_else(|| {
                 py_error(
                     "TypeError",
@@ -1279,18 +1353,31 @@ pub fn chip(c: &Ctx<'_>) -> Out {
                 .map_err(|e| py_error(e.exception(), "cannot convert float NaN to integer"))?,
         )
     };
-    let limit = match med {
-        None => Value::Null,
-        Some(m) => og_chip::binom::detection_limit(m)
-            .map_err(|e| py_error("ValueError", &e.to_string()))?
-            .map_or(Value::Null, Value::Float),
-    };
+    // The stated limit is the median of the covered genes' own limits, as
+    // og chip report states it, not the limit at the median depth: a gene
+    // with an unread exon has a higher limit, or none, at the same mean.
+    // A median depth that is not finite stays an unreadable table.
+    if let Some(m) = med {
+        og_chip::binom::finite_mean(m).map_err(|e| py_error("ValueError", &e.to_string()))?;
+    }
+    let limit = og_chip::report::stated_limit(limits).map_or(Value::Null, Value::Float);
+    // The two share columns came after the first seven: a table without
+    // them still reads, and the genes then lack them.
+    let gene_keys: Vec<&str> = dneed
+        .iter()
+        .copied()
+        .chain(
+            ["callable_fraction", "assessable_fraction"]
+                .into_iter()
+                .filter(|k| depth.has(k)),
+        )
+        .collect();
     let v = Obj::new()
         .set("calls", Value::Array(chip.clone()))
         .set("other", count(calls.rows.len() - chip.len()))
         .set(
             "genes",
-            Value::Array(depth.rows.iter().map(|r| dots(r, &dneed)).collect()),
+            Value::Array(depth.rows.iter().map(|r| dots(r, &gene_keys)).collect()),
         )
         .set("median_depth", med.map_or(Value::Null, Value::Float))
         .set("median_limit", limit)
@@ -1543,12 +1630,107 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bloodtype_keeps_limits_and_phase_notes() {
+        let d = crate::testutil::Dir::new("bloodtype-notes");
+        d.put(
+            "S/bloodtype/S_bloodtype.tsv",
+            concat!(
+                "system\tphenotype\tgenotype\tconfidence\tnote\n",
+                "ABO\t.\t.\tlow\tABO limit\n",
+                "RhD\t.\t.\tlow\tRhD limit\n",
+                "Duffy\t.\t.\tlow\tDuffy phase\n",
+                "Kell\t.\t.\tlow\t.\n",
+                "MNS\t.\t.\tlow\t\n",
+            ),
+        );
+        std::fs::create_dir_all(d.0.join("assets")).unwrap();
+        let input = crate::collect::Input {
+            sample: "S".into(),
+            sample_dir: d.0.join("S").to_string_lossy().into_owned(),
+            declared_sex: None,
+            assets: d.0.join("assets").to_string_lossy().into_owned(),
+            group: crate::collect::Group::C,
+            tables: String::new(),
+        };
+        let summary = crate::collect::collect(&input).unwrap().to_json();
+        let at = |v: &Value, k: &str| text_at(v, k).unwrap().clone();
+        let data = at(&at(&at(&summary, "sections"), "bloodtype"), "data");
+        let Value::Array(systems) = at(&data, "systems") else {
+            panic!("missing blood groups");
+        };
+        let notes: Vec<_> = systems.iter().map(|row| text_at(row, "note")).collect();
+        let expected = ["ABO limit", "RhD limit", "Duffy phase"].map(s);
+        assert_eq!(
+            notes,
+            [
+                Some(&expected[0]),
+                Some(&expected[1]),
+                Some(&expected[2]),
+                None,
+                None
+            ]
+        );
+    }
+
+    #[test]
     fn base64_matches_python() {
         assert_eq!(b64(b""), "");
         assert_eq!(b64(b"f"), "Zg==");
         assert_eq!(b64(b"fo"), "Zm8=");
         assert_eq!(b64(b"foo"), "Zm9v");
         assert_eq!(b64(b"foob"), "Zm9vYg==");
+    }
+
+    /// The HHV-6 line of the summary from `og viral report`'s table.
+    fn hhv6_line(rows: &str) -> Value {
+        let d = crate::testutil::Dir::new("viral-hhv6");
+        d.put(
+            "S/viral/S_viral.tsv",
+            format!(
+                "virus\taccession\tlength\treads\tbreadth\tmean_depth\tmode_depth\thuman_depth\trelative_depth\tcopies_per_cell\tcall\tnote\n{rows}"
+            ),
+        );
+        std::fs::create_dir_all(d.0.join("assets")).unwrap();
+        let input = crate::collect::Input {
+            sample: "S".into(),
+            sample_dir: d.0.join("S").to_string_lossy().into_owned(),
+            declared_sex: None,
+            assets: d.0.join("assets").to_string_lossy().into_owned(),
+            group: crate::collect::Group::C,
+            tables: String::new(),
+        };
+        let v = crate::collect::collect(&input).unwrap().to_json();
+        let at = |v: &Value, k: &str| match v {
+            Value::Object(m) => m[k].clone(),
+            _ => panic!("{k}"),
+        };
+        at(&at(&at(&at(&v, "sections"), "viral"), "data"), "hhv6")
+    }
+
+    /// Red first (#411 trait-56, trait-53): both species called are both
+    /// named, and a table og could not assess says so.
+    #[test]
+    fn the_hhv6_line_names_both_species_and_not_assessed() {
+        let row = |v: &str, call: &str| {
+            format!("{v}\tNC\t2000\t400\t1.0000\t15.000\t15\t30.00\t0.500\t1.0000\t{call}\t\n")
+        };
+        let ici = "inherited integrated HHV-6 likely";
+        assert_eq!(
+            hhv6_line(&(row("HHV-6A", ici) + &row("HHV-6B", ici))),
+            Value::Str("inherited integrated HHV-6A and HHV-6B likely".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", ici)),
+            Value::Str("inherited integrated HHV-6B likely".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", "not assessed")),
+            Value::Str("not assessed (the BAM has no unplaced unmapped reads)".into())
+        );
+        assert_eq!(
+            hhv6_line(&row("HHV-6B", "not found")),
+            Value::Str("no integrated HHV-6".into())
+        );
     }
 
     #[test]

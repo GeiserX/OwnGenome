@@ -1,0 +1,1 @@
+Callers beside x: delly: 5 PASS DEL/DUP calls, 5 added, and 2 PASS calls longer than 1000 bp set aside because read depth (RDCN) does not show the change; cnvpytor: 2 DEL/DUP calls with e-val < 0.01 and q0 < 0.5, 1 added

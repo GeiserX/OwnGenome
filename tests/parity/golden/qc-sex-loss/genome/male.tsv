@@ -1,0 +1,21 @@
+key	value
+sample	S
+inferred_sex	male
+declared_sex	male
+same_person_as	
+mosaic_sex	male
+mosaic_sex_from	reads
+mosaic_chrom	chrY
+mosaic_depth_ratio	0.400
+mosaic_depth_ratio_expected	0.5
+mosaic_depth_blocks	969
+mosaic_loss_depth	0.200
+mosaic_loss_depth_low	0.197
+mosaic_loss_depth_high	0.203
+mosaic_x_het_sites	
+mosaic_loss_af	
+mosaic_loss_af_low	
+mosaic_loss_af_high	
+mosaic_floor	0.100
+mosaic_call	detected
+mosaic_reason	the low end of the 95% range is above 10%: a share of the cells lost the Y

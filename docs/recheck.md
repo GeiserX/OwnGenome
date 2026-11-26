@@ -11,13 +11,14 @@ bin/og recheck --sample your_sample
 
 It is part of `og`, OwnGenome's one binary, which `./scripts/setup.sh --og` builds ([og](rust.md)). It asks the network through the host's `curl`. It needs the sample's `run_manifest.tsv`, which `run-all.sh` writes (`bin/write_manifest.sh`).
 
-`bin/owngenome_recheck.py`, the old Python version, now only runs `bin/og recheck` with the same arguments and says on stderr that it is deprecated. It stays for crontabs until 1.1.0; point them at `bin/og recheck`.
+The old Python version, `bin/owngenome_recheck.py`, is gone: point crontabs at `bin/og recheck`.
 
 ## What it checks
 
 | Item | What the run used (`run_manifest.tsv`) | Where the newer release comes from | Steps it feeds |
 |---|---|---|---|
 | ClinVar | `clinvar_file_date`, the `##fileDate` of the ClinVar file | The `Last-Modified` date of NCBI's `clinvar.vcf.gz` | 06, 13 (VEP adds its significance), 20 (the chrM table only), then 23, 27 (the contraindication check), 30, 31, 38, 39 |
+| ClinVar conflicting subset | `clinvar_conflicting`, the `##fileDate` and sha256 of `clinvar/clinvar_conflicting_plp_chr.vcf.gz`, or `not installed` | Nothing upstream: it is compared with the subset installed here | 06 (its conflicting table only) |
 | Ensembl / VEP cache | `VEP_CACHE_RELEASE` | Ensembl's REST API | 13, then 23, 30, 31, 38 |
 | PCGR / CPSR data | `PCGR_DATA_BUNDLE` | PCGR's newest GitHub release | 17 |
 | pypgx and its bundle | `PYPGX_BUNDLE_VERSION` | PyPI, the pypgx biocontainer and the pypgx-bundle tags | 32, then 27, 36 |
@@ -26,6 +27,8 @@ It is part of `og`, OwnGenome's one binary, which `./scripts/setup.sh --og` buil
 | Each PGS score | `pgs:<ID>`, its `HmPOS_date` | The PGS Catalog's REST API, then the `Last-Modified` date of the harmonised GRCh38 file | 25, then 26 |
 
 The pins of steps 50 to 53 (`MEGANE_IMAGE`, `MOCHA_PANEL_VERSION`, `MOCHA_IMAGE`, `VNTYPER_IMAGE`, `LOCITYPER_PANEL_VERSION`, `LOCITYPER_IMAGE`) have no upstream lookup: each is compared only with this checkout's `versions.env`. An image is compared by its full reference, so a new `@sha256` digest at the same tag counts as a change, for these and for `PHARMCAT_IMAGE`. A pin read only by steps this run did not run (an opt-in step not in `TOOLS`, or one skipped for missing data) is not listed: a rerun would not run that step either.
+
+Step 06's conflicting subset is `rerun-ready` when the one installed here differs from the run's: it appeared (`setup.sh` built it after an upgrade, for the same ClinVar release), it was rebuilt with other records, or it went. A run whose manifest has no `clinvar_conflicting` row (from before the subset existed) had no subset. Only step 06's table and the reports change, because nothing downstream reads the conflicting table. On Nextflow, `-resume` also redoes the tasks that read step 06's hits (steps 27 and 39), with the same results. The item is not listed when the run did not run step 06.
 
 The HTML report (24) and the text report are written again after any of them. The ClinVar release inside the PCGR bundle (`cpsr_clinvar_release`) moves with the PCGR bundle, never with step 06's ClinVar file.
 
@@ -97,7 +100,7 @@ bin/og recheck --launch-dir /path/to/launch/dir
 
 ## In the reports and on the live site
 
-The next reports read `recheck/state.json`: both show one "Database re-check" line in the run facts. A check older than the sample's `run_manifest.tsv` describes an earlier run, so the reports leave it out until the next check. When the sample has a previous run in `history/` ([the delta report](delta-report.md)), a section whose results changed since it carries a badge such as "New since 2026-10-01T09:15:00Z", in both reports, and the delta report heads its changes the same way. The live site's re-check plugin (`bin/owngenome_live_recheck.py`, `assets/live/plugins/recheck.js`) shows the same line as a banner in its card under the run timeline (the person page repeats it in section 10, Sources and files, and the line under the step timeline ends with "Databases re-checked" and the date), puts a badge (↻) such as "newer ClinVar available" in the header of every result card of a named step on the person page, and marks each named step on the run timeline with a dot at the end of its line, whose tooltip says the same or "redone 2026-10-05".
+The next reports read `recheck/state.json`: both show one "Database re-check" line in the run facts. A check older than the sample's `run_manifest.tsv` describes an earlier run, so the reports leave it out until the next check. When the sample has a previous run in `history/` ([the delta report](delta-report.md)), a section whose results changed since it carries a badge such as "New since 2026-10-01T09:15:00Z", in both reports, and the delta report heads its changes the same way. The live site's re-check plugin (`rust/crates/og-live/src/recheck.rs`, `assets/live/plugins/recheck.js`) shows the same line as a banner in its card under the run timeline (the person page repeats it in section 10, Sources and files, and the line under the step timeline ends with "Databases re-checked" and the date), puts a badge (↻) such as "newer ClinVar available" in the header of every result card of a named step on the person page, and marks each named step on the run timeline with a dot at the end of its line, whose tooltip says the same or "redone 2026-10-05".
 
 The Nextflow `HTML_REPORT` process sees no `history/` folder, so its report has no "New since" badge.
 
@@ -170,4 +173,4 @@ launchd runs an interval missed during sleep when the Mac wakes; one missed whil
 
 ## Tests
 
-`cargo test -p og-recheck` checks the classes, the steps each item names, a failed lookup (an offline answer and a server on 127.0.0.1), the files it writes, the refusals during a run and while a lock is held, the lock held while `setup.sh` refreshes ClinVar and let go before the replay, the comparison after a rerun, `--launch-dir`, the last line when lookups fail (connections refused), a recorded command read back word by word and refused when it is not a `run-all.sh` call, and the replay with typed arguments. `tests/test_owngenome_recheck.py` runs `og recheck` from the outside, the deprecated `bin/owngenome_recheck.py`, the live-site plugin and the ClinVar lock block of `run-all.sh` and step 06, each against a planted mistake too. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.
+`cargo test -p og-recheck` checks the classes, the steps each item names, a failed lookup (an offline answer and a server on 127.0.0.1), the files it writes, the refusals during a run and while a lock is held, the lock held while `setup.sh` refreshes ClinVar and let go before the replay, the comparison after a rerun, `--launch-dir`, the last line when lookups fail (connections refused), a recorded command read back word by word and refused when it is not a `run-all.sh` call, and the replay with typed arguments. `cargo test -p og-live --test port_live_server_recheck` checks the live-site plugin and the ClinVar lock block of `run-all.sh` and step 06, and that the block with its `flock` call taken out fails the check. `tests/fake-docker/run-all-recheck.sh` checks that `--rerun` replays the recorded command exactly, with a control where one dropped argument makes it differ.

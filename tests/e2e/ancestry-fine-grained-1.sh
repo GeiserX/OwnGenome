@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Step 26b (fine-grained ancestry) against a reduced panel, read from gnomAD's
 # bucket by setup.sh --ancestry-fine-panel for the fixture's slices plus
-# chr22:20-35 Mb (the slices are too short to paint: RFMix needs 5 cM):
+# chr22:20-35 Mb (the slices are too short to paint: the painting needs 5 cM):
 #   - without the panel, step 26b says so in one line and exits 0;
-#   - the panel installs: both ADMIXTURE levels, painting references, and
+#   - the panel installs: both levels of the model, painting references, and
 #     neither person of the synthetic mix in it. Oceania, which has one
 #     unrelated person in the panel's metadata, is left out of the model at
 #     both levels (5 continental and 17 regional groups), and the install log
@@ -15,10 +15,7 @@
 #   - HG002T, HG002's GIAB v4.2.1 genotypes at the panel's SNVs inside GIAB's
 #     confident regions (0/0 where GIAB lists no variant): West Eurasia first
 #     with 70% or more, and the largest share of the painted chr22, half or more;
-#     RFMix's log of chr22 has no zero-size allocation. Red control: RFMix
-#     on the same input with one Oceanian added back to the painting map as
-#     its own group (the map before this rule) logs "requesting zero or
-#     negative size", so that check can fail;
+#     og painted chr22 with no failure and wrote its fitted parameters;
 #   - MIX, a planted person: chr22 below 27.5 Mb and the first half of each
 #     slice from a Yoruba (NA18486), the rest from a Han Chinese (NA18525),
 #     both left out of the panel: Africa and East Asia each 25% to 75%, the
@@ -29,12 +26,12 @@
 #     write no fractions, instead of reporting MIX's ancestry under TWO's name;
 #   - red control: the same panel with every reference person's labels moved
 #     to the next group (Africa's people called West Eurasia, and so on) and
-#     the ADMIXTURE frequencies fitted again: on it the HG002T fraction checks
+#     the group frequencies counted again: on it the HG002T fraction checks
 #     fail (sample HG002R, the same genotypes; the red copy loses the genetic
 #     map of chr22, so that run only estimates fractions);
-#   - the Nextflow module on HG002T (with html_report) writes the fractions of
-#     the bash step, and the HTML report has its card; on TWO's gVCF it stops
-#     the same way and publishes nothing.
+#   - the Nextflow module on HG002T (with html_report) writes the fractions and
+#     the painting of the bash step, and the HTML report has its card; on
+#     TWO's gVCF it stops the same way and publishes nothing.
 # The time and disk of the panel install go to the job summary.
 . "$(dirname "$0")/lib.sh"
 
@@ -78,11 +75,11 @@ check "Oceania has no reference person and no painting reference" \
   awk -F'\t' '$3 == "OCE" && ($5 == 1 || $6 == 1) {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
 check "the install log names Oceania as left out" \
   has 'Left out of the model, fewer than 10 unrelated reference people: Oceania \(continental and regional group\)' "$(cat "$STEP_LOG")"
-check_ge "SNVs for ADMIXTURE" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
+check_ge "SNVs of the model" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
 check_ge "painting references" "$(wc -l < "${PANEL}/model/paint_map.tsv" 2>/dev/null | tr -d ' ')" 150
 check "the two people of the mix are not in the panel" \
   awk -F'\t' -v a="$A" -v b="$B" '$1 == a || $1 == b {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
-printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s for ADMIXTURE\n\n' \
+printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s in the model\n\n' \
   "$LONG_CHR" "$LONG_START" "$LONG_END" "$T_SETUP" "$(du -sh "$PANEL" | cut -f1)" \
   "$(wc -l < "${PANEL}/panel/sites.tsv" | tr -d ' ')" "$(wc -l < "${PANEL}/model/ref.bim" | tr -d ' ')" >> "$E2E_NOTES"
 
@@ -95,7 +92,7 @@ cat "${G}/${SAMPLE}/ancestry_fine/${SAMPLE}_ancestry_fine.tsv" 2>/dev/null
 check "it read the gVCF" has 'Input: the gvcf' "$(cat "$STEP_LOG")"
 SUM=$(awk -F'\t' '$1 == "continent" {s += $4} END {printf "%.3f", s}' "${G}/${SAMPLE}/ancestry_fine/${SAMPLE}_ancestry_fine.tsv" 2>/dev/null)
 check "the continental fractions sum to 1 (${SUM})" between "$SUM" 0.99 1.01
-# Only about a quarter of the panel's SNVs for ADMIXTURE fall in the fixture's
+# Only about a quarter of the model's SNVs fall in the fixture's
 # slices and are called in the gVCF, too few to name a group: this run checks
 # the shape of the output, and HG002T below checks where the genome lands.
 check_ge "SNVs of the panel genotyped from the gVCF" \
@@ -113,51 +110,9 @@ mkdir -p "${G}/HG002T/vcf"
 docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome:ro" -v "${FIXTURE_DIR}:/fx:ro" "$BCFTOOLS_IMAGE" \
   bcftools view -R "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/positions.tsv" -Ov \
   /fx/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz > "${CASE_TMP}/truth_at_sites.vcf"
-python3 -I - "${PANEL}/panel/sites.tsv" "${CASE_TMP}/truth_at_sites.vcf" \
-    "${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed" "${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai" \
-    > "${G}/HG002T/vcf/HG002T.vcf" <<'PY'
-import bisect, sys
-sites, truth, bed, fai = sys.argv[1:]
-iv = {}
-for line in open(bed):
-    c = line.split()
-    if len(c) >= 3:
-        iv.setdefault(c[0], []).append((int(c[1]), int(c[2])))
-starts = {k: [s for s, _ in sorted(v)] for k, v in iv.items()}
-ends = {k: [e for _, e in sorted(v)] for k, v in iv.items()}
-def confident(c, p):
-    i = bisect.bisect_right(starts.get(c, []), p - 1) - 1
-    return i >= 0 and ends[c][i] >= p
-gt = {}
-for line in open(truth):
-    if line.startswith("#"):
-        continue
-    f = line.rstrip("\n").split("\t")
-    g = f[9].split(":")[f[8].split(":").index("GT")].replace("|", "/")
-    gt[(f[0], int(f[1]))] = (f[3], f[4], {"1/0": "0/1"}.get(g, g))
-chroms = sorted({l.split("\t")[0] for l in open(sites)})
-print("##fileformat=VCFv4.2")
-print('##FILTER=<ID=PASS,Description="All filters passed">')
-for l in open(fai):
-    c = l.split("\t")
-    if c[0] in chroms:
-        print(f"##contig=<ID={c[0]},length={c[1]}>")
-print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
-print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002T")
-for l in open(sites):
-    c, p, r, a = l.rstrip("\n").split("\t")
-    p = int(p)
-    if not confident(c, p):
-        continue
-    t = gt.get((c, p))
-    if t is None:
-        g = "0/0"
-    elif t[0] == r and t[1] == a and t[2] in ("0/1", "1/1", "0/0"):
-        g = t[2]
-    else:
-        continue
-    print(f"{c}\t{p}\t.\t{r}\t{a}\t.\tPASS\t.\tGT\t{g}")
-PY
+"${REPO}/bin/og" dev fixture truth-genotypes "${PANEL}/panel/sites.tsv" "${G}/reference/GRCh38_no_alt_analysis_set.fasta.fai" \
+  "HG002T=${CASE_TMP}/truth_at_sites.vcf,${FIXTURE_DIR}/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed" \
+  > "${G}/HG002T/vcf/HG002T.vcf"
 in_genome "$BCFTOOLS_IMAGE" bash -c 'bcftools view -Oz -o HG002T/vcf/HG002T.vcf.gz HG002T/vcf/HG002T.vcf && bcftools index -t HG002T/vcf/HG002T.vcf.gz'
 check_ge "HG002T: GIAB genotypes at panel SNVs" "$(vcf_count HG002T/vcf/HG002T.vcf.gz)" 3000
 T0=$(date +%s)
@@ -177,25 +132,20 @@ check "HG002T: the report says Oceania was left out of the model" \
   has '^Left out of the model: Oceania \(continental and regional group\)' "$(cat "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.txt" 2>/dev/null)"
 check "HG002T: and the table has its left_out rows" \
   awk -F'\t' '$1 == "left_out" && $2 == "OCE" {n++} END {exit n != 2}' "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
-T_LOG="${G}/HG002T/ancestry_fine/work/paint/${LONG_CHR}.log"
-check "HG002T: RFMix painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
-check "HG002T: RFMix's log of ${LONG_CHR} is there" test -s "$T_LOG"
-check "HG002T: and has no zero-size allocation" lacks 'requesting zero or negative size' "$(cat "$T_LOG" 2>/dev/null)"
-# Red control: the same RFMix run with one Oceanian added back to the painting
-# map as its own group, which is what the map held before the minimum.
-RED_RF="${G}/HG002T/rfmix-red"
-mkdir -p "$RED_RF"
-OCE_ONE=$(awk -F'\t' '$3 == "OCE" {print $1; exit}' "${PANEL}/samples.tsv")
-{ cat "${PANEL}/model/paint_map.tsv"; printf '%s\tOCE\n' "$OCE_ONE"; } > "${RED_RF}/paint_map.tsv"
-echo "+ rfmix on HG002T ${LONG_CHR} with one Oceanian (${OCE_ONE:-none}) as its own group"
-docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome" -w /genome "$RFMIX_IMAGE" \
-  rfmix -f "HG002T/ancestry_fine/work/phase/${LONG_CHR}.vcf.gz" -r "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/${LONG_CHR}.vcf.gz" \
-    -m HG002T/rfmix-red/paint_map.tsv -g "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/maps/${LONG_CHR}.rfmix.map" \
-    -o HG002T/rfmix-red/out --chromosome="$LONG_CHR" --n-threads=4 --random-seed=1 > "${RED_RF}/rfmix.log" 2>&1
-echo "+ exit $? (a segfault is 139; the zero-size request is logged either way)"
-grep -m 3 'requesting zero' "${RED_RF}/rfmix.log" || true
-check "red: with a one-person group RFMix logs the zero-size allocation" \
-  has 'requesting zero or negative size' "$(cat "${RED_RF}/rfmix.log" 2>/dev/null)"
+# og ancestry-fine project wrote each level's fit, after a bootstrap that drew
+# the reference people again.
+for l in continent region; do
+  # shellcheck disable=SC2016 # $1 and $2 are awk's fields
+  check "HG002T: the ${l} fit drew 100 replicates with the reference people drawn again" \
+    awk -F'\t' '$1 == "replicates" {r = $2} $1 == "reference_resampling" {s = $2} END {exit !(r == 100 && s == "yes")}' \
+    "${G}/HG002T/ancestry_fine/work/fractions/HG002T_${l}.fit.tsv"
+done
+# og ancestry-fine paint painted every phased chromosome with our own model.
+check "HG002T: og painted ${LONG_CHR} with no failure" test ! -e "${G}/HG002T/ancestry_fine/work/paint/failed.txt"
+# shellcheck disable=SC2016 # $1 and $2 are awk's fields
+check "HG002T: the painting wrote its fitted parameters" \
+  awk -F'\t' '$1 == "em_rounds" {r = 1} $1 == "mu" && $2 == "WEA" {w = 1} END {exit !(r && w)}' \
+  "${G}/HG002T/ancestry_fine/work/paint/params.tsv"
 
 # --- MIX: half a Yoruba, half a Han Chinese ---------------------------------------------
 # Their genotypes at the panel's SNVs, from the same bucket (the panel holds
@@ -308,22 +258,25 @@ check_eq "nextflow run with --tools ancestry_fine,html_report exits 0" "${PIPEST
 echo "Nextflow ancestry_fine on HG002T: $(( $(date +%s) - T0 )) s" >> "$E2E_NOTES"
 NF_TSV="${NF_OUT}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
 check "the module published the fractions table" test -s "$NF_TSV"
-check "its fractions are the bash step's (within 0.01 each)" python3 -I - "$NF_TSV" "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv" <<'PY'
-import sys
 # Keyed by level, code and group: a left_out row (fraction ".") has the same
 # code at both levels and differs by its group text.
-rows = [{(c[0], c[1], c[2]): c[3] for c in (l.rstrip("\n").split("\t") for l in open(p)) if c[0] != "level"} for p in sys.argv[1:]]
-def same(a, b):
-    if a is None or b is None or (a == ".") != (b == "."):
-        return False
-    return a == b if a == "." else abs(float(a) - float(b)) <= 0.01
-diff = {k: (rows[0].get(k), rows[1].get(k)) for k in set(rows[0]) | set(rows[1]) if not same(rows[0].get(k), rows[1].get(k))}
-print("differences:", diff or "none")
-sys.exit(1 if diff else 0)
-PY
+check "its fractions are the bash step's (within 0.01 each)" awk -F'\t' '
+  function same(x, y) { if ((x == ".") != (y == ".")) return 0; if (x == ".") return 1; return x - y <= 0.01 && y - x <= 0.01 }
+  $1 == "level" {next}
+  {k = $1 "|" $2 "|" $3}
+  FNR == NR {a[k] = $4; next}
+  {b[k] = $4}
+  END {
+    for (k in a) if (!(k in b) || !same(a[k], b[k])) {print "differs: " k " " a[k] " " b[k]; n++}
+    for (k in b) if (!(k in a)) {print "differs: " k " (only in the bash table)"; n++}
+    print "differences: " n + 0; exit (n > 0)
+  }' "$NF_TSV" "${G}/HG002T/ancestry_fine/HG002T_ancestry_fine.tsv"
+# The painting is deterministic (fixed seeds, the same bytes for any thread
+# count), so the module's must be the bash step's, row for row.
+check "its painting is the bash step's" \
+  cmp "${NF_OUT}/HG002T/ancestry_fine/HG002T_painting.bed" "${G}/HG002T/ancestry_fine/HG002T_painting.bed"
 check "the HTML report has the fine-grained ancestry card with its painting" \
-  python3 -I -c 'import sys; t = open(sys.argv[1]).read(); sys.exit(0 if "Fine-Grained Ancestry" in t and "data:image/png;base64," in t else 1)' \
-  "${NF_OUT}/HG002T/HG002T_report.html"
+  bash -c 'grep -qF "Fine-Grained Ancestry" "$1" && grep -qF "data:image/png;base64," "$1"' _ "${NF_OUT}/HG002T/HG002T_report.html"
 
 # The module on TWO's two-sample gVCF: ANCESTRY_FINE_GENOTYPE stops, the
 # pipeline ignores the failure of a report-only step and names it in

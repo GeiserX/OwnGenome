@@ -152,84 +152,151 @@ pub type TextFn = fn(&Summary) -> Result<Vec<String>, Malformed>;
 /// A section's HTML part: its cards, none when the section is left out.
 pub type HtmlFn = fn(&Summary) -> Result<HtmlPart, Malformed>;
 
-/// The writers of section `sid`, or `None` for a section not ported yet,
-/// which both reports leave out. One arm per section, a blank line apart, so
-/// the units that port the others each change their own line.
+/// Where a report finds each section's writers: [`writer`] for the reports
+/// a run writes, another table in a test that plants a fault.
+pub type WriterFn = fn(&str) -> Option<(TextFn, HtmlFn)>;
+
+/// A part of a report that could not be written: the section's anchor (or
+/// `charts`, `terms`), and why. The rest of the report is still written,
+/// and the part says why in place of its result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failed {
+    pub part: String,
+    pub why: String,
+}
+
+/// Runs one part of a report: its error, or a panic inside it, comes back
+/// as the error that part shows, so one bad part never stops the report.
+/// While it runs, the hook of [`abort_outside_guarded`] lets a panic on
+/// this thread unwind to here instead of ending the process.
+pub fn guarded<T>(f: impl FnOnce() -> Result<T, Malformed>) -> Result<T, Malformed> {
+    GUARDED.with(|g| g.set(g.get() + 1));
+    let _depth = Depth;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(p) => {
+            let msg = p
+                .downcast_ref::<&str>()
+                .map(|m| (*m).to_owned())
+                .or_else(|| p.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "no message".to_owned());
+            Err(Malformed(format!("internal error: {msg}")))
+        }
+    }
+}
+
+thread_local! {
+    /// How many [`guarded`] calls are running on this thread.
+    static GUARDED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Leaves one [`guarded`] call, also when its closure panics.
+struct Depth;
+
+impl Drop for Depth {
+    fn drop(&mut self) {
+        GUARDED.with(|g| g.set(g.get().saturating_sub(1)));
+    }
+}
+
+/// Makes a panic end the process at once, as `panic = "abort"` does,
+/// unless it happens inside [`guarded`] on the same thread. og is built
+/// with `panic = "unwind"` only so that [`guarded`] can catch a panic in
+/// one part of a report; everywhere else an unwinding panic could end a
+/// worker thread quietly (a reader whose channel closes reads as the end
+/// of its input) and og would write a cut file and exit 0. og's main calls
+/// this once, first. The panic message is printed as always.
+pub fn abort_outside_guarded() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default(info);
+        if GUARDED.try_with(std::cell::Cell::get).unwrap_or(0) == 0 {
+            std::process::abort();
+        }
+    }));
+}
+
+/// The writers of section `sid`, or `None` for an anchor no section has.
+/// One arm per section, a blank line apart, so the units that change one
+/// section each change their own line.
 pub fn writer(sid: &str) -> Option<(TextFn, HtmlFn)> {
     match sid {
         "qc" => Some((sections::qc::text, sections::qc::html)),
 
-        "callability" => None,
+        "callability" => Some((sections::callability::text, sections::callability::html)),
 
         "variants" => Some((sections::variants::text, sections::variants::html)),
 
-        "clinvar" => None,
+        "clinvar" => Some((sections::clinvar::text, sections::clinvar::html)),
 
-        "clinical-filter" => None,
+        "clinical-filter" => Some((sections::acmg_sf::text, sections::acmg_sf::html)),
 
-        "cpsr" => None,
+        "cpsr" => Some((sections::cpsr::text, sections::cpsr::html)),
 
-        "slivar" => None,
+        "slivar" => Some((sections::comphet::text, sections::comphet::html)),
 
-        "exomiser" => None,
+        "exomiser" => Some((sections::exomiser::text, sections::exomiser::html)),
 
-        "structural-variants" => None,
+        "structural-variants" => Some((sections::structural::text, sections::structural::html)),
 
-        "mei" => None,
+        "mei" => Some((sections::mei::text, sections::mei::html)),
 
-        "expansions" => None,
+        "expansions" => Some((sections::str::text, sections::str::html)),
 
-        "vntyper" => None,
+        "vntyper" => Some((sections::vntyper::text, sections::vntyper::html)),
 
-        "mito" => None,
+        "mito" => Some((sections::mito::text, sections::mito::html)),
 
-        "lpa" => None,
+        "lpa" => Some((sections::lpa::text, sections::lpa::html)),
 
-        "chip" => None,
+        "chip" => Some((sections::chip::text, sections::chip::html)),
 
-        "mosaic" => None,
+        "mosaic" => Some((sections::sex_loss::text, sections::sex_loss::html)),
 
-        "mosaic-mca" => None,
+        "mosaic-mca" => Some((sections::mocha::text, sections::mocha::html)),
 
-        "carrier-list" => None,
+        "carrier-list" => Some((sections::carrier::text, sections::carrier::html)),
 
-        "couple" => None,
+        "couple" => Some((sections::couple::text, sections::couple::html)),
 
-        "paralogs" => None,
+        "paralogs" => Some((sections::paralogs::text, sections::paralogs::html)),
 
-        "pharmcat" => None,
+        "pharmcat" => Some((sections::pgx::pharmcat_text, sections::pgx::pharmcat_html)),
 
-        "cpic" => None,
+        "cpic" => Some((sections::pgx::cpic_text, sections::pgx::cpic_html)),
 
-        "cyp2d6" => None,
+        "cyp2d6" => Some((sections::pgx::cyp2d6_text, sections::pgx::cyp2d6_html)),
 
-        "hla" => None,
+        "hla" => Some((sections::hla::text, sections::hla::html)),
 
-        "locityper" => None,
+        "locityper" => Some((sections::locityper::text, sections::locityper::html)),
 
-        "ancestry-fine" => None,
+        "ancestry-fine" => Some((sections::ancestry_fine::text, sections::ancestry_fine::html)),
 
-        "mt-haplogroup" => None,
+        "mt-haplogroup" => Some((sections::haplogroups::text, sections::haplogroups::html)),
 
-        "y-chromosome" => None,
+        "y-chromosome" => Some((
+            sections::haplogroups::y_chromosome_text,
+            sections::haplogroups::y_chromosome_html,
+        )),
 
-        "archaic" => None,
+        "archaic" => Some((sections::archaic::text, sections::archaic::html)),
 
-        "ancient" => None,
+        "ancient" => Some((sections::ancient::text, sections::ancient::html)),
 
-        "roh" => None,
+        "roh" => Some((sections::roh::text, sections::roh::html)),
 
-        "traits-panel" => None,
+        "traits-panel" => Some((sections::traits::text, sections::traits::html)),
 
-        "prs" => None,
+        "prs" => Some((sections::prs::text, sections::prs::html)),
 
-        "bloodtype" => None,
+        "bloodtype" => Some((sections::bloodtype::text, sections::bloodtype::html)),
 
-        "telomere" => None,
+        "telomere" => Some((sections::telomere::text, sections::telomere::html)),
 
-        "viral" => None,
+        "viral" => Some((sections::viral::text, sections::viral::html)),
 
-        "consumer-export" => None,
+        "consumer-export" => Some((sections::consumer::text, sections::consumer::html)),
 
         _ => None,
     }
@@ -263,8 +330,21 @@ pub fn step_of(key: &str) -> &'static str {
         .map_or("?", |s| s.step)
 }
 
+/// Summary keys no frame section lists, because the section of another key
+/// already shows what they hold: `(key, the key whose section shows it)`.
+/// `acmg_sf` is the secondary-findings card the clinical section also holds
+/// as `clinical.data.acmg_sf`, and the reports read it there. Listing it in
+/// the clinical-filter frame would change that section's step, state and
+/// file date before any reader shows it. It moves into the frame when the
+/// readers switch to `sections.acmg_sf` (i411-display-sf).
+pub const SHOWN_WITH: &[(&str, &str)] = &[("acmg_sf", "clinical")];
+
 /// The section that shows summary key `key`.
 pub fn section_of(key: &str) -> Option<&'static Sec> {
+    let key = SHOWN_WITH
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map_or(key, |(_, with)| *with);
     CHAPTERS
         .iter()
         .flat_map(|c| c.sections.iter())
@@ -280,12 +360,19 @@ pub fn section(sid: &str) -> Option<&'static Sec> {
 }
 
 /// What is wrong with a chapter table against the summary keys: a key no
-/// section shows, a key two sections show, a key no collector writes.
+/// section shows, a key two sections show, a key no collector writes. A key
+/// of `SHOWN_WITH` counts as shown where its partner key is.
 pub fn key_problems(chapters: &[Chapter], keys: &[&str]) -> Vec<String> {
-    let seen: Vec<&str> = chapters
+    let mut seen: Vec<&str> = chapters
         .iter()
         .flat_map(|c| c.sections.iter().flat_map(|s| s.keys.iter().copied()))
         .collect();
+    let carried: Vec<&str> = SHOWN_WITH
+        .iter()
+        .filter(|(_, with)| seen.contains(with))
+        .map(|(k, _)| *k)
+        .collect();
+    seen.extend(carried);
     let mut out: Vec<String> = keys
         .iter()
         .filter(|k| !seen.contains(k))

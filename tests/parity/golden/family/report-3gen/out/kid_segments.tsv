@@ -1,0 +1,9 @@
+child	side	parent	chrom	start	end	length_bp	sites	discordant	ancestor	basis
+kid	paternal	dad	chr1	1012000	19998000	18986001	2665	3	gpa	parent and grandparents
+kid	paternal	dad	chr1	20006000	40986000	20980001	2980	0	gma	parent and grandparents
+kid	maternal	mum	chr1	1002000	40998000	39996001	7532	0	.	parent
+kid	paternal	dad	chr2	1000000	10990000	9990001	1423	0	gma	parent and grandparents
+kid	paternal	dad	chr2	21006000	30996000	9990001	1371	0	gma	parent and grandparents
+kid	maternal	mum	chr2	1000000	10994000	9994001	1895	0	.	parent
+kid	maternal	mum	chr2	21000000	30988000	9988001	1950	0	.	parent
+kid	maternal	mum	chrX	5000000	14990000	9990001	2513	0	.	parent

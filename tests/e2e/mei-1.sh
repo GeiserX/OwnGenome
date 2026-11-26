@@ -93,16 +93,14 @@ check_ge "mapped reads of chr20 at 30x" "$(dk "$SAMTOOLS_IMAGE" samtools view -c
 check "GIAB v5.0q's SV truth downloads" retry curl -sfL -o "${T}/truth.vcf.gz" "${TRUTH}.vcf.gz"
 check "and its benchmark regions" retry curl -sfL -o "${T}/truth.bed" "${TRUTH}.benchmark.bed"
 # truth.tsv: every insertion on chr20 (pos, RepeatMasker class, REMAP, length, genotype).
-python3 -I - "${T}/truth.vcf.gz" > "${T}/truth.tsv" <<'PY'
-import gzip, sys
-for line in gzip.open(sys.argv[1], "rt"):
-    if line[0] == "#" or not line.startswith("chr20\t"):
-        continue
-    f = line.split("\t", 10)
-    info = dict(x.split("=", 1) for x in f[7].split(";") if "=" in x)
-    if info.get("SVTYPE") == "INS":
-        print(f[1], info.get("RM_clsfam", "."), info.get("REMAP", "."), len(f[4]) - len(f[3]), f[9].split(":")[0], sep="\t")
-PY
+gzip -dc "${T}/truth.vcf.gz" | awk -F'\t' -v OFS='\t' '$1 == "chr20" {
+    delete info; n = split($8, kv, ";")
+    for (i = 1; i <= n; i++) if ((e = index(kv[i], "=")) > 0) info[substr(kv[i], 1, e - 1)] = substr(kv[i], e + 1)
+    if (info["SVTYPE"] == "INS") {
+      split($10, g, ":")
+      print $2, ("RM_clsfam" in info) ? info["RM_clsfam"] : ".", ("REMAP" in info) ? info["REMAP"] : ".", length($5) - length($4), g[1]
+    }
+  }' > "${T}/truth.tsv"
 check_ge "GIAB insertions on chr20" "$(wc -l < "${T}/truth.tsv" | tr -d ' ')" 1000
 
 if [ "${MEI_E2E_DROP_ALU:-}" = 1 ]; then
@@ -160,21 +158,25 @@ check "red control: without AnnotSV's table the same check fails" \
   test "$(annotsv_cols "${T}/red_mei.tsv")" != "${N}/${N}/${N}/${N}" -a "$(annotsv_cols "${T}/red_mei.tsv")" = "${N}/0/0/0"
 
 # Recall and precision of the Alu calls.
-read -r TP NT PP NP < <(python3 -I - "${T}/truth.tsv" "${T}/truth.bed" "${M}_mei.tsv" <<'PY'
-import csv, sys
-truth = [l.rstrip("\n").split("\t") for l in open(sys.argv[1])]
-bed = [(int(a), int(b)) for c, a, b, *_ in (l.split("\t") for l in open(sys.argv[2])) if c == "chr20"]
-inb = lambda p: any(s < p <= e for s, e in bed)
-ins = [int(t[0]) for t in truth]
-alu = [int(t[0]) for t in truth if t[1] == "SINE/Alu" and t[2] == "interspersed" and 250 <= int(t[3]) <= 400
-       and "1" in t[4] and inb(int(t[0]))]
-calls = [int(r["pos"]) for r in csv.DictReader(open(sys.argv[3]), delimiter="\t") if r["element"] == "Alu"]
-found = sum(any(abs(c - t) <= 100 for c in calls) for t in alu)
-inside = [c for c in calls if inb(c)]
-right = sum(any(abs(c - t) <= 100 for t in ins) for c in inside)
-print(found, len(alu), right, len(inside))
-PY
-)
+# An Alu to find: SINE/Alu, interspersed, 250 to 400 bp, carried, inside the
+# benchmark regions. A call is right when an insertion of the truth set lies
+# within 100 bp of it.
+read -r TP NT PP NP < <(awk -F'\t' '
+  function inb(p,  i) {for (i = 1; i <= nb; i++) if (bs[i] < p && p <= be[i]) return 1; return 0}
+  function near(a, b) {return a - b <= 100 && b - a <= 100}
+  FILENAME == ARGV[1] {nt++; tp[nt] = $1 + 0; cls[nt] = $2; rm[nt] = $3; len[nt] = $4 + 0; gt[nt] = $5; next}
+  FILENAME == ARGV[2] {if ($1 == "chr20") {nb++; bs[nb] = $2 + 0; be[nb] = $3 + 0}; next}
+  FNR == 1 {for (i = 1; i <= NF; i++) h[$i] = i; next}
+  $h["element"] == "Alu" {calls[++nc] = $h["pos"] + 0}
+  END {
+    for (t = 1; t <= nt; t++)
+      if (cls[t] == "SINE/Alu" && rm[t] == "interspersed" && len[t] >= 250 && len[t] <= 400 && index(gt[t], "1") && inb(tp[t])) {
+        na++; for (c = 1; c <= nc; c++) if (near(calls[c], tp[t])) {found++; break}
+      }
+    for (c = 1; c <= nc; c++)
+      if (inb(calls[c])) {ni++; for (t = 1; t <= nt; t++) if (near(calls[c], tp[t])) {right++; break}}
+    print found + 0, na + 0, right + 0, ni + 0
+  }' "${T}/truth.tsv" "${T}/truth.bed" "${M}_mei.tsv")
 echo "Alu recall ${TP}/${NT}, precision ${PP}/${NP}"
 check_ge "GIAB Alu insertions to find" "${NT:-0}" 10
 check "Alu recall (${TP}/${NT}) is at least 0.70" awk -v a="${TP:-0}" -v b="${NT:-0}" 'BEGIN {exit !(b > 0 && a / b >= 0.70)}'

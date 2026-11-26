@@ -1,0 +1,112 @@
+order	panel	marker	count	confidence	reads	stutter_reads	flank_indel_reads	q	note
+1	Y-12	DYS393	13	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+2	Y-12	DYS390	22	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+3	Y-12	DYS19		no call					DYS19/DYS394: two lengths on the Y chromosome (GB 0|4)
+4	Y-12	DYS391	11.2	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+5	Y-12	DYS385a		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+6	Y-12	DYS385b		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+7	Y-12	DYS426	12	low	20	0	0	0.6	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; posterior 0.6 below 0.9; no per-read lengths (MALLREADS) to show that the reads agree
+8	Y-12	DYS388	12	low	20	5	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; 5 of 20 reads with stutter; no per-read lengths (MALLREADS) to show that the reads agree
+9	Y-12	DYS439		not callable					not callable: no region for it in the HipSTR marker set
+10	Y-12	DYS389I	12	low	20	0	4	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; 4 of 20 reads with a flank indel; no per-read lengths (MALLREADS) to show that the reads agree
+11	Y-12	DYS392	12.2	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+12	Y-12	DYS389II	29	low	20	0	0	0.99	FamilyTreeDNA reports DYS389II as the sum total of DYS389I and DYS389II; the span starts where DYS389I starts, so this count covers DYS389I too; on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+13	Y-25	DYS458	16	low	6	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; 6 reads, fewer than 10; no per-read lengths (MALLREADS) to show that the reads agree
+14	Y-25	DYS459a		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+15	Y-25	DYS459b		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+16	Y-25	DYS455		no call					DYS455: HipSTR made no genotype
+17	Y-25	DYS454		no call					DYS454: unreadable GB x
+18	Y-25	DYS447		not callable					not callable: no region for it in the HipSTR marker set
+19	Y-25	DYS437		not callable					not callable: no region for it in the HipSTR marker set
+20	Y-25	DYS448	20	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+21	Y-25	DYS449	36	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; DYS449.1: no per-read lengths (MALLREADS) to show that the reads agree; DYS449.2: no per-read lengths (MALLREADS) to show that the reads agree
+22	Y-25	DYS464a		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+23	Y-25	DYS464b		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+24	Y-25	DYS464c		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+25	Y-25	DYS464d		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+26	Y-37	DYS460		no call					HipSTR wrote no record for DYS460; see HipSTR's log
+27	Y-37	Y-GATA-H4		no call					HipSTR wrote no record for Y-GATA-H4; see HipSTR's log
+28	Y-37	YCAIIa		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+29	Y-37	YCAIIb		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+30	Y-37	DYS456		no call					HipSTR wrote no record for DYS456; see HipSTR's log
+31	Y-37	DYS607		no call					HipSTR wrote no record for DYS607; see HipSTR's log
+32	Y-37	DYS576		no call					HipSTR wrote no record for DYS576; see HipSTR's log
+33	Y-37	DYS570		no call					HipSTR wrote no record for DYS570; see HipSTR's log
+34	Y-37	CDYa		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+35	Y-37	CDYb		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+36	Y-37	DYS442		no call					HipSTR wrote no record for DYS442; see HipSTR's log
+37	Y-37	DYS438		no call					HipSTR wrote no record for DYS438; see HipSTR's log
+38	Y-67	DYS531		no call					HipSTR wrote no record for DYS531; see HipSTR's log
+39	Y-67	DYS578		no call					HipSTR wrote no record for DYS578; see HipSTR's log
+40	Y-67	DYF395S1a		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+41	Y-67	DYF395S1b		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+42	Y-67	DYS590		no call					HipSTR wrote no record for DYS590; see HipSTR's log
+43	Y-67	DYS537		no call					HipSTR wrote no record for DYS537; see HipSTR's log
+44	Y-67	DYS641		no call					HipSTR wrote no record for DYS641; see HipSTR's log
+45	Y-67	DYS472		no call					HipSTR wrote no record for DYS472; see HipSTR's log
+46	Y-67	DYF406S1		no call					HipSTR wrote no record for DYF406S1; see HipSTR's log
+47	Y-67	DYS511		no call					HipSTR wrote no record for DYS511; see HipSTR's log
+48	Y-67	DYS425		no call					HipSTR wrote no record for DYS425; see HipSTR's log
+49	Y-67	DYS413a		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+50	Y-67	DYS413b		not callable					not callable from short reads: a multi-copy marker in duplicated Y sequence
+51	Y-67	DYS557		no call					HipSTR wrote no record for DYS557; see HipSTR's log
+52	Y-67	DYS594		no call					HipSTR wrote no record for DYS594; see HipSTR's log
+53	Y-67	DYS436		no call					HipSTR wrote no record for DYS436; see HipSTR's log
+54	Y-67	DYS490		no call					HipSTR wrote no record for DYS490; see HipSTR's log
+55	Y-67	DYS534		no call					HipSTR wrote no record for DYS534; see HipSTR's log
+56	Y-67	DYS450		no call					HipSTR wrote no record for DYS450; see HipSTR's log
+57	Y-67	DYS444		no call					HipSTR wrote no record for DYS444; see HipSTR's log
+58	Y-67	DYS481		no call					HipSTR wrote no record for DYS481; see HipSTR's log
+59	Y-67	DYS520		no call					HipSTR wrote no record for DYS520; see HipSTR's log
+60	Y-67	DYS446		no call					HipSTR wrote no record for DYS446; see HipSTR's log
+61	Y-67	DYS617		no call					HipSTR wrote no record for DYS617; see HipSTR's log
+62	Y-67	DYS568		no call					HipSTR wrote no record for DYS568; see HipSTR's log
+63	Y-67	DYS487		no call					HipSTR wrote no record for DYS487; see HipSTR's log
+64	Y-67	DYS572		no call					HipSTR wrote no record for DYS572; see HipSTR's log
+65	Y-67	DYS640		no call					HipSTR wrote no record for DYS640; see HipSTR's log
+66	Y-67	DYS492		no call					HipSTR wrote no record for DYS492; see HipSTR's log
+67	Y-67	DYS565		no call					HipSTR wrote no record for DYS565; see HipSTR's log
+68	Y-111	DYS710		not callable					not callable: no region for it in the HipSTR marker set
+69	Y-111	DYS485		no call					HipSTR wrote no record for DYS485; see HipSTR's log
+70	Y-111	DYS632		no call					HipSTR wrote no record for DYS632; see HipSTR's log
+71	Y-111	DYS495		no call					HipSTR wrote no record for DYS495; see HipSTR's log
+72	Y-111	DYS540		no call					HipSTR wrote no record for DYS540; see HipSTR's log
+73	Y-111	DYS714		no call					HipSTR wrote no record for DYS714; see HipSTR's log
+74	Y-111	DYS716		not callable					not callable: no region for it in the HipSTR marker set
+75	Y-111	DYS717		no call					HipSTR wrote no record for DYS717; see HipSTR's log
+76	Y-111	DYS505		no call					HipSTR wrote no record for DYS505; see HipSTR's log
+77	Y-111	DYS556		no call					HipSTR wrote no record for DYS556; see HipSTR's log
+78	Y-111	DYS549		no call					HipSTR wrote no record for DYS549; see HipSTR's log
+79	Y-111	DYS589		no call					HipSTR wrote no record for DYS589; see HipSTR's log
+80	Y-111	DYS522		no call					HipSTR wrote no record for DYS522; see HipSTR's log
+81	Y-111	DYS494		no call					HipSTR wrote no record for DYS494; see HipSTR's log
+82	Y-111	DYS533		no call					HipSTR wrote no record for DYS533; see HipSTR's log
+83	Y-111	DYS636		no call					HipSTR wrote no record for DYS636; see HipSTR's log
+84	Y-111	DYS575		no call					HipSTR wrote no record for DYS575; see HipSTR's log
+85	Y-111	DYS638		no call					HipSTR wrote no record for DYS638; see HipSTR's log
+86	Y-111	DYS462		no call					HipSTR wrote no record for DYS462; see HipSTR's log
+87	Y-111	DYS452	31	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+88	Y-111	DYS445		no call					HipSTR wrote no record for DYS445; see HipSTR's log
+89	Y-111	Y-GATA-A10		no call					HipSTR wrote no record for Y-GATA-A10; see HipSTR's log
+90	Y-111	DYS463		no call					HipSTR wrote no record for DYS463; see HipSTR's log
+91	Y-111	DYS441		not callable					not callable: no region for it in the HipSTR marker set
+92	Y-111	Y-GGAAT-1B07		not callable					not callable: no region for it in the HipSTR marker set
+93	Y-111	DYS525		no call					HipSTR wrote no record for DYS525; see HipSTR's log
+94	Y-111	DYS712		not callable					not callable: no region for it in the HipSTR marker set
+95	Y-111	DYS593		no call					HipSTR wrote no record for DYS593; see HipSTR's log
+96	Y-111	DYS650		not callable					not callable: no region for it in the HipSTR marker set
+97	Y-111	DYS532		no call					HipSTR wrote no record for DYS532; see HipSTR's log
+98	Y-111	DYS715		not callable					not callable: no region for it in the HipSTR marker set
+99	Y-111	DYS504		no call					HipSTR wrote no record for DYS504; see HipSTR's log
+100	Y-111	DYS513		no call					HipSTR wrote no record for DYS513; see HipSTR's log
+101	Y-111	DYS561		no call					HipSTR wrote no record for DYS561; see HipSTR's log
+102	Y-111	DYS552		no call					HipSTR wrote no record for DYS552.2; see HipSTR's log
+103	Y-111	DYS726		not callable					not callable: no region for it in the HipSTR marker set
+104	Y-111	DYS635		no call					HipSTR wrote no record for DYS635; see HipSTR's log
+105	Y-111	DYS587		no call					HipSTR wrote no record for DYS587; see HipSTR's log
+106	Y-111	DYS643		no call					HipSTR wrote no record for DYS643; see HipSTR's log
+107	Y-111	DYS497		no call					HipSTR wrote no record for DYS497; see HipSTR's log
+108	Y-111	DYS510	26	low	20	0	0	0.99	on the reference's scale, not FamilyTreeDNA's: no published counting rule for this marker; no per-read lengths (MALLREADS) to show that the reads agree
+109	Y-111	DYS434		no call					HipSTR wrote no record for DYS434; see HipSTR's log
+110	Y-111	DYS461		no call					HipSTR wrote no record for DYS461; see HipSTR's log
+111	Y-111	DYS435		no call					HipSTR wrote no record for DYS435; see HipSTR's log

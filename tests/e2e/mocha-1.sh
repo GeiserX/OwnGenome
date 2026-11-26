@@ -10,8 +10,14 @@
 #     the genetic map of chr20 unpacked, the folder under 200 MB, and cnps.bed
 #     (the panel's common CNVs) written, in MoChA's --cnp format when not empty;
 #   - HG002 (case 21's VCF) phased by Beagle on that slice: phased hets, MoChA
-#     makes no call and none is reported, and MoChA's log names cnps.bed as
-#     its --cnp list;
+#     makes no call on chr20, none of its calls is reported, and MoChA's log
+#     names cnps.bed as its --cnp list. The fixture's other autosomes, which
+#     the cut panel has no file for, still reach the sites table, unphased, so
+#     the sample is not assessed and the message names each of them (red
+#     control: the same check fails on the sites table cut to chr20, all the
+#     step kept before). MoChA may call on those other slices (a germline CNV
+#     such as HG002's chr4 UGT2B17 deletion, untyped since the cut panel's
+#     cnps.bed has chr20 only); such a call is reported "no";
 #   - MOSAIC, a synthetic phased VCF on chr16, chr19, chr20 and chr22 at 30x
 #     (REF bases from the fixture reference) with a 20 Mb CN-LOH on 20p from
 #     the telomere in 15% of the cells (the haplotype balance 0.575 instead of
@@ -23,10 +29,11 @@
 #     check fails on its log (red control of that check);
 #   - nextflow run main.nf --tools mocha,html_report on HG002 writes the
 #     bash step's call table byte for byte, the same summary values and a
-#     MoChA log naming cnps.bed, and the HTML report has the card. MoChA makes
-#     no call on HG002, so the byte check covers a header-only table: the
-#     summary values (sites, depth, hets per 10 Mb, chromosomes) are the mirror
-#     evidence. Control: MOSAIC's table differs.
+#     MoChA log naming cnps.bed, and the HTML report has the card. The byte
+#     check covers every row MoChA wrote on HG002, its calls on the other
+#     slices included, and the summary values (sites, depth, hets per 10 Mb,
+#     chromosomes, calls) are mirror evidence too. Control: MOSAIC's table
+#     differs.
 . "$(dirname "$0")/lib.sh"
 
 G="$GENOME_DIR" T="$CASE_TMP"
@@ -34,6 +41,12 @@ MD="${G}/reference/mocha-${MOCHA_PANEL_VERSION}"
 summ() { awk -F'\t' -v k="$2" '$1 == k {print $2}' "${G}/$1/mosaic/$1_mocha_summary.tsv" 2>/dev/null; }
 reported() { awk -F'\t' 'NR > 1 && $13 == "yes"' "${G}/$1/mosaic/$1_mocha.tsv" 2>/dev/null; }
 nrep() { reported "$1" | grep -c . || true; }
+# chr20_calls SAMPLE: MoChA's calls on chr20, reported or not ("missing" with no table).
+chr20_calls() {
+  local f="${G}/$1/mosaic/$1_mocha.tsv"
+  [ -s "$f" ] || { echo missing; return; }
+  awk -F'\t' 'NR > 1 && $1 == "chr20"' "$f" | grep -c . || true
+}
 between() { awk -v x="${1:-}" -v lo="$2" -v hi="$3" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 >= lo && x + 0 <= hi)}'; }
 differs() { [ -n "$1" ] && [ "$1" != "$2" ]; }
 not_same() { ! cmp -s "$1" "$2"; }
@@ -42,6 +55,19 @@ not() { ! "$@"; }
 cnp_logged() { grep -Eq '^Regions to genotype: .*cnps\.bed$' "$1" 2>/dev/null; }
 cnp_format() { awk -F'\t' 'NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 <= $2 || $4 !~ /^(CNV|DEL|DUP)$/ {exit 1}' "$1"; }
 status_ok() { [ "$1" = assessed ] || { [ "$1" = "not assessed" ] && [ -n "$2" ]; }; }
+# unpanelled SITES MESSAGE: the sites table has an autosome other than chr20,
+# the cut panel's one chromosome, with heterozygous sites; each such autosome
+# has none phased, and the message names it as "chrN (0 of H)".
+# shellcheck disable=SC2329  # called through check, below
+unpanelled() {
+  local c h p n=0
+  while IFS=$'\t' read -r c _ _ _ h p; do
+    [ "$c" != chr20 ] && [ "${h:-0}" != 0 ] || continue
+    [ "$p" = 0 ] && [[ "$2" == *"${c} (0 of ${h})"* ]] || return 1
+    n=$((n + 1))
+  done < "$1"
+  [ "$n" -gt 0 ]
+}
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && sleep $((i * 15)); done; return 1; }
 show() { echo "--- $1"; cat "${G}/$1/mosaic/$1_mocha_summary.tsv" "${G}/$1/mosaic/$1_mocha.tsv" \
   "${G}/$1/mosaic/$1_mocha_calls_raw.tsv" "${G}/$1/mosaic/$1_mocha_stats.tsv" "${G}/$1/mosaic/$1_mocha_sites.tsv" 2>/dev/null; }
@@ -90,76 +116,32 @@ run_step 51-mocha.sh "$SAMPLE"
 check_step_exit 51-mocha.sh
 show "$SAMPLE"
 check_eq "HG002: phased by Beagle" "$(summ "$SAMPLE" phasing)" beagle
-check_eq "HG002: MoChA read chr20, the panel's one chromosome" "$(summ "$SAMPLE" chromosomes)" chr20
+check "HG002: MoChA read chr20, the panel's one chromosome, and more ($(summ "$SAMPLE" chromosomes))" \
+  has '^(chr[0-9]+,)+chr20(,chr[0-9]+)*$|^chr20(,chr[0-9]+)+$' "$(summ "$SAMPLE" chromosomes)"
+SITES="${G}/${SAMPLE}/mosaic/${SAMPLE}_mocha_sites.tsv"
+check_eq "HG002: the autosomes the panel has no file for make the sample not assessed" "$(summ "$SAMPLE" status)" "not assessed"
+check "HG002: the message names each of them with 0 phased sites ($(summ "$SAMPLE" message))" \
+  unpanelled "$SITES" "$(summ "$SAMPLE" message)"
+awk -F'\t' '$1 == "chr20"' "$SITES" > "${T}/sites_chr20.tsv"
+check "red control: that check fails on the sites table cut to chr20 (all the step kept before)" \
+  not unpanelled "${T}/sites_chr20.tsv" "$(summ "$SAMPLE" message)"
 check_ge "HG002: phased heterozygous sites" "$(summ "$SAMPLE" phased_het_sites)" 100
-# 500 kb hold about 500 hets, too few for the genome-wide BAF autocorrelation
-# MoChA's sample filter reads, so the status may be either state (with a
-# reason); MoChA's own call count is what must be zero.
+# The status is not assessed (the autosomes above), with its reason. MoChA may
+# call on the unphased slices (a germline CNV, untyped because the cut panel's
+# cnps.bed has chr20 only), so the zero is its call count on chr20, and none of
+# its calls may be reported.
 check "HG002: a status with its reason ($(summ "$SAMPLE" status), baf_auto $(summ "$SAMPLE" baf_auto))" \
   status_ok "$(summ "$SAMPLE" status)" "$(summ "$SAMPLE" message)"
-check_eq "HG002 chr20: MoChA made no call" "$(summ "$SAMPLE" calls_mocha)" 0
-check_eq "HG002 chr20: no mosaic call reported" "$(nrep "$SAMPLE")" 0
+check_eq "HG002: MoChA made no call on chr20 ($(summ "$SAMPLE" calls_mocha) on all slices)" "$(chr20_calls "$SAMPLE")" 0
+check_eq "HG002: no mosaic call reported" "$(nrep "$SAMPLE")" 0
 check "HG002: MoChA read cnps.bed as its --cnp list (its log)" cnp_logged "${G}/${SAMPLE}/mosaic/${SAMPLE}_mocha.log"
-echo "mocha: HG002 chr20 slice: $(summ "$SAMPLE" het_sites) hets ($(summ "$SAMPLE" phased_het_sites) phased)," \
-  "depth $(summ "$SAMPLE" depth)x, floor $(summ "$SAMPLE" floor), $(summ "$SAMPLE" calls_mocha) MoChA calls" >> "$E2E_NOTES"
+echo "mocha: HG002, panel cut to chr20: $(summ "$SAMPLE" het_sites) hets ($(summ "$SAMPLE" phased_het_sites) phased)," \
+  "depth $(summ "$SAMPLE" depth)x, floor $(summ "$SAMPLE" floor), $(summ "$SAMPLE" calls_mocha) MoChA calls ($(chr20_calls "$SAMPLE") on chr20)" >> "$E2E_NOTES"
 
 # --- MOSAIC and MOSAIC0: a planted CN-LOH, and none ---------------------------------
 for s in MOSAIC MOSAIC0; do rm -rf "${G:?}/${s}"; mkdir -p "${G}/${s}/vcf"; done
-python3 -I - "${G}/reference/GRCh38_no_alt_analysis_set.fasta" "${G}/MOSAIC/vcf/MOSAIC.vcf" "${G}/MOSAIC0/vcf/MOSAIC0.vcf" <<'PY'
-import math, random, sys
-fa, out_shift, out_flat = sys.argv[1:]
-CHROMS = ("chr16", "chr19", "chr20", "chr22")
-EVENT = ("chr20", 1, 20_000_000)          # 20p from the telomere
-BDEV = 0.075                              # CN-LOH in 15% of the cells: haplotype balance 0.575
-fai = {}
-for line in open(fa + ".fai"):
-    c = line.split("\t")
-    fai[c[0]] = (int(c[1]), int(c[2]), int(c[3]), int(c[4]))
-ALT = {"A": "G", "G": "A", "C": "T", "T": "C"}
-def poisson(lam):
-    l, k, p = math.exp(-lam), 0, 1.0
-    while True:
-        p *= random.random()
-        if p <= l:
-            return k
-        k += 1
-def binom(n, f):
-    return sum(random.random() < f for _ in range(n))
-outs = {}
-for path, shift in ((out_shift, True), (out_flat, False)):
-    random.seed(51)
-    lines = ["##fileformat=VCFv4.2", '##FILTER=<ID=PASS,Description="All filters passed">']
-    lines += [f"##contig=<ID={c},length={fai[c][0]}>" for c in CHROMS]
-    lines += ['##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-              '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
-              '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">',
-              '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">',
-              "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + ("MOSAIC" if shift else "MOSAIC0")]
-    with open(fa, "rb") as f:
-        for c in CHROMS:
-            length, off, lb, lw = fai[c]
-            pos = 100_000
-            while pos < length - 100_000:
-                pos += random.randint(800, 1200)
-                f.seek(off + (pos - 1) // lb * lw + (pos - 1) % lb)
-                ref = f.read(1).decode().upper()
-                p, r, depth = random.uniform(0.05, 0.5), random.random(), poisson(30)
-                o = random.random() < 0.5
-                bal = 0.5 + BDEV if shift and c == EVENT[0] and EVENT[1] <= pos <= EVENT[2] else 0.5
-                k_het, k_err = binom(depth, bal), binom(depth, 0.005)
-                if ref not in ALT:
-                    continue
-                if r < 2 * p * (1 - p):
-                    gt = "0|1" if o else "1|0"
-                    alt = depth - k_het if o else k_het
-                elif r < 2 * p * (1 - p) + p * p:
-                    gt, alt = "1|1", depth - k_err
-                else:
-                    continue
-                lines.append(f"{c}\t{pos}\t.\t{ref}\t{ALT[ref]}\t50\tPASS\t.\tGT:GQ:DP:AD\t{gt}:50:{depth}:{depth - alt},{alt}")
-    open(path, "w").write("\n".join(lines) + "\n")
-    print(path, len(lines), "lines")
-PY
+"${REPO}/bin/og" dev fixture mocha-vcf "${G}/reference/GRCh38_no_alt_analysis_set.fasta" \
+  "${G}/MOSAIC/vcf/MOSAIC.vcf" "${G}/MOSAIC0/vcf/MOSAIC0.vcf"
 for s in MOSAIC MOSAIC0; do
   in_genome "$BCFTOOLS_IMAGE" bash -c "bcftools view -Oz -o ${s}/vcf/${s}.vcf.gz ${s}/vcf/${s}.vcf && bcftools index -t ${s}/vcf/${s}.vcf.gz"
   check_ge "${s}: synthetic records" "$(vcf_count "${s}/vcf/${s}.vcf.gz")" 80000
@@ -182,7 +164,7 @@ check "MOSAIC: and ends at 19 to 21 Mb ($(cut -f3 <<< "$ROW"))" between "$(cut -
 check "MOSAIC: cell fraction 0.10 to 0.20 ($(cut -f7 <<< "$ROW"))" between "$(cut -f7 <<< "$ROW")" 0.10 0.20
 check_eq "MOSAIC0 (no shift): no call reported" "$(nrep MOSAIC0)" 0
 check "red control: the one-call check fails on MOSAIC0" test "$(nrep MOSAIC0)" != 1
-check "red control: the no-MoChA-call check on HG002 fails on MOSAIC ($(summ MOSAIC calls_mocha))" differs "$(summ MOSAIC calls_mocha)" 0
+check "red control: the no-chr20-call check on HG002 fails on MOSAIC ($(chr20_calls MOSAIC))" differs "$(chr20_calls MOSAIC)" 0
 check "MOSAIC0, no panel folder: the step warns that there is no --cnp list" has 'no --cnp list' "$(cat "$STEP_LOG")"
 check "red control: the --cnp log check fails on MOSAIC0's log" not cnp_logged "${G}/MOSAIC0/mosaic/MOSAIC0_mocha.log"
 echo "mocha: MOSAIC planted CN-LOH chr20:1-20000000 at 0.15: $(cut -f1-7 <<< "$ROW" | tr '\t' ' ');" \
@@ -208,7 +190,7 @@ A="${G}/${SAMPLE}/mosaic/${SAMPLE}_mocha.tsv" B="${NF_OUT}/${SAMPLE}/mosaic/${SA
 check "Nextflow wrote ${SAMPLE}_mocha.tsv" test -s "$B"
 check "Nextflow's ${SAMPLE}_mocha.tsv is the bash step's" cmp -s "$A" "$B"
 cmp -s "$A" "$B" || diff "$A" "$B" | head -20
-for k in status chromosomes het_sites depth het_per_10mb calls_mocha calls_reported floor_min phasing; do
+for k in status message chromosomes het_sites depth het_per_10mb calls_mocha calls_reported floor_min phasing; do
   check_eq "Nextflow's summary: ${k} as the bash step's" \
     "$(awk -F'\t' -v k="$k" '$1 == k {print $2}' "${NF_OUT}/${SAMPLE}/mosaic/${SAMPLE}_mocha_summary.tsv" 2>/dev/null)" "$(summ "$SAMPLE" "$k")"
 done

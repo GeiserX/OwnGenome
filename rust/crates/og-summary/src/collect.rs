@@ -92,8 +92,8 @@ pub enum Group {
 }
 
 /// `og summary collect`: exit 0 when summary.json is written (whatever
-/// its sections say), 1 when it cannot be written, 2 for a command line it
-/// cannot read.
+/// its sections say), 1 when the sample folder cannot be read or the
+/// summary cannot be written, 2 for a command line it cannot read.
 pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
     let a = match args::parse(argv, OPTS) {
         Ok(a) => a,
@@ -130,6 +130,15 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
             return 2;
         }
     };
+    // A mistyped or unreadable sample folder would read as one where no
+    // step ran, and its summary would replace a good one with every section
+    // missing. Only the folders below it count as empty when unreadable.
+    if let Err(e) = readable_folder(&input.sample_dir) {
+        return crate::finish(
+            Err(format!("{}: not a readable folder: {e}", input.sample_dir)),
+            err,
+        );
+    }
     // The sections' own data is freed before the text is made, and the
     // tree before the file is written: a large ClinVar list is in memory in
     // one form at a time.
@@ -158,6 +167,14 @@ pub fn cli(argv: &[String], out: &mut impl Write, err: &mut impl Write) -> u8 {
         let _ = writeln!(out, "Summary written: {target}");
     }
     crate::finish(r, err)
+}
+
+/// Ok when `dir` is a folder whose entries can be listed.
+fn readable_folder(dir: &str) -> std::io::Result<()> {
+    if !std::fs::metadata(dir)?.is_dir() {
+        return Err(std::io::Error::other("not a folder"));
+    }
+    std::fs::read_dir(dir).map(drop)
 }
 
 /// The `assets/` folder of the checkout the binary sits in (`bin/.og/og-*`
@@ -263,7 +280,7 @@ pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
                 Variants::read(p).map(Data::Variants)
             })
         });
-        let rest = read_rest(input, &find, &file);
+        let rest = read_rest(input, &find, &file, exome(folder));
         (
             v.join()
                 .unwrap_or_else(|_| Err("internal error: the variant reader stopped".into())),
@@ -292,6 +309,18 @@ pub fn read_a(input: &Input, folder: &Folder) -> Vec<Section> {
         .zip(reads)
         .map(|(spec, r): (&Spec, _)| Section::new(*spec, r, folder.run.as_ref()))
         .collect()
+}
+
+/// Whether the run manifest says the run was an exome: its `run model_type`
+/// row is `WES` (Nextflow's HTML_REPORT writes it for `--model_type WES`).
+/// Without the row, `Coverage::read` still tells an exome from mosdepth's
+/// summary.
+fn exome(folder: &Folder) -> bool {
+    folder
+        .manifest
+        .as_ref()
+        .and_then(|m| m.value("run", "model_type"))
+        == Some("WES")
 }
 
 /// The declared sex step 33's table records, from its section (read when
@@ -390,6 +419,7 @@ fn read_rest(
     input: &Input,
     find: &dyn Fn(&[String]) -> Option<String>,
     file: &dyn Fn(String) -> (String, String),
+    exome: bool,
 ) -> [Read; 6] {
     let s = pycompat::mtime::escape(&input.sample);
     let coverage = read_at(
@@ -398,7 +428,7 @@ fn read_rest(
             format!("coverage/{s}.mosdepth.summary.txt"),
         ])
         .map(file),
-        |p| Coverage::read(p).map(Data::Coverage),
+        |p| Coverage::read(p, exome).map(Data::Coverage),
     );
     let callability = read_at(
         find(&[

@@ -1,12 +1,12 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    HTML_REPORT — The sample's HTML report, rendered by bin/render_report.py
+    HTML_REPORT — The sample's HTML report, rendered by og report render
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    The same code scripts/24-html-report.sh runs: og summary collect
-    (rust/crates/og-summary, run by render_report.py through bin/og) reads
-    the step outputs into summary.json (the bash step's name for it),
-    and render_report.py writes the report from it, so a number on the
-    Nextflow report is the number the bash report shows for the same file.
+    The same code scripts/24-html-report.sh runs: og report render
+    (rust/crates/og-render) collects the step outputs into summary.json
+    (og summary collect, the bash step's name for it) and writes the report
+    from it, so a number on the Nextflow report is the number the bash
+    report shows for the same file.
 
     The inputs are the outputs of the steps that ran for this sample, as one
     list (main.nf joins them, so the report waits for each). They are linked
@@ -23,8 +23,10 @@
     and assets/carrier_genes.tsv (the carrier list) and
     assets/callability_genes.tsv (the hard-to-read genes) come in the same list
     and go to assets/, which --assets names, as do assets/mito_confirmed.tsv
-    (the confirmed mtDNA variants step 20's section names) and the paralog
-    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv. Every
+    (the confirmed mtDNA variants step 20's section names), the paralog
+    catalogs assets/paralog_loci.tsv and assets/paraphase_genes.tsv,
+    assets/steps.tsv (the step catalogue) and assets/pgs_scores.tsv (the PGS
+    score list, which names the academic-only scores a run left out). Every
     <id>_<table>_copy_number.tsv of step 35 goes to paralogs/, and so
     do step 35's <id>_cn_intervals.tsv, <id>_cn_dosage.tsv,
     <id>_cyp21a2_psv.tsv and <id>_smn1_marker.tsv; step 46's <id>_lpa_kiv2.tsv
@@ -33,10 +35,18 @@
     vcf/<id>.g.vcf.gz and its .tbi (or .csi), where the bash report finds
     step 03's gVCF. A run_manifest.tsv in the sample folder records the
     OwnGenome release (nextflow.config's manifest.version), so the report
-    names it as the bash report does; it is not published, because
+    names it as the bash report does, and the regions of --intervals when
+    the run was limited to them, so summary.json marks the run partial as
+    the bash report does, and the run's tool list (meta.tools, main.nf's
+    --tools list), so og summary collect marks each section of a selected
+    step that wrote nothing "selected, no result" instead of not run (it
+    maps each tool to its sections through assets/steps.tsv, which comes in
+    the list with the other assets), and an exome (meta.model_type WES), so
+    og summary collect takes mosdepth's on-target mean depth (total_region)
+    instead of the genome-wide one; it is not published, because
     run-all.sh writes the full manifest there. Every gene and rsID the
     results mention also goes to ${id}_search_index.json beside it
-    (bin/results_index.py), for the live site's search, and the report's
+    (og report index), for the live site's search, and the report's
     charts to ${id}_charts.json, for the live page (docs/24-html-report.md).
 
     Equivalent to: scripts/24-html-report.sh
@@ -69,6 +79,12 @@ process HTML_REPORT {
     def gvcf_index = meta.gvcf ? meta.gvcf[1].toString().replace("'", "'\\''") : ''
     def gvcf_suffix = gvcf_index.endsWith('.csi') ? 'csi' : 'tbi'
     def release = workflow.manifest.version ?: ''
+    // --intervals as given, single-quoted below like gvcf; the task script puts it on one line
+    def intervals = params.intervals ? params.intervals.toString().replace("'", "'\\''") : ''
+    // The run's --tools names (main.nf checks each against its known list),
+    // single-quoted below like gvcf
+    def tools = (meta.tools ?: []).join(' ').replace("'", "'\\''")
+    def model_type = meta.model_type == 'WES' ? 'WES' : ''
     """
     # Where og summary collect looks for each output (rust/crates/og-summary)
     S=layout/${id}
@@ -82,13 +98,29 @@ process HTML_REPORT {
     fi
     # The release this run is (bash: bin/write_manifest.sh's run pipeline_version row)
     release='${release}'
-    [ -z "\$release" ] || printf 'run\\tpipeline_version\\t%s\\n' "\$release" > "\$S/run_manifest.tsv"
+    [ -z "\$release" ] || printf 'run\\tpipeline_version\\t%s\\n' "\$release" >> "\$S/run_manifest.tsv"
+    # The regions this run was limited to (bash: the run intervals row), so
+    # og summary collect marks the genome-wide sections partial; one line with
+    # single spaces, as bin/write_manifest.sh writes INTERVALS
+    intervals='${intervals}'
+    read -r -d '' -a regions <<< "\$intervals" || true
+    [ "\${#regions[@]}" -eq 0 ] || printf 'run\\tintervals\\t%s\\n' "\${regions[*]}" >> "\$S/run_manifest.tsv"
+    # The steps this run selected (the bash runner records none), so og
+    # summary collect lists a selected step that wrote nothing as
+    # "selected, no result"
+    tools='${tools}'
+    [ -z "\$tools" ] || printf 'run\\ttools\\t%s\\n' "\$tools" >> "\$S/run_manifest.tsv"
+    # An exome (--model_type WES), so og summary collect reads mosdepth's
+    # on-target mean depth; no row for a whole genome, as the bash runner
+    # writes none
+    model_type='${model_type}'
+    [ -z "\$model_type" ] || printf 'run\\tmodel_type\\t%s\\n' "\$model_type" >> "\$S/run_manifest.tsv"
     for f in input/*; do
         n=\$(basename "\$f")
         if [ -n "\$gvcf" ] && { [ "\$n" = "\$gvcf" ] || [ "\$n" = "\$gvcf_index" ]; }; then continue; fi
         case "\$n" in
             sample.vcf.gz) ;;
-            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv) place clinvar "\$f" ;;
+            ${id}_clinvar_hits.vcf|${id}_clinvar_cdna_check.tsv|${id}_clinvar_cdna_scan.tsv|${id}_clinvar_deep_intronic.tsv|${id}_clinvar_conflicting.tsv) place clinvar "\$f" ;;
             ${id}.report.json|${id}.report.html)          place pharmcat "\$f" ;;
             ${id}_phenotypes.tsv|${id}_cpic_recommendations.txt) place cpic "\$f" ;;
             ${id}_vep.vcf.gz|${id}_vep.vcf.gz.tbi)        place vep "\$f" ;;
@@ -100,7 +132,7 @@ process HTML_REPORT {
             ${id}_y_haplogroup.txt|${id}_y_tree.txt|${id}_y_tree_path.tsv) place y_haplogroup "\$f" ;;
             ${id}_y_str.tsv)                              place y_str "\$f" ;;
             ${id}_paraphase_copy_number.tsv|${id}_paraphase_variants.tsv|${id}_*_copy_number.tsv) place paralogs "\$f" ;;
-            ${id}.mosdepth.summary.txt|${id}_callability.bed.gz) place coverage "\$f" ;;
+            ${id}.mosdepth.summary.txt|${id}_callability.bed.gz|${id}_callability_exons.bed.gz) place coverage "\$f" ;;
             ${id}_sample_qc.tsv|${id}_read_count.tsv)     place qc "\$f" ;;
             ${id}_cn_intervals.tsv)                       place paralogs "\$f" ;;
             ${id}_cn_dosage.tsv|${id}_cyp21a2_psv.tsv)    place paralogs "\$f" ;;
@@ -138,13 +170,13 @@ process HTML_REPORT {
             ${id}_mei.tsv|${id}_mei_sites.tsv)            place mei "\$f" ;;
             ${id}_mocha.tsv|${id}_mocha_summary.tsv)      place mosaic "\$f" ;;
             ${id}_couple_carrier.tsv)                     place couple "\$f" ;;
-            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
+            acmg_sf.tsv|carrier_genes.tsv|callability_genes.tsv|mito_confirmed.tsv|paralog_loci.tsv|paraphase_genes.tsv|steps.tsv|pgs_scores.tsv) mkdir -p assets && ln -s "\$(readlink -f "\$f")" assets/ ;;
             *) echo "ERROR: HTML_REPORT got an input it has no place for: \$(basename "\$f")" >&2; exit 1 ;;
         esac
     done
     find layout | sort
 
-    render_report.py \\
+    og report render \\
         --assets assets \\
         --sample ${id} \\
         --sample-dir "\$S" \\
@@ -154,7 +186,8 @@ process HTML_REPORT {
         --search-index ${id}_search_index.json \\
         --charts-json ${id}_charts.json
 
-    printf '"%s":\\n    python: %s\\n    og: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    og: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$(og --version)" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -163,7 +196,8 @@ process HTML_REPORT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

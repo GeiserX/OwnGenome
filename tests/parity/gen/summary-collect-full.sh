@@ -12,15 +12,9 @@
 # summary is no JSON) with a database re-check, and a telomere table whose
 # infinite read length stopped the Python collector (a golden: og keeps
 # the summary and marks that one section unreadable).
-# py/ holds the modules the oracle imports at the oracle's commit, with the
-# real run_delta.py for recheck and new_since. The case stages
-# cb_vep.vcf.gz and its index beside the folders.
-# scripts/ci/oracle-diff.sh runs it.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "${here}/../../.." && pwd)
-ORACLE_SHA=98aa9252ff77825a8a797d388b449931fa9a234e
 
 put() { mkdir -p "$(dirname "$1")"; printf '%b' "$2" > "$1"; at "$NEW" "$1"; }
 at() { touch -t "$1" "${@:2}"; }   # [[CC]YY]MMDDhhmm[.SS], in UTC
@@ -40,13 +34,8 @@ merge() {
   for src in "$@"; do cp -pPR "parts/${src}/." "$dest"/; done
 }
 
-mkdir -p assets py pymods
+mkdir -p assets
 for g in a b c; do cp -pR "parts/${g}/assets/." assets/; done
-cp -pR parts/b/pymods/. pymods/
-cp -pR parts/c/py/. py/
-git -C "$root" cat-file -e "${ORACLE_SHA}^{commit}" 2> /dev/null \
-  || git -C "$root" fetch -q --depth=1 origin "$ORACLE_SHA"
-git -C "$root" show "${ORACLE_SHA}:bin/run_delta.py" > py/run_delta.py
 
 # all: every section of the three groups, the bash names.
 merge all a/full b/cb-full c/full

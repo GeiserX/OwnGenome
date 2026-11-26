@@ -12,7 +12,7 @@ STR expansions cause ~40 known neurological/neuromuscular diseases including Hun
 
 ## Docker Image
 - `EXPANSIONHUNTER_IMAGE`
-- `PYTHON_IMAGE` (setup only) runs the converter, `og str catalog`
+- `OG_IMAGE` (setup only) runs the converter, `og str catalog`
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
@@ -53,7 +53,7 @@ The reports read the counts (`og summary collect`, under the repeat expansions s
 - **UGT1A1**: the TA count of each copy as its allele (`*36`, `*1`, `*28`, `*37`), and the number of decreased-function copies (`*28`, `*37`) compared with PharmCAT's UGT1A1 call of step 27, which reads `*28` from the small-variant calls with the reference-block fill of `og pgx refblock-fill`. The line says whether the two agree; when they differ, read the reads before using either. A TA length outside TA5 to TA8 has no named allele, so the line makes no function claim and does not compare it. A step 27 table from an earlier run is compared and said to be so; one of a failed or unreadable step is not compared. PharmCAT's call is still the one step 27's drug guidance uses.
 - Without the opt-in, both lines say the repeat was not sized and give the command that adds it: `STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir>`.
 
-`tests/test_str_catalog.py` checks each region against the GRCh38 sequence, `tests/test_collect_summary.py` checks the readings on made-up counts (a TG11-7T/TG11-7T sample is the red control of the 5T line), the e2e case `genotype-rule-rows-1-str-extra` sizes both tracts on made-up reads with ExpansionHunter 5.0.0, and the e2e case `str-extra-repeats-1-readings` runs step 09 and both reports on made-up reads and checks the lines.
+`rust/crates/og-setup/tests/strchive_catalog.rs` checks each region against the GRCh38 sequence, `rust/crates/og-summary/tests/port_tests_summary.rs` checks the readings on made-up counts (a TG11-7T/TG11-7T sample is the red control of the 5T line), the e2e case `genotype-rule-rows-1-str-extra` sizes both tracts on made-up reads with ExpansionHunter 5.0.0, and the e2e case `str-extra-repeats-1-readings` runs step 09 and both reports on made-up reads and checks the lines.
 
 The opt-in stays off by default: turning it on changes the catalog every run sizes, and the CFTR and UGT1A1 lines are readings of a modifier and of a PGx allele PharmCAT already calls, not expansions.
 
@@ -61,7 +61,7 @@ SLC6A4 5-HTTLPR, the serotonin transporter promoter length polymorphism, is not 
 
 ## Key Disease Thresholds
 
-The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat units: Stranger calls a count up to the normal maximum `normal`, one in the pre-mutation band `pre_mutation`, and one from the full-mutation minimum `full_mutation`. `tests/test_str_ranges.py` checks every row against the catalog. With `EH_CATALOG=bundled`, step 9b uses Stranger's bundled catalog, whose thresholds differ at some loci.
+The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat units: Stranger calls a count up to the normal maximum `normal`, one in the pre-mutation band `pre_mutation`, and one from the full-mutation minimum `full_mutation`. `rust/crates/og-setup/tests/genome_str_ranges.rs` checks every row against the catalog. With `EH_CATALOG=bundled`, step 9b uses Stranger's bundled catalog, whose thresholds differ at some loci.
 
 | Disease | Gene | Repeat Unit | Normal | Pre-mutation | Full mutation |
 |---|---|---|---|---|---|
@@ -73,7 +73,7 @@ The thresholds step 9b grades with on the STRchive v2.28.0 catalog, in repeat un
 | SCA1 | ATXN1 | CAG | ≤35 | 36-38 | ≥39 |
 | SCA2 | ATXN2 | CAG | ≤28 | 29-34 | ≥35 |
 
-Stranger's pre-mutation band is everything between the two thresholds; it is wider than a clinical intermediate range at some loci. At FMR1 it covers both the gray zone and the premutation below. `setup.sh` also writes `reference/strchive-<version>/str_ranges.tsv`, one row per locus with these two thresholds and STRchive's own intermediate range.
+Stranger's pre-mutation band is everything between the two thresholds; it is wider than a clinical intermediate range at some loci. At FMR1 it covers both the gray zone and the premutation below. At HTT, Stranger's full mutation starts at 36, but 36 to 39 is the reduced-penetrance range of GeneReviews: such a count can cause Huntington disease, but not in everyone who carries it. `og summary collect` marks a sized HTT count of 36 to 39 as reduced penetrance in `summary.json`, from `assets/str_penetrance_ranges.tsv`. Step 24 (`run-all.sh`) does this; the Nextflow report does not stage that table yet, so a Nextflow run has no such mark ([how to read it](results/structural-and-repeats.md#how-to-read-expansionhunter-output)). `setup.sh` also writes `reference/strchive-<version>/str_ranges.tsv`, one row per locus with these two thresholds and STRchive's own intermediate range.
 
 ## FMR1 Clinical Zones
 
@@ -101,4 +101,4 @@ The second argument (`male`/`female`) is **required** — it affects X-linked lo
 - **Why STRchive, not a larger catalog.** STRchive lists the loci with a published disease link, each with the sources of its thresholds. Larger catalogs (tens of thousands of loci) are for research, have no thresholds, and would make step 9b's grades meaningless. Illumina has published no newer catalog than the bundled one (2021).
 - **What the STRchive catalog cannot do.** It does not make long repeats readable: the seven loci above stay ungraded, and an expansion longer than a read is still sized only roughly. The motif count of step 9b reads the motif, never the size.
 - Short-read WGS can reliably detect expansions up to ~150 repeats; very large expansions (>1000) are less accurate
-- **How well each allele was sized.** The VCF's `SO` field says which reads support each allele: `SPANNING` (reads cross the whole repeat, so it is sized), `FLANKING` (reads reach into the repeat from one side only, so the size is not determined) or `INREPEAT` (reads made only of repeat, so the allele is longer than a read). `ADSP` counts the spanning reads and `REPCI` gives the interval. The report uses them: a `FLANKING` or `INREPEAT` allele, one with fewer than 2 spanning reads, or one whose interval reaches the pathogenic minimum is listed as not sized and never as normal ([how the report reads them](interpreting-results.md#str-expansions-step-9))
+- **How well each allele was sized.** The VCF's `SO` field says which reads support each allele: `SPANNING` (reads cross the whole repeat, so it is sized), `FLANKING` (reads reach into the repeat from one side only, so the size is not determined) or `INREPEAT` (reads made only of repeat, so the allele is longer than a read). `ADSP`, `ADFL` and `ADIR` count the spanning, flanking and in-repeat reads, and `REPCI` gives the interval. An allele with no spanning and no flanking read but at least one in-repeat read rests on in-repeat reads only, so it is longer than a read and is read as `INREPEAT`, whatever its `SO` says. The report uses them: a `FLANKING` or `INREPEAT` allele, one with fewer than 2 spanning reads, or one whose interval reaches the pathogenic minimum is listed as not sized and never as normal ([how the report reads them](interpreting-results.md#str-expansions-step-9))

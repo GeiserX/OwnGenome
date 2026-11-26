@@ -1,0 +1,199 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+================================================================================
+
+################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Symptom-Driven Ranking (Exomiser, step 48)
+---
+  [could not be read: S_exomiser_top.tsv lacks a column of rank, gene, moi, exomiser_score, phenotype_score, variant, genotype, consequence, hgvs, acmg, disease]
+## Structural Variants, Class 4 and 5 (AnnotSV)
+---
+  [could not be read: S_sv_class4_5_checked.tsv lacks a column of ['ACMG_class', 'Caller', 'Common', 'Exon_edge', 'Population_AF', 'SV_chrom', 'SV_end', 'SV_start', 'SV_type']]
+## Mobile Element Insertions (step 50)
+---
+  [could not be read: S_mei.tsv is missing beside S_mei_sites.tsv]
+## Repeat Expansions (ExpansionHunter)
+---
+  Loci in output: 2
+  Stranger (step 9b) did not run: no locus is marked as normal or expanded.
+  CFTR intron 9 (legacy IVS8) TG and poly-T tract: not sized
+    ExpansionHunter did not size both tracts (TG 11/12, flanking_only; poly-T 7/9, sized): not read. (Deignan et al. 2020, PMID 32404922)
+  UGT1A1 promoter TA repeat: not sized
+    not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28. (Gammal et al. 2016, PMID 26417955)
+  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
+    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
+  Not sized from short reads, so not counted as normal: 1 (CFTR_TG)
+  Every locus (key loci first): repeat count, Stranger status, notes
+    HTT      not in output -
+    FMR1     not in output -
+    C9ORF72  not in output -
+    ATXN1    not in output -
+    DMPK     not in output -
+    CFTR_T   7/9        -
+    CFTR_TG  11/12      -  size not determined (flanking reads only), interval 11-11/12-12
+  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
+
+## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)
+---
+  [could not be read: S_vntyper.tsv has no status row (positive, possible, negative, not assessed)]
+## Mitochondrial Variants (Mutect2)
+---
+  [could not be read: KeyError: 'length']
+## Lp(a): LPA KIV-2 Repeat Count and Risk Variants
+---
+  [could not be read: S_lpa_kiv2.tsv has no status row (estimated, too little depth or not assessed)]
+## Clonal Haematopoiesis (CHIP, step 49)
+---
+  [could not be read: S_chip.tsv lacks a column of gene, protein_change, vaf, alt_reads, depth, status, note]
+## Mosaic Chromosomal Alterations (MoChA, step 51)
+---
+  [could not be read: S_mocha.tsv has 1 reported calls, S_mocha_summary.tsv says 2]
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Couple Carrier Screen (step 39)
+---
+  [could not be read: S_couple_carrier.tsv line 2 is not a row of S's couple table]
+## Paralog Genes (Paraphase, PacBio HiFi)
+---
+  [could not be read: S_paraphase_copy_number.tsv lacks the region, gene, copy_number or status column]
+## SMN1/SMN2 Copy Number (Parascopy, short reads)
+---
+  [could not be read: S_smn_copy_number.tsv lacks the chrom, start, end, agCN, agCN_filter, agCN_qual, psCN, psCN_qual or psCN_filter column]
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (step 35 unreadable, step 35b unreadable)
+
+################################################################################
+#  4. MEDICINES: How might I respond to medicines?
+################################################################################
+
+## HLA Typing (T1K)
+---
+    HLA-A    A*02:01 (quality x); low confidence (T1K quality 0 or below), not passed to PharmCAT
+  Coeliac DQ: not determined (HLA-DQA1 not typed; HLA-DQB1 not typed)
+  DQB1*02 copies: not determined
+  A*31:01 not determined (HLA-A low confidence): carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)
+  B*15:02 not determined (HLA-B not typed): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)
+  B*57:01 not determined (HLA-B not typed): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)
+  B*58:01 not determined (HLA-B not typed): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)
+  B*27 not determined (HLA-B not typed): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)
+  C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006, Am J Hum Genet)
+  DQB1*06:02 not determined (HLA-DQB1 not typed): narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)
+  DRB1*15:01 not determined (HLA-DRB1 not typed): multiple sclerosis (Barcellos 2003, Am J Hum Genet)
+  DRB1*01:01 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:01 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:04 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:05 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:08 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*14:02 not determined (HLA-DRB1 not typed): rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.
+  HLA database: unknown
+  HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).
+
+## Locityper Second Opinion at Hard Loci (step 53)
+---
+  [could not be read: S_locityper.tsv lacks a row or one of the columns locus, region, status, genotype, haplotype_1, haplotype_2, quality, total_reads, unexplained_reads, weighted_distance, warnings, filter, reason]
+################################################################################
+#  5. ANCESTRY: Where do my ancestors come from?
+################################################################################
+
+## Fine-Grained Ancestry
+---
+  [could not be read: S_ancestry_fine.tsv has no rows or lacks a column of ['code', 'fraction', 'group', 'high', 'level', 'low', 'se']]
+## Mitochondrial Haplogroup
+---
+  [could not be read: S_haplocheck.txt has no Contamination Status column]
+## Y-Chromosome Haplogroup (Yleaf)
+---
+  [could not be read: S_y_haplogroup.txt has no Hg column or no sample row]
+## Y Placement on the Current Public Tree
+---
+  [could not be read: S_y_tree.txt lacks a column of Hg, Level, Tree]
+## Y-STR Markers (HipSTR)
+---
+  [could not be read: S_y_str.tsv has a confidence other than high, low, no call or not callable]
+## Archaic Ancestry (IBDmix, step 43)
+---
+  [could not be read: S_archaic.tsv has no percentage for neanderthal_percent]
+## Ancient Populations (AADR PCA, step 44)
+---
+  [could not be read: S_ancient.tsv has no rows or lacks a column of ['country', 'dates', 'distance', 'group', 'locality', 'n', 'rank']]
+## Runs of Homozygosity
+---
+  Segments: 0  Total: 0.0 MB  Largest: 0.0 MB
+  Autosomal ROH > 5MB: 0
+  Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.
+
+################################################################################
+#  6. TRAITS AND SCORES: What do studies say about my traits and risk scores?
+################################################################################
+
+## Traits Panel (step 42)
+---
+  [could not be read: S_traits.tsv line 2 does not have one field per column]
+## Blood Groups (predicted from the genome)
+---
+  [could not be read: S_bloodtype.tsv has no system, phenotype and confidence columns, or no row]
+## Telomere content (relative, TelomereHunter)
+---
+  Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
+  Intratelomeric reads: 40; depth unknown (no total_reads or read_lengths in the summary): not checked
+  Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).
+
+################################################################################
+#  7. OTHER AND EXPORTS: What else did the run find or write?
+################################################################################
+
+## Viral DNA in the Unmapped Reads (step 47)
+---
+  [could not be read: S_viral.tsv has no rows or lacks a column of virus, accession, reads, breadth, relative_depth, copies_per_cell, call]
+## Raw-Data Export (23andMe v5 layout)
+---
+  [could not be read: S_consumer_export.tsv has no whole-number 'sites' row]
+## Steps Not Run
+---
+  - Coverage (mosdepth)
+  - Gene callability (mosdepth)
+  - Sex check (indexcov)
+  - Sample identity and contamination (somalier, VerifyBamID2)
+  - Mosaic loss of chromosome Y or X
+  - Variant calling
+  - ClinVar screen
+  - PharmCAT
+  - CPIC drug-gene recommendations
+  - pypgx
+  - Cyrius (CYP2D6)
+  - Polygenic risk scores
+  - Structural variants (Manta)
+  - Structural variants (Delly)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

@@ -1,0 +1,10 @@
+# clinvar	clinvar_nochrm.vcf.gz	2026-10-05
+# gnomad	not annotated	no gnomAD chrM file given
+chrom	pos	ref	alt	filter	af	clinvar_id	clinvar_significance	clinvar_review	clinvar_condition	gnomad_af_hom	gnomad_af_het	gnomad_max_hl
+chrM	73	A	G	PASS	1.00	.	.	.	.	.	.	.
+chrM	302	AC	A	PASS	0.3	.	.	.	.	.	.	.
+chrM	302	A	AC	PASS	0.4	.	.	.	.	.	.	.
+chrM	3243	A	G	PASS	0.3	.	.	.	.	.	.	.
+chrM	9000	C	T	strand_bias	0.1	.	.	.	.	.	.	.
+chrM	16189	T	C	PASS	.	.	.	.	.	.	.	.
+chrM	16191	C	G	PASS	.	.	.	.	.	.	.	.

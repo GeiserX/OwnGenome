@@ -44,7 +44,7 @@ process WHATSHAP_PED {
     """
     if [ -s ${trios} ]; then
         whatshap phase --ped ${trios} --use-ped-samples -o family.phased.vcf.gz ${vcf}
-        python -c "import pysam; pysam.tabix_index('family.phased.vcf.gz', preset='vcf', force=True)"
+        og vcf index -f family.phased.vcf.gz
     else
         echo "No child has both parents sequenced: nothing to phase by inheritance."
     fi
@@ -104,12 +104,13 @@ process FAMILY_REPORT {
     og family report --members ${members} --relationships ${relationships} \\
         --vcf ${vcf} ${ph} ${cand} --par-bed ${par_bed} --out-dir .
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch de_novo.tsv compound_het.tsv family_report.md
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

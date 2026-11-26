@@ -10,8 +10,13 @@
 # Sniffles2 writes the bgzipped VCF and its .tbi itself (an -v name ending in
 # .vcf.gz), and --allow-overwrite lets a rerun replace the output of a run
 # that failed half way.
-# Known gap: Sniffles2 calls SVs in tandem repeats more accurately with a
-# tandem-repeat BED (--tandem-repeats); none is passed here yet.
+#
+# Sniffles2 finds no SV in short reads and still exits 0 with an empty VCF,
+# so the step first reads the mean length of the first 10,000 primary reads
+# (SAMTOOLS_IMAGE) and stops below 1,000 bp. With the tandem-repeat map
+# setup.sh installs (TANDEM_REPEATS_URL, unpacked in reference/), Sniffles2
+# gets --tandem-repeats, which gives SVs inside repeats better breakpoints
+# and merging; without it, the step runs as before and says so.
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name>}
@@ -41,6 +46,42 @@ for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
   fi
 done
 
+# Long reads only: the mean length of the first 10,000 primary reads with a
+# sequence, as "<reads> <mean bp>".
+MIN_MEAN_READ_LEN=1000
+# shellcheck disable=SC2016  # the program and $1/$2 belong to the inner shell
+LEN_AWK='$10 != "*" { n++; s += length($10); if (n == 10000) exit } END { printf "%d %d\n", n, (n ? s / n : 0) }'
+# shellcheck disable=SC2016
+PROBE=$(run_in "$SAMTOOLS_IMAGE" sh -c 'samtools view -F 0x900 "$1" | awk -F "\t" "$2"' sh \
+  "/genome/${SAMPLE}/${ALIGN_DIR}/${SAMPLE}_sorted.bam" "$LEN_AWK")
+read -r N_READS MEAN_LEN _ <<< "$PROBE" || true
+if ! [[ "${N_READS:-}" =~ ^[0-9]+$ && "${MEAN_LEN:-}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: could not read the read lengths of ${BAM} (samtools printed '${PROBE}')" >&2
+  exit 1
+fi
+if [ "$N_READS" -eq 0 ]; then
+  echo "ERROR: ${BAM} has no primary read with a sequence (see samtools's message above, if any); Sniffles2 has nothing to call SVs from." >&2
+  exit 1
+fi
+if [ "$MEAN_LEN" -lt "$MIN_MEAN_READ_LEN" ]; then
+  echo "ERROR: the first ${N_READS} primary reads of ${BAM} average ${MEAN_LEN} bp." >&2
+  echo "       Sniffles2 needs long reads (ONT or PacBio HiFi, ${MIN_MEAN_READ_LEN} bp or more on average): on short reads it finds no SV and still exits 0." >&2
+  echo "       Point ALIGN_DIR at the long-read BAM (step 02b writes aligned_longread/${SAMPLE}_sorted.bam). Short-read SVs come from steps 04 (Manta), 04a, 04b and 19." >&2
+  exit 1
+fi
+echo "Reads: the first ${N_READS} primary reads average ${MEAN_LEN} bp"
+
+# The tandem-repeat map setup.sh installs: TANDEM_REPEATS_URL's file, unpacked.
+TR_NAME=${TANDEM_REPEATS_URL##*/}
+TR_BED="${GENOME_DIR}/reference/${TR_NAME%.gz}"
+TR_ARGS=()
+if [ -f "$TR_BED" ] && [ -s "$TR_BED" ]; then
+  TR_ARGS=(--tandem-repeats "$(cpath "$TR_BED")")
+  echo "Tandem repeats: ${TR_BED}"
+else
+  echo "NOTE: no tandem-repeat map at ${TR_BED} (setup.sh installs it): Sniffles2 runs without --tandem-repeats, so SVs inside repeats get less precise breakpoints and merging."
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 # Run Sniffles2
@@ -54,7 +95,8 @@ run_in --cpus "$THREADS" --memory 16g \
     --reference "${REF_FASTA_C}" \
     --threads "$THREADS" \
     --sample-id "${SAMPLE}" \
-    --allow-overwrite
+    --allow-overwrite \
+    ${TR_ARGS[@]+"${TR_ARGS[@]}"}
 
 if ! wrote_vcf "${OUTPUT_DIR}/${SAMPLE}_sv.vcf.gz"; then
   echo "ERROR: Sniffles2 exited without a ${OUTPUT_DIR}/${SAMPLE}_sv.vcf.gz" >&2
@@ -88,4 +130,4 @@ echo ""
 echo "Next steps:"
 echo "  - Annotate SVs: ./scripts/05-annotsv.sh ${SAMPLE} (set SV_VCF to point at sv_sniffles)"
 echo "  - Merge with short-read SVs: ./scripts/22-survivor-merge.sh ${SAMPLE}"
-echo "  - Filter quality: duphold can re-annotate long-read SVs with GQ scores"
+echo "  - Quality: Sniffles2 writes its own QUAL and FORMAT/GQ; step 15 (duphold) reads Manta's short-read calls only"

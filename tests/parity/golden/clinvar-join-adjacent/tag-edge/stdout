@@ -1,0 +1,50 @@
+##fileformat=VCFv4.2
+##contig=<ID=c01,length=450>
+##contig=<ID=c02,length=450>
+##contig=<ID=c03,length=450>
+##contig=<ID=c04,length=450>
+##contig=<ID=c05,length=450>
+##contig=<ID=c06,length=450>
+##contig=<ID=c07,length=450>
+##contig=<ID=c08,length=450>
+##contig=<ID=c09,length=450>
+##contig=<ID=c10,length=450>
+##contig=<ID=c11,length=450>
+##contig=<ID=c12,length=450>
+##contig=<ID=c13,length=450>
+##contig=<ID=c14,length=450>
+##contig=<ID=c15,length=450>
+##contig=<ID=c16,length=450>
+##contig=<ID=c17,length=450>
+##contig=<ID=c18,length=450>
+##contig=<ID=c19,length=450>
+##contig=<ID=c20,length=450>
+##contig=<ID=c21,length=450>
+##contig=<ID=c22,length=450>
+##contig=<ID=c23,length=450>
+##contig=<ID=c24,length=450>
+##contig=<ID=c25,length=450>
+##contig=<ID=c26,length=450>
+##contig=<ID=c27,length=450>
+##contig=<ID=c28,length=450>
+##contig=<ID=c29,length=450>
+##contig=<ID=c30,length=450>
+##contig=<ID=c31,length=450>
+##contig=<ID=c32,length=450>
+##contig=<ID=lc,length=450>
+##INFO=<ID=PGP_JOINED_FROM,Number=1,Type=String,Description="an older run">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+c01	137	.	AGC	A	50	PASS	.	GT	0/1
+##a header line among the records
+#a comment
+
+c01	140	.	C	T	50	PASS	.
+c01	142	.	T	TGGG	50	PASS	.	GT	0/1
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+c02	303	.	T	A	50	PASS	.	GT	0/1
+c02	308	.	T	C	50	PASS	.	GT	0/1

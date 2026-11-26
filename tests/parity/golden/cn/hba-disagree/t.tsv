@@ -1,0 +1,10 @@
+metric	value
+status	not assessed
+alpha_globin_genes	.
+estimate	.
+hba2_depth	30.0
+hba1_depth	30.0
+flank_left_depth	30.0
+flank_right_depth	15.0
+mapq0_share	0.250
+message	not assessed: the two flanks disagree (30.0x and 15.0x); a deletion larger than --SEA, or uneven coverage, would skew the count

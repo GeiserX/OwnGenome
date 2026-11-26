@@ -1,39 +1,54 @@
-//! `og report render`: the text and HTML reports from summary.json, which
-//! `bin/render_report.py` writes today.
+//! `og report render`: the text and HTML reports of one run, and the files
+//! written beside them (summary.json, the search index, the charts).
 //!
 //! ```text
-//! og report render --summary IN.json -o REPORT.txt -o REPORT.html
+//! og report render (--summary IN.json | --sample S --sample-dir DIR [--json OUT.json]
+//!                   [--declared-sex SEX] [--assets DIR])
+//!                  [-o REPORT.txt] [-o REPORT.html]
+//!                  [--search-index INDEX.json] [--charts-json CHARTS.json]
 //! ```
 //!
-//! `-o` writes the text report for a `.txt` name and the HTML report for
-//! `.html`; it repeats. Each file is written under a temporary name and
-//! renamed into place. The last line on stdout counts the summary's sections
-//! by state. No caller uses the verb yet: it renders the frame and the
-//! sections ported so far, and refuses the options of the parts still in
-//! Python (collecting the summary, the search index, the charts).
+//! With `--summary` it renders that summary. Without it, it collects the
+//! summary of the sample folder first (`og summary collect`) and keeps it in
+//! `--json` (default `DIR/summary.json`). `-o` writes the text report for a
+//! `.txt` name and the HTML report for `.html`; it repeats. The HTML report
+//! closes with every gene and rsID the results name, from the search index
+//! `og report index` builds; `--sample-dir` adds the gene columns of the
+//! step 23 and 31 tables to it. `--search-index` also writes that index, and
+//! `--charts-json` the charts the HTML report embeds (`og report charts`).
+//! Each file is written under a temporary name and renamed into place.
+//!
+//! A section that cannot be written (its data has a shape the report does
+//! not read, or its writer stops on an internal error) says so in its place
+//! in both reports, and the rest of the report is still written: one
+//! warning on stderr counts those parts and names them, and the exit code
+//! stays 0. A search index or charts that cannot be made are written empty
+//! and named in that warning. The last line on stdout counts the summary's
+//! sections by state.
 
 use std::io::Write;
 
+use pycompat::json::{Dump, Value, dumps};
+
+use crate::chapters::{Failed, WriterFn, guarded, writer};
 use crate::model::{Summary, py};
-use crate::{html, text};
+use crate::{charts, html, index, text};
 
-const USAGE: &str = "usage: og report render --summary IN.json [-o REPORT.txt] [-o REPORT.html]";
-
-/// The options `bin/render_report.py` takes that this verb does not yet.
-const NOT_PORTED: [&str; 7] = [
-    "--sample",
-    "--sample-dir",
-    "--json",
-    "--declared-sex",
-    "--assets",
-    "--search-index",
-    "--charts-json",
-];
+const USAGE: &str = "usage: og report render (--summary IN.json | --sample SAMPLE --sample-dir SAMPLE_DIR \
+[--json OUT.json] [--declared-sex SEX] [--assets ASSETS]) [-o REPORT.txt] [-o REPORT.html] \
+[--search-index INDEX.json] [--charts-json CHARTS.json]";
 
 #[derive(Debug, Default)]
 struct Args {
     summary: Option<String>,
+    sample: Option<String>,
+    sample_dir: Option<String>,
+    json: Option<String>,
+    declared_sex: Option<String>,
+    assets: Option<String>,
     out: Vec<String>,
+    search_index: Option<String>,
+    charts_json: Option<String>,
 }
 
 /// Reads the arguments, or says why they are wrong.
@@ -56,13 +71,14 @@ fn parse(args: &[String]) -> Result<Args, String> {
         };
         match name {
             "--summary" => a.summary = Some(value()?),
+            "--sample" => a.sample = Some(value()?),
+            "--sample-dir" => a.sample_dir = Some(value()?),
+            "--json" => a.json = Some(value()?),
+            "--declared-sex" => a.declared_sex = Some(value()?),
+            "--assets" => a.assets = Some(value()?),
             "-o" | "--out" => a.out.push(value()?),
-            n if NOT_PORTED.contains(&n) => {
-                return Err(format!(
-                    "{n} is not ported yet: bin/render_report.py still collects the summary and writes \
-                     the search index and the charts"
-                ));
-            }
+            "--search-index" => a.search_index = Some(value()?),
+            "--charts-json" => a.charts_json = Some(value()?),
             n => return Err(format!("unrecognized arguments: {n}")),
         }
     }
@@ -71,22 +87,25 @@ fn parse(args: &[String]) -> Result<Args, String> {
             return Err(format!("-o {o}: the name must end in .txt or .html"));
         }
     }
-    if a.summary.is_none() {
-        return Err("give --summary".to_owned());
+    if a.summary.is_none() && (a.sample.is_none() || a.sample_dir.is_none()) {
+        return Err("give --summary, or --sample and --sample-dir".to_owned());
     }
     Ok(a)
 }
 
 /// `Sections: missing 28, ok 20`: the sections counted by state, by name.
-fn state_counts(s: &Summary) -> Result<String, String> {
+/// The reports and side files are written by then and this line is a log,
+/// so it never fails: a section with no state to read (not an object)
+/// counts as unreadable, and sections that are not an object say so.
+fn state_counts(s: &Summary) -> String {
     let mut counts: Vec<(String, usize)> = Vec::new();
-    let Some(pycompat::json::Value::Object(secs)) = s.get("sections") else {
-        return Err("summary.sections is not an object".to_owned());
+    let Some(Value::Object(secs)) = s.get("sections") else {
+        return "Sections: none readable (summary.sections is not an object)".to_owned();
     };
     for (key, sec) in secs {
         let state = crate::model::need(sec, "state", &format!("sections.{key}"))
             .and_then(py)
-            .map_err(|e| e.to_string())?;
+            .unwrap_or_else(|_| "unreadable".to_owned());
         match counts.iter_mut().find(|(k, _)| *k == state) {
             Some((_, n)) => *n += 1,
             None => counts.push((state, 1)),
@@ -94,7 +113,7 @@ fn state_counts(s: &Summary) -> Result<String, String> {
     }
     counts.sort();
     let parts: Vec<String> = counts.iter().map(|(k, n)| format!("{k} {n}")).collect();
-    Ok(format!("Sections: {}", parts.join(", ")))
+    format!("Sections: {}", parts.join(", "))
 }
 
 fn write(path: &str, body: &str) -> std::io::Result<()> {
@@ -103,8 +122,97 @@ fn write(path: &str, body: &str) -> std::io::Result<()> {
     f.commit()
 }
 
+/// A JSON value as the reports' side files hold it: one-space indent and a
+/// closing newline.
+fn json_text(v: &Value) -> Result<String, String> {
+    let opts = Dump {
+        indent: Some(1),
+        ..Dump::default()
+    };
+    dumps(v, &opts)
+        .map(|b| b + "\n")
+        .map_err(|e| format!("{e:?}"))
+}
+
+/// Collects the summary of the sample folder with `og summary collect`,
+/// keeps it in `dest` and returns its text.
+fn collect(a: &Args, dest: &str, err: &mut dyn Write) -> Result<String, String> {
+    let sample = a.sample.clone().unwrap_or_default();
+    let mut argv = vec![
+        "--sample".to_owned(),
+        sample.clone(),
+        "--sample-dir".to_owned(),
+        a.sample_dir.clone().unwrap_or_default(),
+        "--out".to_owned(),
+        dest.to_owned(),
+    ];
+    if let Some(assets) = &a.assets {
+        argv.extend(["--assets".to_owned(), assets.clone()]);
+    }
+    // An empty sex (a samplesheet row without one) is no sex.
+    if let Some(sex) = a.declared_sex.as_ref().filter(|s| !s.is_empty()) {
+        argv.extend(["--declared-sex".to_owned(), sex.clone()]);
+    }
+    let rc = og_summary::collect::cli(&argv, &mut std::io::sink(), &mut &mut *err);
+    if rc != 0 {
+        return Err(format!(
+            "ERROR: og summary collect wrote no summary of {sample} (exit {rc})"
+        ));
+    }
+    std::fs::read_to_string(dest).map_err(|e| format!("{dest}: {e}"))
+}
+
+/// The search index with no term, for a run whose index cannot be built:
+/// `og report index`'s frame, with the summary's sample and date.
+fn empty_index(root: &Value) -> Value {
+    let field = |k: &str| match root {
+        Value::Object(o) => o.get(k).cloned().unwrap_or(Value::Null),
+        _ => Value::Null,
+    };
+    let mut m = indexmap::IndexMap::new();
+    m.insert(
+        "schema_version".to_owned(),
+        Value::Int(index::SCHEMA_VERSION),
+    );
+    m.insert("sample".to_owned(), field("sample"));
+    m.insert("generated_utc".to_owned(), field("generated_utc"));
+    m.insert("terms".to_owned(), Value::Object(indexmap::IndexMap::new()));
+    Value::Object(m)
+}
+
 /// `og report render ARGS`.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    cli_using(args, out, err, writer)
+}
+
+/// Run the report command with the live results producer's closable findings.
+pub fn cli_with_spans(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    closable: fn(&Value) -> Vec<index::Closable>,
+) -> u8 {
+    render(args, out, err, writer, closable)
+}
+
+/// `og report render ARGS` with the section writers of `writers` (a test
+/// plants a fault through them).
+pub fn cli_using(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    writers: WriterFn,
+) -> u8 {
+    render(args, out, err, writers, |_| Vec::new())
+}
+
+fn render(
+    args: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    writers: WriterFn,
+    closable: fn(&Value) -> Vec<index::Closable>,
+) -> u8 {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         let _ = writeln!(out, "{USAGE}");
         return 0;
@@ -116,36 +224,140 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             return 2;
         }
     };
-    let path = a.summary.as_deref().unwrap_or_default();
     let fail = |err: &mut dyn Write, why: String| {
         let _ = writeln!(err, "og report render: {why}");
         1
     };
-    let s = match std::fs::read_to_string(path)
-        .map_err(|e| e.to_string())
-        .and_then(|t| Summary::parse(&t).map_err(|e| e.to_string()))
-    {
+    let (path, body) = match &a.summary {
+        Some(p) => (
+            p.clone(),
+            std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}")),
+        ),
+        None => {
+            let dest = a.json.clone().unwrap_or_else(|| {
+                std::path::Path::new(a.sample_dir.as_deref().unwrap_or_default())
+                    .join("summary.json")
+                    .display()
+                    .to_string()
+            });
+            let body = collect(&a, &dest, err);
+            (dest, body)
+        }
+    };
+    let body = match body {
+        Ok(b) => b,
+        Err(why) if why.starts_with("ERROR: ") => {
+            let _ = writeln!(err, "{why}");
+            return 1;
+        }
+        Err(why) => return fail(err, why),
+    };
+    let s = match Summary::parse(&body) {
         Ok(s) => s,
         Err(why) => return fail(err, format!("{path}: {why}")),
     };
+    let mut failed: Vec<Failed> = Vec::new();
+    // The search index, for the HTML report's appendix and --search-index;
+    // a text report alone does not read the step 23 and 31 tables.
+    let need_index = a.search_index.is_some() || a.out.iter().any(|o| o.ends_with(".html"));
+    let idx = if need_index {
+        let built = guarded(|| {
+            let spans = if a.search_index.is_some() {
+                closable(s.root())
+            } else {
+                Vec::new()
+            };
+            index::build(s.root(), a.sample_dir.as_deref(), &spans, &mut &mut *err)
+                .map_err(crate::model::Malformed)
+        });
+        match built {
+            Ok(i) => Some(i),
+            Err(why) => {
+                failed.push(Failed {
+                    part: "terms".to_owned(),
+                    why: why.to_string(),
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
     for o in &a.out {
-        let body = if o.ends_with(".txt") {
-            text::report(&s)
+        let made = if o.ends_with(".txt") {
+            text::report_using(&s, writers)
         } else {
-            html::report(&s)
+            // Without an index the appendix is left out, which `failed` names.
+            html::report_using(&s, idx.as_ref(), writers)
         };
-        let done = body
+        let done = made.map_err(|e| format!("{path}: {e}")).and_then(|(b, f)| {
+            write(o, &b).map_err(|e| format!("{o}: {e}"))?;
+            Ok(f)
+        });
+        match done {
+            Ok(f) => {
+                for x in f {
+                    if !failed.contains(&x) {
+                        failed.push(x);
+                    }
+                }
+            }
+            Err(why) => return fail(err, why),
+        }
+    }
+    if let Some(dest) = &a.search_index {
+        // An index that cannot be built is written empty, as charts that
+        // cannot be made leave an empty charts file, and `failed` names it
+        // ("terms"); an index that cannot be written still stops the verb.
+        let empty;
+        let i = match &idx {
+            Some(i) => i,
+            None => {
+                empty = empty_index(s.root());
+                &empty
+            }
+        };
+        if let Err(why) = json_text(i).and_then(|b| write(dest, &b).map_err(|e| e.to_string())) {
+            return fail(err, format!("{dest}: {why}"));
+        }
+    }
+    if let Some(dest) = &a.charts_json {
+        // Charts that cannot be made leave the sidecar with an empty list,
+        // as they leave the HTML report without figures, and are named in
+        // `failed`; a sidecar that cannot be written still stops the verb.
+        let specs = guarded(|| charts::build(&s)).unwrap_or_else(|why| {
+            let x = Failed {
+                part: "charts".to_owned(),
+                why: why.to_string(),
+            };
+            if !failed.contains(&x) {
+                failed.push(x);
+            }
+            Vec::new()
+        });
+        let made = charts::json_of(&s, &specs)
             .map_err(|e| format!("{path}: {e}"))
-            .and_then(|b| write(o, &b).map_err(|e| format!("{o}: {e}")));
-        if let Err(why) = done {
+            .and_then(|v| json_text(&v))
+            .and_then(|b| write(dest, &b).map_err(|e| format!("{dest}: {e}")));
+        if let Err(why) = made {
             return fail(err, why);
         }
     }
-    match state_counts(&s) {
-        Ok(line) => {
-            let _ = writeln!(out, "{line}");
-            0
-        }
-        Err(why) => fail(err, format!("{path}: {why}")),
+    if !failed.is_empty() {
+        let n = failed.len();
+        let named: Vec<String> = failed
+            .iter()
+            .map(|f| format!("{} ({})", f.part, f.why))
+            .collect();
+        let _ = writeln!(
+            err,
+            "og report render: WARNING: {n} part{} of the report could not be written and say{} so in \
+             place: {}",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "s" } else { "" },
+            named.join("; ")
+        );
     }
+    let _ = writeln!(out, "{}", state_counts(&s));
+    0
 }

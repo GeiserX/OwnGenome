@@ -20,9 +20,10 @@
 //!              [--catalog CATALOG.json [--flagged]] [--no-softclip] [--no-mates]
 //! ```
 //!
-//! The output is the Python's, byte for byte: a header and one row per
+//! The output keeps the Python's columns: a header and one row per
 //! locus (`locus chrom start end repeat_reads dominant_motif dominant_class
 //! dominant_share motif_shares verdict note`).
+//! A benign majority cannot dismiss pathogenic or unknown motif reads.
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -437,7 +438,42 @@ fn verdict(counts: &IndexMap<String, usize>, units_min: i64, spec: &Spec) -> [St
             ),
         );
     }
-    if cls == "benign" && share >= BENIGN_SHARE {
+    // Read shares cannot resolve alleles. In particular, a benign majority
+    // can coexist with a pathogenic insert at a dominant locus or with
+    // unresolved pathogenic evidence at a recessive locus. Keep even weak
+    // evidence uncertain, without promoting a few reads to pathogenic.
+    let unresolved: Vec<String> = order
+        .iter()
+        .filter(|(m, c)| *c > 0 && spec.known.get(*m) != Some(&Class::Benign))
+        .map(|(m, c)| {
+            format!(
+                "{m} in {c} of {total} repeat reads ({})",
+                percent(ratio(*c), 0)
+            )
+        })
+        .collect();
+    if cls == "benign" && !unresolved.is_empty() {
+        let inheritance = if spec.recessive {
+            format!(
+                "{} needs a pathogenic expansion on both copies; these reads do not resolve either copy",
+                spec.disease
+            )
+        } else {
+            "one pathogenic expansion can be sufficient; these reads do not resolve an allele"
+                .into()
+        };
+        return row(
+            dom,
+            cls,
+            fixed(share, 2),
+            MotifVerdict::UncertainMotif,
+            format!(
+                "{}: a pathogenic expansion remains possible; {inheritance}; confirm with repeat-primed PCR if symptoms fit",
+                unresolved.join("; ")
+            ),
+        );
+    }
+    if cls == "benign" && share >= BENIGN_SHARE && unresolved.is_empty() {
         return row(
             dom,
             cls,

@@ -1,11 +1,13 @@
-//! `report`: the step's outputs, from ADMIXTURE's `.Q` and bootstrap
-//! replicates of each level and RFMix's `.msp.tsv` of each chromosome.
+//! `report`: the step's outputs, from the `.Q` and the bootstrap replicates
+//! of each level (`og ancestry-fine project`, folder `--fractions`; the older
+//! name `--admixture` still works) and the `.msp.tsv` of each chromosome
+//! (`og ancestry-fine paint`).
 //!
 //! - `<S>_ancestry_fine.tsv`: each group's fraction with its bootstrap
 //!   standard error and 2.5 to 97.5 percentile range, each continental
 //!   group's share of the painted genome, a `left_out` row for each group
-//!   the model leaves out and a `not_painted` row for each chromosome RFMix
-//!   failed on (the paint folder's `failed.txt`).
+//!   the model leaves out and a `not_painted` row for each chromosome the
+//!   painting failed on (the paint folder's `failed.txt`).
 //! - `<S>_painting.bed` and `<S>_painting.png`: the painting.
 //! - `<S>_ancestry_fine.txt`: the plain text, also printed.
 //!
@@ -21,16 +23,17 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const SPEC: Spec = Spec {
     verb: "report",
-    usage: "usage: og ancestry-fine report --sample S --model DIR --admixture DIR [--paint DIR] [--panel NAME] --out DIR\n",
+    usage: "usage: og ancestry-fine report --sample S --model DIR --fractions DIR [--paint DIR] [--panel NAME] --out DIR\n",
     options: &[
         "--sample",
         "--model",
+        "--fractions",
         "--admixture",
         "--paint",
         "--panel",
         "--out",
     ],
-    required: &["--sample", "--model", "--admixture", "--out"],
+    required: &["--sample", "--model", "--out"],
 };
 
 /// GRCh38 lengths of chr1 to chr22, for the painting picture.
@@ -42,6 +45,32 @@ pub const CHROM_LEN: [u64; 22] = [
 
 /// Grey where nothing is painted.
 const UNPAINTED: [u8; 3] = [225, 225, 225];
+
+/// The rows of numbers of a whitespace-separated matrix (`.Q`, `.P`),
+/// blank lines skipped.
+pub fn read_matrix(path: &Path) -> Result<Vec<Vec<f64>>> {
+    let mut out = Vec::new();
+    let mut n = 0u64;
+    crate::for_each_line(path, |line| {
+        n += 1;
+        let mut row = Vec::new();
+        for w in crate::split_ws(line) {
+            let x = pycompat::num::parse_float(w).map_err(|_| {
+                Fail(format!(
+                    "{}: line {n}: not a number: {}",
+                    path.display(),
+                    crate::repr(w)
+                ))
+            })?;
+            row.push(x);
+        }
+        if !row.is_empty() {
+            out.push(row);
+        }
+        Ok(())
+    })?;
+    Ok(out)
+}
 
 /// One level of `levels.tsv`: its name, K and the group codes in the `.P`
 /// column order.
@@ -116,7 +145,7 @@ pub fn fractions(
     let k = row.k;
     let name = &row.name;
     let q_name = format!("{sample}_{name}.{k}.Q");
-    let q = crate::order::read_matrix(&Path::new(adm_dir).join(&q_name))?;
+    let q = read_matrix(&Path::new(adm_dir).join(&q_name))?;
     if q.len() != 1 || q[0].len() as i64 != k {
         return Err(Fail(format!(
             "{adm_dir}/{q_name} is not one row of {k} values"
@@ -124,7 +153,7 @@ pub fn fractions(
     }
     let boot_path = Path::new(adm_dir).join(format!("{sample}_{name}.boot.Q"));
     let boot = if boot_path.is_file() {
-        crate::order::read_matrix(&boot_path)?
+        read_matrix(&boot_path)?
     } else {
         Vec::new()
     };
@@ -179,7 +208,7 @@ pub struct Segment {
     pub code: String,
 }
 
-/// RFMix's `.msp.tsv`: the code of each group number, and the windows as
+/// The painting's `.msp.tsv`: the code of each group number, and the windows as
 /// (chrom, start, end, haplotype 1's number, haplotype 2's number).
 type Msp = (HashMap<i64, String>, Vec<(String, i64, i64, i64, i64)>);
 
@@ -225,7 +254,7 @@ fn read_msp(path: &Path) -> Result<Msp> {
     Ok((codes, segs))
 }
 
-/// The painting: RFMix's windows, neighbouring windows of one haplotype
+/// The painting: the `.msp.tsv` windows, neighbouring windows of one haplotype
 /// with the same group merged, sorted by chromosome, start and haplotype.
 pub fn painting(paint_dir: &Path) -> Result<Vec<Segment>> {
     let mut names: Vec<String> = std::fs::read_dir(paint_dir)
@@ -437,7 +466,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
             Level::Region => "Regional",
         };
         out.push(format!(
-            "{name} groups (ADMIXTURE projection on {} groups, {} bootstrap replicates):",
+            "{name} groups (projection on the frequencies of {} groups, {} bootstrap replicates):",
             rows.len(),
             s.n_boot.get(&level).copied().unwrap_or(0)
         ));
@@ -459,7 +488,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
     }
     if !s.shares.is_empty() {
         out.push(format!(
-            "Chromosome painting (RFMix, continental groups) of {}: share of the {} Mb painted on the two haplotypes",
+            "Chromosome painting (og, continental groups) of {}: share of the {} Mb painted on the two haplotypes",
             s.painted_chroms.join(", "),
             fixed(s.painted_bp as f64 / 1e6, 1)
         ));
@@ -480,7 +509,7 @@ pub fn text_block(s: &Summary<'_>) -> String {
     }
     if !s.failed.is_empty() {
         out.push(format!(
-            "  Not painted: RFMix failed on {} (the step's log has its last lines).",
+            "  Not painted: the painting failed on {} (the step's log says why).",
             s.failed.join(", ")
         ));
     }
@@ -536,7 +565,12 @@ fn tsv_rows(path: &Path) -> Result<Vec<Vec<String>>> {
 pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
     let sample = a.req("--sample");
     let model = a.req("--model");
-    let adm = a.req("--admixture");
+    // --admixture is the name of --fractions before og projected the
+    // fractions itself; it still works.
+    let adm = a
+        .get("--fractions")
+        .or_else(|| a.get("--admixture"))
+        .expect("checked by check_types");
     let paint = a.get("--paint").unwrap_or("");
     let panel = a.get("--panel").unwrap_or("");
     let levels = read_levels(model)?;
@@ -621,7 +655,7 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
         ));
     }
     for c in &failed {
-        table.push_str(&format!("not_painted\t{c}\tRFMix failed\t.\t.\t.\t.\n"));
+        table.push_str(&format!("not_painted\t{c}\tpainting failed\t.\t.\t.\t.\n"));
     }
     let mut bed = String::from("#chrom\tstart\tend\thaplotype\tgroup\n");
     for r in &rows {
@@ -696,7 +730,7 @@ mod tests {
             "samples.tsv",
             "sample\tpopulation\tcontinent\tregion\treference\tpaint\ni1\tIBS\tWEA\tIBE\t1\t1\nt1\tTSI\tWEA\tITA\t1\t1\np0\tPapuanHighlands\tOCE\tOCE\t0\t0\n",
         );
-        d.put("admixture/S_continent.3.Q", "0.05 0.9 0.05\n");
+        d.put("fractions/S_continent.3.Q", "0.05 0.9 0.05\n");
         let boot: String = (0..11)
             .map(|i| {
                 format!(
@@ -706,15 +740,15 @@ mod tests {
                 )
             })
             .collect();
-        d.put("admixture/S_continent.boot.Q", &boot);
-        d.put("admixture/S_region.2.Q", "0.6 0.4\n");
+        d.put("fractions/S_continent.boot.Q", &boot);
+        d.put("fractions/S_region.2.Q", "0.6 0.4\n");
         d.put(
             "paint/chr20.msp.tsv",
             "#Subpopulation order/codes: AFR=0\tEAS=1\tWEA=2\n#chm\tspos\tepos\tsgpos\tegpos\tn snps\tS.0\tS.1\n\
              chr20\t1000\t5000\t1\t2\t10\t2\t2\nchr20\t5000\t9000\t2\t3\t10\t2\t0\nchr20\t9000\t11000\t3\t4\t10\t2\t0\n",
         );
         d.put("paint/failed.txt", "chr19\n");
-        (model, d.path("admixture"), d.path("paint"))
+        (model, d.path("fractions"), d.path("paint"))
     }
 
     #[test]
@@ -728,7 +762,7 @@ mod tests {
             "S",
             "--model",
             &model,
-            "--admixture",
+            "--fractions",
             &adm,
             "--paint",
             &paint,
@@ -770,7 +804,7 @@ mod tests {
             [
                 &["left_out", "OCE", "Oceania (continental group)"][..],
                 &["left_out", "OCE", "Oceania (regional group)"][..],
-                &["not_painted", "chr19", "RFMix failed"][..]
+                &["not_painted", "chr19", "painting failed"][..]
             ]
         );
         assert_eq!(
@@ -783,14 +817,22 @@ mod tests {
             text.contains("West Eurasia (Europe, Middle East, North Africa)     90%  (80% to 90%)")
         );
         assert!(text.contains("not a nationality") && text.contains("Greek and"));
+        assert!(
+            text.contains("Continental groups (projection on the frequencies of 3 groups, 11 bootstrap replicates):"),
+            "{text}"
+        );
         assert!(text.contains(
             "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10 unrelated"
         ));
-        assert!(text.contains("Not painted: RFMix failed on chr19") && text.contains("of chr20:"));
+        assert!(
+            text.contains("Not painted: the painting failed on chr19")
+                && text.contains("of chr20:")
+        );
         let png = std::fs::read(d.0.join("out/S_painting.png")).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(&png[16..24], &[0, 0, 3, 232, 0, 0, 1, 168]);
         // Without a painting the text says none.
+        // (and the folder's older name, --admixture, still reads it).
         std::fs::remove_file(d.0.join("paint/failed.txt")).unwrap();
         std::fs::remove_file(d.0.join("paint/chr20.msp.tsv")).unwrap();
         let (rc, stdout, _) = run(&[
@@ -808,6 +850,21 @@ mod tests {
         ]);
         assert_eq!(rc, 0);
         assert!(stdout.contains("Chromosome painting: none. No chromosome had enough"));
+        // Neither name of the folder: a message, no output.
+        let (rc, _, err) = run(&[
+            "report",
+            "--sample",
+            "S",
+            "--model",
+            &model,
+            "--out",
+            &d.path("none"),
+        ]);
+        assert_eq!(rc, 2);
+        assert!(
+            err.contains("error: the following arguments are required: --fractions"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -896,7 +953,7 @@ mod tests {
             "{err}"
         );
         assert!(!d.0.join("out").exists(), "nothing is written");
-        d.put("admixture/S_region.2.Q", "0.6 0.4 0.1\n");
+        d.put("fractions/S_region.2.Q", "0.6 0.4 0.1\n");
         let (rc, _, err) = args(&adm);
         assert_eq!(rc, 1);
         assert!(

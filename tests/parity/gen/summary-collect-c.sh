@@ -6,15 +6,10 @@
 # the Nextflow and other file names, files from an earlier run, unreadable
 # tables of each kind, and the APOL1 G2 deletion written left-aligned,
 # shifted, twice, under a reference block and not at all.
-# py/ holds the modules the oracle imports, as they were at the oracle's
-# commit, and the two bin/ tables it reads beside itself; assets/ is a copy
-# of the repository's catalogs these sections read.
-# scripts/ci/oracle-diff.sh runs it.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${here}/../../.." && pwd)
-ORACLE_SHA=98aa9252ff77825a8a797d388b449931fa9a234e
 
 T0=1577836800        # 2020-01-01 00:00:00 UTC, the start of the run
 OLD=201906011230.00  # before the run
@@ -23,18 +18,6 @@ NEW=202103040506.07  # after it, the time of every file not set otherwise
 at() { touch -t "$1" "${@:2}"; }   # [[CC]YY]MMDDhhmm[.SS], in UTC
 put() { mkdir -p "$(dirname "$1")"; printf '%b' "$2" > "$1"; at "$NEW" "$1"; }
 putgz() { mkdir -p "$(dirname "$1")"; printf '%b' "$2" | gzip -n -c > "$1"; at "$NEW" "$1"; }
-
-# --- the oracle's modules -------------------------------------------------------
-git -C "$root" cat-file -e "${ORACLE_SHA}^{commit}" 2> /dev/null \
-  || git -C "$root" fetch -q --depth=1 origin "$ORACLE_SHA"
-mkdir -p py
-for m in paraphase_report ancestry_fine_report annotsv_postfilter cnvpytor_to_vcf family_report chip_report \
-  traits_report genotype_rules_indels pgx_outside_calls; do
-  git -C "$root" show "${ORACLE_SHA}:bin/${m}.py" > "py/${m}.py"
-done
-for t in hla_alleles.tsv str_intermediate_ranges.tsv; do
-  git -C "$root" show "${ORACLE_SHA}:bin/${t}" > "py/${t}"
-done
 
 mkdir -p assets
 for a in paraphase_genes.tsv paralog_loci.tsv mito_confirmed.tsv callability_genes.tsv; do
@@ -96,11 +79,11 @@ HFE\t1\tHFE*001\t3\t20\t.\t0\t-1
 short\t1\n"
 put $f/hla_optitype/S_hla_concordance.tsv "Gene\tT1K\tOptiType\tAgree\tNote\nHLA-A\t A*02:01 \tA*02:01\tyes\t\n\t\t\t\t\nHLA-B\tB*57:01\tB*57:01\tyes\tok\n"
 put $f/kir_t1k/S_kir_genotype.tsv "KIR2DL1\t2\tKIR2DL1*001\t5\t30\tKIR2DL1*002\t4\t20\nKIR3DL3\t0\t.\t0\t-1\t.\t0\t-1\n"
-put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tChrX\tAmbiguous\tApplies_To\tSex_Check\tPercentile\tAncestry_Group\tEvaluated_In\tEffect
-CAD\tPGS000018\t0.5\t100\t120\t0\t12 dropped\tall\tok\t75\tEUR\tEUR;;AFR\tHR 1.5 (EUR)
-T2D\tPGS000014\t0.1\t10\t20\t0\t0\tall\tok\tNA\tNA\t\t
+put $f/prs/S_prs_summary.tsv "Condition\tPGS_ID\tScore_SUM\tVariants_Matched\tVariants_Total\tChrX\tAmbiguous\tApplies_To\tSex_Check\tPercentile\tAncestry_Group\tEvaluated_In\tEffect\tPercentile_Note
+CAD\tPGS000018\t0.5\t100\t120\t0\t12 dropped\tall\tok\t75\tEUR\tEUR;;AFR\tHR 1.5 (EUR)\t
+T2D\tPGS000014\t0.1\t10\t20\t0\t0\tall\tok\tNA\tNA\t\t\tpercentile withheld: the input lists variants only
 Short\tPGS1\n"
-put $f/ancestry/S_ancestry.tsv "key\tvalue\npopulation\tEUR\nreference_panel\tHGDP+1kGP\n\tskipped\npopulation_low_confidence\n"
+put $f/ancestry/S_ancestry.tsv "key\tvalue\npopulation\tEUR\nreference_panel\tHGDP+1kGP\n\tskipped\npopulation_low_confidence\nprobability_AFR\t0.4\nprobability_EUR\t0.6\n"
 put $f/ancestry_fine/S_ancestry_fine.tsv "level\tcode\tgroup\tfraction\tse\tlow\thigh
 continent\tWEA\tWest Eurasia\t0.95\t0.01\t0.93\t0.97
 continent\tAFR\tAfrica\t0.05\t0.01\tnan\tx
@@ -186,7 +169,8 @@ rs3798220\tLPA\tchr6\t2\tLp(a)\tT|C\tcalled\tone copy\tall\t.\t1
 rs78655421\tCFTR\tchr7\t3\tR117H\tG/A\tcalled\tone copy\tall\t.\t1
 rs429358\tAPOE\tchr19\t4\tAPOE\tT/C\tcalled\te3/e4\tall\t.\t1
 rs1\tX\tchr1\t5\tx\t.\tnot_covered\tno reads\tall\t.\t1
-rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1\n"
+rs2\tX\tchr1\t6\tx\tC/C\tother_allele\tother\tall\t.\t1
+rs3\tX\tchr1\t7\tx\tC/T\tlow_gq\tA low-quality call at this position (genotype quality 5, below 20): not read; check the reads.\tall\t.\t1\n"
 put $f/traits/S_genotype_rules.tsv "rule\tgene\ttrait\trsids\tchrom\tpos\tgenotypes\tgq\tphase\tresult\tstatus\treading\tancestry\tnote\tpmids
 APOE\tAPOE\tAPOE\trs429358,rs7412\tchr19\t1,2\tT/C,C/C\t40\t.\te3/e4\tcalled\tr\tall\t.\t1
 TAS2R38\tTAS2R38\tbitter\trs1\tchr7\t1\tC/G\t40\tunphased\tPAV/AVI\tcalled\ttaster\tall\t.\t1
@@ -234,7 +218,12 @@ put $f/exomiser/S_exomiser_terms.tsv "hpo_id\tlabel\nHP:0001250\tSeizure\nHP:000
 put $f/chip/S_chip.tsv "gene\tprotein_change\tvaf\talt_reads\tdepth\tstatus\tnote\tchrom
 DNMT3A\tR882H\t0.05\t3\t60\tchip\t\tchr2
 TET2\tQ1\t0.5\t30\t60\tgermline\tlikely inherited\tchr4\n"
-put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\nDNMT3A\t30.5\t0.1\tcovered\nTET2\t40\t0.08\tcovered\nASXL1\t2\t.\tlow depth\nJAK2\t35\t0.1\tcovered\nTP53\t25\t0.1\tcovered\n"
+# The two share columns og chip report adds since the per-base limit, and a
+# partly_covered gene: the stated limit is the median of the covered genes'
+# own limits (0.1), not the limit at their median depth (issue #411).
+put $f/chip/S_chip_depth.tsv "gene\tmean_depth\tdetection_limit_vaf\tstatus\tcallable_fraction\tassessable_fraction
+DNMT3A\t30.5\t0.1\tcovered\t0.990\t0.600\nTET2\t40\t0.08\tcovered\t1.000\t0.900\nASXL1\t2\t.\tlow depth\t0.000\t0.000
+JAK2\t35\t0.1\tcovered\t0.980\t0.550\nTP53\t25\t0.1\tcovered\t0.950\t0.400\nSRSF2\t28\t\tpartly_covered\t0.700\t0.650\n"
 put $f/mei/S_mei_sites.tsv "gene\telement\tcondition\tinheritance\tstatus\tmean_depth\tcall
 FKTN\tSVA\tFukuyama\tAR\tcallable\t30\tnot seen
 TAF1\tSVA\tXDP\tXL\tnot callable\t2\t\n"
@@ -362,7 +351,7 @@ put $f/expansion_hunter/S_eh_stranger.vcf "${VCF_HEAD}chr4\t39348425\t.\tA\t<STR
 # Non-finite cells follow each Python reader's rules, not a global filter.
 for special in nan inf -inf; do
   f="float-${special}"
-  cp -R full "$f"
+  cp -Rp full "$f"   # -p: the copies keep the times put set, so the cases do not depend on the clock
   put "$f/chip/S_chip_depth.tsv" "gene\tmean_depth\tdetection_limit_vaf\tstatus\nA\t30\t.\tcovered\nB\t${special}\t.\tcovered\nC\t40\t.\tcovered\n"
   for spec in \
     'paralogs/S_smn_copy_number.tsv:agCN_qual,psCN_qual' \
@@ -381,6 +370,7 @@ for special in nan inf -inf; do
       { print }
     ' "$f/$file" > "$f/cells.tmp"
     mv -f "$f/cells.tmp" "$f/$file"
+    at "$NEW" "$f/$file"
   done
   put "$f/hla_t1k/S_hla_genotype.tsv" "HLA-A\t2\tA*02:01\t1\t${special}\tA*01:01\t1\t${special}\n"
   # Python raises an uncaught OverflowError if an infinite read length

@@ -3,19 +3,18 @@
 # on it by default, step 9b grades with the catalog step 09 ran on, and
 # EH_CATALOG=bundled keeps the call of before. The fake download serves the
 # two real STRchive files of versions.env, which this case fetches itself.
-# setup.sh converts them with og str catalog. This job has no og, so the case
-# puts stand-in binaries in bin/.og that carry this checkout's rust/ tree
-# hash (setup.sh's og check reads only that), and a hook answers the og call
-# with the Python og replaced (its parity oracle, tests/parity/oracle.ref),
-# run for real on the host; the parity cases compare og with that Python.
-# The hook also plays Stranger. Any bin/.og already there is put back after.
+# setup.sh converts them with og str catalog, which a hook runs for real on
+# the host (bin/og; the Guard fake-docker job builds it into bin/.og).
+# setup.sh's og check wants both Linux builds, so the case puts a stand-in
+# that carries this checkout's rust/ tree hash (the check reads only that)
+# for each one bin/.og lacks, and takes them out after. The hook also plays
+# Stranger.
 #   1. A copy of the ExpansionHunter catalog with one byte flipped: setup.sh
 #      --strchive-data exits 1, keeps neither that file nor a catalog, and
 #      never runs the converter (the control that the sha256 check fails).
 #   2. The real files: setup.sh --strchive-data writes catalog.json with 82
-#      loci through og str catalog in PYTHON_IMAGE, run from the catalog's
-#      folder with relative paths (so OG_SHADOW can check it), and a second run
-#      downloads nothing and converts nothing.
+#      loci through og str catalog in OG_IMAGE, run from the catalog's
+#      folder with relative paths. A second run downloads and converts nothing.
 #   2b. A catalog whose stamp no longer matches, with a refetch that fails
 #      its sha256 check: setup.sh exits 1 and removes the old catalog.json
 #      and str_ranges.tsv, so step 09 does not run on a catalog setup.sh
@@ -24,7 +23,7 @@
 #      the loci it does not grade (MUC1) and copies the catalog beside the
 #      VCF; step 9b grades with that copy and counts the motif of the
 #      flagged FAME locus with it (og str motif, from expansion_hunter/ with
-#      a relative output and OG_SHADOW passed on, never bin/rfc1_motif.py);
+#      a relative output);
 #      STRANGER_REPEATS=bundled goes back to
 #      Stranger's GRCh38 catalog.
 #   4. EH_CATALOG=bundled: the ExpansionHunter call is the one step 09 makes
@@ -45,36 +44,42 @@ EH_FILE="STRchive-disease-loci-${STRCHIVE_VERSION}.hg38.expansionhunter.json"
 LOCI_FILE="STRchive-loci-${STRCHIVE_VERSION}.json"
 SERVED="${CASE_WORK}/served" BAD="${CASE_WORK}/served-bad"
 mkdir -p "$SERVED" "$BAD"
-python3 - "$SERVED" "$STRCHIVE_VERSION" "$EH_FILE" "$LOCI_FILE" <<'PY'
-import os, sys, time, urllib.request
-out, rel = sys.argv[1], sys.argv[2]
-for name in sys.argv[3:]:
-    url = f"https://github.com/dashnowlab/STRchive/releases/download/{rel}/{name}"
-    for i in range(3):
-        try:
-            with urllib.request.urlopen(url, timeout=60) as r:
-                open(os.path.join(out, name), "wb").write(r.read())
-            break
-        except OSError as e:
-            print(f"download {i + 1}/3 of {url} failed: {e}")
-            time.sleep(5 * (i + 1))
-PY
+# The real curl, not the fake one first on PATH.
+REAL_CURL=$(PATH=${PATH#"${REPO_ROOT}/scripts/ci/fake-docker:"} command -v curl) || fail "no curl on the system PATH"
+for name in "$EH_FILE" "$LOCI_FILE"; do
+  "$REAL_CURL" -fsSL --retry 2 --retry-delay 5 --max-time 60 -o "${SERVED}/${name}" \
+    "https://github.com/dashnowlab/STRchive/releases/download/${STRCHIVE_VERSION}/${name}" \
+    || echo "download of ${name} failed"
+done
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
 [ "$(sha "${SERVED}/${EH_FILE}")" = "$STRCHIVE_EH_SHA256" ] || fail "the served ${EH_FILE} is not the pinned file"
 [ "$(sha "${SERVED}/${LOCI_FILE}")" = "$STRCHIVE_LOCI_SHA256" ] || fail "the served ${LOCI_FILE} is not the pinned file"
 cp "${SERVED}/${LOCI_FILE}" "${BAD}/"
-python3 -c 'import sys; d = bytearray(open(sys.argv[1], "rb").read()); d[len(d) // 2] ^= 1; open(sys.argv[2], "wb").write(d)' \
-  "${SERVED}/${EH_FILE}" "${BAD}/${EH_FILE}"
+# The same file with the lowest bit of its middle byte flipped.
+flip() {
+  local n h b
+  n=$(wc -c < "$1" | tr -d ' ')
+  h=$((n / 2))
+  b=$(od -An -tu1 -j "$h" -N1 "$1" | tr -d ' ')
+  { head -c "$h" "$1"; printf "\\$(printf %03o $((b ^ 1)))"; tail -c $((n - h - 1)) "$1"; } > "$2"
+}
+flip "${SERVED}/${EH_FILE}" "${BAD}/${EH_FILE}"
+[ "$(wc -c < "${BAD}/${EH_FILE}")" = "$(wc -c < "${SERVED}/${EH_FILE}")" ] && ! cmp -s "${SERVED}/${EH_FILE}" "${BAD}/${EH_FILE}" \
+  || fail "could not flip a byte of ${EH_FILE}"
 
-# Stand-in og binaries for the og check; the real bin/.og, if any, is kept.
+# The real og runs the conversion; a stand-in for each Linux build bin/.og
+# lacks satisfies setup.sh's og check, and goes when the case ends.
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 OGDIR="${REPO_ROOT}/bin/.og"
-if [ -e "$OGDIR" ]; then mv "$OGDIR" "${CASE_WORK}/og-kept"; fi
-trap 'rm -rf "$OGDIR"; if [ -e "${CASE_WORK}/og-kept" ]; then mv "${CASE_WORK}/og-kept" "$OGDIR"; fi' EXIT
-mkdir -p "$OGDIR"
 TREE=$("${REPO_ROOT}/rust/og.sh" tree-hash) || fail "could not compute the rust/ tree hash"
-for a in x86_64 aarch64; do printf 'stand-in og-tree-hash:%s;\n' "$TREE" > "${OGDIR}/og-linux-${a}"; chmod 755 "${OGDIR}/og-linux-${a}"; done
-"${REPO_ROOT}/rust/og.sh" check --required > /dev/null || fail "the stand-in og does not pass setup.sh's og check"
-"${REPO_ROOT}/scripts/ci/oracle-diff.sh" materialise "${CASE_WORK}/oracle" > /dev/null || fail "could not write the parity oracles"
+STANDINS=()
+trap 'for f in "${STANDINS[@]}"; do rm -f "$f"; done' EXIT
+for a in x86_64 aarch64; do
+  [ ! -e "${OGDIR}/og-linux-${a}" ] || continue
+  printf 'stand-in og-tree-hash:%s;\n' "$TREE" > "${OGDIR}/og-linux-${a}"; chmod 755 "${OGDIR}/og-linux-${a}"
+  STANDINS+=("${OGDIR}/og-linux-${a}")
+done
+"${REPO_ROOT}/rust/og.sh" check --required > /dev/null || fail "bin/.og does not pass setup.sh's og check"
 export STR_DIR="$DIR"
 
 cat > "${CASE_WORK}/tools-hook" <<'HOOK'
@@ -84,8 +89,8 @@ set -euo pipefail
 shift   # the image
 case " $* " in
   *" /pgp-bin/og str catalog "*)
-    # The Python og replaced, in the catalog's folder (setup.sh's -w), with
-    # the container paths mapped to the host.
+    # og, in the catalog's folder (setup.sh's -w), with the container paths
+    # mapped to the host.
     shift 3   # /pgp-bin/og str catalog
     args=()
     for a in "$@"; do
@@ -94,7 +99,7 @@ case " $* " in
         *) args+=("$a") ;;
       esac
     done
-    cd "$STR_DIR" && exec python3 "${CASE_WORK}/oracle/str-catalog/prog" "${args[@]}" ;;
+    cd "$STR_DIR" && exec "${REPO_ROOT}/bin/og" str catalog "${args[@]}" ;;
   *" /pgp-bin/og str motif "*" --flagged "*)
     # --out is relative to the container's -w, which only this call's log
     # line (the last one) shows: the hook gets no docker options.
@@ -128,9 +133,9 @@ output_has setup-bad "\[WARN\] Could not install STRchive's ${EH_FILE//./\\.}"
 FAKE_DOWNLOAD_DIR="$SERVED" run_expect 0 setup "${SCRIPTS}/setup.sh" --strchive-data "$GENOME_DIR"
 output_has setup "\[OK\] STRchive ${STRCHIVE_VERSION//./\\.} catalog \(steps 09 and 9b\): "
 [ "$(fetches)" -eq 2 ] || fail "setup.sh downloaded the STRchive files $(fetches) times, expected 2"
-docker_log_has "image=${PYTHON_IMAGE//./\\.} .* -w /genome/reference/strchive-${STRCHIVE_VERSION//./\\.} .*/pgp-bin/og str catalog --eh ${EH_FILE//./\\.} " \
-  "setup.sh did not run og str catalog in PYTHON_IMAGE from the catalog's folder"
-N=$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))))' "${DIR}/catalog.json" 2>/dev/null || echo 0)
+docker_log_has "image=${OG_IMAGE//./\\.} .* -w /genome/reference/strchive-${STRCHIVE_VERSION//./\\.} .*/pgp-bin/og str catalog --eh ${EH_FILE//./\\.} " \
+  "setup.sh did not run og str catalog in OG_IMAGE from the catalog's folder"
+N=$(jq length "${DIR}/catalog.json" 2>/dev/null || echo 0)
 [ "$N" -eq 82 ] || fail "catalog.json has ${N} loci, expected 82"
 : > "$FAKE_DOCKER_LOG"
 FAKE_DOWNLOAD_DIR="$SERVED" run_expect 0 setup-again "${SCRIPTS}/setup.sh" --strchive-data "$GENOME_DIR"
@@ -163,7 +168,7 @@ run_expect 0 stranger-strchive "${SCRIPTS}/09b-stranger.sh" sample1
 output_has stranger-strchive "Repeat catalog: the one step 09 ran on, .*sample1_eh_catalog\.json \(STRchive-${STRCHIVE_VERSION//./\\.}\)"
 docker_log_has "stranger --repeats-file /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json " \
   "step 9b did not grade with the catalog step 09 ran on"
-docker_log_has "-e OG_SHADOW -w /genome/sample1/expansion_hunter .*/pgp-bin/og str motif .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged --out sample1_str_motifs\\.tsv\\.part " \
+docker_log_has "-v [^ ]*/bin:/pgp-bin:ro -w /genome/sample1/expansion_hunter ${PYPGX_IMAGE//./[.]} /pgp-bin/og str motif .*--catalog /genome/sample1/expansion_hunter/sample1_eh_catalog\\.json --flagged --out sample1_str_motifs\\.tsv\\.part " \
   "step 9b did not count the motif of the flagged FAME locus with og, from expansion_hunter/, with the catalog"
 if grep -q 'rfc1_motif\.py' "$FAKE_DOCKER_LOG"; then fail "step 9b still calls bin/rfc1_motif.py"; fi
 grep -q $'^SAMD12\tpathogenic_motif' "${EH_DIR}/sample1_str_motifs.tsv" 2>/dev/null || fail "step 9b wrote no sample1_str_motifs.tsv"

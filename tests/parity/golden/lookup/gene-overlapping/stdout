@@ -1,0 +1,11 @@
+== GENEZ: chr7:640-660 (GRCh38; GENCODE_50_(GENEZ))
+  gVCF: 2 of 21 bases have a genotype call (9.5%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chr7:650 T>G G/G (homozygous; no rsID; depth 40, genotype quality 50, QUAL 50)
+      gene: GENEZ
+      consequence: intron_variant
+      impact: MODIFIER
+      gnomAD genomes AF: 0.5
+  in the reports:
+  Prose (step None):
+    - gene=SMN exon 7-8 deletion (GENEZ), rsids=rs1001,x

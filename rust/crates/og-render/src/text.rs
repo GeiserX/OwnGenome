@@ -1,11 +1,19 @@
-//! The text report: the run facts, then each chapter under a banner with
-//! its question, then the steps that did not run, what no step assesses,
-//! the manifest line and the disclaimer.
+//! The text report: the run facts with the research-only line under the
+//! title, then each chapter under a banner with its question, then the steps
+//! that did not run, what no step assesses, the manifest line and the
+//! disclaimer.
 
-use crate::chapters::{CHAPTERS, Sec, writer};
+use crate::chapters::{CHAPTERS, Failed, Sec, WriterFn, guarded, writer};
 use crate::model::{Malformed, State, Summary, py};
 use crate::notes::stale_note;
-use crate::sections::run;
+use crate::sections::{coverage, run};
+
+/// The research-only line of the HTML report ([`crate::html::RESEARCH_ONLY`]),
+/// on two lines under the text report's title, before any result.
+pub const RESEARCH_ONLY: [&str; 2] = [
+    "  Research software, not a clinical report: confirm any finding in a",
+    "  certified laboratory before acting on it.",
+];
 
 /// A section block's opening lines, and whether its step ran (its result
 /// was read, from this run or an earlier one).
@@ -26,7 +34,7 @@ pub fn new_since(s: &Summary, keys: &[&str]) -> Result<Option<String>, Malformed
 }
 
 /// The opening of summary key `key`'s block: its title (or `title`), a rule,
-/// the new-since mark and the state note. `None` when the step did not run,
+/// the new-since mark, scope mark and state note. `None` when the step did not run,
 /// so the block is left out.
 pub fn head(s: &Summary, key: &str, title: Option<&str>) -> Result<Option<Head>, Malformed> {
     let sec = s.section(key);
@@ -40,6 +48,9 @@ pub fn head(s: &Summary, key: &str, title: Option<&str>) -> Result<Option<Head>,
     let mut lines = vec![format!("## {title}"), "---".to_owned()];
     if let Some(line) = new_since(s, &[key])? {
         lines.push(line);
+    }
+    if let Some(partial) = coverage::partial_mark(s, &sec) {
+        lines.push(format!("  [{partial}]"));
     }
     let note = stale_note(&sec)?;
     if !note.is_empty() {
@@ -67,12 +78,32 @@ fn unreadable(sec: &Sec, why: &Malformed) -> Vec<String> {
 
 /// The text report of one summary.
 pub fn report(s: &Summary) -> Result<String, Malformed> {
+    report_using(s, writer).map(|(text, _)| text)
+}
+
+/// The text report of one summary with the section writers of `writers`,
+/// and the sections that could not be written. A section whose data cannot
+/// be read, or whose writer stops on an internal error, says so in its
+/// block, and the rest of the report is still written.
+pub fn report_using(s: &Summary, writers: WriterFn) -> Result<(String, Vec<Failed>), Malformed> {
+    let mut failed = Vec::new();
     let mut lines = run::text_head(s)?;
+    let at = lines
+        .iter()
+        .position(|l| l == "  GENOMICS ANALYSIS REPORT")
+        .map_or(0, |i| i + 1);
+    lines.splice(at..at, RESEARCH_ONLY.map(str::to_owned));
     for (n, chapter) in CHAPTERS.iter().enumerate() {
         let mut body = Vec::new();
         for sec in chapter.sections {
-            if let Some((text, _)) = writer(sec.id) {
-                body.extend(text(s).unwrap_or_else(|why| unreadable(sec, &why)));
+            if let Some((text, _)) = writers(sec.id) {
+                body.extend(guarded(|| text(s)).unwrap_or_else(|why| {
+                    failed.push(Failed {
+                        part: sec.id.to_owned(),
+                        why: why.to_string(),
+                    });
+                    unreadable(sec, &why)
+                }));
             }
         }
         if !body.is_empty() {
@@ -109,5 +140,5 @@ pub fn report(s: &Summary) -> Result<String, Malformed> {
     lines.push(rule);
     let mut out = lines.join("\n");
     out.push('\n');
-    Ok(out)
+    Ok((out, failed))
 }

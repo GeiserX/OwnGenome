@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	*01:01/*26:01	yes	T1K (step 08)	HLA-A*01:01:01 (quality 60); HLA-A*26:01:01 (quality 60)
+HLA-B	*57:01/*38:01	yes	T1K (step 08)	HLA-B*57:01:01 (quality 60); HLA-B*38:01:01 (quality 48)
+CYP2D6	indeterminate	no	no caller made a call	pypgx: not run; Cyrius: not run; depth check: not run

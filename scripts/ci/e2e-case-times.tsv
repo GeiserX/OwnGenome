@@ -17,6 +17,10 @@
 # missing. A run of the E2E workflow by hand with trace: true measures the
 # times again and prints a new file in its summary; its traced needs are an
 # upper bound to check by hand (docs/testing.md).
+# prs-3-panel-measure takes 0 s except on a run dispatched on a branch other
+# than main and not traced, where it measures the 1000 Genomes panel for about
+# 2900 s; there .github/workflows/e2e.yml gives it that time through
+# E2E_SECONDS.
 01-fixture	base	17	-
 10-validate-setup	base	7	-
 20-align-02	base	116	-
@@ -71,7 +75,9 @@ clinical-filter-mane-and-quality-2-vep-norm	shard	2	-
 clinical-filter-mane-and-quality-3-modules	shard	8	clinical-filter-mane-and-quality-1-tiers
 clinvar-clip-check-1	shard	8	-
 clinvar-combined-allele-1	shard	25	-
+clinvar-conflicting-1	shard	50	-
 clinvar-cpsr-quality-1	shard	5	clinvar-clip-check-1
+clinvar-tier-allele-match	shard	6	-
 cn-engine-1-parity	shard	33	-
 cn-guard-1-mapq0	shard	5	-
 cn-intervals-1-catalog	shard	0	-
@@ -104,6 +110,13 @@ haplogroup-explore-1-files	shard	59	-
 hba-short-read-accuracy-1-nf-report	shard	111	-
 hla-second-caller-1-bash	shard	482	-
 hla-second-caller-2-nextflow	shard	188	hla-second-caller-1-bash
+i411-callability-exons-1-mosdepth	shard	60	-
+i411-callability-exons-2-catalog	shard	40	callability-1-catalog
+i411-callability-overlap-1-mates	shard	40	-
+i411-chrm-shifted-ref-1-step20	shard	5	-
+i411-chrm-shifted-ref-2-nextflow	shard	69	-
+i411-nf-vcfanno-ops-1-score-tiers	shard	37	-
+i411-sf-mechanism-1-acmg-lof	shard	40	-
 ibd-segments-1	shard	239	-
 live-server-1-weblog	shard	18	-
 lpa-1	shard	42	-
@@ -117,9 +130,10 @@ nextflow-from-fastq-3-sexcheck	shard	97	-
 nextflow-hardening-1-manta	shard	21	-
 nextflow-hardening-2-nf	shard	643	bash-step-19-delly,nextflow-hardening-1-manta
 nextflow-report-parity-1-sections	shard	206	clinvar-clip-check-1,comphet-phasing-1-reads
+nf-exome-1-stub	shard	250	-
 nf-wiring-1-report-tables	shard	300	clinvar-clip-check-1
 nf-wiring-2-sv-str-tools	shard	900	-
-output-contract-1-hg002	shard	30	-
+output-contract-1-hg002	shard	30	bash-step-09-str
 paralog-catalog-1-gba	shard	114	-
 paralog-checks-and-doc-fixes-1-hba	shard	57	-
 paralog-rows-1	shard	316	-
@@ -154,11 +168,15 @@ reports-and-pgx-correctness-reports	shard	112	-
 reports-and-pgx-correctness-revel	shard	10	-
 run-all-launcher	shard	1022	nextflow-from-fastq-1-bash,nextflow-from-fastq-2-nextflow
 run-all-sample-qc-and-stale-index-1-index-times	shard	15	run-all-launcher
+screen-cpsr-sf-switch-1-stub	shard	50	-
+screen-pgs-academic-optin-1-stub	shard	180	-
 setup-gencode-exons-and-nextflow-clip-check-1	shard	57	clinvar-clip-check-1
 short-sample-id-stub	shard	48	-
 single-source-lib-ownership	shard	1	-
 str-catalog-1-strchive	shard	12	-
 str-extra-repeats-1-readings	shard	16	-
+sv-merge-consensus-check	shard	10	-
+sv-merge-votes	shard	10	-
 sv-mito-telomere-steps-1-sv-merge	shard	5	-
 sv-mito-telomere-steps-2-mito	shard	6	bash-step-20-numt
 sv-mito-telomere-steps-3-y-haplogroup	shard	13	-
@@ -180,3 +198,5 @@ y-tree-current-1-placement	shard	21	nextflow-hardening-2-nf
 rust-z2e-readers	shard	1	-
 rust-c2b-traits	shard	2	-
 qc-3-cram-checksum	shard	34	-
+gvcf-pass-gate	shard	1	-
+roh-af-dflt-1-planted	shard	30	-

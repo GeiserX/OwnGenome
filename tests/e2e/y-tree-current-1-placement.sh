@@ -69,7 +69,7 @@ check "the step removed its tree pileup" test ! -e "${OUT}/tree_pileup.txt"
 # --- Red controls: the same pileup, judged on swapped tables and at a depth no read reaches ---
 mkdir -p "${GENOME_DIR}/${M}/tree-control"
 cp "${CASE_TMP}/positions.txt" "${GENOME_DIR}/${M}/tree-control/positions.txt"
-sam mpileup -l "${M}/tree-control/positions.txt" -AQ20q1 "${M}/aligned/${M}_sorted.bam" > "${CASE_TMP}/tree_pileup.txt" 2>/dev/null
+sam mpileup -l "${M}/tree-control/positions.txt" -A -Q20 -q20 "${M}/aligned/${M}_sorted.bam" > "${CASE_TMP}/tree_pileup.txt" 2>/dev/null
 check_ge "pileup rows at the tree's positions" "$(grep -c . "${CASE_TMP}/tree_pileup.txt" || true)" 1000
 "${REPO}/bin/og" y tree-place --tree-dir "$YT" --pileup "${CASE_TMP}/tree_pileup.txt" \
   --sample "$M" --out-prefix "${CASE_TMP}/same"

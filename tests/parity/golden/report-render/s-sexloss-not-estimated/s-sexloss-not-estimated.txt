@@ -1,0 +1,460 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+  Polygenic risk scores: partial: covers 1 of 22 autosomes
+  Fine-grained ancestry: partial: covers 1 of 22 autosomes
+  Telomere content (TelomereHunter): partial: covers 1 of 22 autosomes
+  Runs of homozygosity: partial: covers 1 of 22 autosomes
+  Archaic ancestry (IBDmix): partial: covers 1 of 22 autosomes
+================================================================================
+
+################################################################################
+#  1. QUALITY: Can I trust this data?
+################################################################################
+
+## Variant Calling (DeepVariant)
+---
+  Total variants: 1
+  PASS variants:  1
+  SNPs: 0  Indels: 1
+  Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
+
+################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Symptom-Driven Ranking (Exomiser, step 48)
+---
+  Symptoms searched: Seizure (HP:0001250), HP:0000001
+  1. GENE1 (AD) score 0.9 (symptom match 0.8)
+       chr1-1-A-G 0/1 missense p.X ACMG LP; D1
+       chr1-2-A-G 0/1 stop p.Y ACMG P; D1
+  2. GENE2 (AR) score 0.5 (symptom match 0.4)
+       chr2-1-A-G 1/1 splice c.1 ACMG VUS; D2
+  A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md). In words: exomiser/S_exomiser.txt
+
+## Structural Variants (Manta)
+---
+  Total SVs: 3  PASS: 1
+  Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.
+
+## Structural Variants (Delly)
+---
+  Total SVs: 1  PASS: 1
+
+## Copy Number Variants (CNVpytor)
+---
+  Total CNVs: 8 (5 deletions, 3 duplications)
+  Significant (e-val < 0.01): 7
+  Significant after filters: 4 (left out: 1 q0 0.5 or more, 1 over N gaps (pN 0.5 or more), 1 over a centromere or heterochromatin band); no declared sex, so chrY calls are kept
+  Filtered: e-value below 0.01, under half of the reads with mapping quality 0 (q0) and under half N bases (pN), no overlap with a centromere or heterochromatin band, and no chrY call when the declared sex is female.
+
+## SV Consensus Merge
+---
+  Consensus SVs (2+ callers): 3
+
+## Structural Variants, Class 4 and 5 (AnnotSV)
+---
+  Class 4-5 SVs: 3 (single caller: 0, not known: 3; deletions on exon edges: 1; common: 1)
+  Moved to class 3 by step 05's rules, not counted above: 1
+    DEL  1:1100-5100  class 5  GENE1, GENE2  support: not known (step 22's consensus cannot tell)
+         on exon edges: exon 2
+         benign-set AF 0.001 (gnomAD)
+    DUP  2:150-880  class 4  GENE3  support: not known (step 22's consensus cannot tell)
+    DEL  9:1-100  class 4  G9  support: not known (step 22's consensus cannot tell)
+         benign-set AF 0.2 (gnomAD), common
+  Moved to class 3 by step 05's rules (from AnnotSV's class, with the reason):
+    INV 7:1-100  no gene  AnnotSV class 4 -> 3  (mhc: the MHC)
+  A class 4 or 5 SV made by one caller, a deletion on the exon edges of a transcript (the reads of a processed transcript or cDNA aligned across an intron) or one at 1% or more in AnnotSV's benign set is unlikely to be a rare pathogenic SV: check the reads before acting on it (docs/05-annotsv.md). Step 05's rules (assets/sv_rule_regions.tsv and the read-depth check) move a class 4 or 5 call to class 3 when it lies in a coding tandem repeat, an immunoglobulin or T-cell receptor locus or the MHC, names a pseudogene by a disease gene's alias, or its read depth does not show the change; those calls are listed apart with the reason and are not counted here.
+
+## Mobile Element Insertions (step 50)
+---
+  Insertions called: 3 (ALU 2, L1 1)
+  FKTN SVA (Fukuyama; AR): callable (depth 30, not seen)
+  TAF1 SVA (XDP; XL): not callable (depth 2)
+  Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is not proof of absence: short reads find an SVA's edges, not its body. Call filtered out: MEGAnE called an insertion there but flagged it (LC is low confidence), so it is not a finding, and not proof of absence either. Every call: mei/<sample>_mei.tsv.
+
+## Repeat Expansions (ExpansionHunter)
+---
+  Loci in output: 9
+  Outside the normal range (Stranger): 2
+    FMR1     58  premutation
+      FMR1 motif count: interrupted: AGG
+    RFC1     >=400/>=500  full_mutation
+      RFC1 motif count: pathogenic: AAGGG dominant
+  Not graded (no thresholds in the catalog): 1 (EXTRA1: no published range)
+  Not graded: the repeat catalog gives these loci no thresholds (for MUC1, CEL, TYMS and PLIN4 the reference repeat is longer than 300 bases, so no short read spans it), so Stranger gives them no status. Not graded is not normal (docs/09-str-expansions.md).
+  CFTR intron 9 (legacy IVS8) TG and poly-T tract: TG11/TG12 5T/7T
+    5T: 1 copy with the 5T poly-T tract, TG11 or TG12 on the 5T copy, not told by the counts (TG11-5T/TG12-7T or TG12-5T/TG11-7T). 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. One R117H copy and one 5T copy: phase unknown. R117H lies 17.6 kb from the tract, farther than a read pair spans, so whether they share a copy (in cis, a CF-causing allele of variable penetrance) or not (in trans) is not read; testing a parent tells them apart. (Deignan et al. 2020, PMID 32404922)
+  UGT1A1 promoter TA repeat: *1/*28
+    *1/*28 (TA6/TA7, 7/8 TA units as ExpansionHunter counts them): 1 decreased-function allele (*28 and *37 are decreased function). PharmCAT (step 7) called *1/*28: the same number of *28 and *37 copies. (Gammal et al. 2016, PMID 26417955)
+  SLC6A4 5-HTTLPR promoter length polymorphism: not tested
+    not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)
+  Loci without a Stranger status (not in its catalog): 3
+  Not sized from short reads, so not counted as normal: 5 (FMR1, C9ORF72, ATXN1, EXTRA1, RFC1)
+  Every locus (key loci first): repeat count, Stranger status, notes
+    DMPK     not in output -
+    HTT      17/20      normal,normal  normal max 26
+    FMR1     58         premutation  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 55-60; normal max 44; FMR1 motif count: interrupted: AGG
+    C9ORF72  .          -  no call
+    ATXN1    30/37      not sized  size not determined (flanking reads only), interval 30-30/35-40; normal max 35
+    CFTR_T   5/7        -
+    CFTR_TG  11/12      -
+    EXTRA1   8/9        not graded  low confidence (fewer than 2 spanning reads, or the interval reaches the disease range), interval 8-8/9-9; no thresholds in the catalog (no published range)
+    RFC1     >=400/>=500 full_mutation  longer than a read (in-repeat reads only): shown as at least the interval's lower end, interval 400-700/500-800
+    UGT1A1   7/8        normal
+  RFC1: Stranger's catalog sizes the degenerate AARRG unit and flags a low count, so the motif decides. The motif count reads the reads at the locus; it cannot size a long expansion.
+  Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.
+
+## MUC1 VNTR Frameshifts (ADTKD-MUC1, VNtyper)
+---
+  Result: negative
+  .
+  VNtyper's coverage check: .
+  .
+  none
+  The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for known frameshifts in it: a negative result lowers the chance of those and does not rule out ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.
+
+## Mitochondrial Variants (Mutect2)
+---
+  PASS variants: 7
+  Heteroplasmic (AF 0.05 to 0.95, outside the D-loop poly-C tracts): 1
+  Length heteroplasmy in the D-loop poly-C tracts (m.303-315, m.16184-16193; common, usually technical): 2
+    chrM:302 A>AC,ACC  AF 0.3
+    chrM:16189 T>C  AF 0.5
+  Annotation (mito/S_chrM_annotated.tsv): ClinVar 2026-10-01; gnomAD not annotated: no file
+  ClinVar pathogenic or likely pathogenic: 1
+  Heteroplasmic, or in ClinVar with a class other than benign:
+    chrM:3243 A>G  AF 0.40  ClinVar Pathogenic (criteria; MELAS)  gnomAD AF hom 0, het 0
+    chrM:302 A>AC  AF 0.3  not in ClinVar  not in gnomAD  poly-C tract
+    chrM:500 C>T  AF 0.99  ClinVar Uncertain_significance (.; .)  not in gnomAD
+  Confirmed disease variants (assets/mito_confirmed.tsv): 3
+    m.3243A>G (MT-TL1)  AF 0.40  filter PASS  MELAS (mitochondrial encephalomyopathy, lactic acidosis and stroke-like episodes); maternally inherited diabetes and deafness; ClinVar 9589; PMID 2102678. Usually heteroplasmic; the level differs between tissues and is often lower in blood than in muscle or urine.
+    m.8344A>G (MT-TK)  AF 0.30  filter weak_evidence  MERRF (myoclonic epilepsy with ragged-red fibres); ClinVar 9579; PMID 2112427. Usually heteroplasmic; the level differs between tissues.
+    m.11778G>A (MT-ND4)  AF 0.99  filter PASS  Leber hereditary optic neuropathy (LHON); ClinVar 9708; PMID 3201231. Usually homoplasmic; not everyone who carries it loses vision.
+  Large deletions (eKLIPse): 3, of them 1 named in assets/mito_confirmed.tsv; listed: named ones and any at 1.0% or more
+    m.8470_13446del (4977 bp)  level 0.5%  The common 4977 bp deletion, between two 13 bp direct repeats: Kearns-Sayre syndrome, chronic progressive external ophthalmoplegia (CPEO), Pearson syndrome; ClinVar 430680 (m.8483_13459del); PMID 2711184, 2541333, 20301382
+    m.101_199del (None bp)  level 2.5%
+  A single large mtDNA deletion is often found in muscle and not in blood (except in Pearson syndrome), so a blood sample with none does not rule one out (docs/20-mtoolbox.md).
+  mtDNA copy number: not assessed (unknown)
+  Length heteroplasmy in the D-loop poly-C tracts is found in most people and is usually technical; it is listed here and not counted as heteroplasmy.
+  ClinVar and gnomAD v3.1 (chrM sites) annotate the calls in step 20. MITOMAP (mitomap.org) has the curated disease status of mtDNA variants; it is a manual lookup, as it refuses scripted requests.
+
+## Lp(a): LPA KIV-2 Repeat Count and Risk Variants
+---
+  KIV-2 repeats (both chromosomes): 35 (95% interval 30 to 40), low
+    ok
+  KIV-2 4925G>A null allele (rs1484919544): present, 4 of 200 reads carry it
+    .
+    A null allele lowers the Lp(a) made from the copies it sits on; the Lp(a) blood test is the measure.
+  rs10455872: A/G (1 risk allele)
+  rs3798220: T|C (1 risk allele)
+  Genetic signs of a high Lp(a): 2 risk alleles at rs10455872 and rs3798220 and a low KIV-2 repeat count. Measure Lp(a) in blood.
+  .
+  The KIV-2 repeat count from read depth is a research estimate, not an Lp(a) level: the level is a blood test, and the count explains only part of the difference between people.
+
+## Clonal Haematopoiesis (CHIP, step 49)
+---
+  DNMT3A R882H: VAF 0.05 (3 of 60 reads), .
+  Read-support limit: at a VAF of about 10%, a clone in the median CHIP gene has enough reads with the change 8 times in 10, calculated from the depth at each coding base (median gene depth 33x). The caller and its filters can miss more. No call here does not rule out CHIP.
+  Share of each gene's coding bases assessable at the stated VAF: DNMT3A 60%, TET2 90%, ASXL1 0%, JAK2 55%, TP53 40%, SRSF2 65%.
+  No read-support limit for the whole gene (too shallow or not on the reference): ASXL1, SRSF2.
+  1 other protein changes listed, not counted: chip/S_chip.tsv.
+  Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene's published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.
+
+## Mosaic loss of chromosome Y or X
+---
+  chrY: not estimated (too few reads on chrY)
+  Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).
+
+## Mosaic Chromosomal Alterations (MoChA, step 51)
+---
+  Reported at a cell fraction of 0.05 or more at 30x (read-sampling floor ., minimum .; . heterozygous sites on .)
+  Loss on q, chr20:1-2 (10 Mb): about 0.1 of the cells
+  Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/<sample>_mocha.tsv.
+
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Couple Carrier Screen (step 39)
+---
+  Partner: P2. Genes where both carry a change: 1; X-linked findings: 1; genes where only one partner carries a change: 2
+  Shared: CFTR (Cystic fibrosis): 1 in 4. This sample: c.1521_1523del (P). P2: c.350G>A (LP)
+  X-linked: DMD (Duchenne): 1 in 4 sons. This sample: c.10G>T (P). P2: .
+  A screen, not a diagnosis: the couple report (couple_<a>_<b>.md in the family folder) lists the genes, variant types and repeats it does not see. These counts are of its gene table: a carrier deletion allele from read depth (step 35), and a possible shared risk it adds, is in that report only. See a genetic counsellor before acting on a result, or on its absence (docs/39-couple.md).
+
+## Paralog Genes (Paraphase, PacBio HiFi)
+---
+  SMN1: 2 (called); ok
+  SMN2: 2 (called)
+  HBA1: 1 (called)
+  HBA2: 2 (called)
+  PMS2: 2 (called)
+  SMN1 by both tools: Paraphase 2, Parascopy 1 (quality 31, filter PASS): they DISAGREE: check both before using either
+  Other Paraphase regions: 2 (1 with a call)
+  Variants on phased haplotypes: 3
+  Paraphase reads PacBio HiFi reads only. A 'no call' means it saw one haplotype and the depth did not settle one copy or two. A research estimate, not a diagnostic test: confirm a result (for example an HBA deletion or one SMN1 copy) with a clinical laboratory.
+
+## SMN1/SMN2 Copy Number (Parascopy, short reads)
+---
+  SMN1 copies: 1 (quality 31, filter PASS)
+  SMN1 g.27134T>G silent-carrier marker (rs143838139): not seen, 0 of 31 reads carry it, about 0 copies
+  SMN1 marker reading: no read carries the G
+  SMN1 marker caveat: The marker raises the chance that two SMN1 copies sit on one chromosome (2+0, a silent carrier); it does not prove 2+0, and a carrier test in a clinical laboratory confirms it.
+  SMN2 copies: 3 (quality 25, filter PASS)
+  SMN1 and SMN2 together (agCN) at exon 7: 4 (quality 45.5, filter PASS)
+  Reading: one SMN1 copy: the pattern of an SMA carrier
+  HBA1 and HBA2 together (alpha-globin genes, from depth): . (.; estimate .)
+  CYP21A2 (RCCX module, from depth and six PSV sites): . CYP21A2 copies, module total 4 of ., finding none
+  HP (haptoglobin) copies (from depth): 2 (estimate 2.1). Reading: usual
+  LCE3B/LCE3C copies (from depth): 1 (estimate 1.0). Reading: one deleted
+  CCL3L1/CCL3L3 copies (from depth): not assessed (low depth)
+  GBA1, GBAP1 (agCN): 4 (2 region(s), quality 35.25 or more, filter PASS). Reading: agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy
+  STRC, STRCP1 (agCN): unreadable: S_strc_copy_number.tsv lacks the copy-number columns
+  mytable (agCN): not assessed: no read over the locus
+  pms2 (agCN): chr7:5970001-5980000 4 (quality 50, filter PASS); chr7:5980001-5990000 3 (quality 12, filter LowQual)
+  Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth): 4 rows (3 called, 1 not assessed); 2 with a deletion or a duplication
+    Deletion: AZFc (AZFc, chrY:23000001-26000000), 0 of 1 copies
+    Duplication: dup (X1, chr1:2-2), 3 of 2 copies
+  Parascopy reads short reads at SMN1 and SMN2 and at the other loci of its catalog. A quality under 20 or a filter other than PASS leaves a copy unresolved. HBA1 and HBA2, CYP21A2 and the gene-dosage loci have no Parascopy model: step 35 counts them from read depth against flanking sequence (CYP21A2 also from six sites where it differs from its pseudogene CYP21A1P), which cannot say which chromosome lost or gained a copy. The copy-number intervals (ClinGen's recurrent CNV regions, carrier deletion alleles, the AZF regions) are read from depth too. A research estimate, not a diagnostic test: confirm a result with a clinical laboratory (MLPA or qPCR; gap-PCR for alpha-thalassaemia).
+
+################################################################################
+#  4. MEDICINES: How might I respond to medicines?
+################################################################################
+
+## CPIC Drug-Gene Recommendations
+---
+  Genes with a non-normal phenotype: 1  More than one possible result: 0  Not called: 0  Called without a function phenotype (no drug guidance): 0
+    UGT1A1     *1/*28                       Intermediate
+  Drugs per gene: cpic/S_cpic_recommendations.txt
+  CPIC recommendations follow the phenotype PharmCAT called. They are guidance for prescribers, not a prescription. A gene that was not called has no recommendation here, and that is not the same as a typical response.
+
+## HLA Typing (T1K)
+---
+    HLA-A    A*02:01:01 (quality 60) / A*01:01:01 (quality 50)
+    HLA-B    B*57:01:01:02 (quality 0) / no confident call (5 candidates, quality 0); low confidence (T1K quality 0 or below), not passed to PharmCAT
+    HLA-C    C*07:01:01 (quality 40)
+    HLA-DQA1 DQA1*05:01:01 (quality 40) / DQA1*02:01 (quality 30)
+    HLA-DQB1 DQB1*02:01:01 (quality 40) / DQB1*02:02:01 (quality 30)
+    HLA-DRB1 DRB1*03:01:01 (quality 40) / DRB1*07:01:01 (quality nan)
+    HFE      HFE*001 (quality 20) [T1K sequence allele, not the HFE C282Y/H63D genotype: that genotype comes from the variant calls (ClinVar section)]
+  Coeliac DQ: DQ2.5 present, likely cis (DRB1*03 present); DQ2.2 present; DQ8 absent
+  DQB1*02 copies: 2
+  A*31:01 absent: carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)
+  C*06:02 absent: psoriasis (Nair 2006, Am J Hum Genet)
+  DQB1*06:02 absent: narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)
+  DRB1*15:01 absent: multiple sclerosis (Barcellos 2003, Am J Hum Genet)
+  DRB1*01:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:04 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:05 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*04:08 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  DRB1*14:02 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)
+  B*15:02 not determined (HLA-B low confidence): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)
+  B*57:01 not determined (HLA-B low confidence): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)
+  B*58:01 not determined (HLA-B low confidence): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)
+  B*27 not determined (HLA-B low confidence): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)
+  Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.
+  HLA database: unknown
+  HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).
+  OptiType check (HLA_QC=true, two fields):
+    HLA-A    agree: T1K A*02:01, OptiType A*02:01
+    HLA-B    agree: T1K B*57:01, OptiType B*57:01 (ok)
+  KIR genes (T1K, KIR=true):
+    KIR2DL1  KIR2DL1*001 (quality 30) / KIR2DL1*002 (quality 20)
+    No allele called (absent, or too few reads): KIR3DL3
+  KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.
+
+## Locityper Second Opinion at Hard Loci (step 53)
+---
+  Loci called: 4 of 5; passing the authors' filter: 3
+  HLA-DRB1  Locityper: h1 + h2 (quality 30, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)
+            primary:   T1K (step 08): DRB1*03:01:01/DRB1*07:01:01
+  KIR       Locityper: k1 + k2 (quality 20, 1 of 100 reads unexplained, weighted distance 0.1; filter pass)
+            primary:   T1K KIR pass (step 08): 1 genes typed
+  CYP2D6    Locityper: not called: low depth
+            primary:   pypgx (step 32) and Cyrius (step 21) did not run
+  FCGR      Locityper: f + f (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter fail: q)
+            primary:   no other step calls FCGR
+  ZZZ       Locityper: z + z (quality 9, 1 of 1 reads unexplained, weighted distance 1; filter pass)
+            primary:   no other step calls this locus
+  A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (<sample>.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors' HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/<sample>_locityper.tsv.
+
+################################################################################
+#  5. ANCESTRY: Where do my ancestors come from?
+################################################################################
+
+## Fine-Grained Ancestry
+---
+  [partial: covers 1 of 22 autosomes]
+  Continental groups (fraction, bootstrap range):
+    West Eurasia                                         95% (93% to 97%)
+    Africa                                                5%
+  Regional groups (fraction, bootstrap range):
+    Iberia                                               60% (50% to 70%)
+  Left out of the model: Oceania. The panel has fewer than 10 unrelated reference people for it, so its ancestry is spread over the groups shown.
+  Chromosome painting: none; not painted: the painting failed on chr21
+  Each name is a group of reference populations we put together and named, not a nationality. Continental groups are well apart; neighbouring regions are not: splits within Iberia are weak for every method, and Greek and Southern Italian ancestry overlap. Read a regional fraction with its bootstrap range. See docs/26b-ancestry-fine.md.
+
+## Mitochondrial Haplogroup
+---
+  Haplogroup: H5a1
+  Contamination (haplocheck): no (level .)
+  FamilyTreeDNA Discover (free, no upload): https://discover.familytreedna.com/mtdna/H5a1
+  YFull MTree: https://www.yfull.com/mtree/H5a1/
+  More routes, and the files to share: https://github.com/GeiserX/OwnGenome/blob/main/docs/12-mito-haplogroup.md#explore-your-branch-further
+  Nothing is uploaded by this pipeline. The docs link lists the files each service reads, which steps 12 and 37 write when they run, and what an upload shares.
+
+## Y-Chromosome Haplogroup (Yleaf)
+---
+  Haplogroup: R1b1a1b1a1a2*(xR-L21) (40 markers, QC-score 0.98)
+  FamilyTreeDNA Discover (free, no upload): https://discover.familytreedna.com/y-dna/R1b1a1b1a1a2
+  YFull YTree: https://www.yfull.com/tree/R1b1a1b1a1a2/
+  More routes, and the files to share: https://github.com/GeiserX/OwnGenome/blob/main/docs/37-y-haplogroup.md#explore-your-branch-further
+  Nothing is uploaded by this pipeline. The docs link lists the files each service reads, which steps 12 and 37 write when they run, and what an upload shares.
+
+## Y Placement on the Current Public Tree
+---
+  Branch: R-Z2105 (level 12, ISOGG 2026)
+  Path SNPs: 30 derived, . ancestral, . no call; 400 SNPs called at depth . or more
+    1  A0-T                     1D    A     N
+    2  R                         D    A     N
+  A second placement, on a public tree release newer than the one Yleaf carries, walked from the reads by og y tree-place. The two can differ in depth and in name: branches get renamed and split between releases, and the position tables differ. A branch is taken when it has more derived than ancestral SNPs, and an ancestral call above it blocks the branches below unless the SNPs below outvote that one site. Every level is in y_haplogroup/<sample>_y_tree_path.tsv; docs/37-y-haplogroup.md says how the walk works.
+
+## Y-STR Markers (HipSTR)
+---
+  Markers called: 1 high and 1 low confidence of 4; 1 no call, 1 not callable from short reads
+  Y-12   DYS393        13     (high)
+  Y-12   DYS390        24     (low)
+  Y-25   DYS464        .      (not callable)
+  Repeat counts read from the genome with HipSTR, in FamilyTreeDNA's Y-111 order. A count can differ from FamilyTreeDNA's by a fixed number of repeats at some markers, as labs count some repeat blocks differently: compare with a known result before trusting a difference. Multi-copy markers and repeats longer than the reads are not called. Every marker, with its reads and notes, is in y_str/<sample>_y_str.tsv; y_str/<sample>_y_str.csv is the same list for a spreadsheet.
+
+## Archaic Ancestry (IBDmix, step 43)
+---
+  [partial: covers 1 of 22 autosomes]
+  Neanderthal: 2.00% (50.0 Mb in 120 segments)
+  Denisovan: 0.01% (0.2 Mb in 3 segments)
+  Analysed: 2500.0 Mb of the autosomes; modern frequencies: 1000 Genomes CEU
+  Longest segments:
+    a
+    b
+    j
+  An estimate from IBDmix against the Altai and Vindija Neanderthals and the Altai Denisovan: a segment counts when either copy carries it, and part of what any person gets is old shared ancestry, not gene flow (Africans get some too). Every segment: archaic/<sample>_archaic_segments.tsv; docs/43-archaic.md says where the numbers end.
+## Ancient Populations (AADR PCA, step 44)
+---
+  AADR v62: 500000 of . sites used; axes from . present-day West Eurasians, . ancient people in . groups projected.
+  Nearest ancient groups:
+     1. Spain_BA (2000 BCE, Spain; 10 people)
+     2. France_N (, France; 5 people)
+  Closeness on this PCA is genetic similarity, not descent: a genome near an ancient group shares ancestry with it and does not descend from those people. qpAdm models are not part of step 44; docs/44-ancient.md says how to read the plot. Plot: ancient/S_ancient_pca.svg
+
+## Runs of Homozygosity
+---
+  [partial: covers 1 of 22 autosomes]
+  Segments: 3  Total: 37.5 MB  Largest: 27.0 MB
+  Autosomal ROH > 5MB: 2
+    chr2:10000001-17000000  7.0MB
+    chr15:23000001-50000000  27.0MB
+  F_ROH: 0.0128 (34.0 MB in runs of 5 MB or more); nearest: no band (one chromosome holds most of the runs)
+  ** chr15 carries 27.0 MB, more than 50% of the length in runs of 5 MB or more: both copies may come from one parent (uniparental isodisomy) **
+  Imprinted 15q11-q13 (SNRPN, UBE3A): from the mother: -; from the father: - (PMID 22237428;27615419)
+  Long runs concentrated on one chromosome, with few elsewhere, are the sign of isodisomy: both copies of that chromosome from one parent. They can also be chance in a child of related parents. Which parent gave both copies cannot be told without the parents' samples, and a heterodisomy (two different copies from one parent) leaves no runs at all. The parents' genotypes confirm a UPD. Where an imprinted region is listed, a methylation test of that region tests for its imprinting disorder; on its own it does not prove a UPD (docs/11-roh-analysis.md).
+  F_ROH is the share of the autosomes (outside the bands) in runs of 5 MB or more.
+  Left out in centromere and heterochromatin bands: 46.5 MB
+  Segments on chrX/chrY, not counted: 1
+  Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.
+
+################################################################################
+#  6. TRAITS AND SCORES: What do studies say about my traits and risk scores?
+################################################################################
+
+## Traits Panel (step 42)
+---
+  Read: 3  No genotype at the position: 1  Other allele: 1
+  Low-quality genotype calls: 1
+  Lp(a) (LPA rs10455872): A/G. one copy (PMID 1)
+  Lp(a) (LPA rs3798220): T|C. one copy (PMID 1)
+  R117H (CFTR rs78655421): G/A. one copy (PMID 1)
+  x (X rs2): C/C. other (PMID 1)
+  x (X rs3): A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.
+  Not read (no genotype in the gVCF): rs1
+  Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how. Notes per row: traits/S_traits.tsv
+  Genotype rules (several sites read together; traits/S_genotype_rules.tsv):
+    bitter (TAS2R38 rs1): PAV/AVI (not phased). taster (PMID 1)
+    kidney (APOL1 rs73885319, rs60910145): G0/G1. one G1 (PMID 20647424)
+      With G2 (rs71785313): G1/G2. G2 (rs71785313): 1 copy of the deletion called. Two APOL1 risk copies (G1/G2): the high-risk genotype of Genovese 2010, which went with focal segmental glomerulosclerosis and hypertension-attributed kidney failure in African Americans. A risk factor, not a diagnosis.
+  APOE and Alzheimer's disease: a risk factor, not a diagnosis. Many people choose not to learn their APOE result; docs/42-traits.md explains it.
+    APOE (rs429358): T/C. e3/e4
+
+## Polygenic Risk Scores
+---
+  [partial: covers 1 of 22 autosomes]
+  CAD                                 0.5 (100/120 variants matched) PGS000018  percentile 75 (EUR)  effect HR 1.5 (EUR)
+  T2D                                 0.1 (10/20 variants matched) PGS000014
+  Percentile: where the score falls among the EUR samples of the HGDP+1kGP reference panel, the group whose genetic ancestry is most similar to this sample's (pgsc_calc). The ancestry match is low-confidence: read the percentile with care. A percentile is not a risk. Effect: the odds ratio (OR) or hazard ratio (HR) a published evaluation of the score measured in people of the same reference group, in that evaluation's unit (its PGS Catalog PPM page says which). It describes the score in that group, not your own risk, and is shown only for a group the score was evaluated in. Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.
+
+## Blood Groups (predicted from the genome)
+---
+  ABO       A                                  A1/O1                        (high)
+  RhD       RhD positive                       .                            (medium)
+  Kell      .                                  K-/k+                        (.)
+  Predicted from the DNA at the variants that define each antigen, not typed from blood. RhD comes from the read depth over RHD; weak and partial D are not assessed. The evidence for each site is in bloodtype/<sample>_bloodtype_evidence.tsv.
+
+## Telomere content (relative, TelomereHunter)
+---
+  [partial: covers 1 of 22 autosomes]
+  Telomere content: 1.5 intratelomeric reads per million reads with 48-52% GC
+  Intratelomeric reads: 40 (floor 2,000 at 30.0x)
+  WARNING: too few telomeric reads for a stable estimate; do not compare this value.
+  Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).
+
+################################################################################
+#  7. OTHER AND EXPORTS: What else did the run find or write?
+################################################################################
+
+## Viral DNA in the Unmapped Reads (step 47)
+---
+  HHV-6: inherited integrated HHV-6B likely
+  phiX: spike-in (500 reads, 100% of the genome)
+  HHV-6B: inherited integrated HHV-6 likely (2000 reads, 99% of the genome, 1.0 copies per cell)
+  From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/<sample>_viral.tsv.
+
+## Raw-Data Export (23andMe v5 layout)
+---
+  Sites with a genotype: 590000 of 600000 (98.3%); '--' at 10000
+  Homozygous reference from the gVCF's reference blocks: 0
+  Files: consumer_export/S_23andme.txt and consumer_export/.
+  '--' because: low depth 9000; filtered 1000
+  These files stay on this machine. Uploading one to a service shares your genotypes with it, and with the relatives it matches you to: docs/40-export-consumer.md says what to weigh first.
+
+## Steps Not Run
+---
+  - Coverage (mosdepth)
+  - Gene callability (mosdepth)
+  - Sex check (indexcov)
+  - Sample identity and contamination (somalier, VerifyBamID2)
+  - Mosaic loss of chromosome Y or X
+  - ClinVar screen
+  - PharmCAT
+  - pypgx
+  - Cyrius (CYP2D6)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

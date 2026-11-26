@@ -28,12 +28,12 @@ include { MITO_EXTRACT_CHRM  } from '../modules/local/mito_haplogroup/main'
 include { MITO_HAPLOGROUP    } from '../modules/local/mito_haplogroup/main'
 include { HAPLOCHECK         } from '../modules/local/mito_haplogroup/main'
 include { ANCESTRY_FINE_GENOTYPE  } from '../modules/local/ancestry_fine/main'
-include { ANCESTRY_FINE_PREPARE   } from '../modules/local/ancestry_fine/main'
-include { ANCESTRY_FINE_ADMIXTURE } from '../modules/local/ancestry_fine/main'
+include { ANCESTRY_FINE_FRACTIONS } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PHASE     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_PAINT     } from '../modules/local/ancestry_fine/main'
 include { ANCESTRY_FINE_REPORT    } from '../modules/local/ancestry_fine/main'
 include { CONSUMER_EXPORT    } from '../modules/local/export_consumer/main'
+include { selected_tools } from './exome'
 
 workflow CLINICAL {
 
@@ -53,6 +53,7 @@ workflow CLINICAL {
     ch_bam              // channel: [meta, bam, bai] — every sample with a BAM (CPSR's cDNA read check)
     ch_gencode_exons    // channel: path — GENCODE's exons (--gencode_exons), or []
     ch_prs_score_sets   // channel: val — the PRS score sets the samplesheet needs (with_x, autosomes), known at launch
+    ch_roh_af_panel     // channel: val([panel, its .tbi]) — step 11's allele-frequency panel (--roh_af_panel), or [[], []]
 
     main:
     ch_versions = Channel.empty()
@@ -93,15 +94,6 @@ workflow CLINICAL {
         )
         ch_cpsr_cdna = CPSR_CDNA_CHECK.out.cpsr_cdna_check
         ch_versions  = ch_versions.mix(CPSR_CDNA_CHECK.out.versions)
-    }
-
-    //
-    // MODULE 2: ROH — Runs of homozygosity
-    //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('roh')) {
-        ROH(ch_vcf)
-        ch_roh_regions = ROH.out.roh_regions
-        ch_versions    = ch_versions.mix(ROH.out.versions)
     }
 
     //
@@ -159,11 +151,14 @@ workflow CLINICAL {
                     .map { _id, meta, vcf, kind, pgs -> [meta, vcf, kind, pgs] },
                 ch_ancestry_ref
             )
+            // With the genotypes pgsc_calc scored: og prs table withholds
+            // the percentiles when they hold no reference calls.
             PRS_SUMMARY(
                 PRS.out.results
                     .map { meta, res, kind -> [meta.id, meta, res, kind] }
                     .join(ch_sample_pgs)
-                    .map { _id, meta, res, kind, pgs -> [meta, res, kind, pgs] },
+                    .join(PRS_SCORE_SITES.out.vcf.map { meta, target, _kind -> [meta.id, target] })
+                    .map { _id, meta, res, kind, pgs, target -> [meta, res, kind, pgs, target] },
                 panel_name
             )
             ch_prs_scores       = PRS_SUMMARY.out.summary
@@ -174,7 +169,29 @@ workflow CLINICAL {
     }
 
     //
-    // ANCESTRY_FINE — step 26b: ADMIXTURE fractions and an RFMix painting
+    // MODULE 2: ROH — Runs of homozygosity, on a whole genome: an exome's
+    // variants leave gaps of megabases between the captured exons
+    // (workflows/exome.nf). With the allele-frequency panel
+    // (--roh_af_panel) and step 26's ancestry table on the way (prs with
+    // --pgs_scoring and --ancestry_ref), each sample waits for its table, so
+    // ROH can take one continental group's frequencies (scripts/11-roh-analysis.sh
+    // reads the same table); otherwise it starts at once.
+    //
+    if (selected_tools().contains('roh')) {
+        def roh_waits = params.roh_af_panel && tools_here.contains('prs') && params.pgs_scoring && params.ancestry_ref
+        ch_roh_input = roh_waits
+            ? ch_vcf.map { meta, vcf, idx -> [meta.id, meta, vcf, idx] }
+                .join(ch_ancestry_results.map { meta, tsv -> [meta.id, tsv] }, remainder: true)
+                .filter { row -> row[1] != null }
+                .map { _id, meta, vcf, idx, anc -> [meta, vcf, idx, anc ?: []] }
+            : ch_vcf.map { meta, vcf, idx -> [meta, vcf, idx, []] }
+        ROH(ch_roh_input, ch_roh_af_panel)
+        ch_roh_regions = ROH.out.roh_regions
+        ch_versions    = ch_versions.mix(ROH.out.versions)
+    }
+
+    //
+    // ANCESTRY_FINE — step 26b: og ancestry fractions and an og painting
     // against the fine-grained panel. With a gVCF the panel's SNVs are
     // genotyped from it, as in PRS; without one the VCF must hold reference
     // calls, or ANCESTRY_FINE_GENOTYPE stops (the bash step's rule).
@@ -186,28 +203,34 @@ workflow CLINICAL {
             .filter { row -> row[1] != null }
             .map { row -> row[4] != null ? [row[1], row[4], row[5], 'gvcf'] : [row[1], row[2], row[3], 'vcf'] }
         ANCESTRY_FINE_GENOTYPE(ch_af_input, ch_ancestry_fine_panel, ch_reference, ch_reference_fai)
-        ANCESTRY_FINE_PREPARE(ANCESTRY_FINE_GENOTYPE.out.genotypes, ch_ancestry_fine_panel)
-        ANCESTRY_FINE_ADMIXTURE(ANCESTRY_FINE_PREPARE.out.admixture_input)
+        ANCESTRY_FINE_FRACTIONS(ANCESTRY_FINE_GENOTYPE.out.genotypes, ch_ancestry_fine_panel)
         ANCESTRY_FINE_PHASE(
             ANCESTRY_FINE_GENOTYPE.out.genotypes
                 .map { meta, g, gi, _counts -> [meta.id, meta, g, gi] }
-                .join(ANCESTRY_FINE_PREPARE.out.chroms.map { meta, c -> [meta.id, c] })
+                .join(ANCESTRY_FINE_FRACTIONS.out.chroms.map { meta, c -> [meta.id, c] })
                 .map { _id, meta, g, gi, c -> [meta, g, gi, c] },
             ch_ancestry_fine_panel
         )
-        ANCESTRY_FINE_PAINT(ANCESTRY_FINE_PHASE.out.phased, ch_ancestry_fine_panel)
+        // The painting's proportions start at the continental fractions.
+        ANCESTRY_FINE_PAINT(
+            ANCESTRY_FINE_PHASE.out.phased
+                .map { meta, d -> [meta.id, meta, d] }
+                .join(ANCESTRY_FINE_FRACTIONS.out.fractions.map { meta, f -> [meta.id, f] })
+                .map { _id, meta, d, f -> [meta, d, f] },
+            ch_ancestry_fine_panel
+        )
         ANCESTRY_FINE_REPORT(
-            ANCESTRY_FINE_ADMIXTURE.out.admixture
+            ANCESTRY_FINE_FRACTIONS.out.fractions
                 .map { meta, d -> [meta.id, meta, d] }
                 .join(ANCESTRY_FINE_PAINT.out.painting.map { meta, d -> [meta.id, d] })
-                .map { _id, meta, adm, paint -> [meta, adm, paint] },
+                .map { _id, meta, frc, paint -> [meta, frc, paint] },
             ch_ancestry_fine_panel,
             params.ancestry_fine_panel ? file(params.ancestry_fine_panel).name : ''
         )
         ch_ancestry_fine     = ANCESTRY_FINE_REPORT.out.fractions
         ch_ancestry_fine_png = ANCESTRY_FINE_REPORT.out.painting_png
-        ch_versions = ch_versions.mix(ANCESTRY_FINE_GENOTYPE.out.versions, ANCESTRY_FINE_PREPARE.out.versions,
-                                      ANCESTRY_FINE_ADMIXTURE.out.versions, ANCESTRY_FINE_PHASE.out.versions,
+        ch_versions = ch_versions.mix(ANCESTRY_FINE_GENOTYPE.out.versions, ANCESTRY_FINE_FRACTIONS.out.versions,
+                                      ANCESTRY_FINE_PHASE.out.versions,
                                       ANCESTRY_FINE_PAINT.out.versions, ANCESTRY_FINE_REPORT.out.versions)
     }
 

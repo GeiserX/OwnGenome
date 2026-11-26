@@ -14,7 +14,10 @@
 //! variant sits inside the deletion and is called homozygous (one copy is
 //! left, and it carries the variant), or both calls carry read-backed phase
 //! (a `|` GT and the same PS) on different copies. On the same copy (cis)
-//! they are no second hit; otherwise they are possibly in trans.
+//! they are no second hit; otherwise they are possibly in trans. A
+//! hypomorph called homozygous inside a deletion is only possibly
+//! biallelic: the call alone cannot say whether the deletion is real, and
+//! without it a homozygous hypomorph is no finding.
 //!
 //! The readers here take from step 05's and step 35's tables only what the
 //! rule needs. The AnnotSV and Parascopy sections themselves are read by
@@ -23,6 +26,7 @@
 use super::clinvar::obj;
 use super::text::{self, ReadError, cell, columns, digits, rows};
 use indexmap::IndexMap;
+use og_steps::sv::postfilter::{BENIGN_MATCH, CLINICAL_COMMON, ConsensusSupport, Membership};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
 use pycompat::text::isdigit;
@@ -73,6 +77,9 @@ pub enum Verdict {
     Biallelic,
     /// Phase unknown, or the calls disagree: possibly both copies.
     PossiblyBiallelic,
+    /// A pair that would count, but the small variant's call is below
+    /// step 06's call floor: confirm the call first.
+    LowConfidence,
     /// Both on the same copy: no second hit.
     Cis,
 }
@@ -82,6 +89,7 @@ impl Verdict {
         match self {
             Verdict::Biallelic => "biallelic",
             Verdict::PossiblyBiallelic => "possibly biallelic",
+            Verdict::LowConfidence => "possibly biallelic (low-confidence call)",
             Verdict::Cis => "cis",
         }
     }
@@ -173,10 +181,24 @@ pub fn pair_phase(dl: &Deletion, v: &Variant) -> (Verdict, String) {
         });
     }
     if inside && v.copies >= 2 {
+        // Nothing here says whether the deletion is real and germline. A
+        // full loss of function called homozygous hits both copies either
+        // way; a hypomorph does so only together with a real deletion.
+        if let Some(a) = &v.allele {
+            return (
+                Verdict::PossiblyBiallelic,
+                format!(
+                    "a hypomorph ({a}) called homozygous inside a called deletion: biallelic (a \
+                     null plus the hypomorph) only if the deletion is real; confirm the deletion \
+                     (array or MLPA): without it this is a homozygous hypomorph, not a finding"
+                ),
+            );
+        }
         return (
             Verdict::Biallelic,
-            "the variant is called homozygous inside the deletion: it is hemizygous, on the one \
-             copy the deletion leaves"
+            "the variant is called homozygous inside the deletion: hemizygous on the copy the \
+             deletion leaves if the deletion is real, homozygous if not; both copies carry it \
+             either way"
                 .into(),
         );
     }
@@ -212,18 +234,36 @@ pub struct TwoHits {
 
 /// The genes hit twice.
 pub fn two_hits(variants: &[Variant], dels: &HashMap<String, Vec<Deletion>>) -> TwoHits {
+    two_hits_with(variants, dels, |_| false)
+}
+
+/// [`two_hits`], where a pair built on a variant `low` calls low
+/// confidence (below step 06's call floor) is never more than
+/// [`Verdict::LowConfidence`].
+pub fn two_hits_with(
+    variants: &[Variant],
+    dels: &HashMap<String, Vec<Deletion>>,
+    low: impl Fn(&Variant) -> bool,
+) -> TwoHits {
     let mut out = TwoHits::default();
     let mut best: HashMap<(String, VKey), Verdict> = HashMap::new();
     for v in variants {
         let k = (v.gene.clone(), v.key.clone());
         for dl in dels.get(&v.gene).map_or(&[][..], Vec::as_slice) {
-            let (verdict, why) = pair_phase(dl, v);
+            let (mut verdict, mut why) = pair_phase(dl, v);
             if verdict == Verdict::Biallelic && why.starts_with("the variant is called homozygous")
             {
                 out.hemi.insert(k.clone(), dl.text.clone());
             }
             if verdict == Verdict::Cis {
                 continue;
+            }
+            if low(v) {
+                verdict = Verdict::LowConfidence;
+                why = format!(
+                    "the variant's call is below the call floor (low confidence), so confirm it \
+                     first; {why}"
+                );
             }
             let e = Entry {
                 gene: v.gene.clone(),
@@ -271,6 +311,8 @@ pub struct SvRow {
     pub caller: Option<String>,
     /// Callers supporting it in step 22's consensus; `None` without one.
     pub support: Option<i128>,
+    /// The clinical rules set aside SVs with a common reciprocal BED match.
+    /// Legacy checked tables without either evidence column use `Common`.
     pub common: bool,
 }
 
@@ -325,6 +367,12 @@ pub fn read_annotsv(
         .iter()
         .zip(support)
         .map(|(r, support)| {
+            // A sample name after FORMAT can also name an evidence column.
+            let evidence = |name| {
+                r.iter()
+                    .take_while(|(key, _)| *key != "FORMAT")
+                    .find_map(|(key, value)| (key == name).then_some(value))
+            };
             let fmt = sample_format(r);
             let some = |k: &str| {
                 fmt.get(k)
@@ -349,7 +397,10 @@ pub fn read_annotsv(
                     .collect(),
                 caller: cell(r, "Caller").map(str::to_owned),
                 support,
-                common: cell(r, "Common") == Some("yes"),
+                common: match evidence(CLINICAL_COMMON) {
+                    Some(value) => value == Some("yes"),
+                    None => evidence(BENIGN_MATCH).is_none() && cell(r, "Common") == Some("yes"),
+                },
             }
         })
         .filter(|x| matches!(x.class(), "4" | "5"))
@@ -372,99 +423,26 @@ fn sample_format(r: &DictRow) -> HashMap<&str, &str> {
     }
 }
 
-/// How far a consensus record may sit from an AnnotSV call, each end.
-const CONSENSUS_BP: i128 = 1000;
-
-fn chrom_key(c: &str) -> &str {
-    if c.as_bytes()
-        .get(..3)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"chr"))
-    {
-        // An ASCII prefix ends at a UTF-8 boundary.
-        &c[3..]
-    } else {
-        c
-    }
-}
-
-fn info_value<'a>(info: &'a str, key: &str) -> &'a str {
-    info.split(';')
-        .find_map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
-            (k == key).then_some(v)
-        })
-        .unwrap_or("")
-}
-
-fn dup_or(t: &str) -> String {
-    let t = t.to_uppercase();
-    if t.starts_with("DUP") {
-        "DUP".into()
-    } else {
-        t
-    }
-}
-
-/// The support of each row from step 22's consensus: the nearest record of
-/// the same contig and type within 1 kb at both ends; 1 without one; `None`
-/// for every row when there is no consensus or it cannot be read.
+/// The support of each row from the SURVIVOR event containing its source
+/// call. A row in no event has support 1. Support is unknown (`None`) when
+/// the membership is not known and without a readable consensus file.
 fn consensus_support(rows: &[DictRow], path: Option<&str>) -> Vec<Option<i128>> {
     let none = || vec![None; rows.len()];
     let Some(path) = path.filter(|p| crate::is_file(p)) else {
         return none();
     };
-    let Ok(lines) = text::lines(path) else {
+    let mut consensus = ConsensusSupport::default();
+    if text::each_line(path, |line| consensus.add_line(line)).is_err() {
         return none();
-    };
-    // (contig, type) to the records' (pos, end, supp).
-    type Records = HashMap<(String, String), Vec<(i128, i128, i128)>>;
-    let mut by: Records = HashMap::new();
-    for l in lines.iter().filter(|l| !l.starts_with('#')) {
-        let c: Vec<&str> = l.split('\t').collect();
-        if c.len() < 8 {
-            continue;
-        }
-        let num = |s: &str| crate::int(s).ok();
-        let Some(pos) = num(c[1]) else { continue };
-        let end = match info_value(c[7], "END") {
-            "" => Some(pos),
-            e => num(e),
-        };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Some(0),
-            e => num(e),
-        };
-        let (Some(end), Some(supp)) = (end, supp) else {
-            continue;
-        };
-        by.entry((
-            chrom_key(c[0]).to_owned(),
-            dup_or(info_value(c[7], "SVTYPE")),
-        ))
-        .or_default()
-        .push((pos, end, supp));
     }
     rows.iter()
-        .map(|r| {
-            let (Some(Ok(start)), Some(Ok(end))) = (
-                cell(r, "SV_start").map(crate::int),
-                cell(r, "SV_end").map(crate::int),
-            ) else {
-                return Some(1);
-            };
-            let key = (
-                chrom_key(cell(r, "SV_chrom").unwrap_or("")).to_owned(),
-                dup_or(cell(r, "SV_type").unwrap_or("")),
-            );
-            let mut best: Option<(i128, i128)> = None;
-            for &(p, e, supp) in by.get(&key).map_or(&[][..], Vec::as_slice) {
-                let (dp, de) = ((p - start).abs(), (e - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, supp));
-                }
+        .map(|row| {
+            let get = |key| cell(row, key).unwrap_or_default();
+            match consensus.membership(get("SV_chrom"), get("SV_type"), get("Caller"), get("ID")) {
+                Membership::Member(callers) => Some(callers.len() as i128),
+                Membership::NotMember => Some(1),
+                Membership::Unknown => None,
             }
-            Some(best.map_or(1, |(_, s)| s))
         })
         .collect()
 }
@@ -747,9 +725,12 @@ pub fn gene_deletions(
                 if x.sv_type.as_deref() != Some("DEL") || x.common || !(isdigit(a) && isdigit(b)) {
                     continue;
                 }
-                // A call genotyped 0/0 is no deletion in this sample.
-                if let Some(gt) = x.gt.as_deref()
-                    && gt.replace('|', "/").split('/').all(|a| a == "0")
+                // Only a called ALT is a deletion in this sample: a GT of
+                // 0/0, ./., 0/. or none is no copy loss, so it pairs with
+                // nothing.
+                if x.gt
+                    .as_deref()
+                    .is_none_or(|gt| super::clinvar::allele_copies(gt).0 == 0)
                 {
                     continue;
                 }
@@ -891,23 +872,6 @@ pub fn gene_deletions(
 mod tests {
     use super::*;
 
-    #[test]
-    fn chromosome_prefix_is_safe_for_non_ascii_contigs() {
-        for (input, expected) in [
-            ("éé", "éé"),
-            ("é", "é"),
-            ("☃1", "☃1"),
-            ("chr☃", "☃"),
-            ("CHR1", "1"),
-            ("cHrX", "X"),
-            ("chr", ""),
-            ("ch", "ch"),
-            ("", ""),
-        ] {
-            assert_eq!(chrom_key(input), expected);
-        }
-    }
-
     fn del(gt: Option<&str>, ps: Option<&str>) -> Deletion {
         Deletion {
             chrom: "chr1".into(),
@@ -986,6 +950,21 @@ mod tests {
     }
 
     #[test]
+    fn homozygous_hypomorph_inside_a_deletion_is_only_possibly_biallelic() {
+        let mut v = var(150, "1/1", None);
+        v.allele = Some("c.-21G>A".into());
+        let found = two_hits(
+            std::slice::from_ref(&v),
+            &HashMap::from([("G".to_owned(), vec![del(None, None)])]),
+        );
+        let e = &found.entries["G"];
+        assert_eq!(e.verdict, Verdict::PossiblyBiallelic);
+        assert_eq!(e.genotype, "het", "the genotype is not turned hemizygous");
+        assert!(e.why.contains("only if the deletion is real"), "{}", e.why);
+        assert!(!found.hemi.contains_key(&("G".to_owned(), v.key.clone())));
+    }
+
+    #[test]
     fn the_best_pair_of_a_gene_wins() {
         let v = var(500, "1|0", Some("7"));
         let found = two_hits(
@@ -997,5 +976,61 @@ mod tests {
         );
         assert_eq!(found.entries["G"].verdict, Verdict::Biallelic);
         assert!(found.pairs[&("G".to_owned(), v.key)].starts_with("biallelic with DEL: in trans"));
+    }
+
+    /// Step 05's checked table with `body`, read as the rules read it.
+    fn annotsv(name: &str, body: &str) -> Vec<SvRow> {
+        let d = std::env::temp_dir().join(format!("og-two-hits-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("checked.tsv").to_string_lossy().into_owned();
+        std::fs::write(&p, body).unwrap();
+        let rows = read_annotsv(Some((p, "checked.tsv".into())), None)
+            .unwrap()
+            .unwrap();
+        std::fs::remove_dir_all(d).unwrap();
+        rows
+    }
+
+    #[test]
+    fn a_call_inside_a_much_larger_common_sv_is_not_read_as_common() {
+        let head = "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\tBenign_match\tClinical_common\tFORMAT\tS1\n";
+        let rows = annotsv(
+            "benign-match",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
+                "NODATA\t1\t120\t180\tDEL\t4\tmanta\tno\t\tno\tnone\tunknown\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let common: Vec<bool> = rows.iter().map(|r| r.common).collect();
+        assert_eq!(common, [true, false, false], "same, contained, no data");
+        // A table written before Benign_match: Common alone decides.
+        let rows = annotsv(
+            "no-benign-match",
+            "ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tACMG_class\tCaller\tExon_edge\tPopulation_AF\tCommon\n\
+             OLD\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\n",
+        );
+        assert!(rows[0].common);
+        // The two-hit rule: the nested deletion is a second hit, the same-size
+        // common one is not.
+        let rows = annotsv(
+            "benign-match-hits",
+            &[
+                head,
+                "SAME\t1\t100\t200\tDEL\t4\tmanta\tno\t0.05\tyes\tsame\tyes\tGT\t0/1\n",
+                "NESTED\t1\t120\t180\tDEL\t4\tmanta\tno\t0.05\tyes\tcontained\tno\tGT\t0/1\n",
+            ]
+            .concat(),
+        );
+        let inp = DeletionInputs {
+            annotsv: Ok(Some(rows)),
+            step35: Ok(None),
+        };
+        let spans: Spans = IndexMap::from([("G".to_owned(), ("chr1".to_owned(), 1, 1000))]);
+        let (found, _, _) = gene_deletions(&inp, &spans);
+        let texts: Vec<&str> = found["G"].iter().map(|x| x.text.as_str()).collect();
+        assert_eq!(texts, ["DEL chr1:120-180 (AnnotSV class 4, manta)"]);
     }
 }

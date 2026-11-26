@@ -19,8 +19,7 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### ExpansionHunter: Different image formats
 - **Failed:** `quay.io/biocontainers/expansionhunter:5.0.0--hd03093a_1` — manifest not found. Also `mgibio/expansionhunter:latest` — not found
-- **Fix:** Use `weisburd/expansionhunter:latest` — binary at `/ExpansionHunter/bin/ExpansionHunter`, variant catalogs at `/pathogenic_repeats/GRCh38/`
-- **Note:** This is ExpansionHunter v2.5.5 which uses `--repeat-specs` (directory), not `--variant-catalog` (single JSON)
+- **Fix (then):** Used `weisburd/expansionhunter:latest`, binary at `/ExpansionHunter/bin/ExpansionHunter`, variant catalogs at `/pathogenic_repeats/GRCh38/`. That was ExpansionHunter v2.5.5, which uses `--repeat-specs` (a directory), not `--variant-catalog` (one JSON). The pipeline now pins the Bioconda build of v5.0.0 (`EXPANSIONHUNTER_IMAGE` in `versions.env`), and step 09 passes `--variant-catalog`.
 
 ### ExpansionHunter: Missing required --log parameter
 - **Failed:** Container exits immediately with "the option '--log' is required but missing"
@@ -34,18 +33,18 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### TelomereHunter: Permission denied
 - **Failed:** `OSError: [Errno 13] Permission denied: '/output/<sample>'` when writing output (the sample name in the error path will vary)
-- **Fix:** Add `--user root` flag to `docker run`
+- **Fix (then):** Added `--user root` to `docker run`. Step 10 now runs as the caller through `run_in`, which mounts the sample folder writable, so it needs no root. Output that an earlier root run left in the sample folder is root-owned, and a run as the caller cannot overwrite it: take the folder back first ([Permission denied](troubleshooting.md#permission-denied-writing-to-mounted-volumes)).
 
 ### TelomereHunter: pip install on host fails
 - **Failed:** `pip install telomerehunter` on the host gives `UnicodeDecodeError` — Python environment issues
-- **Fix:** Use the Docker image (`lgalarno/telomerehunter`, digest-pinned in `versions.env`) instead of native install
+- **Fix:** Use a Docker image instead of a native install. The pipeline pins the Bioconda build (`TELOMEREHUNTER_IMAGE` in `versions.env`); the first image used here, `lgalarno/telomerehunter`, is retired.
 
 ### HLA-LA: Graph not serialized (3 failures)
 - **Failed attempt 1:** `zlskidmore/hla-la:latest` — graph at `src/additionalReferences/PRG_MHC_GRCh38_withIMGT/` exists but is NOT serialized. HLA-LA exits silently.
 - **Failed attempt 2:** Copied graph files to `graphs/PRG_MHC_GRCh38_withIMGT/` — "graph not complete"
 - **Failed attempt 3:** Ran `--action prepareGraph` in detached container — container exited during prep, graph still not serialized
 - **Root cause:** HLA-LA requires a pre-serialized graph (~40GB RAM to prepare, takes hours). No standard Docker image includes it.
-- **Fix:** Use `jiachenzdocker/hla-la:latest` (27.5GB image with pre-built graph) OR switch to T1K
+- **Fix (then):** Tried `jiachenzdocker/hla-la:latest` (27.5GB image with pre-built graph), which crashed (next entry), and switched to T1K. Step 08 runs T1K (`T1K_IMAGE` in `versions.env`); HLA-LA is no pipeline step, and [step 8](08-hla-typing.md#alternative-hla-la) pins that image by digest only for a run by hand.
 
 ### HLA-LA: Binary crash with pre-built graph image
 - **Failed:** `jiachenzdocker/hla-la:latest` — read extraction succeeds but `HLA-LA` C++ binary crashes during graph alignment even with 32GB RAM and 8 threads. Error: "HLA-LA execution not successful."
@@ -89,7 +88,7 @@ Every failure encountered during pipeline development (Mar 2026), documented so 
 
 ### VEP INSTALL.pl: Permission denied on temp directory
 - **Failed:** `Cannot open Local file /opt/vep/.vep/tmp/homo_sapiens_vep_112_GRCh38.tar.gz`
-- **Fix:** Run with `--user root` and pre-create the temp dir: `mkdir -p /opt/vep/.vep/tmp && chmod 777 /opt/vep/.vep/tmp`
+- **Fix (then):** Ran with `--user root` and pre-created the temp dir with `chmod 777`. Step 13 no longer uses `INSTALL.pl`: it downloads the cache itself, checks it against Ensembl's `CHECKSUMS` and unpacks it, as the caller, with no world-writable folder.
 
 ### VEP INSTALL.pl: Silent download failure
 - **Failed:** Container exits after "downloading..." with no cache files extracted
@@ -113,8 +112,8 @@ macOS is arm64; most Linux servers are amd64. Images built on Mac without `--pla
 ### Use --rm for one-shot containers
 Always use `--rm` for analysis containers to avoid accumulating stopped containers. Use `-d` (detached) for long-running jobs.
 
-### Always use --user root for write access
-Most bioinformatics containers run as non-root users. If writing to bind-mounted volumes, add `--user root` to avoid permission issues.
+### Run containers as the caller, not as root
+Most bioinformatics containers name a non-root user of their own, which may not be able to write to a bind-mounted host folder. The early scripts ran every container with `--user root`, which left root-owned files in the sample folder. The step scripts now start each container through `run_in` (`scripts/lib/common.sh`) as the caller (`--user` with the caller's UID and GID, `HOME=/tmp`), with only the sample folder writable, plus any folder the call names with `--rw` (a shared index, for example). A step whose image cannot run unprivileged passes `--root` at its call, with the reason in a comment. The Nextflow `docker` profile runs each task as the caller too (`-u ${UID}:${GROUPS}`, `HOME=/tmp`). `CPSR`, `CNVPYTOR` and `MITO_VARIANTS` (step 20's shifted-reference pass) run as root, and Nextflow (`docker.fixOwnership`) gives their work files back to the caller; a file they write outside their work directory stays root's.
 
 ## CI / Workflow Issues
 
@@ -247,16 +246,16 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 - **Fix:** Use `broadinstitute/gatk:4.6.1.0` which has both at `/usr/bin/bgzip` and `/usr/bin/tabix`. Or use `bcftools view -Oz` as a bgzip alternative.
 
 ### FreeBayes chr22 variant count (3x more than DeepVariant)
-- **Observed:** FreeBayes calls ~247K variants on chr22 vs DeepVariant ~91K and GATK ~69K
-- **Interpretation:** The ~200K FreeBayes-unique variants are mostly false positives. FreeBayes maximizes sensitivity at the cost of precision.
+- **Observed:** on chr22 FreeBayes calls about 3x as many variants as DeepVariant, and more than that against GATK
+- **Interpretation:** The FreeBayes-only variants are mostly false positives. FreeBayes maximizes sensitivity at the cost of precision.
 - **Recommendation:** Always quality-filter FreeBayes output with `bcftools filter` or `vcffilter` before use.
 
 ## Chip Data Conversion (Genotyping Arrays → VCF)
 
 ### plink silently corrupts single-sample homozygous ALT genotypes
 - **What failed:** `plink --23file` (1.9) to import + `plink2 --ref-from-fa force` to fix REF/ALT
-- **Why:** For single-sample data, ALL homozygous positions are monomorphic. plink's `.bim` stores only one allele for these. `--ref-from-fa` cannot create a proper ALT because there's no second allele slot. Homozygous ALT genotypes silently become homozygous REF.
-- **Verified:** on one homozygous-alternate chip position (chip genotype AA where the reference base is T): plink wrote `REF=A, ALT=., GT=0/0` (WRONG); bcftools wrote `REF=T, ALT=A, GT=1/1` (CORRECT). ~66K positions (11%) corrupted.
+- **Why:** For single-sample data, ALL homozygous positions are monomorphic. The single-sample import sees only one allele there and leaves the second allele missing in the `.bim` (the format has two allele columns; the import does not fill the second). `--ref-from-fa` does not fill in a missing allele, so it cannot create a proper ALT. Homozygous ALT genotypes silently become homozygous REF. A `.bim` that declares both alleles is fixed correctly by `--ref-from-fa`.
+- **Verified:** on one homozygous-alternate chip position (chip genotype AA where the reference base is T): plink wrote `REF=A, ALT=., GT=0/0` (WRONG); bcftools wrote `REF=T, ALT=A, GT=1/1` (CORRECT). Every homozygous-ALT position of a chip is hit.
 - **Fix:** Use `bcftools convert --tsv2vcf -f <reference.fa>`. Single command, no intermediate binary format.
 
 ### plink 1.9 --23file quirks
@@ -275,14 +274,14 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 ### PharmCAT chip vs WGS results (MyHeritage GSA, verified 2026-03-31)
 - **Correct:** CYP2B6, CYP4F2, DPYD and NUDT15 matched the WGS diplotypes
 - **Missed:** CYP2C19 (25 missing), VKORC1 (1 missing)
-- **Wrong:** CYP3A5 came out as the reference diplotype because 4 of its defining positions are not on the chip; WGS called a different diplotype
+- **Wrong:** CYP3A5 can come out as the reference diplotype because 4 of its defining positions are not on the chip, whatever the genotype there
 - **Fix:** treat a chip-only call as unresolved when any of its defining positions are missing from the chip, and confirm it from WGS before relying on it
 - Total: 888 missing PGx positions from the GSA chip
 
 ### ROH and PRS need special flags for chip data
 - ROH: `-G30` required (no FORMAT/PL in chip VCF)
 - PRS: `no-mean-imputation` required (single sample lacks allele frequencies)
-- PRS matching: chip ~12% of large scoring files vs WGS ~28%
+- PRS matching: a chip matches a much smaller share of a large scoring file than WGS does
 
 ## v0.3.0 Tool Additions (Apr 2026)
 
@@ -314,9 +313,10 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 - **Observed:** fastp's `--detect_adapter_for_pe` works for Illumina, BGI, and MGI adapters without specifying adapter sequences. BGI/MGI adapters are compiled into fastp's `knownadapters.h`.
 - **No action needed:** The `--detect_adapter_for_pe` flag handles all common sequencing platforms.
 
-### mosdepth: --fast-mode skips per-base output
-- **Observed:** `--fast-mode` uses a simpler, faster counting method and does NOT write the per-base `.per-base.bed.gz` file. This saves ~2 GB of output and cuts runtime by ~40%.
-- **Fix:** Always use `--fast-mode` unless per-base resolution is specifically needed.
+### mosdepth: --fast-mode counts overlapping mates twice
+- **Observed:** `--fast-mode` counts every base from a read's start to its end. It does not correct for the two mates of a pair that overlap, and it does not read the CIGAR, so the bases of a deletion count as read. A short-insert pair lifts the depth of its overlap to 2 where one fragment was read. The per-base `.per-base.bed.gz` is left out by `--no-per-base`, not by `--fast-mode`; this entry said otherwise before.
+- **Why it mattered:** step 16b's gene callability pass ran with `--fast-mode`, so a gene with fewer than 10 fragments over its bases could still reach 10x and read as read.
+- **Fix:** the gene callability pass runs without `--fast-mode`. The genome-wide 500 bp pass keeps it, because it only describes depth. Use `--fast-mode` only where a base's depth decides nothing.
 
 ### MultiQC: Auto-discovers fastp JSON by content, not filename
 - **Observed:** MultiQC identifies fastp output by looking for `"before_filtering": {` in JSON files, not by filename pattern. Files must end in `.json`.
@@ -388,14 +388,14 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 
 ### CNVpytor chokes on GRCh38 ALT/HLA/decoy contigs — restrict `-rd` to canonical chromosomes
 - **Failed:** On a real full-reference GRCh38 BAM (hundreds of ALT/HLA/decoy contigs), `cnvpytor -rd` (no `-chrom`) crashes/stalls during read-depth import and produces **no calls** (only a tiny stub `.pytor`). The bundled GC-correction data covers only the main chromosomes. A chr20-only validation did **not** surface this.
-- **Fix:** Pass `-chrom chr1 … chr22 chrX chrY` to the `-rd` step (`scripts/18-cnvpytor.sh` + `modules/local/cnvpytor`). Validated on two real 30× genomes (≈2200 and ≈2400 canonical CNV calls, ~99% concordant with the prior CNVnator counts). Lesson: validate depth-based callers on a **full** BAM, not a single chromosome.
+- **Fix:** Pass `-chrom chr1 … chr22 chrX chrY` to the `-rd` step (`scripts/18-cnvpytor.sh` + `modules/local/cnvpytor`). Validated on two real 30× genomes. Lesson: validate depth-based callers on a **full** BAM, not a single chromosome.
 
 ### pypgx image must match the bundle version — 0.27.0 mismatched 0.26.0 and shipped pandas 3.0.3
 - **Failed:** `pypgx:0.27.0--pyh106432d_0` failed **all** genes at runtime with `pandas.errors.LossySetitemError` / `TypeError: Invalid value` — pypgx assigns floats into int columns, which pandas ≥2.1 (the 0.27.0 image bundles **3.0.3**) rejects. It was also mismatched against the pipeline's **0.26.0** `pypgx-bundle`. The smoke test only runs `pypgx --version`, so CI could not catch it.
 - **Fix (v0.8.2):** pin the image to **`pypgx:0.26.0--pyh7e72e81_0`** to match the bundle (pandas 2.3.3, no error). Verified end-to-end on a real 30× genome: **23/23 genes succeed**. Lesson: the pypgx image version MUST track the `pypgx-bundle` branch, and bumping one without the other (and without a real gene-call test) silently breaks step 32.
 
 ### Stranger over-flags RFC1 (CANVAS) from short reads — do not read it as a diagnosis
-- **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion (e.g. 51/73 of the degenerate `AARRG` motif). CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
+- **Observed:** Stranger can report RFC1 `STR_STATUS=full_mutation` for a modest expansion of the degenerate `AARRG` motif. CANVAS requires the **AAGGG** motif specifically, **biallelic**, at **~400–2000+** repeats — short-read ExpansionHunter cannot resolve AAGGG vs the benign AAAAG, and the catalog's `STR_PATHOLOGIC_MIN=12` is not the clinical threshold.
 - **Interpretation:** Treat an RFC1 flag as **uninterpretable from short-read WGS** — confirm with motif-aware/flanking-PCR testing only if clinically indicated. (Documented in `docs/09b-stranger.md`.)
 - **Since then:** ExpansionHunter's count still cannot tell the motifs apart, but when Stranger flags RFC1, step 9b counts the motif in the reads over the repeat (`og str motif`, a port of the first `bin/rfc1_motif.py`) and gives a verdict; without the sample's BAM and its index the verdict is `not_checked` ([STR Annotation, Notes](09b-stranger.md#notes)).
 
@@ -531,10 +531,15 @@ Most bioinformatics containers run as non-root users. If writing to bind-mounted
 - **Why:** PharmCAT 3.4.0's preprocessor does not read a one-base 0/0 record as a call at a position whose REF or ALT is longer than one base. It sets the record aside with FILTER `PCATxINDEL` (or `PCATxREF` for a two-base substitution) and lists the position as missing; where PharmCAT's REF is longer than one base, the matcher then discards it.
 - **Fix:** `og pgx refblock-fill` (was `bin/pgx_refblock_fill.py`) writes PharmCAT's own record (its ID, REF and ALT) as 0/0 at each such position when every base of the span lies in reference blocks with GQ 20 or more and nothing else overlaps it. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
 
+### A low-quality reference call reached PharmCAT as a confident 0/0
+- **Failed:** a one-base reference block with GQ 5 at CYP2C19 rs4244285 (the \*2 position) reached PharmCAT as 0/0, so the sample read as "not \*2" when the data could not tell. A DeepVariant `RefCall` record with a low GQ did the same.
+- **Why:** `bcftools convert --gvcf2vcf` writes a 0/0 record for every base of a block, whatever its GQ, and the GQ 20 floor of `og pgx refblock-fill` held only for the 0/0 records it writes itself at positions longer than one base. Every other reference call passed through unchecked.
+- **Fix:** `og pgx refblock-fill` leaves out every reference call (GT all 0) below GQ 20, or without a GQ, so PharmCAT reads the position as missing. A variant call passes whatever its GQ. The step log counts them and names those at PharmCAT positions. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
+
 ### PharmCAT reads MT-RNR1 only as an outside call
 - **Failed:** MT-RNR1 (aminoglycoside-induced hearing loss) was No Result on every sample, although step 20 calls chrM with Mutect2 at high depth.
 - **Why:** PharmCAT 3.4.0 has no MT-RNR1 allele definition for its matcher, so chrM records in its VCF input are never matched for the gene. It lists MT-RNR1 among the genes it prefers as an outside call, and its own MT-RNR1 test passes the gene that way.
-- **Fix:** `og pgx mito-merge` (was `bin/pgx_mito_merge.py`) turns step 20's chrM calls into one MT-RNR1 outside call (a homoplasmic named allele, or `Reference` only when the BAM covers every named position), added to step 36's outside calls. Step 27 checks only CYP2D6, HLA-A and HLA-B against step 36's table: MT-RNR1 never appears there, and checking it marked the new call stale. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
+- **Fix:** `og pgx mito-merge` (was `bin/pgx_mito_merge.py`) turns step 20's chrM calls into one MT-RNR1 outside call (a named allele at AF 0.05 or more, heteroplasmic included, or `Reference` only when the BAM covers every named position), added to step 36's outside calls. Step 27 checks only CYP2D6, HLA-A and HLA-B against step 36's table: MT-RNR1 never appears there, and checking it marked the new call stale. The details are in [Pharmacogenomics, Input the preprocessor or PharmCAT refuses](07-pharmacogenomics.md#input-the-preprocessor-or-pharmcat-refuses).
 
 ### PharmCAT's log file needs a writable working directory
 - **Failed:** every step 07 run printed a logback status dump with a `pharmcat.log (Permission denied)` stack trace. The calls were not affected.

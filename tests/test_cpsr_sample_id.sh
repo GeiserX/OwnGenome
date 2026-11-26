@@ -82,35 +82,55 @@ check_files() {
 
 # --- the Nextflow process: its script and stub blocks, rendered -------------------
 MOD="${REPO}/modules/local/cpsr/main.nf"
-# render BLOCK ID: the block's Groovy string as Nextflow would run it for meta.id ID
+# render BLOCK ID: the block's Groovy string as Nextflow would run it for meta.id ID.
+# The one line of code it knows before the string is the secondary-findings
+# option, rendered as its default (--cpsr_secondary_findings true);
+# tests/e2e/screen-cpsr-sf-switch-1-stub.sh checks it switched off.
 render() {
-  python3 - "$MOD" "$1" "$2" <<'PY'
-import re, sys, textwrap
-src, block, mid = open(sys.argv[1]).read(), sys.argv[2], sys.argv[3]
-m = re.search(r"^[ \t]*" + block + r':[ \t]*\n(.*?)^[ \t]*"""[ \t]*\n(.*?)\n[ \t]*"""[ \t]*$', src, re.S | re.M)
-if not m:
-    sys.exit(f"no {block}: block with a triple-quoted string in {sys.argv[1]}")
-if m.group(1).strip():
-    sys.exit(f"{block}: code before the string is not rendered here: {m.group(1).strip()!r}")
-values = {"meta.id": mid, "vcf": "sample.vcf.gz", "vep_cache_cpsr": "vep_cache", "pcgr_data": "pcgr_data",
-          "task.process": "CPSR", "task.container.replaceFirst(/^[^:@]+[:@]/, '')": "2.3.2"}
-s, out, i = m.group(2), [], 0
-while i < len(s):
-    c = s[i]
-    if c == "\\" and i + 1 < len(s):
-        out.append(s[i + 1]); i += 2
-    elif s.startswith("${", i):
-        j = s.index("}", i)
-        expr = s[i + 2:j]
-        if expr not in values:
-            sys.exit(f"{block}: unknown Groovy expression ${{{expr}}}")
-        out.append(values[expr]); i = j + 1
-    elif c == "$" and i + 1 < len(s) and (s[i + 1].isalpha() or s[i + 1] == "_"):
-        sys.exit(f"{block}: unescaped ${s[i + 1:i + 20]!r}: Groovy would read it as a variable")
-    else:
-        out.append(c); i += 1
-print(textwrap.dedent("".join(out)))
-PY
+  awk -v block="$1" -v mid="$2" '
+    function die(m) { print m > "/dev/stderr"; bad = 1; exit 1 }
+    state == 0 && $0 ~ ("^[ \t]*" block ":[ \t]*$") { state = 1; next }
+    state == 1 && /^[ \t]*def sf_args = cpsrSecondaryArgs\(params\.cpsr_secondary_findings\)[ \t]*$/ { next }
+    state == 1 && /^[ \t]*"""[ \t]*$/ { state = 2; next }
+    state == 1 { pre = pre $0 "\n"; next }
+    state == 2 && /^[ \t]*"""[ \t]*$/ { state = 3; exit }
+    state == 2 { s = s (n++ ? "\n" : "") $0 }
+    END {
+      if (bad) exit 1
+      if (state != 3) die("no " block ": block with a triple-quoted string in " FILENAME)
+      t = pre; gsub(/^[ \t\n]+|[ \t\n]+$/, "", t)
+      if (t != "") die(block ": code before the string is not rendered here: " t)
+      v["sf_args"] = "--secondary_findings"
+      v["meta.id"] = mid; v["vcf"] = "sample.vcf.gz"; v["vep_cache_cpsr"] = "vep_cache"; v["pcgr_data"] = "pcgr_data"
+      v["task.process"] = "CPSR"; v["task.container.replaceFirst(/^[^:@]+[:@]/, '\'''\'')"] = "2.3.2"
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\" && i < length(s)) { out = out substr(s, i + 1, 1); i++ }
+        else if (substr(s, i, 2) == "${") {
+          j = index(substr(s, i), "}")
+          if (!j) die(block ": unclosed ${ in the string")
+          e = substr(s, i + 2, j - 3)
+          if (!(e in v)) die(block ": unknown Groovy expression ${" e "}")
+          out = out v[e]; i += j - 1
+        } else if (c == "$" && substr(s, i + 1, 1) ~ /[A-Za-z_]/) die(block ": unescaped $" substr(s, i + 1, 19) ": Groovy would read it as a variable")
+        else out = out c
+      }
+      # textwrap.dedent: the common leading whitespace of the lines that are
+      # not blank comes off every line; blank lines become empty.
+      k = split(out, L, "\n"); margin = ""; first = 1
+      for (i = 1; i <= k; i++) {
+        if (L[i] !~ /[^ \t]/) continue
+        match(L[i], /^[ \t]*/); w = substr(L[i], 1, RLENGTH)
+        if (first) { margin = w; first = 0 }
+        else while (substr(w, 1, length(margin)) != margin) margin = substr(margin, 1, length(margin) - 1)
+      }
+      for (i = 1; i <= k; i++) {
+        if (L[i] !~ /[^ \t]/) L[i] = ""
+        else L[i] = substr(L[i], length(margin) + 1)
+        print L[i]
+      }
+    }' "$MOD"
 }
 for block in script stub; do
   for id in "${IDS[@]}"; do

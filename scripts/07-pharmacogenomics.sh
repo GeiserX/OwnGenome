@@ -40,7 +40,10 @@ done
 # count at a PharmCAT position whose REF or ALT is longer than one base (an
 # indel such as UGT1A1 *28); og pgx refblock-fill writes a 0/0 record
 # with PharmCAT's own alleles there when reference blocks with GQ >= 20 cover
-# the whole REF span and no other record overlaps it. PharmCAT refuses a gVCF,
+# the whole REF span and no other record overlaps it. The same GQ 20 floor
+# holds for every reference call it passes on: a 0/0 record (a block or a
+# DeepVariant RefCall) below GQ 20, or without a GQ, is left out, so PharmCAT
+# reads that position as missing, not as a confident 0/0. PharmCAT refuses a gVCF,
 # by content and by a name with .g.vcf in it, so the expanded file has
 # neither. The PHARMCAT_PREPROCESS module does the same.
 GVCF="${OUTPUT_DIR}/${SAMPLE}.g.vcf.gz"
@@ -105,12 +108,13 @@ run_in \
 # PharmCAT 3.4.0 reads MT-RNR1 only as an outside call too: its matcher has no
 # MT-RNR1 definition, so the gene is No Result from any VCF. When step 20
 # wrote its chrM calls, og pgx mito-merge adds an MT-RNR1 line to a copy
-# of step 36's calls: a homoplasmic (AF >= 0.95) PASS allele PharmCAT names,
-# or Reference when there is none and the BAM has 20 reads or more (samtools
-# depth, MAPQ and base quality 20) at every position PharmCAT names an allele
-# at; no line, with the reason in the log, for a heteroplasmic or filtered
-# named allele or a position without that depth (the PHARMCAT module does the
-# same).
+# of step 36's calls: a PASS allele PharmCAT names at AF 0.05 or more,
+# heteroplasmic included (CPIC sets no safe heteroplasmy level; the log gives
+# the AF), or Reference when there is none and the BAM has 20 reads or more
+# (samtools depth, MAPQ and base quality 20) at every position PharmCAT names
+# an allele at; no line, with the reason in the log, for a named allele below
+# AF 0.05 (when no other is called) or filtered, or a position without that
+# depth (the PHARMCAT module does the same).
 OUTSIDE="${GENOME_DIR}/${SAMPLE}/pgx_consensus/${SAMPLE}_outside_calls.tsv"
 MITO="${GENOME_DIR}/${SAMPLE}/mito/${SAMPLE}_chrM_filtered.vcf.gz"
 MERGED="${OUTPUT_DIR}/${SAMPLE}.pharmcat_outside_calls.tsv"

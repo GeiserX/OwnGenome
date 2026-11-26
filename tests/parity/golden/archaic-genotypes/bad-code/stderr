@@ -1,0 +1,1 @@
+ERROR: badcode/chr22.tsv.gz: chr22:2030 has Altai code '3'; the table holds 0, 1, 2, 9 or 10 to 12

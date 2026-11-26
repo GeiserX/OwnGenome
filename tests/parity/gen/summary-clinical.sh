@@ -13,9 +13,7 @@
 #
 # The VEP output is the committed pair cb_vep.vcf.gz and its .tbi, staged
 # beside the folders; vep/S_vep.vcf.gz links to it. assets/ is a copy of
-# the repository's gene lists. pymods/ holds the helper modules the Python
-# collector imports, at a pinned commit, so the oracle reads them instead
-# of stubs. scripts/ci/oracle-diff.sh runs it.
+# The fixture uses the repository's gene lists.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 here=$(cd "$(dirname "$0")" && pwd)
@@ -29,16 +27,6 @@ T0=1577836800        # 2020-01-01 00:00:00 UTC, the start of the run
 OLD=201906011230.00  # before the run
 NEW=202103040506.07  # after it
 NEWER=202103040507.00
-
-# The helper modules of bin/collect_summary.py, as they were when the
-# collector was last the summary's writer.
-HELPERS=7c1470bc50933f48a1a0dde3c0e0b2b87bc48718
-git -C "$root" cat-file -e "${HELPERS}^{commit}" 2> /dev/null \
-  || git -C "$root" fetch -q --depth=1 origin "$HELPERS"
-mkdir -p pymods
-for m in pgx_outside_calls clip_check annotsv_postfilter paraphase_report traits_report; do
-  git -C "$root" show "${HELPERS}:bin/${m}.py" > "pymods/${m}.py"
-done
 
 mkdir -p assets
 for a in acmg_sf.tsv carrier_genes.tsv paralog_loci.tsv; do

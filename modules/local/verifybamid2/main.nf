@@ -9,8 +9,12 @@
     than 1,000 markers have reads (a targeted or sliced BAM); the task then
     runs it again with --DisableSanityCheck and writes "skipped" to
     <id>.marker_check, so the report says the marker check was skipped.
-    SAMPLE_QC compares FREEMIX with --freemix_warn; contamination never stops
-    the run.
+    The second line of <id>.marker_check is the number of markers the check
+    kept ("N SNP markers remained after sanity check" in the first run's
+    log; the run without the check does not log it), empty when the log
+    has no such line. SAMPLE_QC compares FREEMIX with --freemix_warn and
+    calls it uncertain on a skipped check or fewer than 5,000 markers;
+    contamination never stops the run.
 
     Equivalent to: the VerifyBamID2 part of scripts/33-sample-qc.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -51,7 +55,10 @@ process VERIFYBAMID2 {
             --Output ${meta.id} --NumThread ${task.cpus} "\$@" > ${meta.id}.log 2>&1
     }
     MARKER_CHECK=passed
-    if ! vb2; then
+    VB_RC=0
+    vb2 || VB_RC=\$?
+    MARKERS=\$(sed -n '/SNP markers remained after sanity check/{s/.* \\([0-9][0-9]*\\) SNP markers remained.*/\\1/p;q;}' ${meta.id}.log)
+    if [ "\$VB_RC" -ne 0 ]; then
         if grep -q 'Insufficient Available markers' ${meta.id}.log; then
             echo "Fewer than 1,000 panel markers have reads: running again with --DisableSanityCheck"
             MARKER_CHECK=skipped
@@ -61,7 +68,7 @@ process VERIFYBAMID2 {
             exit 1
         fi
     fi
-    echo "\$MARKER_CHECK" > ${meta.id}.marker_check
+    printf '%s\\n%s\\n' "\$MARKER_CHECK" "\$MARKERS" > ${meta.id}.marker_check
     cat ${meta.id}.selfSM
 
     cat <<-END_VERSIONS > versions.yml
@@ -72,7 +79,7 @@ process VERIFYBAMID2 {
 
     stub:
     """
-    echo passed > ${meta.id}.marker_check
+    printf 'passed\\n100000\\n' > ${meta.id}.marker_check
     printf '#SEQ_ID\\tRG\\tCHIP_ID\\t#SNPS\\t#READS\\tAVG_DP\\tFREEMIX\\n%s\\tNA\\tNA\\t100000\\t1\\t30\\t0.001\\n' ${meta.id} > ${meta.id}.selfSM
     touch ${meta.id}.log
 

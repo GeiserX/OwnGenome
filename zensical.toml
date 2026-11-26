@@ -34,6 +34,7 @@ nav = [
       { "Vendor Compatibility Guide" = "vendor-guide.md" },
       { "Starting from a Vendor VCF" = "vcf-first.md" },
       { "Step 0: Reference Data Setup" = "00-reference-setup.md" },
+      { "Licences for downloads" = "licences.md" },
       { "Realigning After a Reference Change" = "realignment.md" },
       { "Quick Test: Verify Your Setup Before Running on Real Data" = "quick-test.md" },
       { "Nextflow Execution" = "nextflow.md" },
@@ -114,13 +115,23 @@ nav = [
           { "Where a Run Stands" = "run-state.md" },
           { "Run Alerts" = "alerts.md" },
           { "Look Up a Variant, an rsID or a Gene" = "lookup.md" },
+          { "Bring Your Results into OwnHealth" = "ownhealth.md" },
           { "Step 28: MultiQC Aggregated QC Report" = "28-multiqc.md" },
           { "Step 33: Sample Identity and Contamination" = "33-sample-qc.md" },
           { "Step 34: CRAM Archive" = "34-cram-archive.md" },
         ] },
     ] },
   { Guides = [
-      { "Interpreting Your Results" = "interpreting-results.md" },
+      { "Interpreting Your Results" = [
+          { "Interpreting Your Results" = "interpreting-results.md" },
+          { "Secondary Findings and Carrier Status" = "results/secondary-findings.md" },
+          { "ClinVar and Variant Annotation" = "results/clinvar.md" },
+          { "Pharmacogenomics and HLA" = "results/pharmacogenomics.md" },
+          { "Structural Variants, Copy Number and Repeats" = "results/structural-and-repeats.md" },
+          { "Ancestry, Lineage and Polygenic Scores" = "results/ancestry-and-lineage.md" },
+          { "Telomeres and Somatic Variants" = "results/traits-and-somatic.md" },
+          { "Data Quality and Reports" = "results/quality.md" },
+        ] },
       { "What the Pipeline Does Not Report" = "not-reported.md" },
       { "Genome Viewer: See the Reads Behind a Finding" = "viewer.md" },
       { "Watch a Run Live" = "live-site.md" },
@@ -140,6 +151,7 @@ nav = [
       { "What 1.0 Keeps Stable" = "output-contract.md" },
       { "Copy Number from Depth (the locus catalog)" = "cn-loci.md" },
       { Testing = "testing.md" },
+      { "User journeys" = "user-journeys.md" },
       { "The Rust Core" = "rust.md" },
       { "Keeping versions up to date" = "updating.md" },
       { Glossary = "glossary.md" },
@@ -202,7 +214,9 @@ admonition = {}
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
 ]
 "pymdownx.tabbed".alternate_style = true
-"pymdownx.highlight".anchor_linenums = true
+# No highlight anchor_linenums: the site shows no line numbers, and it would
+# give every code line an empty, unnamed link that takes a Tab stop
+# (rust/crates/og-dev/tests/docs_theme.rs).
 "pymdownx.inlinehilite" = {}
 "pymdownx.snippets".base_path = [".", "docs"]
 "pymdownx.snippets".check_paths = true

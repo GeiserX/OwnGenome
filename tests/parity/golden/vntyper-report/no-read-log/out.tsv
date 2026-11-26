@@ -1,0 +1,14 @@
+metric	value
+status	not assessed
+confidence	.
+variant	.
+flag	.
+alt_depth	.
+region_depth	.
+depth_score	.
+vntr_mean_depth	.
+vntr_uncovered_pct	.
+coverage_qc	.
+sensitivity	.
+message	The BAM has no read in the MUC1 region (chr1:155,184,000-155,194,000), so VNtyper had nothing to read.
+advice	A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment still deserves a clinical test (SNaPshot for dupC).

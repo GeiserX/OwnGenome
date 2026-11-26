@@ -1,9 +1,14 @@
 //! Step 20's chrM section: the PASS calls and the heteroplasmic ones, the
 //! poly-C tracts counted apart, the annotation table with its ClinVar
 //! classes, the confirmed variants of `assets/mito_confirmed.tsv`, the large
-//! deletions and the mtDNA copy number.
+//! deletions and the mtDNA copy number. A heteroplasmic call near the
+//! origin of the circular reference, or under 10% AF, stays counted and
+//! carries a flag that says why it is less reliable. When step 20 called the
+//! control region again on the rotated chrM (the `##og_shifted_pass=` line
+//! of its calls), no call sits next to a reference end, so none carries the
+//! origin flag.
 
-use super::util::{Obj, asset_rows, cells, lines, opt_s, pairs, round, s, strs, vcf_lines};
+use super::util::{Obj, asset_rows, base, cells, lines, opt_s, pairs, round, s, strs, vcf_lines};
 use super::{Ctx, Found, Out};
 use crate::collect::sections::py_error;
 use indexmap::IndexMap;
@@ -12,6 +17,14 @@ use pycompat::json::Value;
 
 /// The D-loop poly-C tracts, rCRS m.303-315 and m.16184-16193.
 const POLYC_TRACTS: [(i128, i128); 2] = [(303, 315), (16184, 16193)];
+/// The two ends of the control region, next to the origin of the circular
+/// reference: reads that span the origin align poorly at both edges, unless
+/// the shifted-reference pass called them again ([`SHIFTED_MARK`]).
+const ORIGIN_EDGE: [(i128, i128); 2] = [(1, 500), (16000, 16569)];
+/// The header line `og vcf shift-back` (og-vcf's `shift::MARK`) writes into
+/// the chrM calls it merges: the control region came from Mutect2 on chrM
+/// rotated by 8000 bp, where the origin lies mid-sequence.
+const SHIFTED_MARK: &str = "##og_shifted_pass=";
 const MITO_ANNOT_COLS: [&str; 13] = [
     "chrom",
     "pos",
@@ -52,6 +65,9 @@ const MITO_CN_COLS: [&str; 8] = [
 ];
 const HET_LOW: f64 = 0.05;
 const HET_HIGH: f64 = 0.95;
+/// Under this AF a heteroplasmic call is low level: often somatic or
+/// technical, and the range where NuMT reads pass as heteroplasmy.
+const LOW_AF: f64 = 0.10;
 
 fn n_chars(x: &str) -> i128 {
     x.chars().count() as i128
@@ -66,9 +82,25 @@ fn mito_span(pos: i128, r: &str, a: &str) -> (i128, i128) {
     }
 }
 
-pub fn in_polyc(pos: i128, r: &str, a: &str) -> bool {
+fn overlaps(regions: &[(i128, i128)], pos: i128, r: &str, a: &str) -> bool {
     let (lo, hi) = mito_span(pos, r, a);
-    POLYC_TRACTS.iter().any(|(a, b)| lo <= *b && hi >= *a)
+    regions.iter().any(|(a, b)| lo <= *b && hi >= *a)
+}
+
+pub fn in_polyc(pos: i128, r: &str, a: &str) -> bool {
+    overlaps(&POLYC_TRACTS, pos, r, a)
+}
+
+/// Whether the bases an allele changes touch either end of the control
+/// region (`ORIGIN_EDGE`). The allele is trimmed first (`min_allele`), so a
+/// padded multi-allelic record reads the same as its minimal form.
+pub fn at_origin_edge(pos: i128, r: &str, a: &str) -> bool {
+    let (pos, r, a) = min_allele(pos, r, a);
+    overlaps(&ORIGIN_EDGE, pos, &r, &a)
+}
+
+fn low_af(af: f64) -> bool {
+    af < LOW_AF
 }
 
 /// `(pos, ref, alt)` without the bases both share at the end, then at the
@@ -348,13 +380,41 @@ fn clinvar_terms(sig: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
+/// The value of the `##og_shifted_pass=` line of the chrM calls, if the
+/// header has one.
+fn shifted_pass(path: &str) -> Result<Option<String>, String> {
+    use std::io::BufRead;
+    let fail = |e: std::io::Error| {
+        format!(
+            "{}: {}",
+            base(path),
+            crate::collect::sections::gzip_message(&e)
+        )
+    };
+    let r = og_io::bgzf::open(path, og_io::bgzf::workers()).map_err(fail)?;
+    for line in r.split(b'\n') {
+        let line = line.map_err(fail)?;
+        if line.first() != Some(&b'#') {
+            break;
+        }
+        if let Some(v) = line.strip_prefix(SHIFTED_MARK.as_bytes()) {
+            let v = v.strip_suffix(b"\r").unwrap_or(v);
+            return Ok(Some(String::from_utf8_lossy(v).into_owned()));
+        }
+    }
+    Ok(None)
+}
+
 pub fn mito(c: &Ctx<'_>) -> Out {
     let Some(p) = c.find1(format!("mito/{}_chrM_filtered.vcf.gz", c.s())) else {
         return Ok(None);
     };
     let mut records = Vec::new();
     vcf_lines(&p.path, |l| records.push(cells(l)))?;
-    let (mut passed, mut het) = (0usize, 0usize);
+    let shifted = shifted_pass(&p.path)?;
+    // After the shifted pass no call sits next to a reference end.
+    let edge = |pos: i128, r: &str, a: &str| shifted.is_none() && at_origin_edge(pos, r, a);
+    let (mut passed, mut het, mut het_edge, mut het_low) = (0usize, 0usize, 0usize, 0usize);
     let (mut polyc, mut sites) = (Vec::new(), Vec::new());
     for r in &records {
         if r.len() < 10 || r[6] != "PASS" {
@@ -393,13 +453,21 @@ pub fn mito(c: &Ctx<'_>) -> Out {
                     .val(),
             );
         } else {
+            // Flagged calls stay counted: the flags say why one is less
+            // reliable, they never hide it.
+            let at_edge = r[4].split(',').any(|a| edge(pos, &r[3], a));
+            let low = low_af(af);
             het += 1;
+            het_edge += usize::from(at_edge);
+            het_low += usize::from(low);
             sites.push(
                 Obj::new()
                     .set("pos", Value::Int(pos))
                     .set("ref", s(&r[3]))
                     .set("alt", s(&r[4]))
                     .set("af", round(af, 3))
+                    .set("origin_edge", Value::Bool(at_edge))
+                    .set("low_af", Value::Bool(low))
                     .val(),
             );
         }
@@ -411,11 +479,11 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         let terms = clinvar_terms(r.get("clinvar_significance").flatten());
         let is_plp = terms.iter().any(|t| CLINVAR_PLP.contains(t));
         plp += i128::from(is_plp);
-        let het_row = r
+        let af = r
             .get("af")
             .flatten()
-            .and_then(|x| pycompat::num::parse_float(x).ok())
-            .is_some_and(|af| (HET_LOW..HET_HIGH).contains(&af));
+            .and_then(|x| pycompat::num::parse_float(x).ok());
+        let het_row = af.is_some_and(|af| (HET_LOW..HET_HIGH).contains(&af));
         if is_plp
             || het_row
             || (!terms.is_empty() && !terms.iter().all(|t| CLINVAR_BENIGN.contains(t)))
@@ -430,6 +498,10 @@ pub fn mito(c: &Ctx<'_>) -> Out {
             let rf = col(r, "ref")?.unwrap_or("");
             let al = col(r, "alt")?.unwrap_or("");
             o.put("polyc", Value::Bool(in_polyc(pos, rf, al)));
+            o.put("origin_edge", Value::Bool(edge(pos, rf, al)));
+            // Low level only when heteroplasmic: a homoplasmic or absent AF
+            // is not a low-level call.
+            o.put("low_af", Value::Bool(het_row && af.is_some_and(low_af)));
             listed.push(o.val());
         }
     }
@@ -448,6 +520,17 @@ pub fn mito(c: &Ctx<'_>) -> Out {
         strs(POLYC_TRACTS.iter().map(|(a, b)| format!("m.{a}-{b}"))),
     );
     out.put("annotation", ann.val());
+    out.put("heteroplasmic_origin_edge", super::util::count(het_edge));
+    out.put("heteroplasmic_low_af", super::util::count(het_low));
+    out.put(
+        "origin_edge_regions",
+        strs(ORIGIN_EDGE.iter().map(|(a, b)| format!("m.{a}-{b}"))),
+    );
+    out.put("low_af_ceiling", Value::Float(LOW_AF));
+    // Only when the pass ran, so a summary without it reads as before.
+    if let Some(v) = shifted {
+        out.put("shifted_pass", s(&v));
+    }
     Ok(Some((p, out.val())))
 }
 
@@ -478,5 +561,165 @@ mod tests {
     fn python_max_keeps_a_leading_nan() {
         assert!(py_max(&[f64::NAN, 0.5]).is_some_and(f64::is_nan));
         assert_eq!(py_max(&[0.5, f64::NAN]), Some(0.5));
+    }
+
+    const HEAD: &str =
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n";
+    const ANNOT_HEAD: &str = "# clinvar\t2026-10-01\t-\n# gnomad\tv3.1\t-\n\
+        chrom\tpos\tref\talt\tfilter\taf\tclinvar_id\tclinvar_significance\tclinvar_review\t\
+        clinvar_condition\tgnomad_af_hom\tgnomad_af_het\tgnomad_max_hl\n";
+
+    /// Step 20's section of a sample folder holding these chrM calls and
+    /// annotation rows, read with the repository's `assets/`.
+    fn section(vcf_body: &str, annot_body: &str) -> Value {
+        section_with(HEAD, vcf_body, annot_body)
+    }
+
+    /// [`section`] with the VCF header `head`.
+    fn section_with(head: &str, vcf_body: &str, annot_body: &str) -> Value {
+        let d = crate::testutil::Dir::new("chrm-flags");
+        d.put_gz("mito/S_chrM_filtered.vcf.gz", &format!("{head}{vcf_body}"));
+        d.put(
+            "mito/S_chrM_annotated.tsv",
+            format!("{ANNOT_HEAD}{annot_body}"),
+        );
+        let index = crate::collect::scan::FolderIndex::walk(&d.0);
+        let dir = d.0.display().to_string();
+        let assets = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+        let c = Ctx {
+            sample: "S",
+            dir: &dir,
+            assets,
+            tables: "",
+            index: &index,
+        };
+        mito(&c).unwrap().expect("a mito section").1
+    }
+
+    fn at<'v>(v: &'v Value, path: &[&str]) -> &'v Value {
+        path.iter().fold(v, |v, k| match v {
+            Value::Object(m) => m.get(*k).unwrap_or_else(|| panic!("no key {k} in {v:?}")),
+            _ => panic!("{k}: not an object: {v:?}"),
+        })
+    }
+
+    fn items(v: &Value) -> &[Value] {
+        match v {
+            Value::Array(a) => a,
+            _ => panic!("not an array: {v:?}"),
+        }
+    }
+
+    #[test]
+    fn origin_edge_call_is_flagged_and_stays_counted() {
+        let d = section(
+            "chrM\t16\t.\tA\tT\t50\tPASS\t.\tGT:AF\t0/1:0.12\n\
+             chrM\t16050\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.30\n\
+             chrM\t8000\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.40\n",
+            "chrM\t16\tA\tT\tPASS\t0.12\t5\tPathogenic\t.\t.\t.\t.\t.\n",
+        );
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(3));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(2));
+        assert_eq!(at(&d, &["heteroplasmic_low_af"]), &Value::Int(0));
+        let sites = items(at(&d, &["heteroplasmic_sites"]));
+        let flags: Vec<(&Value, &Value, &Value)> = sites
+            .iter()
+            .map(|x| (at(x, &["pos"]), at(x, &["origin_edge"]), at(x, &["low_af"])))
+            .collect();
+        let (t, f) = (Value::Bool(true), Value::Bool(false));
+        assert_eq!(
+            flags,
+            [
+                (&Value::Int(16), &t, &f),
+                (&Value::Int(16050), &t, &f),
+                (&Value::Int(8000), &f, &f)
+            ]
+        );
+        // The ClinVar class still counts; the listed call carries the flag.
+        assert_eq!(at(&d, &["annotation", "clinvar_plp"]), &Value::Int(1));
+        let v = &items(at(&d, &["annotation", "variants"]))[0];
+        assert_eq!(at(v, &["origin_edge"]), &t);
+        assert_eq!(at(v, &["low_af"]), &f);
+        assert_eq!(
+            at(&d, &["origin_edge_regions"]),
+            &strs(["m.1-500", "m.16000-16569"])
+        );
+        assert_eq!(at(&d, &["low_af_ceiling"]), &Value::Float(0.10));
+    }
+
+    #[test]
+    fn after_the_shifted_pass_no_call_is_flagged_at_the_origin() {
+        let body = "chrM\t16\t.\tA\tT\t50\tPASS\t.\tGT:AF\t0/1:0.12\n\
+             chrM\t16050\t.\tC\tT\t50\tPASS\t.\tGT:AF\t0/1:0.30\n";
+        let annot = "chrM\t16\tA\tT\tPASS\t0.12\t5\tPathogenic\t.\t.\t.\t.\t.\n";
+        let mark = "chrM:16025-16569 and chrM:1-575 from the rotated chrM";
+        let head = format!(
+            "##fileformat=VCFv4.2\n{SHIFTED_MARK}{mark}\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        );
+        let f = Value::Bool(false);
+        let d = section_with(&head, body, annot);
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(2));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(0));
+        for site in items(at(&d, &["heteroplasmic_sites"])) {
+            assert_eq!(at(site, &["origin_edge"]), &f, "{site:?}");
+        }
+        let v = &items(at(&d, &["annotation", "variants"]))[0];
+        assert_eq!(at(v, &["origin_edge"]), &f);
+        assert_eq!(at(&d, &["shifted_pass"]), &s(mark));
+        // The same calls without the line: both flagged, and no new key.
+        let d = section(body, annot);
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(2));
+        match &d {
+            Value::Object(m) => assert!(!m.contains_key("shifted_pass")),
+            _ => panic!("not an object"),
+        }
+    }
+
+    #[test]
+    fn edge_bounds_are_inclusive() {
+        assert!(at_origin_edge(500, "C", "T"));
+        assert!(!at_origin_edge(501, "C", "T"));
+        assert!(!at_origin_edge(15999, "C", "T"));
+        assert!(at_origin_edge(16000, "C", "T"));
+        // A deletion anchored before the edge reaches into it.
+        assert!(at_origin_edge(15998, "CAT", "C"));
+        // A padded insertion reads as its minimal form: AC>ACT at m.499 is
+        // C>CT at m.500, an insertion after the edge.
+        assert!(!at_origin_edge(500, "C", "CT"));
+        assert!(!at_origin_edge(499, "AC", "ACT"));
+    }
+
+    #[test]
+    fn low_level_m3243_is_flagged_and_keeps_attention() {
+        let d = section(
+            "chrM\t3243\t.\tA\tG\t50\tPASS\t.\tGT:AF\t0/1:0.07\n\
+             chrM\t9000\t.\tC\tT\t50\tPASS\t.\tGT:AF\t1:0.99\n",
+            "chrM\t3243\tA\tG\tPASS\t0.07\t9589\tPathogenic\tcriteria\tMELAS\t0\t0\t0\n\
+             chrM\t9000\tC\tT\tPASS\t0.99\t7\tUncertain_significance\t.\t.\t.\t.\t.\n",
+        );
+        let (t, f) = (Value::Bool(true), Value::Bool(false));
+        assert_eq!(at(&d, &["heteroplasmic"]), &Value::Int(1));
+        assert_eq!(at(&d, &["heteroplasmic_low_af"]), &Value::Int(1));
+        assert_eq!(at(&d, &["heteroplasmic_origin_edge"]), &Value::Int(0));
+        let site = &items(at(&d, &["heteroplasmic_sites"]))[0];
+        assert_eq!(
+            (at(site, &["low_af"]), at(site, &["origin_edge"])),
+            (&t, &f)
+        );
+        // What draws attention stays: the ClinVar P/LP count and the
+        // confirmed variant, with its PASS filter and AF.
+        assert_eq!(at(&d, &["annotation", "clinvar_plp"]), &Value::Int(1));
+        let conf = items(at(&d, &["confirmed"]));
+        assert_eq!(conf.len(), 1);
+        assert_eq!(at(&conf[0], &["hgvs"]), &s("m.3243A>G"));
+        assert_eq!(at(&conf[0], &["filter"]), &s("PASS"));
+        assert_eq!(at(&conf[0], &["af"]), &s("0.07"));
+        let listed = items(at(&d, &["annotation", "variants"]));
+        assert_eq!(listed.len(), 2);
+        assert_eq!(at(&listed[0], &["low_af"]), &t);
+        // A homoplasmic call is never low level.
+        assert_eq!(at(&listed[1], &["low_af"]), &f);
+        assert_eq!(at(&listed[1], &["origin_edge"]), &f);
     }
 }

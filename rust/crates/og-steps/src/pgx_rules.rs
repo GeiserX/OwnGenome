@@ -13,12 +13,20 @@
 //! its outside-call file (`gene<TAB>diplotype`, PharmCAT's `-po`) holds:
 //!
 //! - HLA-A and HLA-B: T1K's two alleles at two fields (`*57:01`) when every
-//!   allele has a quality above 0; one allele reads as homozygous. With
+//!   allele has a quality above 0; one allele reads as homozygous. A gene
+//!   whose tied candidates, or an allele with an expression suffix, leave
+//!   an allele PharmCAT acts on (A*31:01, B*15:02, B*57:01, B*58:01)
+//!   uncertain is not passed: its reason reads `ambiguous: B*57:01
+//!   possible (...)`, whatever order T1K printed the tie in. With
 //!   `--optitype`, only when OptiType gives the same pair; with
 //!   `--require-optitype` and no OptiType result, neither gene.
 //! - CYP2D6: only when pypgx (step 32) and Cyrius (step 21) give the same
-//!   diplotype and the depth check passed. One depth-based call alone can be
-//!   a false whole-gene deletion that changes a prescription.
+//!   diplotype and the depth check passed (which needs 10x in the flanks).
+//!   One depth-based call alone can be a false whole-gene deletion that
+//!   changes a prescription. A pypgx call whose defining variants are not
+//!   all `PASS` or not of good quality (step 32's `Defining_filter` and
+//!   `Quality`) reads `weak evidence (...)` in the Evidence column; Cyrius's
+//!   agreement still passes it.
 //!
 //! The consensus table (`Gene Result Outside_call Reason Evidence`) says
 //! for each of the three genes what each caller said and what was passed.
@@ -27,7 +35,9 @@
 //! so an outside call never stands without the consensus row behind it.
 //!
 //! This is `bin/pgx_outside_calls.py`'s outside calls and concordance table
-//! rewritten; `tests/parity` holds it to the Python's bytes.
+//! rewritten; `tests/parity` holds it to the Python's bytes. The Python
+//! kept the first of T1K's tied candidates and cut expression suffixes;
+//! for those inputs og differs on purpose (`tests/i411_hla_ties.rs`).
 
 use std::fmt::Write as _;
 use std::fs::File;
@@ -148,7 +158,27 @@ fn no_call(d: &str) -> bool {
 
 // --- HLA --------------------------------------------------------------------
 
-/// `'HLA-B*57:01:01:02'` cut to `'*57:01'`.
+/// The HLA alleles PharmCAT acts on, at two fields: its HLA-A and HLA-B
+/// phenotypes say whether each of these is present (`*57:01 positive`).
+pub const PHARMCAT_HLA: [(&str, &str); 4] = [
+    ("HLA-A", "*31:01"),
+    ("HLA-B", "*15:02"),
+    ("HLA-B", "*57:01"),
+    ("HLA-B", "*58:01"),
+];
+
+/// The IPD-IMGT/HLA expression suffix of an allele name (`N` null, `L`
+/// low, `S` secreted, `C` cytoplasm, `A` aberrant, `Q` questionable): a
+/// letter right after the last digit.
+fn suffix(name: &str) -> Option<char> {
+    let mut rev = name.chars().rev();
+    let last = rev.next()?;
+    let before = rev.next()?;
+    ("NLSCAQ".contains(last) && before.is_ascii_digit()).then_some(last)
+}
+
+/// `'HLA-B*57:01:01:02'` cut to `'*57:01'`. An expression suffix stays:
+/// `'HLA-A*02:53:01N'` is `'*02:53N'`, the null allele's two-field name.
 pub fn two_fields(allele: &str, gene: &str) -> String {
     let name = allele.strip_prefix(gene).unwrap_or(allele);
     let name = if name.starts_with('*') {
@@ -156,7 +186,93 @@ pub fn two_fields(allele: &str, gene: &str) -> String {
     } else {
         format!("*{name}")
     };
-    name.split(':').take(2).collect::<Vec<_>>().join(":")
+    let mut cut = name.split(':').take(2).collect::<Vec<_>>().join(":");
+    if let Some(s) = suffix(&name)
+        && suffix(&cut).is_none()
+    {
+        cut.push(s);
+    }
+    cut
+}
+
+/// A two-field name without its expression suffix: the name PharmCAT
+/// reads (`*02:53N` is `*02:53`).
+fn expressed(name: &str) -> &str {
+    if suffix(name).is_some() {
+        &name[..name.len() - 1]
+    } else {
+        name
+    }
+}
+
+/// The two-field names of one T1K allele: T1K writes equally likely
+/// candidates comma-separated (`HLA-B*57:01:01,HLA-B*58:01:01`). Sorted,
+/// without repeats, so a tie reads the same in either print order; one
+/// name unless the candidates differ at two fields.
+fn candidates(gene: &str, allele: &str) -> Vec<String> {
+    let mut names: Vec<String> = allele
+        .split(',')
+        .map(strip)
+        .filter(|c| !c.is_empty())
+        .map(|c| two_fields(c, gene))
+        .collect();
+    if names.is_empty() {
+        names.push(two_fields(allele, gene));
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// `a and b`, `a, b and c`.
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// Why T1K's call of `gene` cannot go to PharmCAT, or `None` when it can.
+/// `alleles` are T1K's allele fields (one or two, each possibly a tie).
+///
+/// PharmCAT reads HLA-A and HLA-B as present or absent per allele of
+/// [`PHARMCAT_HLA`]. Such an allele is certain when one of T1K's alleles
+/// is it and nothing else, and absent when no candidate names it. In
+/// between, a tie that holds it beside another candidate, or a form with
+/// an expression suffix (`*57:01:01N`), PharmCAT's answer would depend on
+/// which candidate we picked: the call is ambiguous and is not passed.
+/// A tie or a null that names no such allele changes no PharmCAT answer.
+pub fn pharmcat_ambiguity(gene: &str, alleles: &[&str]) -> Option<String> {
+    let lists: Vec<Vec<String>> = alleles.iter().map(|a| candidates(gene, a)).collect();
+    let mut possible = Vec::new();
+    let mut causes: Vec<String> = Vec::new();
+    for (g, risk) in PHARMCAT_HLA {
+        if g != gene {
+            continue;
+        }
+        let certain = lists.iter().any(|l| l.len() == 1 && l[0] == risk);
+        let named: Vec<&Vec<String>> = lists
+            .iter()
+            .filter(|l| l.iter().any(|c| expressed(c) == risk))
+            .collect();
+        if certain || named.is_empty() {
+            continue;
+        }
+        possible.push(format!("{}{risk} possible", &gene["HLA-".len()..]));
+        for l in named {
+            let cause = if l.len() > 1 {
+                format!("T1K ties {} on one allele", and_list(l))
+            } else {
+                format!("T1K calls {}, with an expression suffix", l[0])
+            };
+            if !causes.contains(&cause) {
+                causes.push(cause);
+            }
+        }
+    }
+    (!possible.is_empty())
+        .then(|| format!("ambiguous: {} ({})", possible.join(", "), causes.join("; ")))
 }
 
 /// One T1K allele: its name and quality (-1 when the quality is not a number).
@@ -271,14 +387,37 @@ fn optitype_of<'a>(ot: &'a OptiType, gene: &str) -> &'a [String] {
         .map_or(&[], |(_, c)| c.as_slice())
 }
 
-/// T1K's alleles of one gene at two fields, two of them: one allele reads
-/// as homozygous.
-fn t1k_pair(gene: &str, alleles: &[Allele]) -> Vec<String> {
-    let names: Vec<String> = alleles.iter().map(|a| two_fields(&a.name, gene)).collect();
-    if names.len() == 1 {
-        vec![names[0].clone(), names[0].clone()]
+/// T1K's alleles of one gene at two fields, two of them, each the list of
+/// its tied candidates ([`candidates`]): one allele reads as homozygous.
+fn t1k_pair(gene: &str, alleles: &[Allele]) -> Vec<Vec<String>> {
+    let lists: Vec<Vec<String>> = alleles.iter().map(|a| candidates(gene, &a.name)).collect();
+    if lists.len() == 1 {
+        vec![lists[0].clone(), lists[0].clone()]
     } else {
-        names
+        lists
+    }
+}
+
+/// T1K's pair as text: `*01:01/*26:01`, tied candidates comma-separated.
+fn pair_text(pair: &[Vec<String>]) -> String {
+    pair.iter()
+        .map(|l| l.join(","))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// OptiType's pair against T1K's: OptiType's two alleles in T1K's order
+/// when each is one of the candidates of a different T1K allele, else
+/// `None`. Without ties this is "the same pair, in either order".
+fn match_pair(t1k: &[Vec<String>], ot: &[String]) -> Option<Vec<String>> {
+    let [t1, t2] = t1k else { return None };
+    let [o1, o2] = ot else { return None };
+    if t1.contains(o1) && t2.contains(o2) {
+        Some(vec![o1.clone(), o2.clone()])
+    } else if t1.contains(o2) && t2.contains(o1) {
+        Some(vec![o2.clone(), o1.clone()])
+    } else {
+        None
     }
 }
 
@@ -288,6 +427,57 @@ fn same_pair(a: &[String], b: &[String]) -> bool {
     a.sort();
     b.sort();
     a.len() == 2 && a == b
+}
+
+/// What the T1K-only path passes for a pair with a tie or a suffix that
+/// changes no PharmCAT answer: per allele its first candidate, without the
+/// suffix, and a note for each allele that was flattened so.
+fn stand_in(pair: &[Vec<String>]) -> (Vec<String>, String) {
+    let mut names = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for l in pair {
+        let name = expressed(&l[0]).to_owned();
+        let note = if l.len() > 1 {
+            format!(
+                "T1K ties {} on one allele, passed as {name}: PharmCAT acts on none of them",
+                and_list(l)
+            )
+        } else if l[0] != name {
+            format!("T1K's {} passed as {name}: PharmCAT acts on neither", l[0])
+        } else {
+            String::new()
+        };
+        if !note.is_empty() && !notes.contains(&note) {
+            notes.push(note);
+        }
+        names.push(name);
+    }
+    let notes = notes.iter().map(|n| format!("; {n}")).collect();
+    (names, notes)
+}
+
+/// T1K's pair with every candidate's expression suffix cut: the names
+/// PharmCAT reads (`*02:53N` is `*02:53`).
+fn expressed_pair(pair: &[Vec<String>]) -> Vec<Vec<String>> {
+    pair.iter()
+        .map(|l| l.iter().map(|c| expressed(c).to_owned()).collect())
+        .collect()
+}
+
+/// A note for each of T1K's candidates whose expression suffix was cut to
+/// give one of the `passed` names, as [`stand_in`] writes it.
+fn suffix_notes(pair: &[Vec<String>], passed: &[String]) -> String {
+    let mut notes: Vec<String> = Vec::new();
+    for c in pair.iter().flatten() {
+        let name = expressed(c);
+        if name != c.as_str() && passed.iter().any(|p| p == name) {
+            let note = format!("; T1K's {c} passed as {name}: PharmCAT acts on neither");
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
+        }
+    }
+    notes.concat()
 }
 
 /// What step 36 decided for one gene.
@@ -368,12 +558,31 @@ pub fn hla_row(
         let why = "T1K gives an allele quality 0 or below (T1K says to ignore it)";
         return Row::withheld(gene, "indeterminate", why, &evidence);
     }
-    let names = t1k_pair(gene, alleles);
-    let dip = names.join("/");
+    // Before OptiType: its agreement with one tied candidate must not
+    // decide what PharmCAT reads.
+    let names: Vec<&str> = alleles.iter().map(|a| a.name.as_str()).collect();
+    if let Some(why) = pharmcat_ambiguity(gene, &names) {
+        return Row::withheld(gene, "indeterminate", &why, &evidence);
+    }
+    let pair = t1k_pair(gene, alleles);
+    let tied = pair.iter().any(|l| l.len() > 1);
+    let one = if alleles.len() == 1 {
+        ": one allele, read as homozygous"
+    } else {
+        ""
+    };
     match optitype {
         None if need_optitype => Row::withheld(gene, "indeterminate", NO_OPTITYPE, &evidence),
         Some(ot) => {
             let calls = optitype_of(ot, gene);
+            // OptiType never calls a null, so it is compared with the names
+            // PharmCAT reads: a suffix that could touch a drug allele has
+            // returned above, so what is left names none (*02:53N is *02:53).
+            let read = expressed_pair(&pair);
+            // T1K's pair as OptiType reads it: OptiType's own pair when it
+            // is one of T1K's choices, else T1K's first candidates.
+            let names = match_pair(&read, calls)
+                .unwrap_or_else(|| read.iter().map(|l| l[0].clone()).collect());
             if calls.is_empty() {
                 let why = "OptiType, the second caller, made no call";
                 Row::withheld(gene, "indeterminate", why, &evidence)
@@ -381,23 +590,27 @@ pub fn hla_row(
                 let why = "T1K and OptiType disagree at two fields";
                 Row::withheld(gene, "indeterminate", why, &evidence)
             } else {
+                let mut reason = "T1K and OptiType (step 08), which agree at two fields".to_owned();
+                if tied {
+                    reason.push_str(
+                        "; T1K ties candidates on one allele, and OptiType's call is one of them",
+                    );
+                }
+                reason.push_str(&suffix_notes(&pair, &names));
                 Row {
                     gene,
-                    decision: Decision::Passed(dip),
-                    reason: "T1K and OptiType (step 08), which agree at two fields".to_owned(),
+                    decision: Decision::Passed(names.join("/")),
+                    reason,
                     evidence,
                 }
             }
         }
         None => {
-            let mut reason = "T1K (step 08)".to_owned();
-            if alleles.len() == 1 {
-                reason.push_str(": one allele, read as homozygous");
-            }
+            let (names, notes) = stand_in(&pair);
             Row {
                 gene,
-                decision: Decision::Passed(dip),
-                reason,
+                decision: Decision::Passed(names.join("/")),
+                reason: format!("T1K (step 08){one}{notes}"),
                 evidence,
             }
         }
@@ -406,21 +619,27 @@ pub fn hla_row(
 
 /// Step 08's concordance table: per class I gene the two-field calls of
 /// both callers and whether they agree (`yes`, `no` or `not compared`).
+/// T1K's tied candidates are comma-separated, and an expression suffix
+/// stays (`*02:53N` does not agree with OptiType's `*02:53`, though step 36
+/// passes that pair: OptiType never calls a null).
 pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
     let mut rows = Vec::new();
     for gene in OPTITYPE_GENES {
         let alleles = alleles_of(t1k, gene);
         let ot = optitype_of(optitype, gene);
+        let pair = t1k_pair(gene, alleles);
         let t_txt = if alleles.is_empty() {
             "no call".to_owned()
         } else {
-            t1k_pair(gene, alleles).join("/")
+            pair_text(&pair)
         };
         let o_txt = if ot.is_empty() {
             "no call".to_owned()
         } else {
             ot.join("/")
         };
+        let names: Vec<&str> = alleles.iter().map(|a| a.name.as_str()).collect();
+        let mut suffix_only = false;
         let (agree, mut note) = if alleles.is_empty() || ot.is_empty() {
             ("not compared", "a caller made no call".to_owned())
         } else if alleles.iter().any(Allele::unusable) {
@@ -428,13 +647,34 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
                 "not compared",
                 "T1K gives an allele quality 0 or below".to_owned(),
             )
-        } else if same_pair(&t1k_pair(gene, alleles), ot) {
-            ("yes", "-".to_owned())
+        } else if let Some(why) = pharmcat_ambiguity(gene, &names) {
+            ("not compared", why)
+        } else if match_pair(&pair, ot).is_some() {
+            if pair.iter().any(|l| l.len() > 1) {
+                (
+                    "yes",
+                    "T1K ties candidates on one allele; OptiType's call is one of them".to_owned(),
+                )
+            } else {
+                ("yes", "-".to_owned())
+            }
+        } else if match_pair(&expressed_pair(&pair), ot).is_some() {
+            // OptiType calls no null; step 36 compares it with the names
+            // PharmCAT reads, so this pair still reaches PharmCAT.
+            suffix_only = true;
+            (
+                "no",
+                "T1K's call has an expression suffix, which OptiType never calls".to_owned(),
+            )
         } else {
             ("no", "the callers disagree at two fields".to_owned())
         };
         if HLA_GENES.contains(&gene) && agree != "yes" {
-            note.push_str("; step 36 does not pass it to PharmCAT");
+            note.push_str(if suffix_only {
+                "; step 36 passes it to PharmCAT without the suffix"
+            } else {
+                "; step 36 does not pass it to PharmCAT"
+            });
         }
         rows.push([gene.to_owned(), t_txt, o_txt, agree.to_owned(), note]);
     }
@@ -444,9 +684,16 @@ pub fn concordance_rows(t1k: &T1k, optitype: &OptiType) -> Vec<[String; 5]> {
 // --- CYP2D6 -----------------------------------------------------------------
 
 /// A diplotype that is a call: not a no-call text, two alleles, one call.
+/// An allele that is a no-call text (`*1/Indeterminate`), or any text that
+/// names Indeterminate, is no call either, so it can neither agree nor
+/// disagree with the other caller.
 pub fn is_call(diplotype: &str) -> bool {
     let d = strip(diplotype);
-    !no_call(d) && d.contains('/') && !d.contains(';')
+    !no_call(d)
+        && d.contains('/')
+        && !d.contains(';')
+        && !d.split('/').any(|a| no_call(strip(a)))
+        && !pycompat::text::lower(d).contains("indeterminate")
 }
 
 /// Equal up to the order of the two alleles.
@@ -480,10 +727,26 @@ fn cell(row: &pycompat::csv::DictRow, key: &str) -> String {
     strip(row.get(key).flatten().unwrap_or("")).to_owned()
 }
 
-/// pypgx's CYP2D6 diplotype (`""` when its summary has no CYP2D6 row).
-fn read_pypgx(path: &str) -> Result<String, Error> {
+/// pypgx's CYP2D6 diplotype (`""` when its summary has no CYP2D6 row) and
+/// what is weak in the evidence for it: step 32's `Defining_filter` when it
+/// is not `PASS` and its `Quality` when it is not `ok`, `"; "`-joined
+/// (`""` when neither is, or the summary is older than those columns).
+fn read_pypgx(path: &str) -> Result<(String, String), Error> {
     let got = dict_rows(path, |row| {
-        (cell(row, "Gene") == "CYP2D6").then(|| cell(row, "Diplotype"))
+        (cell(row, "Gene") == "CYP2D6").then(|| {
+            let filter = cell(row, "Defining_filter");
+            let quality = cell(row, "Quality");
+            let fine: [(String, &[&str]); 2] = [
+                (filter, &["", "PASS", "none", "N/A"]),
+                (quality, &["", "ok", "N/A"]),
+            ];
+            let weak: Vec<String> = fine
+                .into_iter()
+                .filter(|(v, ok)| !ok.contains(&v.as_str()))
+                .map(|(v, _)| v)
+                .collect();
+            (cell(row, "Diplotype"), weak.join("; "))
+        })
     })?;
     Ok(got.unwrap_or_default())
 }
@@ -522,13 +785,18 @@ pub fn cyp2d6_row(
     let cy = cyrius.map(read_cyrius).transpose()?;
     let dc = depth.map(read_depth_check).transpose()?;
 
-    let pg_ok = pg.as_deref().is_some_and(is_call);
+    let pg_ok = pg.as_ref().is_some_and(|(d, _)| is_call(d));
     let cy_ok = cy.as_ref().is_some_and(|(g, f)| is_call(g) && f == "PASS");
+    // A call on weak evidence is flagged, not withheld: Cyrius reads the
+    // BAM on its own, so its agreement is the second line of evidence.
     let pg_txt = match &pg {
         None => "not run".to_owned(),
-        Some(p) if pg_ok => p.clone(),
-        Some(p) if p.is_empty() => "no call (no CYP2D6 row)".to_owned(),
-        Some(p) => format!("no call ({p})"),
+        Some((p, weak)) if pg_ok && !weak.is_empty() => {
+            format!("{p}, weak evidence ({weak})")
+        }
+        Some((p, _)) if pg_ok => p.clone(),
+        Some((p, _)) if p.is_empty() => "no call (no CYP2D6 row)".to_owned(),
+        Some((p, _)) => format!("no call ({p})"),
     };
     let cy_txt = match &cy {
         None => "not run".to_owned(),
@@ -568,7 +836,7 @@ pub fn cyp2d6_row(
     if !(pg_ok && cy_ok) {
         return withheld(ONE_CALLER);
     }
-    let (pg, cy) = (pg.unwrap_or_default(), cy.unwrap_or_default());
+    let (pg, cy) = (pg.unwrap_or_default().0, cy.unwrap_or_default());
     if !same_diplotype(&pg, &cy.0) {
         return withheld("pypgx and Cyrius disagree");
     }
@@ -930,6 +1198,12 @@ mod tests {
     fn calls_and_diplotypes() {
         assert!(is_call(" *1/*2 "));
         assert!(!is_call("Indeterminate"));
+        assert!(!is_call(" indeterminate "));
+        assert!(!is_call("*1/Indeterminate"));
+        assert!(!is_call("Indeterminate/Indeterminate"));
+        assert!(!is_call("*1/indeterminate"));
+        assert!(!is_call("Indeterminate (CYP2D6 depth check)"));
+        assert!(!is_call("*1/"));
         assert!(!is_call("*1/*2;*1/*3"));
         assert!(!is_call("*1"));
         assert!(same_diplotype("*2/*1", "*1/ *2"));
@@ -994,6 +1268,93 @@ mod tests {
         let row = cyp2d6_row(Some(&pg), Some(&cy), Some(&bad)).unwrap();
         assert_eq!(row.decision, Decision::Withheld("indeterminate"));
         assert_eq!(row.reason, "multi-mapped");
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn shallow_flanks_do_not_count_an_agreement() {
+        // What `og pgx cyp2d6-check` writes for flanks under 10x (og-bam's
+        // tests/i411_cyp2d6_gate.rs pins that side).
+        let d = tmp("shallow");
+        let pg = put(&d, "p.tsv", "Gene\tDiplotype\nCYP2D6\t*1/*2\n");
+        let head = "Sample\tGenotype\tFilter\n";
+        let cy = put(&d, "c.tsv", &format!("{head}S\t*2/*1\tPASS\n"));
+        let shallow = put(
+            &d,
+            "shallow.tsv",
+            "metric\tvalue\nstatus\tunreliable\nmessage\tCYP2D6 copy number unreliable, \
+             agreement not counted (depth): the flanks of CYP2D6 (chr22:42.05-42.25 Mb) \
+             have under 10x at MAPQ >= 1, too few reads for a copy-number call\n\
+             flank_depth_mapq1\t6.00\n",
+        );
+        let row = cyp2d6_row(Some(&pg), Some(&cy), Some(&shallow)).unwrap();
+        assert_eq!(row.decision, Decision::Withheld("indeterminate"));
+        assert!(
+            row.reason.contains("agreement not counted (depth)"),
+            "{}",
+            row.reason
+        );
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn weak_pypgx_evidence_is_flagged_not_withheld() {
+        let d = tmp("weak");
+        let header = "Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\t\
+                      Min_GQ\tWeakest_variant\tDefining_filter\tQuality\n";
+        let weak = put(
+            &d,
+            "weak.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 1/2 in the VCF\t8\tchr22:42128945 C>T GQ 8 AD 3,2\t\
+                 not PASS: chr22:42128945 C>T RefCall\tlow-confidence: check the reads\n"
+            ),
+        );
+        let no_gq = put(
+            &d,
+            "nogq.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 2/2 in the VCF\tN/A\tN/A\tPASS\tGQ not in the VCF: check the reads\n"
+            ),
+        );
+        let clean = put(
+            &d,
+            "clean.tsv",
+            &format!(
+                "{header}CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\t\
+                 2/2 in the VCF\t40\tchr22:42128945 C>T GQ 40 AD 15,14\tPASS\tok\n"
+            ),
+        );
+        let head = "Sample\tGenotype\tFilter\n";
+        let cy = put(&d, "c.tsv", &format!("{head}S\t*4/*1\tPASS\n"));
+        let ok = put(&d, "ok.tsv", "status\tok\nmessage\t\n");
+
+        let row = cyp2d6_row(Some(&weak), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Passed("*1/*4".to_owned()));
+        assert_eq!(row.reason, "pypgx and Cyrius agree; the depth check passed");
+        assert_eq!(
+            row.evidence,
+            "pypgx: *1/*4, weak evidence (not PASS: chr22:42128945 C>T RefCall; \
+             low-confidence: check the reads); Cyrius: *4/*1; depth check: ok"
+        );
+
+        let row = cyp2d6_row(Some(&no_gq), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Passed("*1/*4".to_owned()));
+        assert_eq!(
+            row.evidence,
+            "pypgx: *1/*4, weak evidence (GQ not in the VCF: check the reads); \
+             Cyrius: *4/*1; depth check: ok"
+        );
+
+        // One caller only: still withheld, still flagged.
+        let row = cyp2d6_row(Some(&weak), None, Some(&ok)).unwrap();
+        assert_eq!(row.decision, Decision::Withheld("indeterminate"));
+        assert!(row.evidence.contains("weak evidence"), "{}", row.evidence);
+
+        let row = cyp2d6_row(Some(&clean), Some(&cy), Some(&ok)).unwrap();
+        assert_eq!(row.evidence, "pypgx: *1/*4; Cyrius: *4/*1; depth check: ok");
         let _ = std::fs::remove_dir_all(d);
     }
 

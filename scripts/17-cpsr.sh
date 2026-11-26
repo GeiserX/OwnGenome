@@ -71,7 +71,8 @@ CPSR_ID=$(sh "${PGP_ROOT}/bin/cpsr_sample_id" "$SAMPLE")
 
 # ACMG secondary findings (genes outside CPSR's cancer panels, such as cardiac
 # and metabolic ones) are reported unless CPSR_SECONDARY_FINDINGS=false: some
-# people do not want to learn about them.
+# people do not want to learn about them. run-all.sh reads the same switch and
+# passes --cpsr_secondary_findings false to the Nextflow module.
 CPSR_EXTRA=()
 case "${CPSR_SECONDARY_FINDINGS:-true}" in
   true) CPSR_EXTRA+=(--secondary_findings) ;;
@@ -121,10 +122,8 @@ else
   else
     CDNA_ARGS=(--bam "$(cpath "$BAM")" --exons "$(cpath "$EXONS_BED")")
   fi
-  # og reads the BAM itself. It runs from OUTPUT_DIR with a relative output,
-  # so bin/og's shadow mode (OG_SHADOW, CI only) can run the Python it
-  # replaced beside it, which needs the pysam of PYPGX_IMAGE.
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  # og reads the BAM itself and writes a relative path from OUTPUT_DIR.
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
     /pgp-bin/og cdna check --cpsr "$(cpath "$CLASS_TSV")" --out "${CDNA_TSV##*/}.part" "${CDNA_ARGS[@]}"
   mv "${CDNA_TSV}.part" "$CDNA_TSV"
 fi

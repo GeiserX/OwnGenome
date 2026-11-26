@@ -24,7 +24,7 @@
 | **Traits** | Lactase persistence, caffeine, alcohol flush, bitter taste, earwax, pigmentation, APOE and other replicated variants, each row citing its primary paper | 42 |
 | **Archaic Ancestry** | The Neanderthal and Denisovan shares and the segments carried, with IBDmix against the Altai and Vindija Neanderthals and the Altai Denisovan (opt-in) | 43 |
 | **Viral DNA** | Inherited integrated HHV-6 and the DNA of 23 human viruses (herpesviruses, HPV, HBV, HIV-1, polyomaviruses and others) in the reads that do not map to the human genome, with phiX as the lab control (opt-in) | 47 |
-| **Mobile Elements** | Alu, L1 and SVA insertions the reference lacks, each genotyped as one or two copies, and three SVA insertions known to cause disease (FKTN, TAF1, BBS1) read as seen, not seen or not callable (opt-in; needs the BAM) | 50 |
+| **Mobile Elements** | Alu, L1 and SVA insertions the reference lacks, each genotyped as one or two copies, and three SVA insertions known to cause disease (FKTN, TAF1, BBS1) read as seen, call filtered out (a call MEGAnE flagged), not seen or not callable (opt-in; needs the BAM) | 50 |
 | **Mosaic Alterations** | Large gains, losses and copy-neutral loss of heterozygosity on chr1 to chr22 in a share of the blood cells, with the cell fraction (opt-in; mosaic loss of Y and X are step 33's) | 51 |
 
 ## Pipeline Overview
@@ -116,7 +116,7 @@ graph LR
 | 5 | [SV Annotation](05-annotsv.md) | AnnotSV | `ANNOTSV_IMAGE` | If step 4 run |
 | 6 | [ClinVar Screen](06-clinvar-screen.md) | bcftools isec, then the cDNA read check (`og cdna check`, `og cdna scan`) | `BCFTOOLS_IMAGE` + `PYPGX_IMAGE` | Yes |
 | 7 | [Pharmacogenomics](07-pharmacogenomics.md) | PharmCAT | `PHARMCAT_IMAGE` | Yes |
-| 8 | [HLA Typing](08-hla-typing.md) | T1K (+ OptiType with `HLA_QC=true`) | `T1K_IMAGE` (+ `OPTITYPE_IMAGE` + `SAMTOOLS_IMAGE`) | Optional |
+| 8 | [HLA Typing](08-hla-typing.md) | T1K (+ OptiType with `HLA_QC=true`) | `T1K_IMAGE` (+ `OPTITYPE_IMAGE`) | Optional |
 | 9 | [STR Expansions](09-str-expansions.md) | ExpansionHunter | `EXPANSIONHUNTER_IMAGE` | Recommended |
 | 9b | [STR Annotation](09b-stranger.md) | Stranger (+ the RFC1 motif count) | `STRANGER_IMAGE` (+ `PYPGX_IMAGE` when Stranger flags RFC1) | If step 9 run |
 | 10 | [Telomere Length](10-telomere-analysis.md) | TelomereHunter | `TELOMEREHUNTER_IMAGE` | Optional |
@@ -130,7 +130,7 @@ graph LR
 | 17 | [Cancer Predisposition](17-cpsr.md) | CPSR | `PCGR_IMAGE` | Recommended |
 | 18 | [CNV Calling](18-cnvpytor.md) | CNVpytor | `CNVPYTOR_IMAGE` | Optional |
 | 19 | [SV Calling (Delly)](19-delly.md) | Delly | `DELLY_IMAGE` | Optional |
-| 20 | [Mitochondrial](20-mtoolbox.md) | GATK Mutect2 | `GATK_IMAGE` | Optional |
+| 20 | [Mitochondrial](20-mtoolbox.md) | GATK Mutect2 + samtools + eKLIPse + og in `OG_IMAGE` (stock Ubuntu) | `GATK_IMAGE` + `SAMTOOLS_IMAGE` + `EKLIPSE_IMAGE` + `OG_IMAGE` | Optional |
 
 #### Post-Processing Steps
 
@@ -138,39 +138,39 @@ These run after the core pipeline completes and combine outputs from earlier ste
 
 | # | Step | Tool | Image variable | Required? |
 |---|---|---|---|---|
-| 21 | [CYP2D6 Star Alleles](21-cyrius.md) | Cyrius | `PYTHON_IMAGE` | Runs by default once `setup.sh --cyrius` has installed it (non-commercial licence); skipped otherwise |
+| 21 | [CYP2D6 Star Alleles](21-cyrius.md) | Cyrius + mosdepth + og in `OG_IMAGE` (stock Ubuntu for Bash depth helpers) | `PYTHON_IMAGE` + `MOSDEPTH_IMAGE` + `OG_IMAGE` | Runs by default once `setup.sh --cyrius` has installed it (non-commercial licence); skipped otherwise |
 | 22 | [SV Consensus Merge](22-survivor-merge.md) | SURVIVOR | `SURVIVOR_IMAGE` | If two SV callers ran |
 | 23 | [Clinical Filter](23-clinical-filter.md) | bcftools +split-vep | `BCFTOOLS_IMAGE` | If step 13 run |
-| 24 | [HTML Report](24-html-report.md) | bash + bcftools | `BCFTOOLS_IMAGE` | Recommended |
-| 25 | [Polygenic Risk Scores](25-prs.md) | pgsc_calc | `PGSC_UTILS_IMAGE`, `PLINK2_IMAGE` | Exploratory; percentiles need the ancestry panel |
-| 26 | [Ancestry](26-ancestry.md) | pgsc_calc | `PGSC_FRAPOSA_IMAGE`, `PGSC_UTILS_IMAGE` | After `setup.sh --ancestry-panel` (runs inside step 25) |
-| 26b | [Fine-Grained Ancestry](26b-ancestry-fine.md) | ADMIXTURE, Beagle, RFMix | `ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE` | Opt-in, after `setup.sh --ancestry-fine-panel` (ADMIXTURE: academic use; RFMix: academic research only) |
-| 27 | [CPIC Recommendations](27-cpic-lookup.md) | Python + CPIC | `PYTHON_IMAGE` | If step 7 run |
+| 24 | [HTML Report](24-html-report.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | Recommended |
+| 25 | [Polygenic Risk Scores](25-prs.md) | pgsc_calc + og in `OG_IMAGE` (stock Ubuntu) | `PGSC_UTILS_IMAGE` + `PLINK2_IMAGE` + `OG_IMAGE` | Exploratory; percentiles need the ancestry panel |
+| 26 | [Ancestry](26-ancestry.md) | pgsc_calc + og in `OG_IMAGE` (stock Ubuntu) | `PGSC_FRAPOSA_IMAGE` + `PGSC_UTILS_IMAGE` + `OG_IMAGE` | After `setup.sh --ancestry-panel` (runs inside step 25) |
+| 26b | [Fine-Grained Ancestry](26b-ancestry-fine.md) | ADMIXTURE + Beagle + RFMix + og in `OG_IMAGE` (stock Ubuntu) | `ADMIXTURE_IMAGE` + `BEAGLE_IMAGE` + `RFMIX_IMAGE` + `OG_IMAGE` | Opt-in, after `setup.sh --ancestry-fine-panel` (ADMIXTURE: academic use; RFMix: academic research only) |
+| 27 | [CPIC Recommendations](27-cpic-lookup.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | If step 7 run |
 | 28 | [MultiQC Report](28-multiqc.md) | MultiQC | `MULTIQC_IMAGE` | Recommended |
 | 29 | [Somatic Variants](29-mutect2-somatic.md) | GATK Mutect2 | `GATK_IMAGE` | Experimental, opt-in (`SOMATIC=true`) |
 | 30 | [Annotation Enrichment](30-vcfanno.md) | vcfanno | `VCFANNO_IMAGE` | If step 13 run |
 | 31 | [Variant Prioritization](31-slivar.md) | slivar | `SLIVAR_IMAGE` | If step 13 run |
-| 32 | [pypgx Pharmacogenomics](32-pypgx.md) | pypgx | `PYPGX_IMAGE` | Recommended |
-| 33 | [Sample Identity and Contamination](33-sample-qc.md) | somalier + VerifyBamID2 | `SOMALIER_IMAGE` + `VERIFYBAMID2_IMAGE` | Recommended |
+| 32 | [pypgx Pharmacogenomics](32-pypgx.md) | pypgx + og in `OG_IMAGE` (stock Ubuntu) | `PYPGX_IMAGE` + `MOSDEPTH_IMAGE` + `OG_IMAGE` | Recommended |
+| 33 | [Sample Identity and Contamination](33-sample-qc.md) | somalier + VerifyBamID2 + og in `OG_IMAGE` (stock Ubuntu for Bash summaries) | `SOMALIER_IMAGE` + `VERIFYBAMID2_IMAGE` + `OG_IMAGE` | Recommended |
 | 34 | [CRAM Archive](34-cram-archive.md) | samtools | `SAMTOOLS_IMAGE` | Optional, when the analysis is done |
 | 35 | [Paralog Genes: SMN1/SMN2, HBA1/HBA2](35-paralogs.md) | Parascopy (+ HBA1/HBA2 from depth) | `PARASCOPY_IMAGE` | Opt-in (`TOOLS=...,parascopy`) |
-| 35b | [Paralog Genes from PacBio HiFi Reads](35-paralogs.md#step-35b-paralog-genes-from-pacbio-hifi-reads-paraphase) | Paraphase + Python | `PARAPHASE_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,paraphase`; PacBio HiFi BAMs only) |
-| 36 | [PGx Consensus](36-pgx-consensus.md) | Python | `PYTHON_IMAGE` | Runs with step 7 when step 8, 21 or 32 ran |
+| 35b | [Paralog Genes from PacBio HiFi Reads](35-paralogs.md#step-35b-paralog-genes-from-pacbio-hifi-reads-paraphase) | Paraphase + og in `OG_IMAGE` (stock Ubuntu) | `PARAPHASE_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,paraphase`; PacBio HiFi BAMs only) |
+| 36 | [PGx Consensus](36-pgx-consensus.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | Runs with step 7 when step 8, 21 or 32 ran |
 | 37 | [Y-Chromosome Haplogroup](37-y-haplogroup.md) | Yleaf | `YLEAF_IMAGE` | Opt-in (`TOOLS=...,y_haplogroup`, after `setup.sh --yleaf-data`; male samples) |
-| 38 | [Family Analysis](multi-sample.md#family-analysis-step-38-opt-in) | GLnexus + somalier + WhatsHap; shared segments: Beagle + hap-ibd | `GLNEXUS_IMAGE` + `SOMALIER_IMAGE` + `WHATSHAP_IMAGE` (with `BCFTOOLS_IMAGE` + `PYTHON_IMAGE`); `BEAGLE_IMAGE` + `HAP_IBD_IMAGE` | Opt-in (a pedigree naming two or more samples, each with a gVCF; after `setup.sh --sample-qc-data`; the shared segments after `setup.sh --ancestry-fine-panel`) |
-| 39 | [Couple Carrier Screen](39-couple.md) | Python | `PYTHON_IMAGE` | Opt-in (a pedigree marking two samples as partners; after step 6 for both) |
-| 40 | [Raw-Data Export](40-export-consumer.md) | Python | `PYTHON_IMAGE` | Opt-in (`TOOLS=...,consumer_export`, after `setup.sh --consumer-sites`; needs the gVCF) |
-| 41 | [Blood Groups (predicted)](41-bloodtype.md) | samtools + Python | `SAMTOOLS_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,bloodtype`; RhD needs the BAM) |
-| 42 | [Traits Panel](42-traits.md) | bcftools + Python + WhatsHap | `BCFTOOLS_IMAGE` + `PYTHON_IMAGE` + `WHATSHAP_IMAGE` | Recommended (reads the gVCF of step 3; WhatsHap phases from the BAM when a rule needs it) |
-| 43 | [Archaic Ancestry](43-archaic.md) | IBDmix + Python | `IBDMIX_IMAGE` + `PYTHON_IMAGE` | Opt-in (runs once `setup.sh --archaic` installed its table; needs the gVCF) |
-| 44 | [Ancient Populations](44-ancient.md) | smartpca (EIGENSOFT) + bcftools + Python | `EIGENSOFT_IMAGE` + `BCFTOOLS_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,ancient`, after `setup.sh --ancient-panel`; needs the gVCF) |
+| 38 | [Family Analysis](multi-sample.md#family-analysis-step-38-opt-in) | GLnexus + somalier + WhatsHap + og in `OG_IMAGE` (stock Ubuntu). Beagle and hap-ibd for shared segments. | `GLNEXUS_IMAGE` + `SOMALIER_IMAGE` + `WHATSHAP_IMAGE` (with `BCFTOOLS_IMAGE` + `OG_IMAGE`); `BEAGLE_IMAGE` + `HAP_IBD_IMAGE` | Opt-in (a pedigree naming two or more samples, each with a gVCF; after `setup.sh --sample-qc-data`; the shared segments after `setup.sh --ancestry-fine-panel`) |
+| 39 | [Couple Carrier Screen](39-couple.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | Opt-in (a pedigree marking two samples as partners; after step 6 for both) |
+| 40 | [Raw-Data Export](40-export-consumer.md) | og in `OG_IMAGE` (stock Ubuntu) | `OG_IMAGE` | Opt-in (`TOOLS=...,consumer_export`, after `setup.sh --consumer-sites`; needs the gVCF) |
+| 41 | [Blood Groups (predicted)](41-bloodtype.md) | samtools + og in `OG_IMAGE` (stock Ubuntu) | `SAMTOOLS_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,bloodtype`; RhD needs the BAM) |
+| 42 | [Traits Panel](42-traits.md) | bcftools + og in `OG_IMAGE` (stock Ubuntu) + WhatsHap | `BCFTOOLS_IMAGE` + `OG_IMAGE` + `WHATSHAP_IMAGE` | Recommended (reads the gVCF of step 3; WhatsHap phases from the BAM when a rule needs it) |
+| 43 | [Archaic Ancestry](43-archaic.md) | IBDmix + og in `OG_IMAGE` (stock Ubuntu) | `IBDMIX_IMAGE` + `OG_IMAGE` | Opt-in (runs once `setup.sh --archaic` installed its table; needs the gVCF) |
+| 44 | [Ancient Populations](44-ancient.md) | smartpca (EIGENSOFT) + bcftools + og in `OG_IMAGE` (stock Ubuntu) | `EIGENSOFT_IMAGE` + `BCFTOOLS_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,ancient`, after `setup.sh --ancient-panel`; needs the gVCF) |
 | 45 | [Y-STR Markers](45-y-str.md) | HipSTR | `HIPSTR_IMAGE` | Opt-in (`TOOLS=...,y_str`; male samples) |
-| 46 | [Lp(a): LPA KIV-2 Repeat Count](46-lpa.md) | samtools + Python | `SAMTOOLS_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,lpa`; needs the BAM) |
-| 47 | [Viral DNA in the Unmapped Reads](47-viral.md) | samtools + minimap2 + Python | `SAMTOOLS_IMAGE` + `MINIMAP2_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,viral`, after `setup.sh --viral-data`; needs the BAM) |
-| 48 | [Symptom-Driven Variant Ranking](48-exomiser.md) | Exomiser + Python | `EXOMISER_IMAGE` + `PYTHON_IMAGE` | Opt-in (`HPO=...`, the symptoms as HPO terms; after `setup.sh --exomiser-data`) |
-| 49 | [Clonal Haematopoiesis (CHIP)](49-chip.md) | Mutect2 + bcftools csq + Python | `GATK_IMAGE` + `BCFTOOLS_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,chip`, after `setup.sh --chip-data`; needs the BAM) |
-| 50 | [Mobile Element Insertions (Alu, L1, SVA)](50-mei.md) | MEGAnE + samtools + Python | `MEGANE_IMAGE` + `SAMTOOLS_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,mei`, after `setup.sh --megane-kmers`; needs the BAM) |
-| 51 | [Mosaic Chromosomal Alterations](51-mocha.md) | MoChA + Beagle + Python | `MOCHA_IMAGE` + `BEAGLE_IMAGE` + `PYTHON_IMAGE` | Opt-in (`TOOLS=...,mocha`, after `setup.sh --mocha-data`) |
+| 46 | [Lp(a): LPA KIV-2 Repeat Count](46-lpa.md) | samtools + og in `OG_IMAGE` (stock Ubuntu) | `SAMTOOLS_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,lpa`; needs the BAM) |
+| 47 | [Viral DNA in the Unmapped Reads](47-viral.md) | samtools + minimap2 + og in `OG_IMAGE` (stock Ubuntu) | `SAMTOOLS_IMAGE` + `MINIMAP2_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,viral`, after `setup.sh --viral-data`; needs the BAM) |
+| 48 | [Symptom-Driven Variant Ranking](48-exomiser.md) | Exomiser + og in `OG_IMAGE` (stock Ubuntu) | `EXOMISER_IMAGE` + `OG_IMAGE` | Opt-in (`HPO=...`, the symptoms as HPO terms; after `setup.sh --exomiser-data`) |
+| 49 | [Clonal Haematopoiesis (CHIP)](49-chip.md) | Mutect2 + bcftools csq + og in `OG_IMAGE` (stock Ubuntu) | `GATK_IMAGE` + `BCFTOOLS_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,chip`, after `setup.sh --chip-data`; needs the BAM) |
+| 50 | [Mobile Element Insertions (Alu, L1, SVA)](50-mei.md) | MEGAnE + samtools + og in `OG_IMAGE` (stock Ubuntu) | `MEGANE_IMAGE` + `SAMTOOLS_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,mei`, after `setup.sh --megane-kmers`; needs the BAM) |
+| 51 | [Mosaic Chromosomal Alterations](51-mocha.md) | MoChA + Beagle + og in `OG_IMAGE` (stock Ubuntu) | `MOCHA_IMAGE` + `BEAGLE_IMAGE` + `OG_IMAGE` | Opt-in (`TOOLS=...,mocha`, after `setup.sh --mocha-data`) |
 | 52 | [MUC1 VNTR Frameshifts (VNtyper)](52-vntyper.md) | VNtyper | `VNTYPER_IMAGE` | Opt-in (`TOOLS=...,vntyper`; needs the BAM) |
 | 53 | [Hard Loci Second Opinion](53-locityper.md) | Locityper + Python | `LOCITYPER_IMAGE` | Opt-in (`TOOLS=...,locityper`, after `setup.sh --locityper-data`; needs the BAM) |
 
@@ -178,7 +178,7 @@ These run after the core pipeline completes and combine outputs from earlier ste
 
 A default `./scripts/run-all.sh <sample> <sex>` runs **37 numbered steps**: 1b and 2 (only when there is no BAM yet), 3 (only when there is no VCF yet), 4, 5, 6, 7, 8, 9, 9b, 10, 11, 12, 13, 15, 16, 16b, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 26b, 27, 28, 30, 31, 32, 33, 36, 42 and 43. Steps 5, 8, 13, 17, 18, 32 and 33 are reported as skipped when their data is not installed (for 33, somalier's sites and VerifyBamID2's panel, which `setup.sh` installs), 21 when Cyrius is not installed (`setup.sh --cyrius`; non-commercial licence), 25 when no score file is, 26 (inside the PRS run of step 25) when the ancestry panel is not, 26b when its panel (`setup.sh --ancestry-fine-panel`) is not, 43 when its table (`setup.sh --archaic`) is not, 23, 30 and 31 when step 13 did not run, 36 (inside the PharmCAT stage) runs when step 8 or 32 did, and 42 and 43 (43 once its table is installed) are reported as skipped for a sample that starts from a VCF, unless it has a BAM too and a gVCF beside the VCF (the gVCF `run-all.sh` passes on). It ends with the summary report (`generate-report.sh`).
 
-Off unless you ask for them: 35 (`TOOLS=...,parascopy`, after `setup.sh --parascopy-data`), 35b (`TOOLS=...,paraphase`, on a PacBio HiFi BAM), KIR typing in step 8 (`KIR=true`, after `setup.sh --kir-data`), OptiType beside T1K in step 8 (`HLA_QC=true`), 4b (`GRIDSS=true`), 14 (`IMPUTATION=true`), 29 (`SOMATIC=true`), 37 (`TOOLS=...,y_haplogroup`, after `setup.sh --yleaf-data`, male samples), 40 (`TOOLS=...,consumer_export`, after `setup.sh --consumer-sites`), 41 (`TOOLS=...,bloodtype`), 44 (`TOOLS=...,ancient`, after `setup.sh --ancient-panel`), 45 (`TOOLS=...,y_str`, male samples), 46 (`TOOLS=...,lpa`), 47 (`TOOLS=...,viral`, after `setup.sh --viral-data`), 48 (`HPO=...` with the symptoms as HPO terms, after `setup.sh --exomiser-data`), 49 (`TOOLS=...,chip`, after `setup.sh --chip-data`), 50 (`TOOLS=...,mei`, after `setup.sh --megane-kmers`), 51 (`TOOLS=...,mocha`, after `setup.sh --mocha-data`), 52 (`TOOLS=...,vntyper`), 53 (`TOOLS=...,locityper`, after `setup.sh --locityper-data`), the alternative callers 3a to 3d (`EXTRA_CALLERS=gatk,freebayes,strelka2,octopus`) and the caller comparison (`BENCHMARK=true`). Step 1 (ORA input) and the other alternative scripts (2a, 2b, 3e, 4a, 4c) run only by hand. Step 33 stops the run when somalier's sex from the reads differs from the declared one, as step 16 does (`--sex_check warn` logs it and goes on). Step 34 runs by hand, or in the Nextflow pipeline with `cram_archive` in `--tools`. Steps 38 and 39 work on a family, not one sample. With `FAMILIES=<families file>`, `run-all.sh` runs them after the pipeline once the members they need are processed, and records `skipped (waiting: ...)` until then ([Running it](multi-sample.md#running-it)). Without `FAMILIES`, run `38-family.sh` and `39-couple.sh` by hand with a pedigree, or give the Nextflow pipeline `--pedigree` (step 39 then runs for two samples the pedigree marks as partners, when `clinvar` is in `--tools`).
+Off unless you ask for them: 35 (`TOOLS=...,parascopy`, after `setup.sh --parascopy-data`), 35b (`TOOLS=...,paraphase`, on a PacBio HiFi BAM), KIR typing in step 8 (`KIR=true`, after `setup.sh --kir-data`), OptiType beside T1K in step 8 (`HLA_QC=true`), 4a (`TIDDIT=true`), 4b (`GRIDSS=true`), 14 (`IMPUTATION=true`), 29 (`SOMATIC=true`), 37 (`TOOLS=...,y_haplogroup`, after `setup.sh --yleaf-data`, male samples), 40 (`TOOLS=...,consumer_export`, after `setup.sh --consumer-sites`), 41 (`TOOLS=...,bloodtype`), 44 (`TOOLS=...,ancient`, after `setup.sh --ancient-panel`), 45 (`TOOLS=...,y_str`, male samples), 46 (`TOOLS=...,lpa`), 47 (`TOOLS=...,viral`, after `setup.sh --viral-data`), 48 (`HPO=...` with the symptoms as HPO terms, after `setup.sh --exomiser-data`), 49 (`TOOLS=...,chip`, after `setup.sh --chip-data`), 50 (`TOOLS=...,mei`, after `setup.sh --megane-kmers`), 51 (`TOOLS=...,mocha`, after `setup.sh --mocha-data`), 52 (`TOOLS=...,vntyper`), 53 (`TOOLS=...,locityper`, after `setup.sh --locityper-data`), the alternative callers 3a to 3d (`EXTRA_CALLERS=gatk,freebayes,strelka2,octopus`) and the caller comparison (`BENCHMARK=true`). `EVERYTHING=true` turns on all of these at once ([Every optional step](getting-started.md#every-optional-step)). Step 1 (ORA input) and the other alternative scripts (2a, 2b, 3e, 4c) run only by hand. Step 33 stops the run when somalier's sex from the reads differs from the declared one, as step 16 does (`--sex_check warn` logs it and goes on). Step 34 runs by hand, or in the Nextflow pipeline with `cram_archive` in `--tools`. Steps 38 and 39 work on a family, not one sample. With `FAMILIES=<families file>`, `run-all.sh` runs them after the pipeline once the members they need are processed, and records `skipped (waiting: ...)` until then ([Running it](multi-sample.md#running-it)). Without `FAMILIES`, run `38-family.sh` and `39-couple.sh` by hand with a pedigree, or give the Nextflow pipeline `--pedigree` (step 39 then runs for two samples the pedigree marks as partners, when `clinvar` is in `--tools`).
 
 The [Nextflow pipeline](nextflow.md) runs the same chain from a samplesheet, from FASTQ (steps 1b, 2, 16 and 3) to the report, with the steps above that have a module.
 

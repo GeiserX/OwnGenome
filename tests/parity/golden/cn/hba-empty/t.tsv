@@ -1,0 +1,10 @@
+metric	value
+status	not assessed
+alpha_globin_genes	.
+estimate	.
+hba2_depth	.
+hba1_depth	.
+flank_left_depth	.
+flank_right_depth	.
+mapq0_share	.
+message	not assessed: the BAM has no chr16 reads, so HBA1 and HBA2 have none

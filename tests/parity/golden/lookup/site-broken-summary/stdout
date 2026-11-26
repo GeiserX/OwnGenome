@@ -1,0 +1,5 @@
+== chr7:150: chr7:150 (GRCh38; from position)
+  genotype: ref/ref (homozygous reference, inside the reference block chr7:100-200)
+  evidence: lowest depth in the block 31, genotype quality 50
+  annotation: no annotated VCF (step 13), so no consequence, ClinVar or gnomAD
+  in the reports:

@@ -1,0 +1,6 @@
+CHROM	POS	GENE	LOEUF	pLI	mis_z
+chr1	100	GENEA	0.21	0.99	3.52
+chr2	200	GENEB	0.52	0.20	2.25
+chr3	300	GENEC	.	.	.
+chr4	400	GENED	.	.	.
+chr5	500	.	.	.	.

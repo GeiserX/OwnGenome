@@ -215,11 +215,6 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
-        with:
-          workspaces: rust
-
       - name: Build og
         if: steps.scope.outputs.run == 'true'
         working-directory: rust
@@ -370,8 +365,47 @@ jobs:
         env:
           OG: ${{ github.workspace }}/rust/target/release/og   # og dev versions check-run, built above
         run: |
-          cat "${RUNNER_TEMP}/all-tools/pipeline_info/software_versions.yml"
-          scripts/ci/gen-containers-config.sh --check-versions "${RUNNER_TEMP}/all-tools/pipeline_info/software_versions.yml"
+          versions="${RUNNER_TEMP}/all-tools/pipeline_info/software_versions.yml"
+          cat "$versions"
+          scripts/ci/gen-containers-config.sh --check-versions "$versions"
+          # The image check reads the first entry of each block. Check the og stamp too.
+          # shellcheck source=/dev/null
+          . ./versions.env
+          awk -F"'" -v image="$OG_IMAGE" '
+            FNR == NR {
+              if ($3 == " { container = " && $4 == image) owned[$2] = 1
+              next
+            }
+            /^"[^"]+":[[:space:]]*$/ {
+              check_block()
+              block = $0
+              process = $0
+              sub(/^"/, "", process)
+              sub(/":[[:space:]]*$/, "", process)
+              sub(/^.*:/, "", process)
+              stamped = 0
+              next
+            }
+            /^[[:space:]]+owngenome:[[:space:]]+stub[[:space:]]*$/ { stamped = 1 }
+            END {
+              check_block()
+              if (!checked) {
+                print "FAIL: no OG_IMAGE process blocks in software_versions.yml"
+                bad = 1
+              }
+              if (!bad) printf "OK: %d OG_IMAGE process blocks have owngenome: stub\n", checked
+              exit bad
+            }
+            function check_block() {
+              if (process in owned) {
+                checked++
+                if (!stamped) {
+                  print "FAIL " block " missing owngenome: stub"
+                  bad = 1
+                }
+              }
+            }
+          ' conf/containers.config "$versions"
 
       # What the heavy tasks ask for, read back from the trace of a stub run,
       # so it is the value Nextflow resolved and not the config text. The caps

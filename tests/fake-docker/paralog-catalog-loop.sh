@@ -14,7 +14,9 @@
 #   - the catalog in the repository runs its SMN1 row into the table the
 #     reports read, and removes the tables of rows it no longer has (not the
 #     HBA or Paraphase ones);
-#   - a catalog row with a bad region stops the step before any container.
+#   - a catalog row with a bad region stops the step before any container;
+#   - an ALT contig check that cannot run (the BAM header cannot be read, or
+#     og cn check-bam fails) stops the step with exit 2 before Parascopy.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 # shellcheck source=../../versions.env
@@ -42,6 +44,13 @@ arg() {  # arg FLAG: the value after FLAG in the call
   for a in "$@"; do [ "$prev" = "$FLAG" ] && { printf '%s' "$a"; return; }; prev=$a; done
 }
 case "$*" in
+  "samtools view -H"*)
+    # FAKE_HEADER_FAIL: the header cannot be read
+    [ -z "${FAKE_HEADER_FAIL:-}" ] || { echo "fake samtools: cannot read the header" >&2; exit 1; }
+    printf '@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n@SQ\tSN:chr5\tLN:181538259\n@SQ\tSN:chr7\tLN:159345973\n' ;;
+  "/pgp-bin/og cn check-bam "*)
+    # FAKE_CHECK_FAIL: og fails on the header (any exit but 4, the refusal)
+    [ -z "${FAKE_CHECK_FAIL:-}" ] || { echo "fake og: failed" >&2; exit 3; } ;;
   "samtools view -c"*)
     # FAKE_NO_READS: a region with no read
     region=${*: -1}
@@ -149,6 +158,19 @@ for t in gba pms2; do
 done
 [ -s "${OUT}/sample1_paraphase_copy_number.tsv" ] || fail "the step removed the Paraphase table"
 [ -s "${OUT}/sample1_hba_copy_number.tsv" ] || fail "no HBA table"
+
+# --- an ALT contig check that cannot run stops the step ------------------------------
+# Before, the step warned and went on: a BAM that might have ALT contigs
+# reached Parascopy and the HBA count.
+for f in FAKE_HEADER_FAIL FAKE_CHECK_FAIL; do
+  : > "$FAKE_DOCKER_LOG"
+  export "${f}=1"
+  PARALOG_LOCI="$L" run_expect 2 "check-${f}" "${SCRIPTS}/35-paralogs.sh" sample1
+  unset "$f"
+  [ "$(calls)" = 0 ] || fail "${f}: Parascopy ran on a BAM whose ALT contig check did not run"
+  grep -q 'parascopy depth' "$FAKE_DOCKER_LOG" && fail "${f}: parascopy depth ran on an unchecked BAM"
+  output_has "check-${f}" 'ERROR: .*ALT contig check'
+done
 
 # --- a catalog with a bad row stops the step before any container ---------------------
 printf 'GBA.gz\tGBA1\tchr1:1-2 x\tx\tno\tcarrier\tnone\tgba2\ts\n' >> "$L"

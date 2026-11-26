@@ -1,0 +1,5 @@
+family_a joint_call       runs     GLnexus joint call, somalier relationship check and the family report of child_a, father_a, mother_a
+family_a trio_phasing     runs     WhatsHap phases child_a by inheritance from both parents
+family_a inheritance_map  runs     the allele each sequenced parent passed on, and the chromosome map, of child_a
+family_a shared_segments  runs     Beagle phases the joint call against step 26b's panel and hap-ibd lists the DNA each pair shares
+family_a couple_carrier   runs     carrier screen of father_a and mother_a

@@ -13,6 +13,7 @@
 {{plugins}}
 </head>
 <body class="page-person">
+<a class="skip" href="#content">Skip to results</a>
 <header class="top mast"><div class="mast-in">
   <a class="brand wordmark" href="/">Own<i>Genome</i></a>
   <nav class="crumbs" id="crumbs" aria-label="Where you are"><a href="/" id="home-crumb">People</a><span class="sep" aria-hidden="true">/</span><span id="run-name">{{run}}</span></nav>
@@ -52,7 +53,7 @@
   </section>
   <div class="jlayout">
     <aside class="toc" id="rail" aria-label="In this report"></aside>
-    <main id="content">
+    <main id="content" tabindex="-1">
       <div id="lead-slot"></div>
       <section id="results" class="results" aria-label="The report"></section>
       <section id="progress" class="sec runsec" aria-label="The run, step by step">
@@ -70,7 +71,7 @@
           <aside class="side">
             <section id="running-now" class="panel" hidden><h2>Running now</h2><ul class="running-now" id="running-list"></ul></section>
             <section id="detail" class="panel" aria-live="polite"><h2>Step</h2><p class="dim">Click a step to see its tasks.</p></section>
-            <section class="panel"><h2>The wire</h2><ul id="found" class="found"><li class="dim">Nothing finished yet.</li></ul></section>
+            <section class="panel"><h2>The wire</h2><ul id="found" class="found"><li class="dim">Waiting for the run's data.</li></ul></section>
             <div id="plugin-panels"></div>
           </aside>
         </div>

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # Step 32 (pypgx) takes its genes from assets/pgx_genes.tsv. This test checks:
 #  1. the table against pypgx's own gene table at the pinned tag: every bam
 #     row is a gene pypgx marks SV=TRUE, and every SV=TRUE gene is a bam row
@@ -12,13 +13,23 @@
 #     a BAM whose header lacks the gene's ALT contig and not for one that has
 #     it, and not printed when the column says yes;
 #  4. the PYPGX module reads the same table and spells no gene list;
-#  5. the reports: every bam gene has exactly one row in the PGx copy number
-#     block (its call, or why there is none), pypgx's, even beside a CNVpytor
-#     section, and a not-callable gene gets its not-assessable line (two
-#     planted summaries must be reported);
+#  5. the reports (og summary collect, then og report render): every bam
+#     gene has exactly one row in the PGx copy number block (its call, or why
+#     there is none), pypgx's, even beside a CNVpytor section, and a
+#     not-callable gene gets its not-assessable line
+#     (two planted summaries must be reported);
 #  6. one owner per gene: no row of the depth engine's catalog
 #     (bin/cn_loci.tsv) is a gene pypgx calls from the BAM (a planted UGT2B17
-#     row must be reported).
+#     row must be reported);
+#  7. no old call survives a rerun: a results.zip left by an earlier run is
+#     gone when depth preparation fails, a gene whose pypgx run fails after
+#     writing part of its result leaves no results.zip, and a gene that
+#     succeeds has its result under <gene>/;
+#  8. an ALT contig check that cannot run (the BAM header cannot be read, or
+#     og cn check-bam fails) stops the step with exit 2 before pypgx runs;
+#  9. docs/32-pypgx.md names exactly the genes pypgx has no phenotype rule
+#     for (PhenotypeMethod N/A in its gene table) and, of those, the weakly
+#     supported ones no other tool here calls (second_caller none).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -52,18 +63,34 @@ curl -sS --fail --retry 4 --retry-delay 5 --max-time 60 -o "$GT" \
 # check_table TABLE: 0 when the bam rows are exactly pypgx's SV=TRUE genes and
 # every row is a pypgx target gene
 check_table() {
-  python3 - "$GT" "$1" <<'PY'
-import csv, sys
-gt = {r["Gene"]: r for r in csv.DictReader(open(sys.argv[1]))}
-rows = [l.rstrip("\n").split("\t") for l in open(sys.argv[2]) if l.strip() and not l.startswith("#")][1:]
-sv = {g for g, r in gt.items() if r["SV"] == "TRUE"}
-bam = {r[0] for r in rows if r[1] == "bam"}
-errs = [f"{g} is not a pypgx target gene" for g in (r[0] for r in rows) if gt.get(g, {}).get("Target") != "TRUE"]
-errs += [f"{g} is a bam row but pypgx has no copy-number model for it (SV=FALSE)" for g in sorted(bam - sv)]
-errs += [f"{g} has a copy-number model (SV=TRUE) but is not a bam row" for g in sorted(sv - bam)]
-print("\n".join(errs) if errs else f"{len(bam)} bam rows = pypgx's {len(sv)} SV genes")
-sys.exit(1 if errs else 0)
-PY
+  # pypgx's gene table is CSV; the columns read here (Gene, Target, SV) come
+  # before its first quoted field, so a comma split reads them.
+  awk -F'\t' '
+    NR == FNR {
+      n = split($0, f, ",")
+      if (FNR == 1) { for (i = 1; i <= n; i++) col[f[i]] = i; if (!col["Gene"] || !col["Target"] || !col["SV"]) { print "gene-table.csv has no Gene, Target or SV column"; bad = 2; exit 2 }; next }
+      g = f[col["Gene"]]; target[g] = f[col["Target"]]
+      if (f[col["SV"]] == "TRUE") sv[g] = 1; else delete sv[g]
+      next
+    }
+    !/[^ \t\r]/ || /^#/ { next }
+    !header++ { next }
+    { rows[++nr] = $1; if ($2 == "bam") bam[$1] = 1 }
+    END {
+      if (bad) exit bad
+      for (g in sv) nsv++
+      for (g in bam) nbam++
+      for (i = 1; i <= nr; i++) if (target[rows[i]] != "TRUE") errs[++ne] = rows[i] " is not a pypgx target gene"
+      m = 0; for (g in bam) if (!(g in sv)) x[++m] = g
+      sort(x, m); for (i = 1; i <= m; i++) errs[++ne] = x[i] " is a bam row but pypgx has no copy-number model for it (SV=FALSE)"
+      m = 0; for (g in sv) if (!(g in bam)) x[++m] = g
+      sort(x, m); for (i = 1; i <= m; i++) errs[++ne] = x[i] " has a copy-number model (SV=TRUE) but is not a bam row"
+      if (!ne) { print (nbam + 0) " bam rows = pypgx'\''s " (nsv + 0) " SV genes"; exit 0 }
+      for (i = 1; i <= ne; i++) print errs[i]
+      exit 1
+    }
+    function sort(a, n,   i, j, t) { for (i = 2; i <= n; i++) { t = a[i]; for (j = i - 1; j >= 1 && a[j] > t; j--) a[j + 1] = a[j]; a[j + 1] = t } }
+  ' "$GT" "$1"
 }
 if out=$(check_table "$CAT"); then ok "$out"; else bad "the shipped table: $out"; fi
 { cat "$CAT"; printf 'SLC28A3\tbam\tyes\t.\tnone\tno\n'; } > "${WORK}/planted-slc28a3.tsv"
@@ -84,23 +111,41 @@ ln -s "${REPO}/scripts/ci/fake-docker/docker" "${WORK}/bin/docker"
 # The bash running this test runs the step too (it needs bash 4.4 or later).
 BASH_DIR=$(dirname "$BASH")
 
-# A fake pypgx: logs each call.
+# A fake pypgx: logs each call, and run-ngs-pipeline writes a results.zip
+# in its output directory. FAKE_PYPGX_FAIL=prep fails depth preparation;
+# FAKE_PYPGX_FAIL=GENE fails that gene after writing part of its result.
 cat > "${WORK}/pypgx-bin/pypgx" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >> "$PYPGX_LOG"
+case "$1" in
+  prepare-depth-of-coverage) [ "${FAKE_PYPGX_FAIL:-}" != prep ] || exit 1 ;;
+  run-ngs-pipeline)
+    mkdir -p "$3"
+    if [ "${FAKE_PYPGX_FAIL:-}" = "$2" ]; then echo partial > "$3/results.zip"; exit 1; fi
+    echo new > "$3/results.zip" ;;
+esac
+exit 0
 SH
 chmod +x "${WORK}/pypgx-bin/pypgx"
 # The docker run hook: og bam contigs reads the @SQ lines of the BAM
-# placeholder (the header fixture); the pypgx container's bash -c runs with
-# the fake pypgx; the summary call logs its arguments and writes a header.
+# placeholder (the header fixture); samtools view -H prints it, or fails
+# with FAKE_HEADER_FAIL; og cn check-bam passes, or fails (exit 3) with
+# FAKE_CHECK_FAIL; the pypgx container's bash -c runs with the fake pypgx,
+# its /genome paths on the host; the summary call logs its arguments and
+# writes a header.
 cat > "${WORK}/hook" <<'SH'
 #!/usr/bin/env bash
 img=$1; shift
 host() { printf '%s' "${GENOME_DIR}${1#/genome}"; }
 if [ "$1" = /pgp-bin/og ] && [ "$2" = bam ] && [ "$3" = contigs ]; then
   awk -F'\t' '$1 == "@SQ" {sub(/^SN:/, "", $2); print $2}' "$(host "$4")"
+elif [ "$1" = samtools ] && [ "$2" = view ] && [ "$3" = -H ]; then
+  [ -z "${FAKE_HEADER_FAIL:-}" ] || exit 1
+  cat "$(host "$4")"
+elif [ "$1" = /pgp-bin/og ] && [ "$2" = cn ] && [ "$3" = check-bam ]; then
+  [ -z "${FAKE_CHECK_FAIL:-}" ] || exit 3
 elif [ "$1" = bash ] && [ "$2" = -c ]; then
-  PATH="${PYPGX_BIN}:$PATH" bash -c "$3"
+  PATH="${PYPGX_BIN}:$PATH" bash -c "${3//\/genome\//${GENOME_DIR}/}"
 elif [ "$1" = /pgp-bin/og ] && [ "$2" = pgx ] && [ "$3" = pypgx-summary ]; then
   printf '%s\n' "$*" >> "$SUMMARY_LOG"
   while [ $# -gt 0 ]; do [ "$1" = --out ] && printf 'Gene\n' > "$(host "$2")"; shift; done
@@ -119,7 +164,8 @@ run32() {
   local rc=0
   env -i HOME="$WORK" PATH="${WORK}/bin:${BASH_DIR}:/usr/bin:/bin" GENOME_DIR="$G" PGX_GENES="$1" \
     FAKE_DOCKER_LOG="${WORK}/docker.log" FAKE_DOCKER_RUN_HOOK="${WORK}/hook" PYPGX_BIN="${WORK}/pypgx-bin" \
-    PYPGX_LOG="${WORK}/$3.pypgx" SUMMARY_LOG="${WORK}/$3.summary" \
+    PYPGX_LOG="${WORK}/$3.pypgx" SUMMARY_LOG="${WORK}/$3.summary" FAKE_PYPGX_FAIL="${FAKE_PYPGX_FAIL:-}" \
+    FAKE_HEADER_FAIL="${FAKE_HEADER_FAIL:-}" FAKE_CHECK_FAIL="${FAKE_CHECK_FAIL:-}" \
     "$BASH" "${REPO}/scripts/32-pypgx.sh" "$S" > "${WORK}/$3.out" 2>&1 || rc=$?
   RC=$rc
 }
@@ -201,82 +247,81 @@ if grep -qE '"(CYP[0-9A-Z]+ ){2,}' "$NF"; then bad "the PYPGX module spells a ge
 # --- 5. the reports ------------------------------------------------------------
 # A summary with every gene of the table: GSTT1 not callable, CYP2E1 failed in
 # pypgx, CYP2D6 withheld by the depth check, every other bam gene with a
-# copy-number call. Every bam gene must have a row in the PGx copy number block
-# (its call, "not called: pypgx failed" or "not called: the CYP2D6 depth check
-# failed"),
-# and GSTT1 its not-assessable line. Two planted summaries must be reported: one
-# where GSTT1 reads as called (no not-assessable line), and one where a bam
-# gene's row says VCF (it drops out of the block).
-python3 - "$REPO" "$CAT" <<'PY' || FAILS=$((FAILS + 1))
-import os, sys, tempfile
-repo, cat = sys.argv[1], sys.argv[2]
-sys.path.insert(0, os.path.join(repo, "bin"))
-import collect_summary, render_report
-rows = [l.rstrip("\n").split("\t") for l in open(cat) if l.strip() and not l.startswith("#")][1:]
-bam = [g for g, mode, *_ in rows if mode == "bam"]
-hdr = ["Gene", "Diplotype", "Phenotype", "CNV_call", "Source", "Status", "Defining_variants", "Min_GQ",
-       "Weakest_variant", "Defining_filter", "Quality"]
-
-
-def summary(gstt1_status="not callable on this reference", vcf_source_for=None):
-    lines = []
-    for g, mode, *_ in rows:
-        src = "VCF" if g == vcf_source_for else mode.upper()
-        if g == "GSTT1":
-            lines.append([g, "N/A", "N/A", "N/A", src, gstt1_status] + ["N/A"] * 5)
-        elif g == "CYP2E1":
-            lines.append([g, "FAILED", "N/A", "N/A", src, "failed"] + ["N/A"] * 5)
-        elif g == "CYP2D6":
-            # what step 32 writes when the depth check rejects CYP2D6
-            lines.append([g, "Indeterminate", "Indeterminate (CYP2D6 depth check)", "N/A (CYP2D6 depth check)",
-                          src, "no call (CYP2D6 depth check)"] + ["N/A"] * 5)
-        else:
-            lines.append([g, "*1/*1", "Normal Metabolizer", f"CNV-{g}" if mode == "bam" else "N/A", src, "called"]
-                         + ["none", "N/A", "N/A", "N/A", "N/A"])
-    return lines
-
-
-def problems(lines):
-    with tempfile.TemporaryDirectory() as d:
-        os.makedirs(os.path.join(d, "pypgx"))
-        with open(os.path.join(d, "pypgx", "s1_pypgx_summary.tsv"), "w") as f:
-            f.write("\n".join("\t".join(r) for r in [hdr] + lines) + "\n")
-        data = collect_summary.collect("s1", d)["sections"]["pypgx"]["data"]
-    # The rows of the block (gene, text), with CNVpytor's section beside pypgx's:
-    # pypgx owns every bam gene, so each has one row, and it is pypgx's.
-    block = render_report.pgx_copy_number({"pypgx": {"state": "ok", "data": data},
-                                           "cnvpytor": {"state": "ok", "data": {}}})
-    cn = dict(block)
-    text = "\n".join(render_report.pypgx_lines(data))
-    bad = [f"{g}: {n} rows in the copy-number block" for g in sorted({g for g, _ in block})
-           if (n := sum(x == g for x, _ in block)) > 1]
-    for g in bam:
-        want = {"CYP2E1": "not called: pypgx failed",
-                "CYP2D6": "not called: the CYP2D6 depth check failed"}.get(g, f"CNV-{g}") + " (pypgx, read depth)"
-        if g == "GSTT1":
-            if "Not assessable on this reference: GSTT1" not in text:
-                bad.append("GSTT1 has no not-assessable line")
-        elif cn.get(g) != want:
-            bad.append(f"{g}: copy-number block says {cn.get(g)!r}, not {want!r}")
-    return bad
-
-
-bad = problems(summary())
-for b in bad:
-    print("FAIL:", b)
-if not bad:
-    print(f"ok: the reports show the copy-number call of {len(bam) - 3} bam genes, CYP2E1's failed call, "
-          "CYP2D6's depth-check no call and GSTT1's not-assessable line")
-for name, planted in (("GSTT1 read as called", summary(gstt1_status="no call")),
-                      ("SLC22A2's row says VCF", summary(vcf_source_for="SLC22A2"))):
-    got = problems(planted)
-    if got:
-        print(f"ok: control, {name} reported: {'; '.join(got)}")
-    else:
-        print(f"FAIL: control, {name} passed")
-        bad.append(name)
-sys.exit(1 if bad else 0)
-PY
+# copy-number call. og summary collect reads it and og report render writes
+# the text report, with a CNVpytor section beside pypgx's: every bam gene
+# must have exactly one row in its PGx copy number block (its call, "not
+# called: pypgx failed" or "not called: the CYP2D6 depth check failed"), and
+# GSTT1 its not-assessable line. Two planted
+# summaries must be reported: one where GSTT1 reads as called (no
+# not-assessable line), and one where a bam gene's row says VCF (it drops out
+# of the block).
+OG_BIN=${OG:-${REPO}/bin/og}
+# pypgx_table GSTT1_STATUS VCF_SOURCE_FOR: step 32's summary table for every gene.
+pypgx_table() {
+  printf 'Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\tDefining_variants\tMin_GQ\tWeakest_variant\tDefining_filter\tQuality\n'
+  rows "$CAT" | awk -F'\t' -v OFS='\t' -v gs="$1" -v vf="$2" '{
+    g = $1; src = (g == vf) ? "VCF" : toupper($2); na5 = "N/A\tN/A\tN/A\tN/A\tN/A"
+    if (g == "GSTT1") print g, "N/A", "N/A", "N/A", src, gs, na5
+    else if (g == "CYP2E1") print g, "FAILED", "N/A", "N/A", src, "failed", na5
+    else if (g == "CYP2D6") print g, "Indeterminate", "Indeterminate (CYP2D6 depth check)", "N/A (CYP2D6 depth check)", src, "no call (CYP2D6 depth check)", na5
+    else print g, "*1/*1", "Normal Metabolizer", ($2 == "bam" ? "CNV-" g : "N/A"), src, "called", "none", "N/A", "N/A", "N/A", "N/A"
+  }'
+}
+# report_problems NAME GSTT1_STATUS VCF_SOURCE_FOR: what is wrong with the reports of that summary, one per line.
+report_problems() {
+  local d="${WORK}/report-$1" g want got n
+  mkdir -p "${d}/s1/pypgx"
+  pypgx_table "$2" "$3" > "${d}/s1/pypgx/s1_pypgx_summary.tsv"
+  "$OG_BIN" summary collect --sample s1 --sample-dir "${d}/s1" --out "${d}/collected.json" > /dev/null 2>&1 \
+    || { echo "og summary collect failed"; return; }
+  # CNVpytor's section beside pypgx's: pypgx owns every bam gene, so each
+  # has one row, and it is pypgx's.
+  jq '.sections.cnvpytor = {"title": "Copy number (CNVpytor)", "step": "18", "state": "ok", "source": null,
+      "file_date": null, "note": null,
+      "data": {"total": 0, "deletions": 0, "duplications": 0, "significant": 0}}' "${d}/collected.json" > "${d}/summary.json"
+  "$OG_BIN" report render --summary "${d}/summary.json" -o "${d}/report.txt" > /dev/null 2>&1 \
+    || { echo "og report render failed"; return; }
+  # The block's rows as GENE<TAB>TEXT.
+  sed -n '/^## PGx copy number$/,/^$/p' "${d}/report.txt" | sed -n 's/^  \([^ ]*\)  *\(.*\)$/\1\t\2/p' > "${d}/block.tsv"
+  grep -qF 'could not be read' "${d}/report.txt" && echo "a report section could not be read"
+  # CNVpytor's section is written beside the PGx block, with its counts.
+  grep -qxF '  Total CNVs: 0 (0 deletions, 0 duplications)' "${d}/report.txt" \
+    || echo "CNVpytor's section is not written"
+  cut -f1 "${d}/block.tsv" | sort | uniq -c | awk '$1 > 1 { print $2 ": " $1 " rows in the copy-number block" }'
+  while IFS= read -r g; do
+    if [ "$g" = GSTT1 ]; then
+      grep -qF 'Not assessable on this reference: GSTT1' "${d}/report.txt" || echo "GSTT1 has no not-assessable line"
+      continue
+    fi
+    case $g in
+      CYP2E1) want="not called: pypgx failed" ;;
+      CYP2D6) want="not called: the CYP2D6 depth check failed" ;;
+      *) want="CNV-${g}" ;;
+    esac
+    want="${want} (pypgx, read depth)"
+    got=$(awk -F'\t' -v g="$g" '$1 == g { print $2; exit }' "${d}/block.tsv")
+    [ "$got" = "$want" ] || echo "${g}: copy-number block says '${got}', not '${want}'"
+  done < <(rows "$CAT" | awk -F'\t' '$2 == "bam" { print $1 }')
+}
+if ! "$OG_BIN" version > /dev/null 2>&1; then
+  if [ -n "${OG_REQUIRED:-}" ]; then bad "the reports: og is not built (set OG or run scripts/setup.sh --og)"; else
+    echo "skip: the reports need og (set OG or run scripts/setup.sh --og)"
+  fi
+else
+  got=$(report_problems shipped "not callable on this reference" "")
+  if [ -z "$got" ]; then
+    n=$(rows "$CAT" | awk -F'\t' '$2 == "bam"' | wc -l)
+    ok "the reports show the copy-number call of $((n - 3)) bam genes, CYP2E1's failed call, CYP2D6's depth-check no call and GSTT1's not-assessable line"
+  else
+    while IFS= read -r l; do bad "$l"; done <<< "$got"
+  fi
+  # Each control must be caught by its own diagnostic, on a report og wrote.
+  caught() { ! grep -qE '^og (summary collect|report render) failed$' <<< "$1" && grep -qF "$2" <<< "$1"; }
+  got=$(report_problems gstt1-called "no call" "")
+  if caught "$got" "GSTT1 has no not-assessable line"; then ok "control, GSTT1 read as called reported: $(tr '\n' ';' <<< "$got")"; else bad "control, GSTT1 read as called passed"; fi
+  got=$(report_problems slc22a2-vcf "not callable on this reference" SLC22A2)
+  if caught "$got" "SLC22A2: copy-number block says"; then ok "control, SLC22A2's row says VCF reported: $(tr '\n' ';' <<< "$got")"; else bad "control, SLC22A2's row says VCF passed"; fi
+fi
 
 # --- 6. one owner per gene ------------------------------------------------------
 # A gene pypgx calls from the BAM (a bam row) is pypgx's: the depth engine's
@@ -298,6 +343,86 @@ else
   if [ "$clash" = "UGT2B17" ]; then ok "control, a planted UGT2B17 catalog row reported"
   else bad "control, a planted UGT2B17 catalog row passed (got '${clash}')"; fi
 fi
+
+# --- 7. no old call survives a rerun --------------------------------------------
+# Before, step 32 removed only the summary: a gene this run did not call kept
+# the last run's <gene>/results.zip, and the summary read it as this run's
+# call; a gene pypgx failed on after writing part of its result kept that.
+P="${G}/${S}/pypgx"
+plant() { mkdir -p "${P}/$1"; echo old > "${P}/$1/results.zip"; }
+plant CYP2D6; plant CYP2A6; plant CYP2C9
+for z in depth_of_coverage.zip control_statistics.zip; do echo old > "${P}/${z}"; done
+FAKE_PYPGX_FAIL=prep run32 "$CAT" alt stale-prep
+expect "depth preparation failed: exit 0 (the VCF genes ran)" "$RC" 0
+expect "depth preparation failed: no BAM-mode call" "$(bam_calls stale-prep)" ""
+for g in CYP2D6 CYP2A6; do
+  if [ -e "${P}/${g}/results.zip" ]; then bad "depth preparation failed: the earlier run's ${g}/results.zip is still there"
+  else ok "depth preparation failed: no ${g}/results.zip from the earlier run"; fi
+done
+expect "depth preparation failed: CYP2C9 has this run's result" "$(cat "${P}/CYP2C9/results.zip" 2>/dev/null)" new
+for z in depth_of_coverage.zip control_statistics.zip; do
+  if [ -e "${P}/${z}" ]; then bad "depth preparation failed: the earlier run's ${z} is still there"
+  else ok "depth preparation failed: no ${z} from the earlier run"; fi
+done
+
+plant CYP2C9
+FAKE_PYPGX_FAIL=CYP2C9 run32 "$CAT" alt half-written
+expect "a gene that fails: exit 0 (the other genes ran)" "$RC" 0
+if [ -e "${P}/CYP2C9/results.zip" ]; then bad "a gene that failed after writing part of its result has a results.zip: $(cat "${P}/CYP2C9/results.zip")"
+else ok "a gene that failed after writing part of its result has no results.zip"; fi
+if [ -e "${P}/CYP2C9.part" ]; then bad "a gene that failed leaves CYP2C9.part"; fi
+expect "a gene that succeeds: its result is under CYP2D6/" "$(cat "${P}/CYP2D6/results.zip" 2>/dev/null)" new
+expect "a gene that succeeds: no CYP2D6.part left" "$(compgen -G "${P}/*.part" || true)" ""
+
+# --- 8. an ALT contig check that cannot run stops the step ------------------------
+# Before, the step warned and went on, so a BAM that might have ALT contigs
+# reached pypgx's copy-number calls.
+FAKE_HEADER_FAIL=1 run32 "$CAT" alt header-fail
+expect "the BAM header cannot be read: exit 2" "$RC" 2
+expect "the BAM header cannot be read: pypgx never runs" "$(wc -l < "${WORK}/header-fail.pypgx" | tr -d ' ')" 0
+if grep -q '^ERROR: could not read the header of .*ALT contig check could not run' "${WORK}/header-fail.out"; then
+  ok "the BAM header cannot be read: the ERROR line"
+else bad "the BAM header cannot be read: no ERROR line: $(cat "${WORK}/header-fail.out")"; fi
+FAKE_CHECK_FAIL=1 run32 "$CAT" alt check-fail
+expect "og cn check-bam fails: exit 2" "$RC" 2
+expect "og cn check-bam fails: pypgx never runs" "$(wc -l < "${WORK}/check-fail.pypgx" | tr -d ' ')" 0
+
+# --- 9. the weakly supported genes in the doc --------------------------------------
+# From pypgx's gene table and assets/pgx_genes.tsv: the genes of the table
+# pypgx has no phenotype rule for (PhenotypeMethod N/A), and of those the ones
+# no other tool here calls (second_caller none). docs/32-pypgx.md lists each
+# set on its own line; a gene that changes either way fails until the doc
+# follows.
+DOC="${REPO}/docs/32-pypgx.md"
+# no_rule [none]: the table's genes with PhenotypeMethod N/A (and second_caller none)
+no_rule() {
+  awk -v only="${1:-}" '
+    NR == FNR {
+      n = split($0, f, ",")
+      if (FNR == 1) { for (i = 1; i <= n; i++) col[f[i]] = i; next }
+      pm[f[col["Gene"]]] = f[col["PhenotypeMethod"]]; next
+    }
+    { split($0, t, "\t") }
+    /^#/ || t[1] == "gene" || !NF { next }
+    pm[t[1]] == "N/A" && (only == "" || t[5] == only) { print t[1] }
+  ' "$GT" "$CAT" | sort | paste -sd ' ' -
+}
+# doc_list LEAD: the genes on the doc line that starts with **LEAD (N):**, sorted;
+# doc_count LEAD: its N
+doc_list() { sed -n "s/^\*\*$1 ([0-9]*):\*\* //p" "$DOC" | head -n 1 | tr -d '.' | tr ',' '\n' | tr -d ' ' | grep . | sort | paste -sd ' ' -; }
+doc_count() { sed -n "s/^\*\*$1 (\([0-9]*\)):\*\*.*/\1/p" "$DOC" | head -n 1; }
+for spec in "No pypgx phenotype rule|" "Weakly supported, pypgx alone|none"; do
+  lead=${spec%|*} only=${spec#*|}
+  want=$(no_rule "$only")
+  [ -n "$want" ] || bad "no gene of the table lacks a pypgx phenotype rule: did gene-table.csv change shape?"
+  expect "docs/32-pypgx.md: ${lead}" "$(doc_list "$lead")" "$want"
+  expect "docs/32-pypgx.md: ${lead}, the count" "$(doc_count "$lead")" "$(wc -w <<<"$want" | tr -d ' ')"
+done
+# A control: a gene table where CYP2C9 has no phenotype rule must change the
+# weakly supported set (CYP2C9's second caller is PharmCAT, so only the first).
+sed 's/^CYP2C9,\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*\),Score,/CYP2C9,\1,N\/A,/' "$GT" > "${WORK}/gt-cyp2c9.csv"
+if [ "$(GT="${WORK}/gt-cyp2c9.csv" no_rule)" != "$(no_rule)" ]; then ok "control, CYP2C9 without a phenotype rule changes the no-rule set"
+else bad "control, CYP2C9 without a phenotype rule left the no-rule set as it was"; fi
 
 if [ "$FAILS" -gt 0 ]; then
   echo "${FAILS} check(s) failed"

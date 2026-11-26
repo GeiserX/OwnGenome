@@ -41,7 +41,8 @@ fi
 BUNDLE="${G}/reference/pypgx-bundle"
 if [ ! -d "$BUNDLE" ]; then
   V="${PYPGX_IMAGE##*:}"
-  git clone -q --branch "${V%%--*}" --depth 1 https://github.com/sbslee/pypgx-bundle.git "$BUNDLE"
+  clone_shallow_with_retry "${V%%--*}" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
+    || { fail "the pypgx bundle clone"; finish; }
 fi
 BANDS="${G}/reference/cytoBand.hg38.txt"
 [ -s "$BANDS" ] || bash -c '. "$1/scripts/lib/common.sh" && install_data_file cytoband' _ "$REPO"
@@ -184,16 +185,16 @@ for a in clinvar/${SAMPLE}_clinvar_hits.vcf pharmcat/${SAMPLE}.report.json pharm
 done
 JSON="${R}/summary.json"
 # section KEY: the state of a summary.json section (ok, missing, unreadable, ...)
-section() { python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['sections'][sys.argv[2]]['state'])" "$JSON" "$1" 2>/dev/null; }
+section() { jq -r --arg k "$1" '.sections[$k].state // empty' "$JSON" 2>/dev/null; }
 for k in clinvar pharmcat coverage telomere haplogroup y_haplogroup manta delly sv_consensus pypgx; do
   check_eq "summary.json section ${k} is filled" "$(section "$k")" ok
 done
-CONS_RESULT=$(python3 -c "import json, sys; c = json.load(open(sys.argv[1]))['cyp2d6']['consensus']; print(c['result'] if c else '')" "$JSON" 2>/dev/null)
+CONS_RESULT=$(jq -r '(.cyp2d6.consensus // {}) | .result // empty' "$JSON" 2>/dev/null)
 check "the CYP2D6 card reads step 36's table (result: ${CONS_RESULT:-none})" test -n "${CONS_RESULT:-}"
 check "the Structural Variants card counts the consensus SVs" \
   has 'Consensus SVs \(2\+ callers\)</span><span class="value">(<[^>]*>)?[1-9][0-9]*<' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
 check "the Steps Not Run list names none of the SV callers" \
-  lacks '<li>Structural variants \((Manta|Delly)\)</li>|<li>SV consensus merge</li>' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
+  lacks '<li>Structural variants \((Manta|Delly)\)( \([^)]*\))?</li>|<li>SV consensus merge( \([^)]*\))?</li>' "$(cat "${R}/${SAMPLE}_report.html" 2>/dev/null)"
 
 # --- The bash steps 22 and 37 on the same calls and BAM, for parity-diff --------------------
 # A GENOME_DIR of hard links: the reference, Yleaf's tables, step 04's Manta

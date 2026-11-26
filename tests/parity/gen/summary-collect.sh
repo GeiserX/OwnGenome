@@ -124,12 +124,19 @@ put bad-d/mosdepth/S.mosdepth.summary.txt "${COV_HEAD}total\t1\t1\n"
 putgz bad-e/mosdepth/S_callability.bed.gz '#chrom\tstart\tend\tregion\t10X\n\n'
 
 # --- karyotypes from indexcov's copy numbers and somalier's depth ratios ------
+half_ratio() {
+  case "$1" in
+    inf | nan) printf "%s" "$1" ;;
+    *) awk -v v="$1" 'BEGIN { printf "%.3f", v / 2 }' ;;
+  esac
+}
+
 k=0
 for xy in "1 0" "2.2 0.8" "2.5 0" "1.0 1.0" "3 0" "6 0" "inf 0" "nan 1" "1.29 2.31" "-0.2 0"; do
   read -r x y <<< "$xy"
   k=$((k + 1))
   put "kary-${k}/indexcov/indexcov-indexcov.ped" "${PED_HEAD}S\tS\t-9\t-9\t1\t-9\t${x}\t${y}\n"
-  put "kary-${k}/qc/S_sample_qc.tsv" "key\tvalue\ninferred_sex\tmale\nx_depth_ratio\t$(awk -v v="$x" 'BEGIN { printf "%.3f", v / 2 }')\ny_depth_ratio\t$(awk -v v="$y" 'BEGIN { printf "%.3f", v / 2 }')\nx_sites\t$([ "$k" -eq 3 ] && echo 10 || echo 11)\n"
+  put "kary-${k}/qc/S_sample_qc.tsv" "key\tvalue\ninferred_sex\tmale\nx_depth_ratio\t$(half_ratio "$x")\ny_depth_ratio\t$(half_ratio "$y")\nx_sites\t$([ "$k" -eq 3 ] && echo 10 || echo 11)\n"
 done
 
 # --- line ends: CRLF, lone CR, blank lines -----------------------------------

@@ -5,21 +5,16 @@
   panel-map    a group of fewer than 10 unrelated people (one Oceanian, three
                San) is no reference and no painting reference, and the
                install log names it as left out
-  check-map    panel-map's table passes; one Oceanian put back as reference
-               and painting reference, a short row, a flag other than 0 or 1
-               and a table with no reference person each stop it
-  order        the column of each group in a supervised ADMIXTURE .Q
-  sample-bed   the .bed code of each genotype (ALT is the .bim's A1), chr22 in
-               the VCF meets 22 in the .bim, the .P.in and .ped rows of the
-               kept SNVs, and the bootstrap draws only blocks that hold SNVs
+  check-map    panel-map's table passes; a short row, a flag other than 0
+               or 1 and a table with no reference person each stop it
   chroms       a chromosome is painted only with 100 SNVs spanning 5 cM
   report       fractions with the bootstrap range, merged painting rows, the
                painted shares, a PNG of the right size, the left-out group
-               and the chromosome RFMix failed on, in the table, the text and
-               both pipeline reports (og summary collect, render_report.py)
 
 The Rust unit tests (rust/crates/og-ancestry) and tests/parity check each
 command in detail; this test runs them as the pipeline does, through bin/og.
+Both pipeline reports of the table are checked by
+rust/crates/og-render/tests/ancestry_fine.rs.
 
 Run: OG=bin/og python3 tests/test_ancestry_fine_report.py
 """
@@ -31,7 +26,6 @@ import tempfile
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "bin"))
 
 OG = os.environ.get("OG", "")
 FAILS = []
@@ -78,61 +72,11 @@ def run_all(tmp):
     expect("panel-map: the 10 West Africans are references and painting references",
            sorted({tuple(by[f"y{i}"][4:]) for i in range(10)}), [("1", "1")])
     expect("check-map: panel-map's table passes", og("check-map", "--map", samples).returncode, 0)
-    one = rows[0:1] + [row[:4] + ["1", "1"] if row[0] == "p0" else row for row in rows[1:]]
-    write(os.path.join(tmp, "one.tsv"), "".join("\t".join(row) + "\n" for row in one))
-    r = og("check-map", "--map", os.path.join(tmp, "one.tsv"))
-    expect("check-map: stops on one Oceanian put back, and says why",
-           (r.returncode, "regional group OCE has 1 of the 10 reference people it needs" in r.stderr,
-            "continental group OCE has 1 of the 2 painting references RFMix needs" in r.stderr), (1, True, True))
     header = "sample\tpopulation\tcontinent\tregion\treference\tpaint\n"
     for name, text in (("short", header + "y0\tYRI\tAFR\n"), ("flag", header + "y10\tYRI\tAFR\tWAF\ttrue\t0\n"),
                        ("empty", header)):
         write(os.path.join(tmp, f"{name}.tsv"), text)
         expect(f"check-map: stops on the {name} table", og("check-map", "--map", os.path.join(tmp, f"{name}.tsv")).returncode, 1)
-
-    # --- order ----------------------------------------------------------------------
-    write(os.path.join(tmp, "ref.pop"), "EUR\nEUR\nAFR\nEAS\nAFR\n")
-    write(os.path.join(tmp, "ref.3.Q"), "1 0 0\n0.99 0.01 0\n0 0 1\n0 1 0\n0 0.02 0.98\n")
-    r = og("order", "--pop", os.path.join(tmp, "ref.pop"), "--q", os.path.join(tmp, "ref.3.Q"))
-    expect("order: each column is the group whose people fill it", r.stdout, "EUR,EAS,AFR\n")
-
-    # --- sample-bed -----------------------------------------------------------------
-    write(os.path.join(tmp, "ref.bim"), "".join(f"22\t22:{p}\t0\t{p}\t{alt}\t{ref}\n" for p, ref, alt in
-                                                [(100, "A", "G"), (200, "C", "T"), (300, "G", "A"), (400, "T", "C"), (500, "A", "C")]))
-    write(os.path.join(tmp, "g.vcf"), "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-          "chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t1/1\n"     # hom ALT: code 0
-          "chr22\t200\t.\tC\tT\t.\t.\t.\tGT\t0|1\n"     # het: code 2
-          "chr22\t300\t.\tG\tA\t.\t.\t.\tGT\t0/0\n"     # hom REF: code 3
-          "chr22\t400\t.\tT\tG\t.\t.\t.\tGT\t0/1\n")    # another ALT: left out; 500 missing: left out
-    write(os.path.join(tmp, "continent.P"), "".join(f"0.{i} 0.{9 - i}\n" for i in range(5)))
-    adm = os.path.join(tmp, "adm")
-    r = og("sample-bed", "--bim", os.path.join(tmp, "ref.bim"), "--vcf", os.path.join(tmp, "g.vcf"), "--sample", "S",
-           "--level", f"continent:2:{os.path.join(tmp, 'continent.P')}", "--bootstrap", "7", "--min-sites", "3",
-           "--out-dir", adm)
-    expect("sample-bed: exits 0 and counts the genotyped SNVs", (r.returncode, r.stdout),
-           (0, "3 of the 5 SNVs ADMIXTURE uses genotyped\n"))
-    expect("sample-bed: .bed magic, then hom ALT 0, het 2, hom REF 3",
-           open(os.path.join(adm, "S_continent.bed"), "rb").read(), b"\x6c\x1b\x01\x00\x02\x03")
-    expect("sample-bed: the .P.in rows of the kept SNVs only",
-           open(os.path.join(adm, "S_continent.2.P.in")).read(), "0.0 0.9\n0.1 0.8\n0.2 0.7\n")
-    expect("sample-bed: .ped allele pairs (2 is A1): hom ALT, het, hom REF",
-           open(os.path.join(adm, "S.geno")).read(), "2 2\n1 2\n1 1\n")
-    sh = open(os.path.join(adm, "run_admixture.sh")).read()
-    expect("sample-bed: run_admixture.sh runs 7 replicates of sample S", ("-le 7 ]" in sh, "S_${level}.bed" in sh), (True, True))
-    # The block bootstrap draws only blocks that hold SNVs: 4 SNVs in 3 blocks
-    # round up to blocks of 2, so there are 2 blocks and every replicate holds
-    # 3 x 2 SNVs.
-    awk_prog = sh.split("-v k=\"$k\" '", 1)[1].split("' \"S.geno\"", 1)[0]
-    boot = os.path.join(tmp, "boot")
-    os.makedirs(boot)
-    write(os.path.join(boot, "g"), "".join(f"1 {i}\n" for i in range(4)))
-    write(os.path.join(boot, "m"), "".join(f"22 s{i} 0 {i}\n" for i in range(4)))
-    write(os.path.join(boot, "p"), "".join(f"0.{i} 0.5\n" for i in range(4)))
-    sizes = set()
-    for seed in range(1, 21):
-        subprocess.run(["awk", "-v", f"r={seed}", "-v", "nb=3", "-v", "k=2", awk_prog, "g", "m", "p"], cwd=boot, check=True)
-        sizes.add(len(open(os.path.join(boot, "rep.map")).readlines()))
-    expect("sample-bed: every bootstrap replicate draws 3 non-empty blocks of 2 SNVs (20 seeds)", sizes, {6})
 
     # --- chroms ---------------------------------------------------------------------
     maps = os.path.join(tmp, "maps")
@@ -189,29 +133,9 @@ def run_all(tmp):
     expect("report: the text names the group, the fraction and its range",
            "West Eurasia (Europe, Middle East, North Africa)     90%  (80% to 90%)" in text, True)
     expect("report: the text says a name is ours, not a nationality", "not a nationality" in text, True)
-    expect("report: the table names the group left out and the chromosome not painted",
-           [row[:3] for row in table if row[0] in ("left_out", "not_painted")],
-           [["left_out", "OCE", "Oceania (continental group)"], ["left_out", "OCE", "Oceania (regional group)"],
-            ["not_painted", "chr19", "RFMix failed"]])
     expect("report: the text says which group the model left out and why",
            "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10 unrelated" in text, True)
-    expect("report: the text says chr19 was not painted, and chr20 still was",
-           ("Not painted: RFMix failed on chr19" in text, "of chr20:" in text), (True, True))
 
-    # Both pipeline reports (og summary collect, then render_report.py) carry them.
-    import collect_summary  # noqa: E402
-    import render_report  # noqa: E402
-    sd = os.path.join(tmp, "S")
-    os.makedirs(os.path.join(sd, "ancestry_fine"))
-    for name in ("S_ancestry_fine.tsv", "S_painting.png"):
-        with open(os.path.join(rep, name), "rb") as src, open(os.path.join(sd, "ancestry_fine", name), "wb") as dst:
-            dst.write(src.read())
-    summ = collect_summary.collect("S", sd)
-    txt, html = render_report.text_report(summ), render_report.html_report(summ)
-    for kind, doc in (("text", txt), ("HTML", html)):
-        expect(f"report: the {kind} report names the group left out",
-               "Left out of the model: Oceania (continental and regional group). The panel has fewer than 10" in doc, True)
-        expect(f"report: the {kind} report names the chromosome not painted", "not painted: RFMix failed on chr19" in doc, True)
     os.remove(os.path.join(paint, "failed.txt"))
     os.remove(os.path.join(paint, "chr20.msp.tsv"))
     r = og("report", "--sample", "S", "--model", model, "--admixture", radm, "--paint", paint, "--panel", "test",

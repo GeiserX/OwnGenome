@@ -49,7 +49,7 @@ ROW_TIMEOUT=${ROW_TIMEOUT:-3600}
 GH_REPO=${GITHUB_REPOSITORY:-GeiserX/OwnGenome}
 TAG=$(tr -d '[:space:]' < "${REPO}/tests/fixtures/VERSION")
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
-NEEDS_KNOWN="ref reads bam longreads longbam truth fullref slice vcf vcf50 pgxvcf revel sv dels bundle cyrius mito hlareads qc ehcatalog chain annotsv"
+NEEDS_KNOWN="ref reads bam longreads longbam truth fullref slice telobam vcf vcf50 pgxvcf revel sv dels bundle cyrius mito hlareads qc ehcatalog chain annotsv chrx"
 OPTS_KNOWN="root net full also= rw="
 
 # The mini reference: chr20:10,000,001-10,500,000 of the fixture reference as
@@ -61,6 +61,10 @@ MINI_LEN=503000
 PLANT_POS=450000
 PLANT_LEN=3000
 SMALL_END=449000
+# chrX for Delly's sex model (need_chrx): GRCh38's chrX length, and where the
+# mini reference starts on it, past the end of PAR1 (2,781,479).
+X_LEN=156040895
+X_SHIFT=3000000
 
 # shellcheck source=../../versions.env
 . "$VERSIONS"
@@ -146,6 +150,23 @@ self_test() {
   if grep -q '^\[PASS\] true filter' <<< "$out" && grep -q '^\[FAIL\] false filter' <<< "$out" && grep -q '^fails=1$' <<< "$out"; then
     echo "[PASS] jqcheck rejects a false filter"
   else echo "[FAIL] jqcheck rejects a false filter: $out"; fails=$((fails + 1)); fi
+  # The SV checks on planted records: only a PASS deletion of the right size
+  # at the planted deletion counts, and only a PASS record elsewhere is false.
+  local del pass="PASS"
+  rec() { printf 'chr20\t%s\t.\tN\t%s\t.\t%s\t%s\n' "$@"; }
+  sv_case() {  # sv_case DESCRIPTION WANT VALUE
+    if [ "$3" = "$2" ]; then echo "[PASS] $1"; else echo "[FAIL] $1 (got '$3', want '$2')"; fails=$((fails + 1)); fi
+  }
+  del="SVTYPE=DEL;SVLEN=-3000;END=$((PLANT_POS + PLANT_LEN))"
+  sv_case "a PASS 3 kb deletion at the planted one counts" 1 "$(rec "$PLANT_POS" '<DEL>' "$pass" "$del" | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a deletion with END and no SVLEN counts" 1 "$(rec "$((PLANT_POS + 2))" '<DEL>' . "SVTYPE=DEL;END=$((PLANT_POS + PLANT_LEN))" | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a 3 kb insertion there does not count" 0 "$(rec "$((PLANT_POS + 300))" '<INS>' "$pass" 'SVTYPE=INS;SVLEN=3000' | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a 60 bp deletion there does not count" 0 "$(rec "$PLANT_POS" '<DEL>' "$pass" 'SVTYPE=DEL;SVLEN=-60' | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a filtered deletion there does not count" 0 "$(rec "$PLANT_POS" '<DEL>' LowQual "$del" | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a deletion 2 kb away does not count" 0 "$(rec "$((PLANT_POS - 2000))" '<DEL>' "$pass" "$del" | sv_del_rows 2700 3300 "$PLANT_POS")"
+  sv_case "a PASS record 2 kb away is a false call" 1 "$(rec "$((PLANT_POS - 2000))" '<INS>' "$pass" 'SVTYPE=INS;SVLEN=60' | sv_far_rows "$PLANT_POS")"
+  sv_case "a filtered record away is not" 0 "$(rec 100000 '<INS>' GT 'SVTYPE=INS;SVLEN=60' | sv_far_rows "$PLANT_POS")"
+  sv_case "the planted deletion is not" 0 "$(rec "$PLANT_POS" '<DEL>' "$pass" "$del" | sv_far_rows "$PLANT_POS")"
   # Read the production filters, so a weakened assertion makes this test red.
   local counts catalog genotype copies depth
   counts=$(awk -F '\t' '$1 == "FASTP_IMAGE" {print $5}' "$TABLE" | cut -d "'" -f 2)
@@ -466,6 +487,30 @@ need_slice() {
   hsam addreplacerg -r '@RG\tID:HG002\tSM:HG002\tPL:ILLUMINA' -o /in/HG002_slice.bam /fx/HG002_slice.bam &&
     hsam index /in/HG002_slice.bam
 }
+# The slice has no telomeric read, so its tel_content is 0 whatever
+# TelomereHunter does. telo.bam is the slice plus 1,100 unmapped telomeric
+# reads of 150 bp (600 TTAGGG, 400 CCCTAA, 100 TTAGGG with one TCAGGG in the
+# middle), built with the samtools image: the TelomereHunter2 image has no
+# samtools. PLANTED=0 plants none, the control that shows the tel_content
+# check fails without them. cytoBand.hg38.txt is the repository's GRCh38
+# band file, which step 10 passes as -b.
+need_telobam() {
+  need slice || return 1
+  awk -v n="${PLANTED:-1}" 'BEGIN {
+    q = ""; for (i = 0; i < 150; i++) q = q "I"
+    if (!n) exit
+    for (i = 1; i <= 1100; i++) {
+      if (i <= 600) { s = ""; for (k = 0; k < 25; k++) s = s "TTAGGG" }
+      else if (i <= 1000) { s = ""; for (k = 0; k < 25; k++) s = s "CCCTAA" }
+      else { s = ""; for (k = 0; k < 12; k++) s = s "TTAGGG"; s = s "TCAGGG"; for (k = 0; k < 12; k++) s = s "TTAGGG" }
+      printf "telo%d\t4\t*\t0\t0\t*\t*\t0\t0\t%s\t%s\tRG:Z:HG002\n", i, s, q
+    }
+  }' > "${IN}/planted.sam" || return 1
+  hrun "$SAMTOOLS_IMAGE" sh -c 'samtools view -h /in/HG002_slice.bam | cat - /in/planted.sam | samtools view -b -o /in/telo.bam -' &&
+    hsam index /in/telo.bam || return 1
+  rm -f "${IN}/planted.sam"
+  cp "${REPO}/assets/reference/cytoBand.hg38.txt" "${IN}/cytoBand.hg38.txt"
+}
 need_vcf() {
   fx_get HG002_vep.vcf || return 1
   hbcf view -Oz -o /in/sample.vcf.gz /fx/HG002_vep.vcf && hbcf index -f -t /in/sample.vcf.gz
@@ -533,6 +578,46 @@ need_chain() {
   need ref || return 1
   printf 'chain 1000 chr20 %s + 0 %s chr20 %s + 0 %s 1\n%s\n\n' \
     "$MINI_LEN" "$SMALL_END" "$MINI_LEN" "$SMALL_END" "$SMALL_END" > "${IN}/identity.chain"
+}
+# chrX for Delly's sex model. Delly applies --sex only on a chrX of a known
+# build length (156,040,895 bp for GRCh38) and treats PAR1 as diploid, so
+# xmini.fa is that chrX: N up to X_SHIFT, then mini.fa (padded with N to a
+# full line), then N to the end. xmini.bam is mini.bam moved there: contig,
+# positions, mate positions and SA tags shifted by X_SHIFT.
+need_chrx() {
+  need ref && need bam || return 1
+  awk -v pre="$X_SHIFT" -v len="$X_LEN" '
+    NR > 1 { seq = seq $0 }
+    function ns(k,   i, l) { l = ""; for (i = 0; i < k; i++) l = l "N"; return l }
+    END {
+      w = 60; full = ns(w); print ">chrX"
+      for (i = 0; i < pre / w; i++) print full
+      n = length(seq)
+      for (i = 1; i <= n; i += w) { l = substr(seq, i, w); if (length(l) < w) l = l ns(w - length(l)); print l }
+      rest = len - pre - int((n + w - 1) / w) * w
+      for (i = 0; i < int(rest / w); i++) print full
+      if (rest % w) print ns(rest % w)
+    }' "${IN}/mini.fa" > "${IN}/xmini.fa" || return 1
+  hsam faidx /in/xmini.fa || return 1
+  [ "$(cut -f2 "${IN}/xmini.fa.fai")" = "$X_LEN" ] || return 1
+  # shellcheck disable=SC2016  # the program belongs to the container
+  hrun "$SAMTOOLS_IMAGE" sh -c 'samtools view -h /in/mini.bam | awk -v s="$1" -v len="$2" "$3" | samtools view -b -o /in/xmini.bam - && samtools index /in/xmini.bam' \
+    sh "$X_SHIFT" "$X_LEN" '
+      BEGIN { FS = OFS = "\t" }
+      /^@SQ/ { print "@SQ", "SN:chrX", "LN:" len; next }
+      /^@/ { print; next }
+      {
+        if ($3 == "chr20") { $3 = "chrX"; $4 += s }
+        if ($7 == "chr20") { $7 = "chrX"; $8 += s } else if ($7 == "=" && $8 > 0) $8 += s
+        for (i = 12; i <= NF; i++) if ($i ~ /^SA:Z:/) {
+          m = split(substr($i, 6), a, ";"); t = "SA:Z:"
+          for (j = 1; j <= m; j++) if (a[j] != "") { split(a[j], f, ","); if (f[1] == "chr20") { f[1] = "chrX"; f[2] += s }
+            t = t f[1] "," f[2] "," f[3] "," f[4] "," f[5] "," f[6] ";" }
+          $i = t
+        }
+        print
+      }' || return 1
+  [ "$(hsam view -c /in/xmini.bam)" = "$(hsam view -c /in/mini.bam)" ]
 }
 # AnnotSV's annotation data, as setup.sh fetches it (5.3 GB; the server is slow).
 need_annotsv() {
@@ -617,6 +702,46 @@ sv_near() {
   bcf view -H "$1" | awk -v a="$PLANT_POS" -v b=$((PLANT_POS + PLANT_LEN)) \
     '{d1 = $2 - a; d2 = $2 - b; if ((d1 < 0 ? -d1 : d1) <= 500 || (d2 < 0 ? -d2 : d2) <= 500) n++} END {print n + 0}'
 }
+# sv_del_near VCF|BCF MIN MAX: deletions at the planted deletion (within
+# 500 bp of either end) with FILTER PASS or none and a length from MIN to MAX
+# bp (|SVLEN|, or END - POS without one). sv_near counts any record there.
+sv_del_near() { bcf view -H "$1" | sv_del_rows "$2" "$3" "$PLANT_POS"; }
+# sv_far_pass VCF|BCF: PASS records farther than 500 bp from both ends of the
+# planted deletion. The reads carry no other SV, so each one is a false call.
+sv_far_pass() { bcf view -H "$1" | sv_far_rows "$PLANT_POS"; }
+# sv_gt_near VCF|BCF START: the genotype of the first deletion within 500 bp
+# of START or START + PLANT_LEN.
+sv_gt_near() {
+  bcf query -f '%POS\t%INFO/SVTYPE\t[%GT]\n' "$1" | awk -F'\t' -v a="$2" -v b=$(($2 + PLANT_LEN)) '
+    function abs(x) { return x < 0 ? -x : x }
+    $2 == "DEL" && (abs($1 - a) <= 500 || abs($1 - b) <= 500) { print $3; exit }'
+}
+# sv_del_rows MIN MAX START and sv_far_rows START read VCF records on stdin;
+# START is where the planted deletion begins on the record's contig.
+sv_del_rows() {
+  awk -F'\t' -v lo="$1" -v hi="$2" -v a="$3" -v b=$(($3 + PLANT_LEN)) '
+    function abs(x) { return x < 0 ? -x : x }
+    $7 == "PASS" || $7 == "." {
+      t = ""; len = ""; end = ""
+      k = split($8, kv, ";")
+      for (i = 1; i <= k; i++) {
+        if (kv[i] ~ /^SVTYPE=/) t = substr(kv[i], 8)
+        else if (kv[i] ~ /^SVLEN=/) len = substr(kv[i], 7)
+        else if (kv[i] ~ /^END=/) end = substr(kv[i], 5)
+      }
+      if (t != "DEL") next
+      if (len == "") len = (end == "" ? 0 : end - $2)
+      len = abs(len + 0)
+      if ((abs($2 - a) <= 500 || abs($2 - b) <= 500) && len >= lo && len <= hi) n++
+    }
+    END { print n + 0 }'
+}
+sv_far_rows() {
+  awk -F'\t' -v a="$1" -v b=$(($1 + PLANT_LEN)) '
+    function abs(x) { return x < 0 ? -x : x }
+    $7 == "PASS" && abs($2 - a) > 500 && abs($2 - b) > 500 { n++ }
+    END { print n + 0 }'
+}
 # vcf_field VCF ID KEY: the INFO value, or else the first sample's FORMAT value,
 # of KEY in the record whose ID column is ID.
 vcf_field() {
@@ -689,6 +814,7 @@ run_row() {  # run_row INDEX K
   start=$(date +%s)
   local -a args=(run --rm --env-file "$ENV_FILE" -e HOME=/tmp -v "${IN}:/in:ro" -v "${SMOKE_DIR}:/smoke:ro"
                  -v "${ROW_DIR}:/out" -w /out --entrypoint sh)
+  if [ "$var" = OG_IMAGE ]; then args+=(-v "${REPO}/bin:/pgp-bin:ro"); fi
   # An image may set a non-root USER, so root is asked for, not assumed.
   if has_opt "$opts" root; then args+=(--user 0:0); else args+=(--user "$ME"); fi
   has_opt "$opts" net || args+=(--network none)

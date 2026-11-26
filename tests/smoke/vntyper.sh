@@ -32,16 +32,22 @@ echo "$rc" > empty_rc.txt
 echo "== empty: exit ${rc}"; grep -m1 "FASTQ layout" /out/empty.log || true
 vntyper --version > version.txt 2>&1
 # calls.tsv: sample, Kestrel's confidence, the variant's name, the mean depth
-# over the VNTR and VNtyper's coverage verdict.
-python3 - <<'PY'
-import csv
-rows = []
-for s in ("positive", "negative"):
-    k = [l for l in open(f"/out/{s}/kestrel/kestrel_result.tsv") if not l.startswith("#")]
-    r = next(csv.DictReader(k, delimiter="\t"))
-    c = next(csv.DictReader(open(f"/out/{s}/coverage/coverage_summary.tsv"), delimiter="\t"))
-    rows.append("\t".join([s, r.get("Confidence", ""), r.get("Nomenclature", "") or r.get("Variant", ""),
-                           c.get("mean", ""), c.get("coverage_qc", "")]))
-open("/out/calls.tsv", "w").write("".join(x + "\n" for x in rows))
-print("\n".join(rows))
-PY
+# over the VNTR and VNtyper's coverage verdict. Each file's first row under its
+# header, by column name, as csv.DictReader read it: Kestrel's "#" banner lines
+# are skipped, and so are blank lines under the header.
+: > /out/calls.tsv
+for s in positive negative; do
+  awk -F'\t' -v s="$s" '
+    function get(f, k) { return ((f, k) in col) ? val[f, col[f, k]] : "" }
+    { f = (FILENAME == ARGV[1]) ? 1 : 2 }
+    (f == 1 && /^#/) || ($0 == "" && (f in hdr)) { next }
+    !(f in hdr) { for (i = 1; i <= NF; i++) col[f, $i] = i; hdr[f] = 1; next }
+    seen[f]++ { next }
+    { for (i = 1; i <= NF; i++) val[f, i] = $i }
+    END {
+      if (!seen[1] || !seen[2]) { print s ": no result row in " (seen[1] ? ARGV[2] : ARGV[1]) > "/dev/stderr"; exit 1 }
+      n = get(1, "Nomenclature"); if (n == "") n = get(1, "Variant")
+      print s "\t" get(1, "Confidence") "\t" n "\t" get(2, "mean") "\t" get(2, "coverage_qc")
+    }' "/out/${s}/kestrel/kestrel_result.tsv" "/out/${s}/coverage/coverage_summary.tsv" >> /out/calls.tsv
+done
+cat /out/calls.tsv

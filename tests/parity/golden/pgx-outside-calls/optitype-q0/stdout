@@ -1,0 +1,3 @@
+HLA-A: *01:01/*26:01 (passed to PharmCAT; T1K and OptiType (step 08), which agree at two fields)
+HLA-B: indeterminate (not passed; T1K gives an allele quality 0 or below (T1K says to ignore it))
+CYP2D6: indeterminate (not passed; no caller made a call)

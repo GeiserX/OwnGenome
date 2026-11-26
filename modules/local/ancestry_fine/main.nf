@@ -8,18 +8,16 @@
 
       ANCESTRY_FINE_GENOTYPE  the panel's SNVs in the sample, from the gVCF
                               (or from a VCF that holds reference calls)
-      ANCESTRY_FINE_PREPARE   the one-person ADMIXTURE input, the groups'
-                              frequencies at its SNVs and the chromosomes to
-                              paint (og ancestry-fine)
-      ANCESTRY_FINE_ADMIXTURE ADMIXTURE -P: the fractions at each level and
-                              their block bootstrap
+      ANCESTRY_FINE_FRACTIONS the fractions at each level, projected on the
+                              groups' frequencies, with their bootstrap, and
+                              the chromosomes to paint (og ancestry-fine)
       ANCESTRY_FINE_PHASE     Beagle phasing against the panel
-      ANCESTRY_FINE_PAINT     RFMix painting with the continental groups
+      ANCESTRY_FINE_PAINT     og painting with the continental groups
       ANCESTRY_FINE_REPORT    the fractions table, the painting (BED, PNG) and
                               the text summary
 
-    ADMIXTURE is free for academic use; RFMix for academic research use only,
-    and any other use, a personal one included, needs a licence from Stanford.
+    RFMix is for academic research use only, and any other use, a personal one
+    included, needs a licence from Stanford.
 
     Equivalent to: scripts/26b-ancestry-fine.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -45,8 +43,8 @@ process ANCESTRY_FINE_GENOTYPE {
     script:
     def id = meta.id
     def extract = kind == 'gvcf'
-        ? "bcftools convert --gvcf2vcf -f ${reference} -R ${panel}/panel/positions.tsv -Ou ${vcf} | bcftools view -T ${panel}/panel/positions.tsv --trim-alt-alleles -i 'GT!=\"mis\"' -Ov"
-        : "bcftools view -T ${panel}/panel/positions.tsv -Ov ${vcf}"
+        ? "bcftools convert --gvcf2vcf -f ${reference} -R ${panel}/panel/positions.tsv -Ou ${vcf} | bcftools view -f PASS,. -T ${panel}/panel/positions.tsv --trim-alt-alleles -i 'GT!=\"mis\"' -Ov"
+        : "bcftools view -f PASS,. -T ${panel}/panel/positions.tsv -Ov ${vcf}"
     """
     set -euo pipefail
     # As scripts/26b-ancestry-fine.sh: the awk reads the first sample column
@@ -106,16 +104,16 @@ process ANCESTRY_FINE_GENOTYPE {
     """
 }
 
-process ANCESTRY_FINE_PREPARE {
+process ANCESTRY_FINE_FRACTIONS {
     tag "$meta.id"
-    label 'process_single'
+    label 'process_low'
 
     input:
     tuple val(meta), path(genotypes), path(genotypes_index), path(counts)
     path panel
 
     output:
-    tuple val(meta), path("admixture"), emit: admixture_input
+    tuple val(meta), path("fractions"), emit: fractions
     tuple val(meta), path("${meta.id}_chroms.txt"), emit: chroms
     path "versions.yml", emit: versions
 
@@ -124,64 +122,24 @@ process ANCESTRY_FINE_PREPARE {
 
     script:
     def boot = task.ext.bootstrap != null ? task.ext.bootstrap : 100
+    // As scripts/26b-ancestry-fine.sh: each level's fractions (.Q), their
+    // bootstrap replicates (.boot.Q) and how the fit went (.fit.tsv).
     """
     set -euo pipefail
-    levels=()
-    while IFS=\$'\\t' read -r level k _; do levels+=(--level "\${level}:\${k}:${panel}/model/\${level}.P"); done < ${panel}/model/levels.tsv
-    og ancestry-fine sample-bed --bim ${panel}/model/ref.bim --vcf ${genotypes} \\
-        --sample ${meta.id} "\${levels[@]}" --bootstrap ${boot} --out-dir admixture
+    og ancestry-fine project --model ${panel}/model --maps ${panel}/maps --vcf ${genotypes} \\
+        --sample ${meta.id} --bootstrap ${boot} --seed 1 --threads ${task.cpus} --out-dir fractions
     # The chromosomes to phase and paint, as the bash step picks them.
     og ancestry-fine chroms --counts ${counts} --maps ${panel}/maps > ${meta.id}_chroms.txt
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
-    mkdir -p admixture
+    mkdir -p fractions
     touch ${meta.id}_chroms.txt
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
-    """
-}
-
-process ANCESTRY_FINE_ADMIXTURE {
-    tag "$meta.id"
-    label 'process_low'
-
-    input:
-    tuple val(meta), path(admixture_in, stageAs: 'in/*')
-
-    output:
-    tuple val(meta), path("admixture"), emit: admixture
-    path "versions.yml", emit: versions
-
-    when:
-    task.ext.when == null || task.ext.when
-
-    script:
-    // run_admixture.sh (written by ANCESTRY_FINE_PREPARE): the projection of
-    // each level, then its bootstrap replicates.
-    """
-    set -eu
-    mkdir -p admixture
-    cp -L in/admixture/* admixture/
-    cd admixture
-    sh run_admixture.sh ${task.cpus}
-    cd ..
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        admixture: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
-    """
-
-    stub:
-    """
-    mkdir -p admixture
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        admixture: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -233,7 +191,7 @@ process ANCESTRY_FINE_PAINT {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(phased, stageAs: 'in/*')
+    tuple val(meta), path(phased, stageAs: 'in/*'), path(fractions, stageAs: 'frc/*')
     path panel
 
     output:
@@ -244,36 +202,26 @@ process ANCESTRY_FINE_PAINT {
     task.ext.when == null || task.ext.when
 
     script:
-    // As scripts/26b-ancestry-fine.sh: a chromosome RFMix fails on goes to
-    // paint/failed.txt, which the report lists as not painted, and the next
-    // chromosome is still painted.
+    // As scripts/26b-ancestry-fine.sh: og ancestry-fine paint paints every
+    // phased chromosome at once, its proportions starting at the continental
+    // fractions; a chromosome it cannot read goes to paint/failed.txt, which
+    // the report lists as not painted, and the others are still painted.
     """
     set -euo pipefail
-    mkdir -p paint
-    for f in in/phase/chr*.vcf.gz; do
-        [ -e "\$f" ] || continue   # no chromosome long enough to paint
-        c=\$(basename "\$f" .vcf.gz)
-        rfmix -f "\$f" -r ${panel}/panel/\$c.vcf.gz -m ${panel}/model/paint_map.tsv -g ${panel}/maps/\$c.rfmix.map \\
-            -o paint/\$c --chromosome=\$c --n-threads=${task.cpus} --random-seed=1 > paint/\$c.log 2>&1 \\
-            || { tail -n 20 paint/\$c.log >&2; echo "\$c" >> paint/failed.txt; rm -f paint/\$c.msp.tsv; }
-    done
+    og ancestry-fine paint --phased in/phase --panel ${panel}/panel --maps ${panel}/maps --model ${panel}/model \\
+        --fractions frc/fractions --sample ${meta.id} --threads ${task.cpus} --out-dir paint
     if [ -s paint/failed.txt ]; then
-        echo "WARNING: RFMix failed on \$(echo \$(cat paint/failed.txt)); the report lists them as not painted" >&2
+        echo "WARNING: the painting failed on \$(echo \$(cat paint/failed.txt)); the report lists them as not painted" >&2
     fi
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        rfmix: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     mkdir -p paint
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        rfmix: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -284,7 +232,7 @@ process ANCESTRY_FINE_REPORT {
     publishDir { "${params.outdir}/${meta.id}/ancestry_fine" }, mode: params.publish_dir_mode
 
     input:
-    tuple val(meta), path(admixture, stageAs: 'adm/*'), path(painting, stageAs: 'pnt/*')
+    tuple val(meta), path(fractions, stageAs: 'frc/*'), path(painting, stageAs: 'pnt/*')
     path panel
     val panel_name
 
@@ -301,14 +249,15 @@ process ANCESTRY_FINE_REPORT {
     script:
     """
     og ancestry-fine report --sample ${meta.id} --model ${panel}/model \\
-        --admixture adm/admixture --paint pnt/paint --panel ${panel_name} --out .
+        --fractions frc/fractions --paint pnt/paint --panel ${panel_name} --out .
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch ${meta.id}_ancestry_fine.tsv ${meta.id}_painting.bed ${meta.id}_painting.png ${meta.id}_ancestry_fine.txt
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

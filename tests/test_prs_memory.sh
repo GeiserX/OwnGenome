@@ -192,8 +192,9 @@ EXPECT=${EXPECT:-pass}
 case "$EXPECT" in pass|killed) ;; *) echo "ERROR: EXPECT must be pass or killed, got '${EXPECT}'" >&2; exit 1 ;; esac
 printf 'task\tlimit_mb\tswap_mb\texit\tkilled\tpeak_mb\tanon_plus_swap_mb\tseconds\tverdict\n' > "${DIR}/table.tsv"
 
-# Control: the kill must be seen. 2 GB touched under a 1 GB limit.
-MEASURE_SWAP_MB=0 measured 1024 "$PYTHON_IMAGE" python3 -c 'b = bytearray(2 << 30); print(len(b))'
+# Control: the kill must be seen. 2 GB touched under a 1 GB limit: dd reads
+# /dev/zero into one 2 GB buffer, so every page of it is written.
+MEASURE_SWAP_MB=0 measured 1024 "$PYTHON_IMAGE" dd if=/dev/zero of=/dev/null bs=2G count=1
 # Docker's OOMKilled flag is not always set on cgroup v2 (one run had exit
 # 137 and false), so exit 137 counts as a kill here and in row.
 if [ "$M_RC" -eq 137 ]; then
@@ -221,7 +222,7 @@ prepare() {
     -v "${REPO}/bin:/pgp-bin:ro" -v "${REPO}/assets/pgs_scores.tsv:/pgs_scores.tsv:ro" \
     -v "${DIR}/scores:/scores:ro" -v "${DIR}/prepare:/out" "$PYTHON_IMAGE" \
     /pgp-bin/og prs format --scores /scores --labels /pgs_scores.tsv \
-      --out /out/pgs --alleles /out/score_alleles.tsv --keep-x
+      --out /out/pgs --alleles /out/score_alleles.tsv --keep-x --academic
 }
 read -r LIMIT GB < <(limit_for PRS_PREPARE "${PREPARE_LIMIT_GB:-}")
 prepare "$LIMIT"

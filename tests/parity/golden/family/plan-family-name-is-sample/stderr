@@ -1,0 +1,1 @@
+ERROR: trio.tsv line 2: the family name 'kid' is also a person's name; its folder would be the sample's. Give the family another name

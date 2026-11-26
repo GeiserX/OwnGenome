@@ -243,9 +243,9 @@ pub fn compare(calls: &[GeneCall], pypgx: &HashMap<String, PypgxCall>) -> Vec<Co
     rows
 }
 
-/// Lines for genes PharmCAT reports on but could not call while pypgx did:
-/// the medications section is silent on them, so say so. Genes step 36 held
-/// back are left to its section.
+/// Lines for genes PharmCAT reports on but could not call, or called
+/// `incomplete`, while pypgx did: the medications section is silent on them,
+/// so say so. Genes step 36 held back are left to its section.
 pub fn pypgx_warnings(
     calls: &[GeneCall],
     pypgx: &HashMap<String, PypgxCall>,
@@ -255,7 +255,11 @@ pub fn pypgx_warnings(
 ) -> Vec<String> {
     let mut lines = Vec::new();
     for c in calls {
-        if (c.called && !c.ambiguous()) || held_back.contains(&c.gene) {
+        // An incomplete call rests on positions PharmCAT never read and gets
+        // no drug guidance: pypgx's call is the other one that can settle it.
+        if (c.called && !c.ambiguous() && c.status() != Status::Incomplete)
+            || held_back.contains(&c.gene)
+        {
             continue;
         }
         let Some(p) = pypgx.get(&c.gene) else {
@@ -264,7 +268,12 @@ pub fn pypgx_warnings(
         if !pypgx_called(&p.diplotype) {
             continue;
         }
-        let what = if c.called {
+        let what = if c.status() == Status::Incomplete {
+            format!(
+                "a call that rests on positions it never read ({})",
+                c.unread.join(", ")
+            )
+        } else if c.called {
             format!("no single result ({} possible diplotypes)", c.labels.len())
         } else {
             "no result".to_owned()
@@ -444,8 +453,9 @@ pub struct Phenoconversion {
     pub lines: Vec<String>,
 }
 
-/// Phenoconversion by an opt-in medication list. A line naming no drug of
-/// the inhibitor table is listed as not checked. The genotype phenotype is
+/// Phenoconversion by an opt-in medication list. Every drug of a line
+/// counts, so a combination product converts by each of its drugs; a line
+/// none of whose drugs is in the inhibitor table is listed as not checked. The genotype phenotype is
 /// never changed: the converted one sits beside it. With several inhibitors
 /// of one gene the strongest counts (CPIC gives no rule for combining them).
 ///
@@ -465,11 +475,18 @@ pub fn phenoconversion(
     let mut unknown: Vec<&str> = Vec::new();
     let mut names: Vec<&str> = Vec::new();
     for m in meds {
-        if !inhibitors.keys().any(|(d, _)| *d == m.name) && !unknown.contains(&m.text.as_str()) {
+        // A line is unchecked only when none of its drugs is in the table.
+        let known = m
+            .names
+            .iter()
+            .any(|n| inhibitors.keys().any(|(d, _)| d == n));
+        if !known && !unknown.contains(&m.text.as_str()) {
             unknown.push(&m.text);
         }
-        if !names.contains(&m.name.as_str()) {
-            names.push(&m.name);
+        for n in &m.names {
+            if !names.contains(&n.as_str()) {
+                names.push(n);
+            }
         }
     }
     for gene in PHENOCONVERSION_GENES {
@@ -576,9 +593,14 @@ pub fn phenoconversion(
                 format!("CPIC gives no rule that converts the {gene} phenotype")
             };
             let inhibiting = hits.iter().map(|h| h.0).collect::<Vec<_>>().join(", ");
+            let verb = if hits.len() > 1 {
+                "inhibit"
+            } else {
+                "inhibits"
+            };
             column.insert(
                 gene,
-                format!("not computed: {inhibiting} inhibits {gene}; {why}"),
+                format!("not computed: {inhibiting} {verb} {gene}; {why}"),
             );
             let mut first = why.chars();
             let why_cap: String = first
@@ -660,8 +682,8 @@ fn both_copies(genotype: &str) -> bool {
 /// A recessive gene warns when a genotype shows both copies changed or
 /// when it holds two distinct variants; their phase is not known here, so
 /// two variants on one copy still warn. A drug whose names hold a name of
-/// the medication list is marked as on it. Only `WARNING:` lines reach the
-/// summary.
+/// the medication list is marked as on it. The note paraphrases the linked
+/// drug label. Only `WARNING:` lines reach the summary.
 pub fn contraindication_lines(
     hits: &[ClinvarHit],
     table: &[Contraindication],

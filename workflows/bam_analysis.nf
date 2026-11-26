@@ -36,6 +36,7 @@ include { SAMPLE_QC        } from '../modules/local/somalier/main'
 include { VERIFYBAMID2     } from '../modules/local/verifybamid2/main'
 include { Y_POSITIONS; Y_PILEUP; Y_HAPLOGROUP; Y_PRIVATE } from '../modules/local/y_haplogroup/main'
 include { Y_STR } from '../modules/local/y_str/main'
+include { selected_tools } from './exome'
 
 workflow BAM_ANALYSIS {
 
@@ -47,7 +48,7 @@ workflow BAM_ANALYSIS {
     ch_expansion_catalog // channel: val(path) — ExpansionHunter variant catalog JSON
     ch_hla_dat           // channel: val(path) — Pre-downloaded IPD-IMGT/HLA hla.dat
     ch_hla_genes         // channel: val(path) — gene annotation (GTF) T1K takes coordinates from
-    ch_cytoband          // channel: val(path) — UCSC GRCh38 chromosome bands or []
+    ch_cytoband          // channel: val(path) — UCSC GRCh38 chromosome bands or [] (then the copy in assets/reference)
     ch_somalier_sites    // channel: val(path) — somalier sites VCF or []
     ch_verifybamid2_panel // channel: val(path) — folder of VerifyBamID2's .UD/.mu/.bed panel or []
     ch_kir_dat           // channel: val(path) — IPD-KIR kir.dat (--kir) or []
@@ -95,7 +96,7 @@ workflow BAM_ANALYSIS {
     ch_y_str_csv        = Channel.empty()   // [meta, <id>_y_str.csv]
     ch_mosdepth_depth   = Channel.empty()   // [meta, summary, global_dist] when mosdepth runs
     ch_mosdepth_regions = Channel.empty()   // [meta, regions.bed.gz] when mosdepth runs
-    ch_callability      = Channel.empty()   // [meta, <id>_callability.bed.gz] when mosdepth runs
+    ch_callability      = Channel.empty()   // [meta, <id>_callability.bed.gz and, when exons are measured, <id>_callability_exons.bed.gz] when mosdepth runs
 
     //
     // MODULE 1: HLA Typing (T1K)
@@ -119,10 +120,11 @@ workflow BAM_ANALYSIS {
         }
 
         // Opt-in: --hla_qc, OptiType as a second caller of HLA-A, -B and -C,
-        // on the reads of those genes; PGX_CONSENSUS passes HLA-A and HLA-B
+        // on the read pairs T1K extracted (HLA_TYPING's candidate reads, so
+        // both callers judge the same reads); PGX_CONSENSUS passes HLA-A and HLA-B
         // to PharmCAT only when it agrees with T1K at two fields
         if (params.hla_qc) {
-            HLA_QC_READS(ch_bam, T1K_BUILD.out.coord_fa)
+            HLA_QC_READS(HLA_TYPING.out.candidates)
             HLA_QC(
                 HLA_QC_READS.out.reads.map { meta, r1, r2 -> [meta.id, meta, r1, r2] }
                     .join(HLA_TYPING.out.hla_alleles.map { meta, f -> [meta.id, f] })
@@ -177,26 +179,27 @@ workflow BAM_ANALYSIS {
 
     //
     // MODULE 3: TelomereHunter (telomere length)
-    // Gates on: params.tools contains 'telomere_hunter'
+    // Gates on: params.tools contains 'telomere_hunter', and a whole genome:
+    // an exome captures no telomeric repeats (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('telomere_hunter')) {
-        if (!params.cytoband) {
-            log.warn "telomere_hunter: --cytoband is not set, so TelomereHunter classifies reads by its own hg19 " +
-                     "chromosome bands on GRCh38 positions. Pass UCSC's GRCh38 bands (scripts/setup.sh installs " +
-                     "reference/cytoBand.hg38.txt)."
-        }
-        TELOMERE_HUNTER(ch_bam, ch_cytoband)
+    if (selected_tools().contains('telomere_hunter')) {
+        // The BAM is GRCh38: without --cytoband the module gets the GRCh38
+        // bands the repository ships, never TelomereHunter's own fallback.
+        ch_bands = ch_cytoband.map { f -> f instanceof List ? file("${projectDir}/assets/reference/cytoBand.hg38.txt", checkIfExists: true) : f }
+        TELOMERE_HUNTER(ch_bam, ch_bands)
         ch_telomere_results = TELOMERE_HUNTER.out.telomere_results
         ch_versions         = ch_versions.mix(TELOMERE_HUNTER.out.versions)
     }
 
     //
     // MODULE 4: mosdepth (coverage statistics, and the callability of the
-    // genes of assets/callability_genes.tsv)
+    // genes of assets/callability_genes.tsv and of their coding exons); an
+    // exome's statistics over its capture regions (--capture_bed)
     // Gates on: params.tools contains 'mosdepth'
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mosdepth')) {
-        MOSDEPTH(ch_bam, Channel.value(file("${projectDir}/assets/callability_genes.tsv", checkIfExists: true)))
+        MOSDEPTH(ch_bam, Channel.value(["callability_genes.tsv", "callability_exons.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }),
+                 Channel.value(params.capture_bed ? file(params.capture_bed, checkIfExists: true) : []))
         ch_callability    = MOSDEPTH.out.callability
         ch_coverage       = MOSDEPTH.out.summary
         ch_mosdepth_depth = MOSDEPTH.out.summary.join(MOSDEPTH.out.global_dist)
@@ -212,9 +215,28 @@ workflow BAM_ANALYSIS {
     // step 16b. Without mosdepth the filter runs at depth 0, as step 20 does.
     // failOnMismatch: a BAM with no mosdepth row stops the run instead of
     // dropping the sample from MITO_VARIANTS.
+    // An exome has autosomal depth only inside its capture: MITO_DELETIONS,
+    // whose mtDNA copy number weighs chrM's reads against the autosomes',
+    // does not run, and the NuMT filter gets the exome's genome-wide median
+    // depth, 0 or close to it, so it marks little or nothing, as step 20
+    // does on step 16b's output for an exome.
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('mito_variants')) {
-        ch_mito_in = params.tools.split(',').collect{it.trim()}.contains('mosdepth')
+        def mito_exome     = params.model_type == 'WES'
+        def mito_has_depth = params.tools.split(',').collect{it.trim()}.contains('mosdepth')
+        if (mito_exome) {
+            log.warn "mito_variants: not run: exome: the mtDNA copy number and the large deletions (MITO_DELETIONS). " +
+                "The copy number weighs chrM's reads against the autosomes', which an exome reads only inside its " +
+                "capture. The NuMT filter runs on the exome's median autosomal depth, 0 or close to it, so it marks " +
+                "little or nothing."
+        }
+        if (!mito_has_depth) {
+            // The task's own WARNING goes only to its .command.err, which
+            // Nextflow does not show for a task that succeeds.
+            log.warn "mito_variants: mosdepth is not in --tools, so the NuMT filter runs at the default depth 0 " +
+                "and marks nothing; <id>_chrM_annotated.tsv gets the '# numt' line that says so."
+        }
+        ch_mito_in = mito_has_depth
             ? ch_bam.join(ch_mosdepth_depth, failOnMismatch: true)
             : ch_bam.map { meta, bam, bai -> [meta, bam, bai, [], []] }
         MITO_VARIANTS(
@@ -228,18 +250,21 @@ workflow BAM_ANALYSIS {
         ch_mito_annotated = MITO_VARIANTS_ANNOTATE.out.annotated
         ch_versions       = ch_versions.mix(MITO_VARIANTS.out.versions, MITO_VARIANTS_ANNOTATE.out.versions)
         // Step 20's large deletions (eKLIPse) and mtDNA copy number, from the same BAM
-        MITO_DELETIONS(ch_bam)
-        ch_mito_deletions = MITO_DELETIONS.out.deletions
-        ch_mito_copies    = MITO_DELETIONS.out.copies
-        ch_versions       = ch_versions.mix(MITO_DELETIONS.out.versions)
+        if (!mito_exome) {
+            MITO_DELETIONS(ch_bam)
+            ch_mito_deletions = MITO_DELETIONS.out.deletions
+            ch_mito_copies    = MITO_DELETIONS.out.copies
+            ch_versions       = ch_versions.mix(MITO_DELETIONS.out.versions)
+        }
     }
 
     //
     // MODULE 6: Parascopy (SMN1/SMN2 copy number)
     // Gates on: params.tools contains 'parascopy' (opt-in; main.nf requires
-    // --parascopy_data with it)
+    // --parascopy_data with it), and a whole genome: its background depth
+    // lies across GRCh38, where an exome has none (workflows/exome.nf)
     //
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('parascopy')) {
+    if (selected_tools().contains('parascopy')) {
         PARASCOPY(ch_bam, ch_reference, ch_reference_fai, ch_parascopy_data, ch_parascopy_bed)
         ch_cn_intervals    = PARASCOPY.out.intervals
         ch_cn_dosage       = PARASCOPY.out.dosage
@@ -281,7 +306,8 @@ workflow BAM_ANALYSIS {
     // same person are reported. A sex that disagrees with the samplesheet
     // stops the run as INDEXCOV's check does (--sex_check warn logs it);
     // contamination only warns. SAMPLE_QC also gets mosdepth's windows and
-    // the VCF, when they exist, for the mosaic loss of chrY or chrX.
+    // the VCF, when they exist, for the mosaic loss of chrY or chrX (an
+    // exome: the VCF only).
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('sample_qc')) {
         SOMALIER(ch_bam, ch_reference, ch_reference_fai, ch_somalier_sites)
@@ -296,10 +322,14 @@ workflow BAM_ANALYSIS {
             .first()   // a value channel, so every SAMPLE_QC task gets the tables
         SOMALIER_RELATE(SOMALIER.out.extract.map { meta, f, id_file -> f }.collect(), ch_somalier_sites, ch_somalier_ped)
         VERIFYBAMID2(ch_bam, ch_reference, ch_reference_fai, ch_verifybamid2_panel)
+        // An exome's mosdepth regions are its capture regions, not the
+        // 500 bp windows og qc sex-loss sums into 10 kb blocks: an exome gets
+        // the estimate from its VCF only.
+        ch_qc_regions = params.model_type == 'WES' ? Channel.empty() : ch_mosdepth_regions
         ch_qc_in = SOMALIER.out.extract
             .map { meta, f, id_file -> [meta.id, meta, id_file] }
             .join(VERIFYBAMID2.out.selfsm.map { meta, selfsm, marker_check -> [meta.id, selfsm, marker_check] })
-            .join(ch_mosdepth_regions.map { meta, f -> [meta.id, f] }, remainder: true)
+            .join(ch_qc_regions.map { meta, f -> [meta.id, f] }, remainder: true)
             .join(ch_vcf.map { meta, vcf, _tbi -> [meta.id, vcf] }, remainder: true)
             .filter { items -> items[1] != null }   // a VCF-only row has no BAM
             .map { _id, meta, id_file, selfsm, marker_check, regions, vcf ->
@@ -401,7 +431,7 @@ workflow BAM_ANALYSIS {
     eh_catalog       = ch_eh_catalog      // [meta, <id>_eh_catalog.json]
     telomere_results = ch_telomere_results
     coverage         = ch_coverage
-    callability      = ch_callability     // [meta, <id>_callability.bed.gz]
+    callability      = ch_callability     // [meta, <id>_callability.bed.gz and, when exons are measured, <id>_callability_exons.bed.gz]
     cn_intervals     = ch_cn_intervals    // [meta, <id>_cn_intervals.tsv]: bin/cn_loci.tsv's interval rows
     cn_dosage        = ch_cn_dosage       // [meta, <id>_cn_dosage.tsv]: bin/cn_loci.tsv's gene-dosage rows
     cyp21a2          = ch_cyp21a2         // [meta, <id>_cyp21a2_psv.tsv]: CYP21A2 from depth and PSV sites

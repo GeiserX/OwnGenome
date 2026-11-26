@@ -1,0 +1,11 @@
+level	code	group	fraction	se	low	high
+continent	WEA	West Eurasia (Europe, Middle East, North Africa)	0.9000	.	.	.
+continent	EAS	East Asia	0.0500	.	.	.
+continent	AFR	Africa	0.0500	.	.	.
+region	IBE	Iberia	0.6000	.	.	.
+region	ITA	Italy	0.3920	.	.	.
+region	NWE	Northwestern Europe	0.0050	.	.	.
+region	WAF	West Africa	0.0030	.	.	.
+left_out	OCE	Oceania (continental group)	.	.	.	.
+left_out	OCE	Oceania (regional group)	.	.	.	.
+left_out	SAF	Southern Africa (regional group)	.	.	.	.

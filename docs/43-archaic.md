@@ -38,7 +38,7 @@ So the frequency IBDmix uses at a site is (the stand-ins' ALT count + yours) / 2
 
 ## Docker Image
 
-- `IBDMIX_IMAGE` for IBDmix, `PYTHON_IMAGE` for the genotype files and the report
+- `IBDMIX_IMAGE` for IBDmix, `OG_IMAGE` for the genotype files and the report
 - `setup.sh --archaic` also uses `BCFTOOLS_IMAGE` and `PICARD_IMAGE` (the liftover)
 
 Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
@@ -55,6 +55,8 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 | 1000 Genomes phase 3 | `ALL.wgs.phase3_shapeit2_mvncall_integrated_v5c.20130502.sites.vcf.gz` (1.5 GB) | md5 from the release's `current.tree` |
 | 1000 Genomes | the GRCh38 strict mask, `20160622.allChr.mask.bed` (128 MB) | sha256 |
 | UCSC | `hg19ToHg38.over.chain.gz` | sha256 |
+
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
 
 > **Terms:** MPI-EVA makes the snpAD genotypes and the FilterBed masks freely available under the terms in https://cdna.eva.mpg.de/neandertal/Vindija/README: users are asked to observe the Fort Lauderdale principles, and the data can be used freely for studies of individual genes or other features of the genome. All three genomes' files come from that folder. Cite the genome papers in References. MPI-EVA gives no standard licence such as an SPDX one. The pipeline does not redistribute these files: `setup.sh --archaic` downloads them from MPI-EVA onto your disk, and deletes each chromosome's files once its table rows are built.
 
@@ -134,6 +136,8 @@ The whole-genome run on main (run 42596685257, after the masks) gave HG002 107.5
 | step 43, low-coverage input | 6,051,348 | 5,586,970 |
 | Chen et al., same person | 1,886,257 | 1,886,257 |
 | Chen et al., 503 Europeans: lowest, median, highest | 846,101 / 2,165,624 / 3,987,644 | |
+
+The job writes its tables with two verbs of `og` that are not part of the pipeline. `og archaic compare` puts step 43's Neanderthal segments of each input beside her released calls, per chromosome and in all, with the median and the highest of the people of her 1000 Genomes group (person totals, not sums of per-chromosome figures), and counts the base pairs under her released calls, only in step 43's segments and only in the released calls. `og archaic genomes` does the same for IBDmix's raw segments of each archaic genome at LOD 4 and 50 kb, and for the Altai and Vindija union. Both read the released calls as they are, on GRCh37; the lifted overlap below was computed apart.
 
 - **The input is not the cause.** The two inputs differ by 0.4% with `ALL` and 1.4% with `EUR`. Step 43 finds 3.0 to 3.2 times her released figure on either, so the hypothesis that high coverage inflates the total is refuted.
 - **The released calls are on GRCh37.** (This overlap was computed offline from the run's artifact and the UCSC chain; no workflow step reproduces it.) Lifted to GRCh38 with the UCSC chain, her released calls cover 1,885,100 bp, and 98% of them (1,852,663 bp) lie inside step 43's Altai+Vindija segments, 95% (1,794,145 bp) inside the Altai segments alone. Step 43 finds nearly all of what the released calls find (32,437 bp of them, 2%, lie outside its Altai+Vindija segments), plus 4.2 Mb more on these four chromosomes. So the difference is mostly calls the published set does not contain, not calls it has and step 43 misses.

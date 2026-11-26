@@ -5,7 +5,9 @@
 # GRCh38's (a GRCh37 file named the chr way or the Ensembl way), and lets a
 # GRCh38 header through. A header without contig lengths gets its REF bases
 # compared with the reference instead: more than 5% of the first 1000
-# records different stops the run, 5% or less goes on.
+# records different stops the run, 5% or less goes on. A GT key after
+# another FORMAT key stops the run with exit 2 before a reader can mistake
+# depth or quality for a genotype.
 #
 # Two places apply the rule, and both are run here on the synthetic VCFs in
 # tests/fixtures/vcf/:
@@ -27,44 +29,63 @@ fail() { echo "FAIL: $*"; FAILS=$((FAILS + 1)); }
 pass() { echo "ok:   $*"; }
 
 # --- the script: block of VCF_PRECHECK, as a bash file ---------------------------
-python3 - "${REPO}/modules/local/vcf_precheck/main.nf" "${WORK}/precheck.sh" <<'PY'
-import re, sys, textwrap
-src, out = sys.argv[1], sys.argv[2]
-text = open(src).read()
-m = re.search(r'\n    script:\n(.*?)\n    """\n(.*?)\n    """\n\n    stub:', text, re.S)
-if not m:
-    sys.exit("could not find the script: block of VCF_PRECHECK")
-body = m.group(2)
+# Literal dollar signs must survive Groovy before the rendered bash runs.
+# A raw regex end anchor parses in bash/awk but breaks a Nextflow GString.
+# shellcheck disable=SC2016  # Match literal dollar signs in the Groovy source.
+if sed -n '/^    script:/,/^    stub:/p' "${REPO}/modules/local/vcf_precheck/main.nf" \
+   | grep -nE '(^|[^\\])\$([^[:alpha:]_{]|$)'; then
+  fail "VCF_PRECHECK has an unescaped literal dollar in its Groovy script block"
+  exit 1
+fi
+pass "VCF_PRECHECK escapes literal dollar signs for Groovy"
+
 # The Groovy values the block interpolates. A new one fails here, so this
-# test is updated instead of running a script with a hole in it.
-values = {
-    'vcf': 'input.vcf.gz',
-    'vcf.name': 'input.vcf.gz',
-    'meta.id': 'S1',
-    'allow_unfiltered': 'false',
-    'task.process': 'VCF_PRECHECK',
-    'reference': 'ref.fa',
-    'reference_fai': 'ref.fa.fai',
-}
-def interp(mo):
-    expr = mo.group(1)
-    if expr.startswith('task.container'):
-        return 'test'
-    if expr not in values:
-        sys.exit("unknown Groovy value in the script: block: ${%s}" % expr)
-    return values[expr]
-# Groovy escapes in a triple-quoted GString, then ${...} that is not escaped.
-escapes = {'\\': '\\', '$': '\0DOLLAR\0', 'n': '\n', 't': '\t', '"': '"', "'": "'"}
-def unescape(mo):
-    c = mo.group(1)
-    if c not in escapes:
-        sys.exit("unexpected Groovy escape \\%s in the script: block" % c)
-    return escapes[c]
-body = re.sub(r'\\(.)', unescape, body)
-body = re.sub(r'\$\{([^}]*)\}', interp, body)
-body = body.replace('\0DOLLAR\0', '$')
-open(out, 'w').write(textwrap.dedent(body) + '\n')
-PY
+# test is updated instead of running a script with a hole in it. Groovy's
+# escapes in a triple-quoted GString go first (an unknown one is refused),
+# then each ${...} that is not escaped; then the common indent comes off.
+# shellcheck disable=SC2016  # the dollar signs are awk's and Groovy's
+awk '
+  function die(m) { print m > "/dev/stderr"; bad = 1; exit 1 }
+  { text = text "\n" $0 }
+  END {
+    if (bad) exit 1
+    text = text "\n"
+    q = "\n    \"\"\"\n"
+    a = index(text, "\n    script:\n")
+    if (a) { rest = substr(text, a + 13); o = index(rest, q) }
+    if (a && o) { rest = substr(rest, o + length(q) - 1); c = index(rest, q "\n    stub:") }
+    if (!a || !o || !c) die("could not find the script: block of VCF_PRECHECK")
+    body = substr(rest, 2, c - 2)
+    v["vcf"] = "input.vcf.gz"; v["vcf.name"] = "input.vcf.gz"; v["meta.id"] = "S1"
+    v["allow_unfiltered"] = "false"; v["task.process"] = "VCF_PRECHECK"
+    v["reference"] = "ref.fa"; v["reference_fai"] = "ref.fa.fai"
+    esc["\\"] = "\\"; esc["$"] = "$"; esc["n"] = "\n"; esc["t"] = "\t"; esc["\""] = "\""; esc["\047"] = "\047"
+    out = ""; n = length(body)
+    for (i = 1; i <= n; i++) {
+      ch = substr(body, i, 1)
+      if (ch == "\\" && i < n && substr(body, i + 1, 1) != "\n") {
+        nx = substr(body, i + 1, 1)
+        if (!(nx in esc)) die("unexpected Groovy escape \\" nx " in the script: block")
+        out = out esc[nx]; i++
+      } else if (substr(body, i, 2) == "${" && (j = index(substr(body, i + 2), "}"))) {
+        e = substr(body, i + 2, j - 1)
+        if (e ~ /^task\.container/) out = out "test"
+        else if (e in v) out = out v[e]
+        else die("unknown Groovy value in the script: block: ${" e "}")
+        i += j + 1
+      } else out = out ch
+    }
+    # textwrap.dedent: the common leading whitespace of the lines that are
+    # not blank comes off every line; blank lines become empty.
+    k = split(out, L, "\n"); margin = ""; first = 1
+    for (i = 1; i <= k; i++) {
+      if (L[i] !~ /[^ \t]/) continue
+      match(L[i], /^[ \t]*/); w = substr(L[i], 1, RLENGTH)
+      if (first) { margin = w; first = 0 }
+      else while (substr(w, 1, length(margin)) != margin) margin = substr(margin, 1, length(margin) - 1)
+    }
+    for (i = 1; i <= k; i++) print (L[i] ~ /[^ \t]/ ? substr(L[i], length(margin) + 1) : "")
+  }' "${REPO}/modules/local/vcf_precheck/main.nf" > "${WORK}/precheck.sh"
 
 # --- a fake bcftools, from the plain-text VCF beside the input -----------------
 mkdir -p "${WORK}/bin"
@@ -74,6 +95,8 @@ cat > "${WORK}/bin/bcftools" <<'FAKE'
 case "$1 ${2:-}" in
   "index -s")
     gzip -dc "$3" | awk -F'\t' '!/^#/ { n[$1]++ } END { for (c in n) printf "%s\t.\t%d\n", c, n[c] }' ;;
+  "view -H")
+    gzip -dc "$3" | grep -v '^#' ;;
   "view -h")
     gzip -dc "$3" | grep '^#' ;;
   "head -h")
@@ -94,9 +117,13 @@ case "$1 ${2:-}" in
       !($1 in seq) { print "faidx_fetch_seq failed at " $1 ":" $2 > "/dev/stderr"; exit 255 }
       toupper(substr(seq[$1], $2, length($4))) == toupper($4) { print > out }' "$5" "$8" ;;
   "query -f")
-    # %FILTER, or %FILTER\t%ALT\t%INFO/END: the reference-block columns read '.'
+    # The former query pass, kept so the pre-fix control runs on the same fake.
     case "$3" in
-      *ALT*) gzip -dc "$4" | awk -F'\t' -v OFS='\t' '!/^#/ { print $7, $5, "." }' ;;
+      *ALT*) gzip -dc "$4" | awk -F'\t' -v OFS='\t' '!/^#/ {
+        end = "."
+        n = split($8, info, ";")
+        for (i = 1; i <= n; i++) if (info[i] ~ /^END=/) end = substr(info[i], 5)
+        print $7, $5, end }' ;;
       *) gzip -dc "$4" | awk -F'\t' '!/^#/ { print $7 }' ;;
     esac ;;
   *) echo "fake bcftools: unexpected call: $*" >&2; exit 2 ;;
@@ -107,18 +134,24 @@ chmod +x "${WORK}/bin/bcftools"
 # --- a small reference -------------------------------------------------------
 # chr1 and chrM, every base G except the REF bases of the fixture's three
 # records: chr1:10000100 A, chr1:10000200 C, chrM:100 T.
-python3 - "${WORK}/ref.fa" <<'PY2'
-import sys
-seqs = {'chr1': (10001500, {10000100: 'A', 10000200: 'C'}), 'chrM': (16569, {100: 'T'})}
-with open(sys.argv[1], 'w') as fa, open(sys.argv[1] + '.fai', 'w') as fai:
-    for name, (n, bases) in seqs.items():
-        s = bytearray(b'G' * n)
-        for pos, b in bases.items():
-            s[pos - 1] = ord(b)
-        fa.write('>%s\n' % name)
-        fai.write('%s\t%d\t%d\t%d\t%d\n' % (name, n, fa.tell(), n, n + 1))
-        fa.write(s.decode() + '\n')
-PY2
+awk -v fa="${WORK}/ref.fa" -v fai="${WORK}/ref.fa.fai" '
+  # seq NAME LENGTH: NAME of LENGTH bases, all G but those in base[]
+  function seq(name, len,   s, p) {
+    s = "G"
+    while (length(s) < len) s = s s
+    s = substr(s, 1, len)
+    for (p in base) if (p + 0 <= len) s = substr(s, 1, p - 1) base[p] substr(s, p + 1)
+    printf ">%s\n", name > fa
+    off += length(name) + 2
+    printf "%s\t%d\t%d\t%d\t%d\n", name, len, off, len, len + 1 > fai
+    printf "%s\n", s > fa
+    off += len + 1
+    split("", base)
+  }
+  BEGIN {
+    base[10000100] = "A"; base[10000200] = "C"; seq("chr1", 10001500)
+    base[100] = "T"; seq("chrM", 16569)
+  }'
 
 # run_precheck VCF_TEXT_FILE: run the block in a fresh task directory; sets OUT, RC
 run_precheck() {
@@ -173,6 +206,72 @@ else
   fail "VCF_PRECHECK on a one-sample VCF: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
 fi
 
+# --- FORMAT order: never read a depth value as the genotype -------------------
+# Only the second record is malformed: checking the header or first record
+# alone cannot catch it. Repeated errors must name the first bad record.
+awk -F'\t' -v OFS='\t' '
+  !/^#/ && ++n >= 2 { $9 = "DP:GT:GQ"; $10 = "30:0/1:50" }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/gt-not-first.vcf"
+run_precheck "${WORK}/gt-not-first.vcf"
+if [ "$RC" -eq 2 ] && grep -q "Sample .S1.: input.vcf.gz" <<<"$OUT" \
+   && grep -q 'chr1:10000200.*DP:GT:GQ' <<<"$OUT" \
+   && grep -q 'GT must be the first FORMAT key' <<<"$OUT" \
+   && grep -q 'FORMAT keys and each sample.*values together' <<<"$OUT"; then
+  pass "VCF_PRECHECK refuses misplaced GT with exit 2, the first record and the fix"
+else
+  fail "VCF_PRECHECK on misplaced GT: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# GT may also be the last key, even on a filtered record.
+awk -F'\t' -v OFS='\t' '
+  !/^#/ && ++n == 3 { $7 = "LowQual"; $9 = "DP:GQ:GT"; $10 = "30:50:0/1" }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/gt-last.vcf"
+run_precheck "${WORK}/gt-last.vcf"
+if [ "$RC" -eq 2 ] && grep -q 'chrM:100.*DP:GQ:GT' <<<"$OUT"; then
+  pass "VCF_PRECHECK checks the last record and filtered records for misplaced GT"
+else
+  fail "VCF_PRECHECK on GT last: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# The VCF rule applies when GT is present. A sites-only VCF, FORMAT '.', or
+# FORMAT without GT is valid and must not be labelled a FORMAT-order error.
+for format in GT GT:DP:GQ DP:GQ . XGT:DP; do
+  awk -F'\t' -v OFS='\t' -v fmt="$format" '
+    !/^#/ { $9 = fmt; $10 = (fmt == "GT" ? "0/1" : fmt == "GT:DP:GQ" ? "0/1:30:50" : fmt == "." ? "." : "30:50") }
+    { print }' "${FIX}/one_sample.vcf" > "${WORK}/format.vcf"
+  run_precheck "${WORK}/format.vcf"
+  if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=3' <<<"$OUT"; then
+    pass "VCF_PRECHECK preserves FORMAT $format"
+  else
+    fail "VCF_PRECHECK on FORMAT $format: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+  fi
+done
+cut -f1-8 "${FIX}/one_sample.vcf" > "${WORK}/sites-only.vcf"
+run_precheck "${WORK}/sites-only.vcf"
+if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=3' <<<"$OUT"; then
+  pass "VCF_PRECHECK preserves a sites-only VCF"
+else
+  fail "VCF_PRECHECK on sites-only VCF: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
+# Changing the scan must preserve FILTER counts and reference-block detection.
+# END may be surrounded by other INFO keys; a variant with END is not a block.
+awk -F'\t' -v OFS='\t' '
+  /^#CHROM/ { print "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End\">" }
+  !/^#/ {
+    n++; $7 = (n == 1 ? "PASS" : n == 2 ? "." : "LowQual")
+    if (n == 2) { $5 = "<NON_REF>"; $8 = "X=1;END=10000300;Y=2" }
+    if (n == 3) $8 = "END=101"
+  }
+  { print }' "${FIX}/one_sample.vcf" > "${WORK}/blocks.vcf"
+run_precheck "${WORK}/blocks.vcf"
+if [ "$RC" -eq 0 ] && grep -q 'FILTER counts PASS=1 .=1 other=1' <<<"$OUT" \
+   && grep -q 'gVCF blocks, reference-block records 1' <<<"$OUT"; then
+  pass "VCF_PRECHECK preserves FILTER and reference-block counts in the shared scan"
+else
+  fail "VCF_PRECHECK on reference blocks: rc=${RC}, output: $(tr '\n' '|' <<<"$OUT")"
+fi
+
 # --- build: ##contig lengths that are not GRCh38's --------------------------------------
 # GRCh37's chr1 under the chr name: the stop names the contig, both lengths and GRCh37.
 sed 's/^##contig=<ID=chr1,length=248956422>/##contig=<ID=chr1,length=249250621>/' \
@@ -212,8 +311,7 @@ fi
 # so does a header without ##contig lines (validate-setup.sh spot-checks those).
 {
   grep '^##fileformat' "${FIX}/one_sample.vcf"
-  awk -F'[(", )]+' '/^    \("chr/ { for (i = 2; i < NF; i += 2) print $i, $(i + 1) }' \
-    "${REPO}/tests/demo/make_demo_sample.py" \
+  awk -F '\t' '$1 ~ /^chr([0-9]+|X|Y)$/ { print $1, $3 }' "${REPO}/assets/ownhealth/grch38_refget.tsv" \
     | awk '{ printf "##contig=<ID=%s,assembly=GRCh38,length=%s>\n", $1, $2 }'
   grep -v '^##fileformat' "${FIX}/one_sample.vcf" | grep -v '^##contig'
 } > "${WORK}/grch38-all.vcf"

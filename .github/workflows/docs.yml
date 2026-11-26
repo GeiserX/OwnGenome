@@ -21,18 +21,19 @@ on:
       - 'docs/**'
       - 'zensical.toml'
       - '.github/workflows/docs.yml'
-      - '.github/scripts/site-check.py'
       # Add every file a page includes with pymdownx.snippets (for example
       # docker-compose.yml, .env.example): a change to it must rebuild the
       # site, and a rename must fail the build.
-      # The live-site demo at /demo/ is built from these (tests/demo/build_live_demo.py).
-      # assets/** because render_report.py also reads the gene and rule tables there.
+      # og live demo builds the live-site demo at /demo/ from these files.
+      # assets/** because og report render also reads the gene and rule tables there.
       - 'assets/**'
       - 'bin/**'
       - 'tests/demo/**'
       - 'tests/fixtures/live/**'
-      # og builds the demo's Figure 1, the genome map (og map build), its CPIC
-      # table (og pgx cpic-report) and its mosaic rows (og qc sex-loss).
+      - 'tests/browser/live_demo*.rs'
+      # og writes the demo sample itself (og dev demo-sample), with its CPIC
+      # table (og pgx cpic-report) and its mosaic rows (og qc sex-loss), and
+      # builds the demo's Figure 1, the genome map (og map build).
       - 'rust/**'
       - 'tests/fixtures/map/**'
       - 'tests/og_binary.py'
@@ -86,16 +87,10 @@ jobs:
       - name: Build
         run: python -m zensical build --clean --strict
 
-      # What the strict build does not check: a page in no nav entry, a nav
-      # entry for a missing file, a missing image, a /rooted link, a raw <title>
-      # in a page. Each one was proven to turn this step red (validate-zensical.sh).
-      - name: Check the built site
-        run: python -I .github/scripts/site-check.py site
-
-      # og (rust/, docs/rust.md): the demo sample builder runs step 27's
-      # parser, og pgx cpic-report (tests/og_binary.py reads OG), writes the
-      # genome map's documents, og map build, and runs step 33's og qc sex-loss
-      # for the mosaic rows.
+      # og (rust/, docs/rust.md): og dev demo-sample writes the demo sample,
+      # running the og verbs of the steps it stands in for (step 27's
+      # og pgx cpic-report, step 33's og qc sex-loss and the rest), and
+      # og map build writes the genome map's documents.
       - name: Install the toolchain rust/rust-toolchain.toml pins
         working-directory: rust
         run: |
@@ -103,32 +98,34 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustc --version
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust
-
       - name: Build og
         working-directory: rust
         run: |
           OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
           echo "OG=${PWD}/target/release/og" >> "$GITHUB_ENV"
 
-      # /demo/: the live site replaying an invented run of DEMO-001, the invented
-      # sample of the docs pictures, through the real page and plugin code
-      # (tests/demo/build_live_demo.py; standard library only). It is a static
-      # folder beside the pages, not a page of the nav, so it goes in after the
-      # site check.
-      # The demo's Figure 1 is the genome map, whose documents the og built above writes (og map build).
+      # What the strict build does not check: a page in no nav entry, a nav
+      # entry for a missing file, a missing image, a /rooted link, a raw <title>
+      # in a page (og dev site-check, rust/crates/og-dev/src/site_check.rs; its
+      # tests plant each fault in rust/crates/og-dev/tests/site_check.rs).
+      - name: Check the built site
+        run: |
+          "$OG" dev site-check site
+
+      # Build the invented runs and their replay after the documentation check.
       - name: Add the live-site demo
         run: |
-          python3 tests/demo/build_live_demo.py --out site/demo --og "$OG"
+          "$OG" dev demo-events --check
+          "$OG" live demo --out site/demo
           test -s site/demo/runs/DEMO-001/frames.json
           for r in DEMO-001 DEMO-002 DEMO-003; do test -s "site/demo/runs/${r}/map.json"; done
 
-      # The map at 1440 x 900 and 390 x 844, dark: genome, chromosome and a closed page, kept as the
-      # artifact map-screens (tests/test_live_demo.py --map-screens; Chrome is on the runner).
+      # Keep desktop and phone views of the map as a build artifact.
       - name: Screenshots of the genome map
-        run: python3 tests/test_live_demo.py --map-screens "$RUNNER_TEMP/map-screens" site/demo
+        working-directory: rust
+        run: |
+          OG_DEMO_SITE="$GITHUB_WORKSPACE/site/demo" OG_DEMO_SCREENS="$RUNNER_TEMP/map-screens" \
+            cargo test --release --locked -p og-browser --test live_demo capture_map_screens -- --ignored
 
       - name: Upload the map screenshots
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

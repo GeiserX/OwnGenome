@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PharmCAT positions longer than one base (indels such as UGT1A1 *28, and
 # two-base substitutions) are called reference when the gVCF's reference
-# blocks cover them: step 07 runs bin/pgx_refblock_fill.py after expanding the
+# blocks cover them: step 07 runs og pgx refblock-fill after expanding the
 # blocks. The sample is the invented gVCF tests/fixtures/pharmcat/refblocks.g.vcf
 # on the fixture reference: blocks over five such positions, and four that
 # must stay missing (a ./. hole inside the span, a block with GQ 10, a variant
@@ -63,21 +63,13 @@ check_eq "the variants-only VCF holds the one variant record" "$(GENOME_DIR="$G"
 # match_table FILE: chrom, position, gene and state (missing, call:<vcfCall>,
 # or for position 0 uncallable:<haplotypes>) of PharmCAT's match.json.
 match_table() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable match.json: {e}", file=sys.stderr)
-    sys.exit(0)
-for g in d.get("results") or []:
-    ch, gene = g.get("chromosome"), g.get("gene")
-    for m in (g.get("matchData") or {}).get("missingPositions") or []:
-        print(f"{m.get('chromosome') or ch}\t{m.get('position')}\t{gene}\tmissing")
-    for v in g.get("variants") or []:
-        print(f"{ch}\t{v.get('position')}\t{gene}\tcall:{v.get('vcfCall')}")
-    print(f"{ch}\t0\t{gene}\tuncallable:{','.join(sorted(g.get('uncallableHaplotypes') or []))}")
-PY
+  # A missing value prints as None.
+  jq -r 'def p: if . == null then "None" else tostring end;
+    (.results // [])[] | (.chromosome | p) as $ch | (.gene | p) as $gene
+    | (((.matchData // {}).missingPositions // [])[] | "\(.chromosome // $ch | p)\t\(.position | p)\t\($gene)\tmissing"),
+      ((.variants // [])[] | "\($ch)\t\(.position | p)\t\($gene)\tcall:\(.vcfCall | p)"),
+      "\($ch)\t0\t\($gene)\tuncallable:\(.uncallableHaplotypes // [] | sort | join(","))"' "$1" 2>/dev/null \
+    || echo "unreadable match.json: $1" >&2
 }
 listed() { [ -f "$1" ] || { echo "no file"; return; }; awk -F'\t' -v c="$2" -v p="$3" '!/^#/ && $1 == c && $2 == p {k++} END {print k + 0}' "$1"; }
 state() { awk -F'\t' -v c="$2" -v p="$3" '$1 == c && $2 == p {print $4}' <<< "$1" | LC_ALL=C sort | paste -sd' ' -; }
@@ -135,8 +127,13 @@ while read -r c p r g _; do
   check_eq "${g} ${c}:${p} is no longer listed missing" "$(listed "$MISSING" "$c" "$p")" 0
   call=$(state "$MATCH" "$c" "$p")
   check "${g} ${c}:${p} is called reference in match.json (${call:-nothing})" \
-    python3 -c 'import re, sys; a = re.split(r"[/|]", sys.argv[1].removeprefix("call:")); sys.exit(not (sys.argv[1].startswith("call:") and a and all(x == sys.argv[2] for x in a)))' \
-    "$call" "$r"
+    awk -v c="$call" -v r="$r" 'BEGIN {
+      # call:<GT> with every allele of the GT (split on / and |) the reference base.
+      if (substr(c, 1, 5) != "call:") exit 1
+      n = split(substr(c, 6), a, /[\/|]/)
+      if (n == 0) exit (r != "")
+      for (i = 1; i <= n; i++) if (a[i] != r) exit 1
+    }'
 done <<< "$FILL"
 while read -r c p why; do
   check_ge "${c}:${p} stays missing (${why//_/ })" "$(listed "$MISSING" "$c" "$p")" 1

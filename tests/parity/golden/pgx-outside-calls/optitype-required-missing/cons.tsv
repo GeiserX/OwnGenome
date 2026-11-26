@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	indeterminate	no	the second caller was asked for (HLA_QC), but there is no OptiType result: step 08 did not finish it	HLA-A*01:01:01 (quality 60); HLA-A*26:01:01 (quality 60)
+HLA-B	indeterminate	no	the second caller was asked for (HLA_QC), but there is no OptiType result: step 08 did not finish it	HLA-B*57:01:01 (quality 60); HLA-B*38:01:01 (quality 48)
+CYP2D6	indeterminate	no	no caller made a call	pypgx: not run; Cyrius: not run; depth check: not run

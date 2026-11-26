@@ -22,6 +22,7 @@ include { CNVPYTOR; CNVPYTOR_VCF } from '../modules/local/cnvpytor/main'
 include { DUPHOLD; DUPHOLD_FILTER } from '../modules/local/duphold/main'
 include { ANNOTSV        } from '../modules/local/annotsv/main'
 include { SURVIVOR_PREP; SURVIVOR_MERGE; SURVIVOR_SORT } from '../modules/local/survivor_merge/main'
+include { selected_tools } from './exome'
 
 workflow SV {
 
@@ -65,7 +66,9 @@ workflow SV {
     //
     ch_cnvpytor_calls = Channel.empty()
     ch_cnvpytor_vcf   = Channel.empty()
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('cnvpytor')) {
+    // On a whole genome: an exome has read depth only in its capture
+    // (workflows/exome.nf)
+    if (selected_tools().contains('cnvpytor')) {
         // value channel so the pinned resources broadcast to every sample (not just the first)
         ch_cnvpytor_res   = Channel.value(file(params.cnvpytor_resources, checkIfExists: true))
         CNVPYTOR(ch_bam, ch_cnvpytor_res)
@@ -128,10 +131,11 @@ workflow SV {
 
     //
     // SURVIVOR_PREP -> SURVIVOR_MERGE -> SURVIVOR_SORT: the calls 2+ callers
-    // agree on (breakpoints within 1 kb, same type and strands)
+    // agree on (breakpoints within 1 kb, same type and strands), each merged
+    // record then checked to be one event (og sv consensus-check)
     //
     ch_merged_sv = Channel.empty()
-    if (params.tools && params.tools.split(',').collect{it.trim()}.contains('survivor_merge')) {
+    if (selected_tools().contains('survivor_merge')) {
         SURVIVOR_PREP(
             Channel.empty().mix(
                 ch_manta_vcf.map    { meta, vcf -> [meta, 'manta', vcf] },
@@ -140,7 +144,7 @@ workflow SV {
             )
         )
         // Each sample goes on once every selected caller has given its VCF
-        def sv_callers = ['manta', 'delly', 'cnvpytor'].findAll { c -> params.tools.split(',').collect { it.trim() }.contains(c) }
+        def sv_callers = ['manta', 'delly', 'cnvpytor'].findAll { c -> selected_tools().contains(c) }
         SURVIVOR_MERGE(SURVIVOR_PREP.out.vcf.groupTuple(size: sv_callers.size()))
         SURVIVOR_SORT(SURVIVOR_MERGE.out.vcf)
         ch_merged_sv = SURVIVOR_SORT.out.merged_vcf

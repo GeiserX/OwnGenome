@@ -20,12 +20,12 @@
 #     match log, and its sum less the autosomal sum above equals plink2's
 #     --score of those rows on the same genotypes with the sex set.
 # Writes nothing other cases read; removes what it made. When case prs-3
-# measures (a run dispatched on a branch other than main) it also starts that
-# case's download of the 1000 Genomes panel in the background, so the 7.4 GB
-# arrive while cases prs-1 and prs-2 run.
+# measures (a run dispatched on a branch other than main, not traced) it
+# also starts that case's download of the 1000 Genomes panel in the
+# background, so the 7.4 GB arrive while cases prs-1 and prs-2 run.
 . "$(dirname "$0")/lib.sh"
 
-if [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ]; }; then
+if [ "${PGSC_MEASURE:-}" = 1 ] || { [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ] && [ "${GITHUB_REF:-}" != refs/heads/main ] && [ "${E2E_TRACE:-false}" != true ]; }; then
   rm -f "${E2E_WORK}/panel-download.status"
   # Its own session, so the case's timeout does not stop it; it ends on its own.
   setsid nohup timeout 2700 bash "$(dirname "$0")/prs-3-panel-measure.sh" --download \
@@ -39,47 +39,17 @@ check "case 21 wrote a gVCF" vcf_ok "${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz"
 
 # --- sites -----------------------------------------------------------------------
 SITES="${CASE_TMP}/sites.tsv"
-python3 - "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
-  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" > "$SITES" <<'PY'
-import gzip, sys
-bed, truth, fasta = sys.argv[1:4]
-iv = [tuple(int(x) for x in l.split()[1:3]) for l in open(bed) if l.startswith("chr20\t")]
-var, snv = [], []
-for l in gzip.open(truth, "rt"):
-    if not l.startswith("chr20\t"):
-        continue
-    f = l.rstrip("\n").split("\t")
-    var.append(int(f[1]))
-    gt = f[9].split(":")[0].replace("|", "/")
-    # pgsc_calc drops strand-ambiguous pairs (A/T, C/G), plink2 would not.
-    amb = {f[3], f[4]} in ({"A", "T"}, {"C", "G"})
-    if len(f[3]) == 1 and len(f[4]) == 1 and not amb and 10_050_000 < int(f[1]) < 10_450_000 and gt in ("0/1", "1/1"):
-        snv.append((int(f[1]), f[4], f[3]))
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chr20"]
-def base(pos):
-    i = pos - 1
-    with open(fasta, "rb") as fh:
-        fh.seek(offset + (i // bases) * width + i % bases)
-        return fh.read(1).decode().upper()
-homref, p = [], 10_050_000
-while len(homref) < 6 and p < 10_450_000:
-    inside = any(s + 200 < p <= e - 200 for s, e in iv)
-    clear = all(abs(v - p) > 200 for v in var)
-    b = base(p)
-    if inside and clear and b in "ACGT":
-        homref.append((p, b))
-    p += 7_919
-# chrom, pos, effect allele, other allele, weight, kind
-for i, (p, b) in enumerate(homref[:5]):
-    print(f"20\t{p}\t{b}\t\t{2 ** i}\thomref")
-p, b = homref[5]
-comp = {"A": "T", "T": "A", "C": "G", "G": "C"}
-other = next(x for x in "ACGT" if x not in (b, comp[b]))
-print(f"20\t{p}\t{other}\t{b}\t3.5\thomref_effect_not_ref")
-for (p, alt, ref), w in zip(snv[:: max(1, len(snv) // 3)][:3], (0.25, -1.5, 0.125)):
-    print(f"20\t{p}\t{alt}\t{ref}\t{w}\tsnv")
-PY
+# chrom, pos, effect allele, other allele, weight, kind: five hom-ref sites,
+# a sixth with an effect allele that is neither the reference base nor its
+# complement, and three truth SNVs that are not strand-ambiguous (pgsc_calc
+# drops A/T and C/G pairs, plink2 would not).
+"${REPO}/bin/og" dev fixture prs-sites "${FIXTURE_DIR}/HG002_truth_chr20.bed" "${FIXTURE_DIR}/HG002_truth_chr20.vcf.gz" \
+  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" 6 3 --no-ambiguous \
+  | awk -F'\t' -v OFS='\t' 'BEGIN {split("0.25 -1.5 0.125", w, " "); c["A"] = "T"; c["T"] = "A"; c["C"] = "G"; c["G"] = "C"}
+      $1 == "homref" && h < 5 {print "20", $2, $3, "", 2 ^ h, "homref"; h++; next}
+      $1 == "homref" {for (i = 1; i <= 4; i++) {o = substr("ACGT", i, 1); if (o != $3 && o != c[$3]) break}
+                      print "20", $2, o, $3, "3.5", "homref_effect_not_ref"; next}
+      $1 == "snv" {print "20", $2, $3, $4, w[++s], "snv"}' > "$SITES"
 cat "$SITES"
 check_eq "score sites (5 hom-ref, 1 hom-ref with another effect allele, 3 truth SNVs)" "$(wc -l < "$SITES" | tr -d ' ')" 9
 
@@ -89,30 +59,9 @@ XR=chrX:73700001-74000000
 bcf query -r "$XR" -f '%POS\t%INFO/END\t[%GT]\n' "${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" > "${CASE_TMP}/x_blocks.tsv"
 bcf query -r "$XR" -i 'GT="alt"' -f '%POS\n' "${SAMPLE}/vcf/${SAMPLE}.vcf.gz" > "${CASE_TMP}/x_vars.tsv"
 X_SITES="${CASE_TMP}/x_sites.tsv"
-python3 - "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" \
-  > "$X_SITES" <<'PY2'
-import sys
-blocks, variants, fasta = sys.argv[1:4]
-var = [int(l) for l in open(variants) if l.strip()]
-fai = {l.split()[0]: [int(x) for x in l.split()[1:5]] for l in open(fasta + ".fai")}
-length, offset, bases, width = fai["chrX"]
-def base(pos):
-    i = pos - 1
-    with open(fasta, "rb") as fh:
-        fh.seek(offset + (i // bases) * width + i % bases)
-        return fh.read(1).decode().upper()
-rows = [l.rstrip("\n").split("\t") for l in open(blocks) if l.strip()]
-refs = [(int(r[0]), int(r[1])) for r in rows if len(r) == 3 and r[1] not in ("", ".") and r[2] in ("0/0", "0|0")]
-print(f"{len(rows)} gVCF records on the chrX slice, {len(refs)} 0/0 blocks, {len(var)} calls with an ALT", file=sys.stderr)
-out, last = [], 0
-for start, end in refs:
-    p = (start + end) // 2
-    if end - start >= 50 and p - last > 2000 and all(abs(v - p) > 100 for v in var) and base(p) in "ACGT":
-        out.append((p, base(p)))
-        last = p
-for (p, b), w in zip(out[:3], (32, 64, 128)):
-    print(f"X\t{p}\t{b}\t\t{w}\tchrx")
-PY2
+"${REPO}/bin/og" dev fixture x-ref-sites "${CASE_TMP}/x_blocks.tsv" "${CASE_TMP}/x_vars.tsv" \
+  "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta" chrX 3 \
+  | awk -F'\t' -v OFS='\t' '{print "X", $1, $2, "", 2 ^ (NR + 4), "chrx"}' > "$X_SITES"
 cat "$X_SITES"
 check_eq "chrX rows of the score (positions in reference blocks of the gVCF)" "$(wc -l < "$X_SITES" | tr -d ' ')" 3
 
@@ -176,16 +125,8 @@ check_eq "male: pgsc_calc matched all 12" "$(col Variants_Matched)" 12
 check_eq "male: the summary says the 3 chrX rows were scored" "$(col ChrX)" "3 scored"
 check "male: pgsc_calc's plink2 got the sex" has "update-sex" "$(cat "${D}/prs/pgsc_calc/images.config" 2>/dev/null)"
 MATCH_LOG=$(find "${D}/prs/pgsc_calc/results" -name '*_log.csv.gz' 2>/dev/null | head -n 1)
-X_MATCHED=$(python3 - "${MATCH_LOG:-/dev/null}" <<'PY2'
-import csv, gzip, sys
-try:
-    rows = list(csv.DictReader(gzip.open(sys.argv[1], "rt")))
-except (OSError, EOFError):
-    print("no match log"); sys.exit()
-print(sum(1 for r in rows if r.get("accession") == "PGS000018" and r.get("chr_name") in ("X", "23")
-          and r.get("match_status") == "matched"))
-PY2
-)
+X_MATCHED=$("${REPO}/bin/og" dev fixture csv-count "${MATCH_LOG:-/dev/null}" accession=PGS000018 chr_name=X,23 match_status=matched \
+  2>/dev/null || echo "no match log")
 check_eq "male: pgsc_calc's match log has the 3 chrX rows matched (${MATCH_LOG:-no log})" "$X_MATCHED" 3
 # plink2 on the chrX rows alone, on the genotypes step 25 handed pgsc_calc, with the sex
 printf '#IID\tSEX\n%s\t1\n' "$SAMPLE" > "${CASE_TMP}/sex.tsv"

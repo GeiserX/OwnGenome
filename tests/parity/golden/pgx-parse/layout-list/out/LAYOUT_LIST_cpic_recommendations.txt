@@ -1,0 +1,39 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: LAYOUT_LIST
+Date: 2026-11-25
+Source: PharmCAT  report (layout-list.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2C19      *1/*2                          Intermediate Metabolizer
+TPMT         *1/*3A                         Intermediate Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP2C19 -- Intermediate Metabolizer:
+    Diplotype: *1/*2
+    Drugs (pipeline fallback table; the report names none): clopidogrel, voriconazole, escitalopram, citalopram, sertraline, amitriptyline, clomipramine, doxepin, imipramine, trimipramine, lansoprazole, omeprazole, pantoprazole, dexlansoprazole
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  TPMT -- Intermediate Metabolizer:
+    Diplotype: *1/*3A
+    Drugs (pipeline fallback table; the report names none): azathioprine, mercaptopurine, thioguanine
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

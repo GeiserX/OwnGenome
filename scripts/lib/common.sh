@@ -24,8 +24,10 @@
 # wrote_vcf, atomic_out, fetch, data_file / install_data_file, install_vep_cache,
 # lock_acquire / lock_release, pipeline_images, pinned_tag / tag_pinned_image /
 # pinned_tag_present, image_is_dangling,
-# scatter_beds and run_parallel, FASTQ_RECORDS_AWK / fastp_total_reads /
-# read_count_mode / read_count_check,
+# scatter_beds, scatter_jobs and run_parallel, PAR_BED / sample_sex /
+# ploidy_line / ploidy_units, FASTQ_RECORDS_AWK / fastp_total_reads /
+# read_count_mode / read_count_check, input_stamp / trimmed_reads_current /
+# trimmed_reads_usable,
 # described where they are
 # defined. Keep it bash 3.2 compatible: macOS runs setup.sh with /bin/bash.
 
@@ -40,9 +42,9 @@ THREADS=${THREADS:-8}
 # validate_sample NAME: exit 2 unless NAME is a plain sample name. Scripts put
 # it into container paths and `bash -c` bodies, so only letters, digits, '.',
 # '_' and '-' are allowed (the same rule as main.nf), and '.' and '..' are not
-# names at all. Nor is a name that starts with '-': CPSR, bin/pgx_parse.py and
-# bin/collect_summary.py take it as an argument value, and argparse reads '-x'
-# as an option. CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
+# names at all. Nor is a name that starts with '-': CPSR and bin/pgx_parse.py
+# take it as an argument value, and argparse reads '-x' as an option.
+# CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
 validate_sample() {
   local s=${1:-}
   if [[ ! "$s" =~ ^[A-Za-z0-9._-]+$ ]] || [ "$s" = "." ] || [ "$s" = ".." ]; then
@@ -184,6 +186,60 @@ fastp_total_reads() {
       if (i) { v = substr($0, i + length(k)); sub(/[^0-9].*/, "", v); if (v != "") { print v; found = 1 } }
       exit }
     END { exit !found }'
+}
+
+# input_stamp FILE...: one tab-separated line per FILE: its name (no
+# directory), its size in bytes, its modification time in seconds, and the
+# sha256 of its first and of its last MiB. A step stores the stamp of its
+# inputs beside its output and redoes the work when the stamp differs, so a
+# replaced input is never answered with the output of the one before. Reading
+# 2 MiB keeps it quick on a 60 GB FASTQ; a copy that kept the old file's time
+# still differs in size or in its first or last MiB. A symlink is followed
+# (stat -L): its size and time are those of the file it points to, so a
+# replaced target changes the stamp. A file that cannot be read fails the
+# stamp (the pipes run under pipefail) instead of hashing an empty stream.
+input_stamp() {
+  local f sm head tail
+  for f in "$@"; do
+    [ -f "$f" ] || { echo "ERROR: input_stamp: no file ${f}" >&2; return 1; }
+    sm=$(stat -L -c '%s %Y' "$f" 2>/dev/null || stat -L -f '%z %m' "$f") || return 1
+    head=$(set -o pipefail; head -c 1048576 "$f" | _digest sha256 -) && [ -n "$head" ] \
+      && tail=$(set -o pipefail; tail -c 1048576 "$f" | _digest sha256 -) && [ -n "$tail" ] \
+      || { echo "ERROR: input_stamp: could not checksum ${f}" >&2; return 1; }
+    printf '%s\t%s\t%s\t%s\t%s\n' "${f##*/}" "${sm% *}" "${sm#* }" "$head" "$tail"
+  done
+}
+
+# trimmed_reads_current SAMPLE_DIR SAMPLE: true when fastq_trimmed/ holds the
+# trimmed pair of the raw reads now in fastq/: its <sample>_fastp_inputs.tsv
+# (written by step 01b) equals input_stamp of fastq/<sample>_R1.fastq.gz and
+# _R2. False when the record is missing (a pair trimmed before the record
+# existed) or differs (a raw file was replaced since).
+trimmed_reads_current() {
+  local d=$1 s=$2 now
+  [ -s "${d}/fastq_trimmed/${s}_fastp_inputs.tsv" ] || return 1
+  now=$(input_stamp "${d}/fastq/${s}_R1.fastq.gz" "${d}/fastq/${s}_R2.fastq.gz") || return 1
+  [ "$now" = "$(cat "${d}/fastq_trimmed/${s}_fastp_inputs.tsv")" ]
+}
+
+# trimmed_reads_usable SAMPLE_DIR SAMPLE: the check steps 02 and 02a make
+# before they align fastq_trimmed/. True when the raw pair is not in fastq/
+# (nothing to compare with) or trimmed_reads_current holds. Otherwise it says
+# why on stderr, and what to run, and returns 1: the old trimmed pair would
+# give a BAM of the old reads.
+trimmed_reads_usable() {
+  local d=$1 s=$2
+  [ -f "${d}/fastq/${s}_R1.fastq.gz" ] && [ -f "${d}/fastq/${s}_R2.fastq.gz" ] || return 0
+  trimmed_reads_current "$d" "$s" && return 0
+  echo "ERROR: ${d}/fastq_trimmed/ was not trimmed from the raw reads in fastq/ now:" >&2
+  if [ -s "${d}/fastq_trimmed/${s}_fastp_inputs.tsv" ]; then
+    echo "  fastq/${s}_R1.fastq.gz or _R2 changed since step 01b trimmed them." >&2
+  else
+    echo "  it has no ${s}_fastp_inputs.tsv, the record of the reads step 01b trimmed." >&2
+  fi
+  echo "  Run scripts/01b-fastp-qc.sh ${s} first (it trims the reads again), or set" >&2
+  echo "  FASTQ_SUBDIR=fastq to align the raw reads." >&2
+  return 1
 }
 
 # read_count_mode: prints READ_COUNT_CHECK (fail, the default, or warn), or
@@ -381,13 +437,14 @@ _get() {
   fi
 }
 
-# fetch URL DEST [md5|sha256|sum VALUE|CHECKSUM_URL]
+# fetch URL DEST [md5|sha256|sum|gzip-ends VALUE|CHECKSUM_URL]
 #
 # Downloads URL to DEST.part (resuming one left by an interrupted run), checks
 # it, then renames it to DEST. Nothing ever writes DEST directly, so a DEST
 # that exists is whole. The check is the checksum when one is given (VALUE, or
 # the file at CHECKSUM_URL: its only line, or the line naming URL's file), else
 # `gzip -t` for a .gz file, else non-empty.
+# For gzip-ends, VALUE is bytes:first-MiB-sha256:last-MiB-sha256.
 #
 # Each try downloads, then checks. A transfer that broke keeps DEST.part, and
 # the next try resumes it. A download that fails its check is deleted, and the
@@ -453,7 +510,18 @@ fetch() {
 # downloads it again; 2 for an error a new download cannot fix.
 _fetch_check() {
   local kind=$1 want=$2 part=$3 dest=$4 name=$5 got
-  if [ -n "$kind" ]; then
+  if [ "$kind" = gzip-ends ]; then
+    local bytes first last size
+    IFS=: read -r bytes first last <<< "$want"
+    size=$(stat -L -c %s "$part" 2>/dev/null || stat -L -f %z "$part") || return 2
+    if [ "$size" != "$bytes" ] \
+        || [ "$(head -c 1048576 "$part" | _digest sha256 -)" != "$first" ] \
+        || [ "$(tail -c 1048576 "$part" | _digest sha256 -)" != "$last" ] \
+        || ! gzip -t "$part" 2>/dev/null; then
+      echo "${name} failed its pinned size, SHA-256 range or gzip check"
+      return 1
+    fi
+  elif [ -n "$kind" ]; then
     got=$(_digest "$kind" "$part") || return 2
     if [ "$kind" = sum ]; then
       case "$want" in
@@ -844,7 +912,11 @@ image_is_dangling() {
 # REF_FASTA's .fai one unit each, and every other contig in one last unit.
 # With INTERVALS (space-separated contigs or contig:start-end regions, 1-based
 # inclusive): one unit per region. SCATTER=false puts every region in one unit,
-# so the caller runs once over all of them.
+# so the caller runs once over all of them. A region must lie on its contig
+# (start 1 or more, end at most the contig's length in the .fai, start not
+# after end), and no two regions may overlap: a base in two units would be
+# called twice and its record joined twice. Any of these stops the step
+# before a caller starts.
 scatter_beds() {
   local dir=$1 intervals=${2:-} fai="${REF_FASTA}.fai" r
   rm -rf "$dir"
@@ -861,7 +933,10 @@ scatter_beds() {
       if (match(r, /:[0-9]+-[0-9]+$/)) { c = substr(r, 1, RSTART - 1); split(substr(r, RSTART + 1), p, "-"); s = p[1] - 1; e = p[2] }
       if (!(c in len)) { print "ERROR: contig " c " (INTERVALS) is not in the reference" > "/dev/stderr"; bad = 1; exit 1 }
       if (e == "") e = len[c]
-      k++; rk[k] = rank[c]; st[k] = s + 0; reg[k] = c "\t" s "\t" e }
+      if (s < 0 || e + 0 <= s || e + 0 > len[c]) {
+        print "ERROR: region " $2 " (INTERVALS) is not on " c " (1-" len[c] "): a start of 1 or more, an end no larger than the contig, and the start not after the end" > "/dev/stderr"
+        bad = 1; exit 1 }
+      k++; rk[k] = rank[c]; st[k] = s + 0; en[k] = e + 0; txt[k] = $2; reg[k] = c "\t" s "\t" e }
     END {
       if (bad) exit 1
       if (given) {
@@ -872,7 +947,13 @@ scatter_beds() {
             t = rk[j]; rk[j] = rk[j - 1]; rk[j - 1] = t
             t = st[j]; st[j] = st[j - 1]; st[j - 1] = t
             t = reg[j]; reg[j] = reg[j - 1]; reg[j - 1] = t
+            t = en[j]; en[j] = en[j - 1]; en[j - 1] = t
+            t = txt[j]; txt[j] = txt[j - 1]; txt[j - 1] = t
           }
+        for (i = 2; i <= k; i++)
+          if (rk[i] == rk[i - 1] && st[i] < en[i - 1]) {
+            print "ERROR: regions " txt[i - 1] " and " txt[i] " (INTERVALS) overlap: the bases they share would be called twice" > "/dev/stderr"
+            exit 1 }
         for (i = 1; i <= k; i++) { f = unit(); print reg[i] >> f; close(f) }
         exit 0
       }
@@ -881,6 +962,33 @@ scatter_beds() {
       for (i = 1; i <= n; i++) if (order[i] !~ /^chr([0-9]+|X|Y|M)$/) print order[i] "\t0\t" len[order[i]] >> rest
     }' "$fai" - || return 1
   ls "$dir"/*.bed
+}
+
+# scatter_jobs GB: how many units of a scattered caller run at once, when
+# each unit's container may use GB gigabytes. SCATTER_JOBS when it is set.
+# Else THREADS/2 (at least 1), lowered to the number of units whose GB fit
+# in the memory the container engine has (`info`'s MemTotal, to the nearest
+# GB; at least 1), with a NOTE on stderr that says so. Four 8 GB units do
+# not fit a 16 GB engine, and the kernel kills a container that runs out.
+# The rounding is on purpose: a VM given 16 GB reports a little less, and
+# two units should still run there. So the units' limits may exceed the
+# reported memory by up to half a GB; a limit is a ceiling, not what a unit
+# uses.
+# When the engine does not say, THREADS alone counts.
+scatter_jobs() {
+  local gb=$1 jobs mem have fit
+  if [ -n "${SCATTER_JOBS:-}" ]; then echo "$SCATTER_JOBS"; return 0; fi
+  jobs=$(( THREADS / 2 > 1 ? THREADS / 2 : 1 ))
+  mem=$("$CONTAINER_ENGINE" info --format '{{.MemTotal}}' 2>/dev/null || true)
+  if [[ "$mem" =~ ^[0-9]+$ ]] && [ "$mem" -gt 0 ]; then
+    have=$(( (mem + 536870912) / 1073741824 ))
+    fit=$(( have / gb > 1 ? have / gb : 1 ))
+    if [ "$fit" -lt "$jobs" ]; then
+      echo "NOTE: ${fit} unit(s) at a time, not ${jobs}: ${CONTAINER_ENGINE} has ${have} GB and each unit may use ${gb} GB. SCATTER_JOBS sets the number." >&2
+      jobs=$fit
+    fi
+  fi
+  echo "$jobs"
 }
 
 # run_parallel MAX FUNC ARG...: run `FUNC ARG` for every ARG in the
@@ -918,18 +1026,93 @@ run_parallel() {
   return "$rc"
 }
 
-# live_post RUN JSON: send one message to the live site (bin/owngenome_live.py,
+# --- Sex and the ploidy of chrX and chrY (steps 03a-03d) ----------------------
+# A male sample has one X and one Y. Outside the pseudoautosomal regions of
+# PAR_BED, a heterozygous call there cannot be real, so the alternative
+# callers call those parts with ploidy 1, as step 03 does with `male`.
+
+# shellcheck disable=SC2034  # read by the step scripts
+PAR_BED="${PGP_ROOT}/assets/par_grch38.bed"
+
+# sample_sex [SEX]: the sex a step calls chrX and chrY by. SEX (the step's
+# second argument) when given. Else the sex run-all.sh was given for this
+# sample: run-all.sh starts the alternative callers with the sample name only,
+# and records the sex as `meta declared_sex` in GENOME_DIR/SAMPLE/logs/
+# run_status.tsv before any step runs; a NOTE on stderr says the sex came
+# from there. Else nothing. Prints male, female or nothing; any other value
+# exits 2.
+sample_sex() {
+  local sex=${1:-} status="${GENOME_DIR:?}/${SAMPLE:?}/logs/run_status.tsv"
+  if [ -z "$sex" ] && [ -f "$status" ]; then
+    sex=$(awk -F'\t' '$1 == "meta" && $2 == "declared_sex" { s = $3 } END { print s }' "$status")
+    [ -z "$sex" ] || echo "NOTE: sex ${sex}, as run-all.sh was given it (${status})" >&2
+  fi
+  case "$sex" in
+    ''|male|female) printf '%s' "$sex" ;;
+    *) echo "ERROR: sex must be 'male' or 'female' (or left out), got '${sex}'." >&2; exit 2 ;;
+  esac
+}
+
+# ploidy_line SEX: the line a step prints about how it calls chrX and chrY.
+ploidy_line() {
+  case "$1" in
+    male) echo "Ploidy: male, chrX and chrY haploid outside the PARs (${PAR_BED#"${PGP_ROOT}"/})" ;;
+    female) echo "Ploidy: female, every contig diploid" ;;
+    *) echo "Ploidy: no sex given, chrX and chrY are called diploid. Pass male or female as the second argument." ;;
+  esac
+}
+
+# ploidy_units SEX UNIT...: the calling units (BED files, as scatter_beds
+# writes them) split by ploidy. For SEX male every row on chrX or chrY is cut
+# at PAR_BED: the parts inside a PAR stay in UNIT and are called diploid, the
+# parts outside go to UNIT's haploid twin, the same name ending in .hap.bed,
+# called with ploidy 1. A unit left with no row is removed. Prints each unit
+# that has rows, followed by its twin when it has one. For any other SEX,
+# prints UNIT... unchanged. PAR_BED's rows must be in order on each contig.
+ploidy_units() {
+  local sex=$1 u hap
+  shift
+  for u in "$@"; do
+    if [ "$sex" != male ]; then echo "$u"; continue; fi
+    hap="${u%.bed}.hap.bed"
+    rm -f "${u}.dip" "$hap"
+    awk -F'\t' -v OFS='\t' -v dip="${u}.dip" -v hap="$hap" '
+      FNR == NR { n[$1]++; ps[$1, n[$1]] = $2 + 0; pe[$1, n[$1]] = $3 + 0; next }
+      $1 != "chrX" && $1 != "chrY" { print > dip; next }
+      { c = $1; s = $2 + 0; e = $3 + 0
+        for (i = 1; i <= n[c] && s < e; i++) {
+          a = ps[c, i]; b = pe[c, i]
+          if (b <= s || a >= e) continue
+          if (a > s) print c, s, a > hap
+          if (a < s) a = s
+          if (b > e) b = e
+          print c, a, b > dip
+          s = b
+        }
+        if (s < e) print c, s, e > hap }' "$PAR_BED" "$u" || return 1
+    if [ -s "${u}.dip" ]; then mv -f "${u}.dip" "$u" || return 1; echo "$u"; else rm -f "${u}.dip" "$u"; fi
+    if [ -s "$hap" ]; then echo "$hap"; fi
+  done
+}
+
+# live_post RUN JSON: send one message to the live site (og live serve,
 # docs/live-site.md) at OWNGENOME_LIVE_URL/ingest/RUN; nothing without OWNGENOME_LIVE_URL.
+# The site's ingest token (OWNGENOME_LIVE_TOKEN, or the last part of a
+# OWNGENOME_LIVE_URL of the form http://host:port/<token>) goes as the HTTP
+# Basic password of user og, in a curl config curl reads from a pipe (fd 3):
+# it is in no argument of any process and in no output line.
 # A site that is down or slow (3 s) costs one warning per script and never the
 # step: it always returns 0.
 live_post() {
   [ -n "${OWNGENOME_LIVE_URL:-}" ] || return 0
-  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- \
-      "${OWNGENOME_LIVE_URL%/}/ingest/$1" 2>/dev/null; then
+  local site=${OWNGENOME_LIVE_URL%/} tok=${OWNGENOME_LIVE_TOKEN:-}
+  if [[ "$site" =~ ^(http://[^/]+)/([A-Za-z0-9_-]{43})$ ]]; then site=${BASH_REMATCH[1]} tok=${BASH_REMATCH[2]}; fi
+  if printf '%s' "$2" | curl -fsS -m 3 -o /dev/null -H 'Content-Type: application/json' -d @- -K/dev/fd/3 \
+      "${site}/ingest/$1" 3< <([ -z "$tok" ] || printf 'user = "og:%s"\n' "$tok") 2>/dev/null; then
     return 0
   fi
   if [ -z "${OWNGENOME_LIVE_WARNED:-}" ]; then
-    echo "WARNING: the live site at ${OWNGENOME_LIVE_URL} did not take a message; the run goes on without it" >&2
+    echo "WARNING: the live site at ${site} did not take a message; the run goes on without it" >&2
     OWNGENOME_LIVE_WARNED=1
   fi
   return 0

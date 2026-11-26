@@ -1,0 +1,2 @@
+A and B: 0 shared genes, 1 X-linked, 1 with one partner only (out/couple_A_B.tsv)
+E and F: not screened, F has no ClinVar screen (step 06's <sample>_clinvar_hits.vcf)

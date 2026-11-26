@@ -8,7 +8,7 @@ use super::model::{Section, State};
 use super::sections::Data;
 use super::text::{self, cell, stripped};
 use indexmap::IndexMap;
-use og_steps::pgx_rules::{NO_CALL, is_call, same_diplotype};
+use og_steps::pgx_rules::{is_call, same_diplotype};
 use og_steps::pypgx_summary::{LOW_GQ, NOT_CALLABLE};
 use pycompat::csv::DictRow;
 use pycompat::json::Value;
@@ -17,8 +17,12 @@ use pycompat::text::{lower, strip, upper};
 /// The label of pypgx's CYP2D6 call when it is the only usable one.
 pub const PROBABLE: &str = "probable (one caller: pypgx)";
 /// The rows of the CYP2D6 depth check the reports show.
-pub const DEPTH_CHECK_KEYS: [&str; 5] = [
+pub const DEPTH_CHECK_KEYS: [&str; 9] = [
     "status",
+    "gene_depth_all",
+    "gene_depth_mapq1",
+    "flank_depth_all",
+    "flank_depth_mapq1",
     "gene_mapq1_share",
     "gene_mapq20_share",
     "body_mapq1_share",
@@ -174,7 +178,7 @@ impl Cpic {
     }
 
     pub fn to_json(&self) -> Value {
-        obj([
+        let mut pairs = vec![
             (
                 "genes",
                 Value::Array(
@@ -195,12 +199,23 @@ impl Cpic {
             ("ambiguous", self.count("ambiguous")),
             ("not_called", self.count("not called")),
             ("unclassified", self.count("unclassified")),
+        ];
+        // The genes whose call rests on positions PharmCAT never read
+        // (step 27's `incomplete`). Written only when there is one, so a
+        // summary without such a gene stays as it was; a reader takes a
+        // missing count as 0.
+        let incomplete = self.count("incomplete");
+        if incomplete != Value::Int(0) {
+            pairs.push(("incomplete", incomplete));
+        }
+        pairs.extend([
             ("parse_failed", Value::Bool(self.parse_failed)),
             (
                 "warnings",
                 Value::Array(self.warnings.iter().cloned().map(Value::Str).collect()),
             ),
-        ])
+        ]);
+        obj(pairs)
     }
 }
 
@@ -230,9 +245,13 @@ fn key_text(v: Option<&str>) -> String {
 impl Pypgx {
     pub fn read(path: &str, s: &str) -> Result<Pypgx, String> {
         let rows = rows_or_note(path)?;
+        // A called gene is one whose diplotype is a call by
+        // `og_steps::pgx_rules::is_call`, the rule of step 32's Status column
+        // and of step 36: `*1/Indeterminate`, one allele or several
+        // diplotypes are not.
         let called = rows
             .iter()
-            .filter(|r| !NO_CALL.contains(&lower(stripped(r, "Diplotype")).as_str()))
+            .filter(|r| is_call(stripped(r, "Diplotype")))
             .count();
         let cyp_row = rows.iter().find(|r| cell(r, "Gene") == Some("CYP2D6"));
         let cyp = cyp_row.and_then(|r| cell(r, "Diplotype")).unwrap_or("");
@@ -557,7 +576,10 @@ impl Cyp2d6 {
         let pharmcat = match pc {
             Some(g) => {
                 let st = &g.status;
-                if matches!(st, Value::Str(s) if s == "not called" || s == "ambiguous") {
+                // A call that is not one result, or that rests on positions
+                // PharmCAT never read, shows as its status.
+                if matches!(st, Value::Str(s) if s == "not called" || s == "ambiguous" || s == "incomplete")
+                {
                     st.clone()
                 } else {
                     g.diplotype.clone()
@@ -718,5 +740,100 @@ mod tests {
             "a summary without the columns"
         );
         assert!(probable("None", ev("PASS", "ok").as_ref(), None, None).is_none());
+    }
+
+    /// Step 27's phenotypes table with these rows, read as the summary reads
+    /// it.
+    fn cpic(rows: &str) -> Value {
+        let dir = std::env::temp_dir().join(format!(
+            "og-summary-pgx-incomplete-{}-{}",
+            std::process::id(),
+            rows.len()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tsv = dir.join("S_phenotypes.tsv");
+        std::fs::write(&tsv, format!("Gene\tDiplotype\tPhenotype\tStatus\n{rows}")).unwrap();
+        let c = Cpic::read(&tsv.to_string_lossy(), "S").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        c.to_json()
+    }
+
+    /// Issue #411, plat-49: a gene step 27 marks `incomplete` (its call rests
+    /// on positions PharmCAT never read) is counted apart, never as normal or
+    /// unclassified; a table with none writes no count, as before.
+    #[test]
+    fn a_gene_whose_call_rests_on_unread_positions_is_counted_as_incomplete() {
+        let Value::Object(j) = cpic(
+            "CYP2C19\t*1/*1\tNormal Metabolizer [incomplete: positions not read: rs4244285]\tincomplete\n\
+             CYP2C9\t*1/*2\tIntermediate Metabolizer\tnon-normal\n\
+             CYP3A5\t*1/*1\tNormal Metabolizer\tnormal\n",
+        ) else {
+            panic!("not an object")
+        };
+        assert_eq!(j.get("incomplete"), Some(&Value::Int(1)), "{j:?}");
+        assert_eq!(j.get("non_normal"), Some(&Value::Int(1)));
+        assert_eq!(j.get("unclassified"), Some(&Value::Int(0)));
+        let Some(Value::Array(genes)) = j.get("genes") else {
+            panic!("no genes")
+        };
+        assert!(
+            matches!(&genes[0], Value::Object(g)
+                if g.get("status") == Some(&Value::Str("incomplete".into()))),
+            "{genes:?}"
+        );
+        let Value::Object(j) = cpic("CYP3A5\t*1/*1\tNormal Metabolizer\tnormal\n") else {
+            panic!("not an object")
+        };
+        assert!(
+            !j.contains_key("incomplete"),
+            "no incomplete gene: the summary is as it was: {j:?}"
+        );
+    }
+
+    #[test]
+    fn the_depth_check_keeps_the_mean_depths_beside_the_shares() {
+        let dir = std::env::temp_dir().join(format!("og-summary-pgx-depth-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let summary = dir.join("S_pypgx_summary.tsv");
+        std::fs::write(
+            &summary,
+            "Gene\tDiplotype\tPhenotype\tCNV_call\tSource\tStatus\n\
+             CYP2D6\t*1/*4\tIntermediate Metabolizer\tNormal\tBAM\tcalled\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("S_cyp2d6_depth_check.tsv"),
+            "status\tok\n\
+             message\tsynthetic depth check\n\
+             gene_depth_all\t18.53\n\
+             gene_depth_mapq1\t16.79\n\
+             flank_depth_all\t29.68\n\
+             flank_depth_mapq1\t29.67\n\
+             gene_mapq1_share\t0.91\n\
+             body_depth_all\tnot measured\n",
+        )
+        .unwrap();
+
+        let pypgx = Pypgx::read(summary.to_str().unwrap(), "S");
+        std::fs::remove_dir_all(&dir).unwrap();
+        let depth = pypgx.unwrap().depth_check.unwrap();
+
+        for (key, value) in [
+            ("status", "ok"),
+            ("gene_depth_all", "18.53"),
+            ("gene_depth_mapq1", "16.79"),
+            ("flank_depth_all", "29.68"),
+            ("flank_depth_mapq1", "29.67"),
+            ("gene_mapq1_share", "0.91"),
+        ] {
+            assert_eq!(
+                depth.get(key).map(String::as_str),
+                Some(value),
+                "{key}: {depth:?}"
+            );
+        }
+        assert!(!depth.contains_key("message"));
+        assert!(!depth.contains_key("body_depth_all"));
     }
 }

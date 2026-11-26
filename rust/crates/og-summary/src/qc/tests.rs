@@ -195,6 +195,8 @@ fn the_table_byte_for_byte() {
             "male",
             "--marker-check",
             "passed",
+            "--verifybamid2-markers",
+            "3000",
             "--out",
             &out,
         ],
@@ -204,7 +206,10 @@ fn the_table_byte_for_byte() {
 sex_check_reason\tdeclared male, somalier infers male\nsites_genotyped\t120\ndepth_at_sites\t30.0\n\
 x_sites\t39\nx_het\t0\nx_hom_alt\t39\nx_depth_ratio\t0.50\ny_sites\t5\ny_depth_ratio\t0.47\n\
 freemix\t0.0412\nfreemix_warn_above\t0.03\ncontamination\twarn\npanel_markers\t10000\n\
-verifybamid2_marker_check\tpassed\nsame_person_as\tT (0.95), U (0.99)\n";
+verifybamid2_marker_check\tpassed\nsame_person_as\tT (0.95), U (0.99)\n\
+verifybamid2_markers\t3000\ncontamination_confidence\tuncertain\n\
+contamination_confidence_reason\tFREEMIX rests on 3000 markers; a firm estimate needs 5,000\n\
+identity\tuncertain\nidentity_reason\tsomalier genotyped 120 sites; telling one person from another needs 1,000\n";
     assert_eq!(d.read("out.tsv"), want);
     let echoed: String = want
         .lines()
@@ -303,4 +308,222 @@ fn unreadable_inputs_exit_1_with_a_message() {
     assert_eq!(code, 2);
     assert!(err.contains("invalid float value: 'x'"), "{err}");
     assert!(!std::path::Path::new(&out).exists());
+}
+
+/// The verdict for `samples` (one row, sample S) with `pairs` and the
+/// VerifyBamID2 inputs, as a map.
+fn evidence(
+    samples: &str,
+    pairs: Option<&str>,
+    selfsm: bool,
+    marker_check: &str,
+    markers: Option<u64>,
+) -> HashMap<&'static str, String> {
+    let d = Dir::new("qc-evidence");
+    let s = d.put("s.samples.tsv", samples);
+    let p = pairs.map(|p| d.put("s.pairs.tsv", p));
+    let sm = selfsm.then(|| {
+        d.put(
+            "s.selfSM",
+            "#SEQ_ID\tRG\tCHIP_ID\t#SNPS\t#READS\tAVG_DP\tFREEMIX\nS\tNA\tNA\t100000\t5000\t2.1\t0.0050\n",
+        )
+    });
+    let i = Inputs {
+        sample: "S",
+        samples_tsv: &s,
+        pairs_tsv: p.as_deref(),
+        selfsm: sm.as_deref(),
+        freemix_warn: FREEMIX_WARN,
+        marker_check,
+        markers,
+        ..Inputs::default()
+    };
+    table(&i).unwrap().into_iter().collect()
+}
+
+/// A somalier row for S with these genotype counts.
+fn sites(hom_ref: u32, het: u32, hom_alt: u32) -> String {
+    samples(&MALE).replace(
+        "\t60\t40\t20\t",
+        &format!("\t{hom_ref}\t{het}\t{hom_alt}\t"),
+    )
+}
+
+const PAIRS: &str = "#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n";
+
+#[test]
+fn identity_on_300_sites_is_uncertain() {
+    // 300 informative sites: a sliced or very shallow BAM.
+    let t = evidence(&sites(100, 120, 80), None, false, "", None);
+    assert_eq!(t["sites_genotyped"], "300");
+    assert_eq!(t["identity"], "uncertain");
+    assert_eq!(
+        t["identity_reason"],
+        "somalier genotyped 300 sites; telling one person from another needs 1,000"
+    );
+    // Also with another sample on the run that shares many sites.
+    let pairs = format!("{PAIRS}S\tT\t0.02\t40\t300\t300\n");
+    let t = evidence(&sites(100, 120, 80), Some(&pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    // 999 is below the floor, 1,000 is at it.
+    let t = evidence(&sites(333, 333, 333), None, false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    let t = evidence(&sites(334, 333, 333), None, false, "", None);
+    assert_eq!(t["identity"], "not_checked");
+}
+
+#[test]
+fn identity_needs_another_sample_on_enough_shared_sites() {
+    let many = sites(5000, 6000, 4000);
+    // One sample alone: nothing to compare with.
+    let t = evidence(&many, None, false, "", None);
+    assert_eq!(t["identity"], "not_checked");
+    assert!(t["identity_reason"].contains("no other sample"), "{t:?}");
+    let t = evidence(&many, Some(PAIRS), false, "", None);
+    assert_eq!(t["identity"], "not_checked");
+    // A pair that shares 12,000 sites is a comparison; one of 300 is not.
+    let pairs = format!("{PAIRS}S\tT\t0.02\t40\t300\t12000\nU\tS\t0.5\t0\t300\t300\n");
+    let t = evidence(&many, Some(&pairs), false, "", None);
+    assert_eq!(t["identity"], "checked");
+    assert_eq!(
+        t["identity_reason"],
+        "compared with 1 other sample of the run on 1,000 or more shared sites"
+    );
+    let pairs = format!("{PAIRS}U\tS\t0.97\t0\t300\t300\nS\tV\t0.1\t0\t300\t999\n");
+    let t = evidence(&many, Some(&pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    assert_eq!(
+        t["identity_reason"],
+        "no other sample of the run is known to share 1,000 or more genotyped sites with this one"
+    );
+    // The same-person flag still shows; the identity row says it is thin.
+    assert_eq!(t["same_person_as"], "U (0.97)");
+    // A pair that shares no site: somalier writes nan and n 0.
+    let pairs = format!("{PAIRS}S\tT\tnan\t0\t0\t0\n");
+    let t = evidence(&many, Some(&pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    // An older pairs table without n: the shared sites are not known.
+    let pairs = "#sample_a\tsample_b\trelatedness\nS\tT\t0.1\nS\tU\t0.2\nS\tS\t1.0\n";
+    let t = evidence(&many, Some(pairs), false, "", None);
+    assert_eq!(t["identity"], "uncertain");
+    // Two pairs on enough shared sites, and a self pair that does not count.
+    let pairs = format!(
+        "{PAIRS}S\tT\t0.1\t9\t300\t15000\nU\tS\t0.2\t9\t300\t1000\nS\tS\t1.0\t0\t300\t15000\n"
+    );
+    let t = evidence(&many, Some(&pairs), false, "", None);
+    assert_eq!(
+        (t["identity"].as_str(), t["identity_reason"].as_str()),
+        (
+            "checked",
+            "compared with 2 other samples of the run on 1,000 or more shared sites"
+        )
+    );
+}
+
+#[test]
+fn contamination_on_fewer_than_5000_markers_is_uncertain() {
+    let many = sites(5000, 6000, 4000);
+    // The marker check passed, yet only 4,999 markers were kept.
+    let t = evidence(&many, None, true, "passed", Some(4999));
+    assert_eq!(t["contamination"], "ok");
+    assert_eq!(t["verifybamid2_markers"], "4999");
+    assert_eq!(t["contamination_confidence"], "uncertain");
+    assert_eq!(
+        t["contamination_confidence_reason"],
+        "FREEMIX rests on 4999 markers; a firm estimate needs 5,000"
+    );
+    let t = evidence(&many, None, true, "passed", Some(5000));
+    assert_eq!(
+        (
+            t["contamination_confidence"].as_str(),
+            t["contamination_confidence_reason"].as_str()
+        ),
+        ("ok", "FREEMIX rests on 5000 markers")
+    );
+    // Relaxed mode: uncertain whatever the count.
+    for markers in [Some(320), Some(8000), None] {
+        let t = evidence(&many, None, true, "skipped", markers);
+        assert_eq!(t["contamination_confidence"], "uncertain", "{markers:?}");
+        let why = &t["contamination_confidence_reason"];
+        assert!(
+            why.starts_with("VerifyBamID2 skipped its marker check"),
+            "{t:?}"
+        );
+        // The check needs more than 1,000 markers and a tenth of the
+        // panel, so it can skip above the 5,000 floor: the reason must
+        // not set the count against that floor.
+        assert!(!why.contains("5,000"), "{t:?}");
+        assert!(why.contains("more than a tenth of the panel"), "{t:?}");
+    }
+    let t = evidence(&many, None, true, "skipped", Some(8000));
+    assert_eq!(
+        t["contamination_confidence_reason"],
+        "VerifyBamID2 skipped its marker check: its first run kept 8000 markers, too few for that check (more than 1,000 and more than a tenth of the panel), so FREEMIX is a rough estimate"
+    );
+    // A passed check with no count: VerifyBamID2's own floor held.
+    let t = evidence(&many, None, true, "passed", None);
+    assert_eq!(t["contamination_confidence"], "ok");
+    assert_eq!(t["verifybamid2_markers"], "");
+    // Neither the check nor the count known.
+    let t = evidence(&many, None, true, "", None);
+    assert_eq!(t["contamination_confidence"], "uncertain");
+    // VerifyBamID2 did not run: no confidence either way.
+    let t = evidence(&many, None, false, "", Some(320));
+    assert_eq!(
+        (
+            t["contamination"].as_str(),
+            t["contamination_confidence"].as_str(),
+            t["contamination_confidence_reason"].as_str()
+        ),
+        ("not_run", "", "")
+    );
+}
+
+#[test]
+fn the_markers_option() {
+    let d = Dir::new("qc-markers");
+    let samples = d.put("s.tsv", samples(&MALE));
+    let selfsm = d.put("s.selfSM", "#SEQ_ID\tFREEMIX\nS\t0.001\n");
+    let out = d.path("o.tsv");
+    let go = |m: &str| {
+        run(
+            cli,
+            &[
+                "--sample",
+                "S",
+                "--somalier-samples",
+                &samples,
+                "--selfsm",
+                &selfsm,
+                "--marker-check",
+                "passed",
+                "--verifybamid2-markers",
+                m,
+                "--out",
+                &out,
+            ],
+        )
+    };
+    // Empty: the log had no count.
+    let (code, stdout, _) = go("");
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("  verifybamid2_markers: \n  contamination_confidence: ok\n"),
+        "{stdout}"
+    );
+    let (code, _, stderr) = go("many");
+    assert_eq!(code, 2);
+    assert!(
+        stderr.contains("argument --verifybamid2-markers: invalid int value: 'many'"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn thousands_has_commas() {
+    assert_eq!(thousands(0), "0");
+    assert_eq!(thousands(999), "999");
+    assert_eq!(thousands(1000), "1,000");
+    assert_eq!(thousands(17766), "17,766");
+    assert_eq!(thousands(1234567), "1,234,567");
 }

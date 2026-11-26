@@ -14,18 +14,19 @@
 # drugs does not follow).
 # Gene: the HGNC symbol, as ClinVar's GENEINFO writes it.
 # Drug: the drug as CPIC names it.
-# Names: the first words a medication list may use for it, comma-separated,
-# lower case; a drug on the list is marked in the report.
+# Names: the words a medication list may use for it, comma-separated, lower
+# case. Every word of a medication line is matched, the second drug of a
+# combination product too; a drug on the list is marked in the report.
 # CPIC_level: the pair's CPIC level, printed as provisional.
 # Note: what the label says.
-# Label_source: the FDA label (DailyMed) the note quotes.
+# Label_source: the FDA label (DailyMed) the note paraphrases.
 # Report_if: when a hit gives a WARNING. any: one variant does (POLG, where
 # one variant is a known valproate risk, and the X-linked OTC and HPRT1,
 # where a male has one copy and a female carrier can be affected).
 # biallelic: the disorder is recessive, so the WARNING needs both copies
 # changed (a homozygous or hemizygous genotype) or two variants in the gene;
 # one heterozygous variant makes a carrier and gives a NOTE instead.
-# tests/test_cpic_parser.py checks the shape of every row.
+# cargo test -p og-pgx (tests/port_tests_pgx_cpic.rs) checks the shape of every row.
 Gene	Drug	Names	CPIC_level	Note	Pair_source	Label_source	Report_if
 POLG	valproic acid	valproic,valproate,divalproex	A/B	The valproate label contraindicates it in people with mitochondrial disorders caused by POLG mutations, and in children under two suspected of a POLG-related disorder: valproate can cause acute liver failure in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.POLG	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	any
 ASL	valproic acid	valproic,valproate,divalproex	B	The valproate label contraindicates it in people with a urea cycle disorder: valproate can cause hyperammonemic encephalopathy in them.	https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.ASL	https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=08a65cf4-7749-4ceb-6895-8f4805e2b01f	biallelic

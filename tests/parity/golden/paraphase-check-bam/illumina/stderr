@@ -1,0 +1,1 @@
+ERROR: illumina.bam has read groups with PL ILLUMINA, not PACBIO. Paraphase is written for PacBio HiFi reads, and its licence (PacBio Software License Agreement) allows it only on data from a PacBio instrument. For short reads, step 35 (Parascopy) estimates SMN1 and SMN2 copy number.

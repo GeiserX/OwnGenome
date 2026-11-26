@@ -1,0 +1,1 @@
+ERROR: stats-nocov.tsv lacks the columns cov_median, baf_auto, n_hets

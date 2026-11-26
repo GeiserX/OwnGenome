@@ -20,6 +20,25 @@ An interrupted transfer resumes. Existing caches and bundles are kept.
 Without these data, `run-all.sh` skips the affected steps and records the reason.
 A bare `nextflow run` still needs its tools and data parameters. Setup does not change that selection.
 
+See [Licences for downloads](licences.md) for the terms that apply to individual bundles and tools.
+
+## Install data for an everything run
+
+```bash
+./scripts/setup.sh --everything "$GENOME_DIR"
+```
+
+This runs base setup, then installs the data listed in [the everything manifest](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv) in order. It includes the extra STR loci, even if `STR_EXTRA_LOCI` is unset. Setup prints the restricted-use terms before downloading. Review the terms and the [hardware requirements](hardware-requirements.md#shared-reference-data-one-time) before starting. MEGAnE alone needs about 50 GB of memory for the full reference.
+
+A failed installer goes on the missing list with a retry command, and setup continues through the manifest. An incomplete setup exits with status 3. After retrying, complete downloads and indexes stay in place. User inputs such as HPO terms and family relationships are still supplied when you run the pipeline.
+
+Cyrius uses the PolyForm Strict 1.0.0 licence for non-commercial use. The following PGS Catalog scores are freely available to the academic community for research use. Review each score's terms before using it.
+
+- [PGS000014](https://www.pgscatalog.org/score/PGS000014/)
+- [PGS000016](https://www.pgscatalog.org/score/PGS000016/)
+- [PGS000017](https://www.pgscatalog.org/score/PGS000017/)
+- [PGS000027](https://www.pgscatalog.org/score/PGS000027/)
+
 ## GRCh38 Reference Genome
 
 The foundation for everything. All tools need this. The pipeline uses NCBI's **GRCh38 no-ALT analysis set**: chr1-22, X, Y and M, the unplaced and unlocalized scaffolds and the EBV genome, 195 sequences, with UCSC names (`chr1`, `chrM`). `setup.sh` downloads it, checks it and stores it as `reference/GRCh38_no_alt_analysis_set.fasta`:
@@ -50,6 +69,8 @@ mv GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.fai GRCh38_no_alt_analysis_se
 wc -l GRCh38_no_alt_analysis_set.fasta.fai   # 195
 ```
 
+The md5 checks the download, and `validate-setup.sh` checks the sequence dictionary `setup.sh` makes from the unpacked FASTA (`GRCh38_no_alt_analysis_set.dict`, below) on every run. It does not read the FASTA itself. It reads the MD5 of each sequence's bases (`M5`) from the `.dict`, and compares the 195 names, lengths and MD5s with the values pinned in the script for NCBI's file and for [the masked copy](#the-masked-reference-optional). A FASTA whose `.dict` shows the same names and lengths but one other base fails with `REF_FASTA has the names and lengths of NCBI's GRCh38 no-ALT analysis set but other bases`. A masked FASTA without `_maskedGRC` in its name fails too, as does a `.dict` whose names or lengths are not the `.fai`'s, and a `.dict` older than the FASTA gets a warning: a FASTA changed after its `.dict` was made gets that warning, not a failure, because `setup.sh` keeps an existing `.dict`. A reference with other names or lengths, such as the decoy set below, has nothing pinned: an `[INFO]` line says so.
+
 ### Why the no-ALT analysis set
 
 GRCh38 also has ALT contigs: second copies of regions that vary a lot between people, such as the MHC (the HLA genes), KIR and the CYP2D6 locus. A reference with them (the Broad `hg38` FASTA, 3,366 sequences with ALT, HLA and decoy contigs) only helps an aligner that is run ALT-aware, and none of the aligners here is. With them, a read that matches the primary copy and an ALT copy equally well gets mapping quality 0, and callers ignore it: depth thins at exactly those loci, and depth-based callers can report a deletion that is not there. The [measured loss](realignment.md#how-much-depth-alt-contigs-cost) is in the realignment page.
@@ -75,7 +96,7 @@ Because the coordinates do not change, ClinVar, the VEP cache, the score files a
 
 The CI case `tests/e2e/fixitfelix-chr21-1.sh` measures it on chr21 with GIAB's HG002 and the CMRG v1.00 benchmark (Wagner et al., Nat Biotechnol 2022, PMID 35132260), see [the realignment page](realignment.md#the-masked-reference) for the numbers.
 
-GSTT1 lies on an ALT contig in GRCh38, so pypgx (step 32) cannot call it on the default reference; the step says so and calls the other genes. No other step calls it, so the report lists it with the genes no step reads. It is one of the ALT-only genes of `assets/callability_genes.tsv`, the genes short reads often cannot place, which step 16b measures and the report lists ([gene callability](16b-mosdepth.md#gene-callability)); that table is committed, so it needs no download. Steps 32 (pypgx) and 35 (Parascopy and the HBA1/HBA2 count) refuse a BAM aligned to a reference with ALT or HLA contigs, with a `REFUSED` line, even when `ALLOW_ALT_REFERENCE=true` lets the other steps run on it: their depth would split between a gene and its ALT copy. Run one by one, each of the two scripts stops with exit 1 and the other steps are not touched. On the Nextflow path (`run-all.sh`) the refusal fails the run: the tasks already running finish, no new task starts, and `run-all.sh` writes the reports of what finished. The RHD count of step 41 and the LPA KIV-2 count of step 46 do not check the BAM for ALT contigs yet.
+GSTT1 lies on an ALT contig in GRCh38, so pypgx (step 32) cannot call it on the default reference; the step says so and calls the other genes. No other step calls it, so the report lists it with the genes no step reads. It is one of the ALT-only genes of `assets/callability_genes.tsv`, the genes short reads often cannot place, which step 16b measures and the report lists ([gene callability](16b-mosdepth.md#gene-callability)); that table is committed, so it needs no download. Steps 32 (pypgx) and 35 (Parascopy and the HBA1/HBA2 count) refuse a BAM aligned to a reference with ALT or HLA contigs, with a `REFUSED` line, even when `ALLOW_ALT_REFERENCE=true` lets the other steps run on it: their depth would split between a gene and its ALT copy. Run one by one, each of the two scripts stops with exit 1 and the other steps are not touched. When the check cannot run (the BAM header cannot be read, or `og cn check-bam` fails), each stops with exit 2 instead of going on with a BAM nobody checked. On the Nextflow path (`run-all.sh`) the refusal fails the run: the tasks already running finish, no new task starts, and `run-all.sh` writes the reports of what finished. The RHD count of step 41 and the LPA KIV-2 count of step 46 do not check the BAM for ALT contigs yet.
 
 Every sample aligned to another reference has to be aligned again. [Realigning after a reference change](realignment.md) says what to redo, what to keep and how to check a BAM.
 
@@ -100,7 +121,7 @@ export REF_FASTA_URL=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GC
 ### Why GRCh38?
 
 This pipeline uses **GRCh38** (also called hg38) exclusively. It's the current standard genome build with:
-- Corrected mitochondrial sequence (rCRS)
+- Corrected mitochondrial sequence (rCRS). Step 20 also calls the chrM control region on chrM rotated by 8000 bp; it writes that rotated copy from this reference in each run (`og setup chrm-shift`), so setup installs no extra file for it ([step 20](20-mtoolbox.md#the-shifted-reference-pass-for-the-control-region))
 - Better representation of centromeres and telomeres
 - `chr` prefix naming (chr1, chr2, ..., chrX, chrY, chrM)
 
@@ -136,17 +157,53 @@ It downloads the new file under `clinvar/.refresh/`, checks the md5, builds both
 | File | Source | Used by | Without it |
 |---|---|---|---|
 | `reference/delly_human.hg38.excl.tsv` | Delly's GRCh38 exclude map at a pinned commit (sha256 checked) | step 19 (`delly sr -x`) | Delly runs without it: slower, and with calls in centromeres, telomeres and the unplaced scaffolds |
-| `reference/cytoBand.hg38.txt` | UCSC's GRCh38 chromosome bands, chr1-22, X and Y, copied from `assets/reference/cytoBand.hg38.txt` (its README says how it was made). `validate-setup.sh` fails an installed copy that differs from it | step 10 (`telomerehunter -b`), Nextflow `--cytoband`; the genome map reads the asset itself | TelomereHunter falls back to its hg19 bands |
+| `reference/cytoBand.hg38.txt` | UCSC's GRCh38 chromosome bands, chr1-22, X and Y, copied from `assets/reference/cytoBand.hg38.txt` (its README says how it was made). `validate-setup.sh` fails an installed copy that differs from it | step 10 (`telomerehunter2 -b`), Nextflow `--cytoband`; the genome map reads the asset itself | Step 10 installs it from `assets/reference` before it runs; Nextflow passes the asset itself |
 | `hla/IPD-IMGT-HLA_<release>/hla.dat` | IPD-IMGT/HLA release `HLA_DB_RELEASE` (3.66.0) from the IMGTHLA repository (md5 checked) | step 8 | step 8 is skipped |
 | `reference/gencode.v50.basic.genes.gtf` | the gene lines of GENCODE 50's basic annotation (md5 checked) | step 8 (gene positions for T1K) | step 8 is skipped |
 | `reference/gencode.v50.basic.exons.bed` | the exon intervals of the same GENCODE 50 basic annotation, written from the same download as the gene lines (md5 checked) | steps 6 and 17 and Nextflow `--gencode_exons` with `clinvar` (cDNA read check); step 39 and `--gencode_exons` with `--pedigree` (deletions over an exon) | steps 6 and 17 and `CLINVAR_CDNA_CHECK` write every hit as `not_checked`; step 39 does not use deletions |
 | `gnomad_mito/gnomad.genomes.v3.1.sites.chrM.vcf.bgz` | gnomAD v3.1's mitochondrial sites, about 5 MB (`GNOMAD_MITO_URL`, sha256 `GNOMAD_MITO_SHA256` in `versions.env`, checked by `setup.sh` and `validate-setup.sh`) | step 20 (gnomAD AF_hom, AF_het and max_hl beside each chrM call) | step 20 writes its annotation table with the gnomAD columns empty, and `validate-setup.sh` warns (it fails on a file whose sha256 is not the pinned one) |
-| `reference/somalier/sites.hg38.vcf.gz` | somalier's GRCh38 sites, 17,766 SNPs (sha256 checked) | step 33 (`somalier extract`), Nextflow `--somalier_sites` | step 33 stops and says to install it |
-| `reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{UD,mu,bed}` | VerifyBamID2's 1000 Genomes panel of 100,000 markers, from the VerifyBamID v2.0.3 release (sha256 checked) | step 33 (`verifybamid2`), Nextflow `--verifybamid2_panel` | step 33 stops and says to install it |
+| `roh_af/roh_af_gnomad_v4.1.tsv.gz` and its `.tbi` | step 11's allele-frequency panel: the 7,439,999 biallelic PASS SNVs of chr1 to chr22 with a global AF of 0.01 to 0.99 in gnomAD v4.1 genomes (CC0), with the global AF and five continental group AFs, about 208 MB. A release asset of this repository built by `og dev build roh-af` ([below](#roh-allele-frequency-panel)); `ROH_AF_PANEL_URL`, sha256 `ROH_AF_PANEL_SHA256` in `versions.env`, checked by `setup.sh`, which then indexes it with `tabix` | step 11 and Nextflow `--roh_af_panel` (`bcftools roh --AF-file`) | step 11 gives every site an allele frequency of 0.4 (`--AF-dflt 0.4`) and says so; `validate-setup.sh` does not check it |
+| `reference/GRCh38_AllTandemRepeats.bed.gz` and its unpacked copy `reference/GRCh38_AllTandemRepeats.bed` | every GRCh38 tandem repeat of GIAB's genome stratifications v3.6 (TRF and RepeatMasker simple repeats, 5 bp added on each side), about 9 MB, NIST data free to reuse (`TANDEM_REPEATS_URL`, sha256 `TANDEM_REPEATS_SHA256` in `versions.env`, checked by `setup.sh`). Sniffles2 reads a plain BED only, so setup keeps the unpacked copy beside the download | step 04c (`sniffles --tandem-repeats`, long reads only) | step 04c prints a note and runs Sniffles2 without it: SVs inside repeats get less precise breakpoints and merging |
+| `reference/somalier/sites.hg38.vcf.gz` | somalier's GRCh38 sites, 17,766 SNPs (sha256 checked, also when the file is already there: one with another sha256 gets a warning and is downloaded again) | step 33 (`somalier extract`), Nextflow `--somalier_sites` | step 33 stops and says to install it |
+| `reference/verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.{UD,mu,bed}` | VerifyBamID2's 1000 Genomes panel of 100,000 markers, from the VerifyBamID v2.0.3 release (sha256 checked, also when a file is already there, as for the sites) | step 33 (`verifybamid2`), Nextflow `--verifybamid2_panel` | step 33 stops and says to install it |
 
-`setup.sh` also writes the reference's sequence dictionary (`GRCh38_no_alt_analysis_set.dict`), which GATK, Picard and `chip-to-vcf.sh` need.
+`setup.sh` also writes the reference's sequence dictionary (`GRCh38_no_alt_analysis_set.dict`), which GATK, Picard and `chip-to-vcf.sh` need. It holds the MD5 of each sequence, which `validate-setup.sh` compares with the pinned values ([above](#grch38-reference-genome)).
+
+## ROH allele-frequency panel
+
+Step 11 (`bcftools roh`) needs each site's population allele frequency: see [Allele frequencies](11-roh-analysis.md#allele-frequencies). gnomAD publishes them in its genome sites VCFs, 563 GB for chr1 to chr22, far more than step 11 needs. `og dev build roh-af` keeps the biallelic PASS SNVs of chr1 to chr22 whose global AF is 0.01 to 0.99, with the global AF and the AFs of the African (`afr`), admixed American (`amr`), East Asian (`eas`), non-Finnish European (`nfe`) and South Asian (`sas`) groups, copied as gnomAD writes them (`.` where a group has no allele number). A site is biallelic when gnomAD saw one alternate allele at its position (`n_alt_alleles=1`). The result is one tab-separated file, `CHROM POS REF,ALT AF AF_afr AF_amr AF_eas AF_nfe AF_sas`, in BGZF; its first four columns are the `--AF-file` format of `bcftools roh`, which reads column 4 only.
+
+`setup.sh` downloads the published file (`ROH_AF_PANEL_URL`), checks its sha256 and writes its index with `tabix -s1 -b2 -e2` from `GATK_IMAGE`. To build it again from gnomAD, byte for byte, with `og` built from this checkout: each VCF streams through `og` and is not kept, and each stream's MD5 is compared with the one gnomAD's bucket lists for the file (a stream cut short makes `og` stop with "the gzip input ends inside a member").
+
+```bash
+#!/usr/bin/env bash
+# A failed download, a failed og run or an MD5 that differs stops the build
+# before the panel is joined.
+set -euo pipefail
+mkdir -p rows
+for c in $(seq 1 22); do
+  f=gnomad.genomes.v4.1.sites.chr${c}.vcf.bgz
+  want=$(curl -sS --fail "https://storage.googleapis.com/storage/v1/b/gcp-public-data--gnomad/o/release%2F4.1%2Fvcf%2Fgenomes%2F${f}?fields=md5Hash" \
+    | sed -n 's/.*"md5Hash": *"\([^"]*\)".*/\1/p')
+  curl -sS --fail "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes/${f}" | tee >(openssl dgst -md5 -binary | base64 > "rows/chr${c}.md5") \
+    | bin/og dev build roh-af rows --vcf - --out "rows/chr${c}.tsv"
+  sleep 2
+  if [ -z "$want" ] || [ "$(cat "rows/chr${c}.md5")" != "$want" ]; then
+    echo "chr${c}: MD5 differs from gnomAD's, build it again" >&2
+    exit 1
+  fi
+done
+bin/og dev build roh-af panel --rows $(printf 'rows/chr%s.tsv ' $(seq 1 22)) --out roh_af_gnomad_v4.1.tsv.gz
+sha256sum roh_af_gnomad_v4.1.tsv.gz   # ROH_AF_PANEL_SHA256
+```
+
+Run it as a script, not pasted into a shell: `exit 1` stops it. `og dev build roh-af rows` also fails on an input with no `#CHROM` line, such as an empty download.
+
+`og dev build roh-af panel ... --check` compares a panel with what the rows give and exits 1 when they differ. The published panel was built this way, three chromosomes at a time, in 1 h 45 min. That is 563 GB read at about 90 MB/s. It holds 7,439,999 sites and is 207,888,195 bytes. It is published as a release asset of the tag `data-roh-af-gnomad-v4.1`, the file `ROH_AF_PANEL_URL` names.
 
 ## AnnotSV Annotations (~5 GB)
+
+AnnotSV's annotation bundle includes third-party data with their own terms. Review the sources in the [AnnotSV manual](https://www.lbgi.fr/AnnotSV/Documentation/README.AnnotSV_latest.pdf) before downloading.
 
 Required for step 5. `setup.sh` downloads them (about 5 GB, about 20 GB unpacked) into `${GENOME_DIR}/annotsv_annotations/`; its source server is slow, so this can take an hour or two, and an interrupted download resumes when `setup.sh` runs again. `./scripts/setup.sh --annotsv-data ${GENOME_DIR}` installs only these (the bundle when it is missing) and the two files below.
 
@@ -194,6 +251,8 @@ Required for step 17 (CPSR cancer predisposition screening). Includes ClinVar, g
 
 > **Important:** PCGR 2.3.2 bundles VEP 115, which requires a **release-115** cache — different from the release-116 cache used by step 13 above. See the next section for the VEP 115 download. The bundle date (`PCGR_DATA_BUNDLE`) and the cache release (`PCGR_VEP_CACHE_RELEASE`) are in `versions.env` and move with `PCGR_IMAGE`.
 
+PCGR/CPSR reference data includes third-party databases with their own terms. The [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) lists the sources and licences of the newest bundle release. Setup installs release 20260620 (`PCGR_DATA_BUNDLE`), so that list can differ from the installed bundle. Setup prints the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) before it downloads the bundle.
+
 Setup installs it by default. To add the clinical data to an existing setup:
 
 ```bash
@@ -203,7 +262,6 @@ Setup installs it by default. To add the clinical data to an existing setup:
 The installer checks the archive against `PCGR_DATA_SHA256` in `versions.env`, then extracts it into a temporary folder.
 The server publishes no checksum, so the size (`PCGR_DATA_BYTES`) and the digest are measured from a full download. `PCGR_DATA_MEASURED_FOR` names the image tag and bundle date they belong to, and `scripts/ci/check-coupled-versions.sh` fails when `PCGR_IMAGE` or `PCGR_DATA_BUNDLE` moves without it.
 Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive is deleted after installation.
-The [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) names the bundle's third-party databases. Their own terms apply. Setup prints the resource link before downloading.
 
 ## VEP 115 Cache for CPSR (~24 GB)
 
@@ -225,40 +283,26 @@ The coordinate file takes each HLA gene's GRCh38 position from the GENCODE annot
 
 ## CNVpytor GC/Mask Resources (Optional, for Step 18)
 
-Only needed for step 18 (CNVpytor CNV calling). The 1.3.2 biocontainer ships **without** the reference GC/mask files and its built-in `-download` is broken, so download the pinned v1.3.2 resources once and mount them at run time.
+The CNVpytor 1.3.2 container needs its GC and mask files from the upstream release. Setup verifies each SHA-256 and writes the files under `reference/cnvpytor/`.
 
 ```bash
-mkdir -p ${GENOME_DIR}/reference/cnvpytor
-BASE=https://github.com/abyzovlab/CNVpytor/raw/v1.3.2/cnvpytor/data
-
-# gc_hg38/mask_hg38 are the files actually used; the other genomes' files only
-# need to exist to satisfy CNVpytor's (over-eager) global resource check.
-for f in gc_hg38.pytor mask_hg38.pytor gc_hg19.pytor mask_hg19.pytor \
-         gc_chm13v2.0.pytor gc_chm13v1.1.pytor gc_kn99.pytor; do
-  curl -fsSL -o ${GENOME_DIR}/reference/cnvpytor/$f "$BASE/$f"
-done
+./scripts/setup.sh --cnvpytor-data "$GENOME_DIR"
 ```
 
-Pinning to the `v1.3.2` git tag (not `master`) keeps runs reproducible; the files total ~90 MB. `scripts/18-cnvpytor.sh` bind-mounts this directory onto the container's package data path, so no network access is needed at run time.
+## PyPGx Data Bundle (Optional, for Step 32)
 
-## Somatic Calling Resources (Optional, for Step 29)
-
-Only needed if you plan to run step 29 (somatic variant calling with Mutect2 tumor-only mode). These resources significantly reduce false positives. See [29-mutect2-somatic.md](29-mutect2-somatic.md) for details.
+Setup clones the matching bundle release from upstream into `reference/pypgx-bundle/` and checks its commit against the pin. Upstream publishes no licence terms for the data bundle. See [Step 32](32-pypgx.md#pypgx-bundle-required-one-time-download) for details.
 
 ```bash
-mkdir -p ${GENOME_DIR}/somatic
+./scripts/setup.sh --pypgx-data "$GENOME_DIR"
+```
 
-# gnomAD AF-only VCF (~3 GB) — germline allele frequencies for filtering
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz \
-  -O ${GENOME_DIR}/somatic/af-only-gnomad.hg38.vcf.gz
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/af-only-gnomad.hg38.vcf.gz.tbi \
-  -O ${GENOME_DIR}/somatic/af-only-gnomad.hg38.vcf.gz.tbi
+## Somatic Calling Resources (Optional, for Steps 29 and 49)
 
-# Panel of Normals (~17 MB) — recurrent technical artifacts from 1000 Genomes
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz \
-  -O ${GENOME_DIR}/somatic/1000g_pon.hg38.vcf.gz
-wget -c https://storage.googleapis.com/gatk-best-practices/somatic-hg38/1000g_pon.hg38.vcf.gz.tbi \
-  -O ${GENOME_DIR}/somatic/1000g_pon.hg38.vcf.gz.tbi
+Install the GATK Best Practices hg38 resources for Mutect2. Setup checks the SHA-256 of each VCF and its Tabix index before publishing it to `somatic/`. The gnomAD AF-only VCF, 1000 Genomes panel of normals, and ExAC common sites take about 3 GiB together. See [Step 29](29-mutect2-somatic.md#recommended-resources-reduce-false-positives) for what each does.
+
+```bash
+./scripts/setup.sh --somatic-data "$GENOME_DIR"
 ```
 
 ## MEGAnE k-mer Set (Optional, for Step 50)
@@ -287,26 +331,22 @@ It pulls `LOCITYPER_IMAGE`, counts the 25-mers of `REF_FASTA` with jellyfish, re
 
 Deep pathogenicity scoring and variant prioritization. These databases power vcfanno (step 30) and slivar (step 31). All are optional — step 30 gracefully skips any missing track.
 
-> **Total download:** ~175 GB, the sum of the sections below (SpliceAI ~91 GB, CADD ~83 GB). If disk space is tight, start with REVEL + AlphaMissense (~1.2 GB combined) — they provide the highest value per byte for missense variant interpretation.
+Install all four score sets into `annotations/` with about 175 GiB of free disk for the downloads, plus temporary space for the REVEL sort.
+
+```bash
+./scripts/setup.sh --annotation-scores "$GENOME_DIR"
+```
+
+Setup checks for enough space to finish the missing CADD and SpliceAI score downloads, plus a 5 GiB margin. It resumes interrupted transfers and skips masked SpliceAI SNV or indel scores when the corresponding raw file and its Tabix index are already present.
+
+It checks CADD scores against the publisher's MD5 and validates the masked SpliceAI scores against the pinned byte sizes, SHA-256 of the first and last MiB, and gzip integrity. Both publishers' Tabix indexes, the REVEL ZIP, and the AlphaMissense download use full SHA-256 pins in `versions.env`.
+
 
 ### CADD v1.7 Pre-scored (SNVs + Indels) — ~83 GB
 
 The most widely used deleteriousness metric. Scores all possible SNVs genome-wide plus gnomAD indels.
 
 > **License:** Free for non-commercial/academic use. Commercial use requires a license from the University of Washington. The pipeline does not redistribute CADD data — users download directly from the source.
-
-```bash
-mkdir -p ${GENOME_DIR}/annotations
-cd ${GENOME_DIR}/annotations
-
-# Whole-genome SNV scores (~81.5 GB, pre-indexed)
-wget -c https://krishna.gs.washington.edu/download/CADD/v1.7/GRCh38/whole_genome_SNVs.tsv.gz
-wget -c https://krishna.gs.washington.edu/download/CADD/v1.7/GRCh38/whole_genome_SNVs.tsv.gz.tbi
-
-# gnomAD v4.0 indel scores (~1.2 GB, pre-indexed)
-wget -c https://krishna.gs.washington.edu/download/CADD/v1.7/GRCh38/gnomad.genomes.r4.0.indel.tsv.gz
-wget -c https://krishna.gs.washington.edu/download/CADD/v1.7/GRCh38/gnomad.genomes.r4.0.indel.tsv.gz.tbi
-```
 
 > **Note:** CADD TSVs use chromosome names without `chr` prefix (1, 2, 3...). vcfanno handles this via column mapping in the TOML config — no manual renaming needed.
 
@@ -318,18 +358,6 @@ The pipeline uses the **masked** score files. SpliceAI's authors recommend the m
 
 > **License:** The precomputed SpliceAI scores are free for academic and not-for-profit use only; any other use requires a commercial license from Illumina. They are not Apache 2.0. The pipeline does not redistribute them.
 
-```bash
-cd ${GENOME_DIR}/annotations
-
-# SNV splice scores (~27 GB)
-wget -c https://download.molgeniscloud.org/downloads/vip/resources/GRCh38/spliceai_scores.masked.snv.hg38.vcf.gz
-wget -c https://download.molgeniscloud.org/downloads/vip/resources/GRCh38/spliceai_scores.masked.snv.hg38.vcf.gz.tbi
-
-# Indel splice scores (~64 GB)
-wget -c https://download.molgeniscloud.org/downloads/vip/resources/GRCh38/spliceai_scores.masked.indel.hg38.vcf.gz
-wget -c https://download.molgeniscloud.org/downloads/vip/resources/GRCh38/spliceai_scores.masked.indel.hg38.vcf.gz.tbi
-```
-
 Step 30 and `validate-setup.sh` find the masked files under these names. They also accept the raw files (`spliceai_scores.raw.*`) if you already have them; when both sets are present, step 30 uses the raw ones.
 
 > **Alternative source:** Illumina BaseSpace at `https://basespace.illumina.com/s/otSPW8hnhaZR` (requires free account).
@@ -338,40 +366,9 @@ Step 30 and `validate-setup.sh` find the masked files under these names. They al
 
 Ensemble pathogenicity scoring for missense variants, combining 13 individual tools. Recommended by ClinGen for missense variant classification.
 
-```bash
-source versions.env   # from the repository root
-cd ${GENOME_DIR}/annotations
+The REVEL authors make the scores freely available for non-commercial use. The [Zenodo record](https://doi.org/10.5281/zenodo.7072866) lists ODbL 1.0. For other uses, contact the maintainers through the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads) before downloading.
 
-# Download and prepare for vcfanno
-wget -c https://zenodo.org/record/7072866/files/revel-v1.3_all_chromosomes.zip
-unzip revel-v1.3_all_chromosomes.zip
-
-# Convert to tabix-indexed TSV for GRCh38
-# Extract GRCh38 columns, add chr prefix, sort, bgzip, index.
-# The GATK image is used because it ships bgzip and tabix; the bcftools image does not.
-# The source file has nine comma-separated columns:
-#   chr,hg19_pos,grch38_pos,ref,alt,aaref,aaalt,REVEL,Ensembl_transcriptid
-# The table keeps five of them, so it gets its own five-name header.
-docker run --rm --user root \
-  -v "${GENOME_DIR}:/genome" \
-  "${GATK_IMAGE}" \
-  bash -c '
-    set -euo pipefail
-    cd /genome/annotations
-    printf "#chr\tpos\tref\talt\tREVEL\n" > revel_grch38.tsv
-    # Skip the header, keep rows with a GRCh38 position (col 3), add the chr prefix, sort
-    tail -n+2 revel_with_transcript_ids | \
-      awk -F"," -v OFS="\t" "\$3 != \".\" {print \"chr\"\$1, \$3, \$4, \$5, \$8}" | \
-      sort -T /genome/annotations -k1,1V -k2,2n >> revel_grch38.tsv
-    bgzip -f revel_grch38.tsv
-    tabix -f -s 1 -b 2 -e 2 revel_grch38.tsv.gz
-    # Clean up intermediates (only reached if every command above succeeded)
-    rm -f revel_with_transcript_ids revel-v1.3_all_chromosomes.zip
-  '
-
-# Check: five columns under a five-name header
-gzip -dc revel_grch38.tsv.gz | head -2
-```
+Setup projects the release onto GRCh38 with `og setup revel ZIP TSV`, then compresses and indexes `revel_grch38.tsv.gz`.
 
 > **Thresholds:** ClinGen's calibration (Pejaver et al. 2022) gives REVEL >= 0.644 as PP3_Supporting, >= 0.773 as PP3_Moderate and >= 0.932 as PP3_Strong for missense variants. There is no PP3 Very Strong level. See [interpreting-results.md](interpreting-results.md#revel-rare-exome-variant-ensemble-learner) for the BP4 (benign) levels.
 
@@ -381,20 +378,7 @@ DeepMind's protein-structure-informed missense classifier. Complements REVEL wit
 
 > **License:** CC BY-NC-SA 4.0 (non-commercial, share-alike). The pipeline does not redistribute these scores.
 
-```bash
-source versions.env   # from the repository root
-cd ${GENOME_DIR}/annotations
-
-# Download pre-scored GRCh38 predictions
-wget -c https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz
-
-# Index for vcfanno (skip header lines starting with #). The GATK image has
-# tabix; the bcftools image does not.
-docker run --rm --user root \
-  -v "${GENOME_DIR}:/genome" \
-  "${GATK_IMAGE}" \
-  tabix -s 1 -b 2 -e 2 -S 1 /genome/annotations/AlphaMissense_hg38.tsv.gz
-```
+Setup indexes the published BGZF file as `AlphaMissense_hg38.tsv.gz.tbi`.
 
 > **Thresholds:** am_pathogenicity < 0.34 = likely benign, > 0.564 = likely pathogenic. These are AlphaMissense's own class boundaries, not ACMG evidence levels.
 
@@ -425,9 +409,13 @@ The release is `ENSEMBL_GFF_RELEASE` in `versions.env`, and the download is chec
 
 ## Exomiser Data (Optional, for Step 48, ~37 GB)
 
+Exomiser's hg38 and phenotype bundles include third-party data with their own terms. Review Exomiser's [data source notes](https://exomiser.readthedocs.io/en/15.1.0/advanced_analysis.html#pathogenicitysources) before installing.
+
 Only needed for step 48, the symptom-driven ranking that runs when you give HPO terms. `./scripts/setup.sh --exomiser-data ${GENOME_DIR}` downloads Exomiser's data release `EXOMISER_DATA_VERSION` (hg38 and phenotype archives, 37 GB, each checked against its sha256 in `versions.env`), unpacks it into `${GENOME_DIR}/reference/exomiser-<release>/` (58 GB; about 72 GB free while it runs), deletes the archives and pulls `EXOMISER_IMAGE`. An interrupted download resumes when the command runs again. See [Step 48](48-exomiser.md).
 
 ## AADR Ancient Panel (Optional, for Step 44, ~1.05 GB kept, 9.6 GiB at the peak)
+
+UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence. See the [UCSC chain download terms](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/).
 
 Only needed for step 44, the placement among ancient genomes. `./scripts/setup.sh --ancient-panel ${GENOME_DIR}` downloads the AADR release `AADR_VERSION` (1240K, the 7.1 GB `.geno` and three small files, each checked against its md5 in `versions.env`) and UCSC's hg19ToHg38 chain, then builds the panel in `${GENOME_DIR}/reference/ancient/aadr_<release>/` with convertf and two smartpca runs. On a 4-CPU GitHub runner it took 61 minutes, peaked at 9.6 GiB of extra disk and kept 1.05 GiB; its smartpca container gets 12 GB, and the setup's containers held 7.6 GiB of anonymous memory at most (any setup container, convertf included). See [Step 44](44-ancient.md#runtime).
 
@@ -479,7 +467,7 @@ docker run --rm --user root \
 # Creates: .0123, .amb, .ann, .bwt.2bit.64, .pac alongside the FASTA
 ```
 
-GRIDSS (step 4b) needs the classic BWA index instead (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`); the two are not interchangeable. See [04b-gridss.md](04b-gridss.md) for how to build it.
+GRIDSS (step 4b) needs the classic BWA index instead (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`); the two are not interchangeable. Run `./scripts/setup.sh --bwa-index "$GENOME_DIR"` to build it. See [GRIDSS prerequisites](04b-gridss.md#prerequisites).
 
 ### GIAB Truth Set (for hap.py Benchmarking)
 

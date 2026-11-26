@@ -1,0 +1,4 @@
+Condition	PGS_ID	Score_SUM	Variants_Matched	Variants_Total	Matched_Pct	Percentile	Ancestry_Group	ChrX	Ambiguous	Applies_To	Sex_Check	Evaluated_In	Effect	Input
+Coronary artery disease	PGS000001	1.25	2	3	66.7	94.4	EUR	1 left out	0			EUR;AFR	HR 1.53 (EUR, PPM000591)	gvcf
+PGS000002	PGS000002	NA	0	5	0.0	NA	NA							gvcf
+Prostate cancer	PGS000662	3	3	4	75.0	NA	EUR	0	2 kept	male	no sex declared	EUR;AFR		gvcf

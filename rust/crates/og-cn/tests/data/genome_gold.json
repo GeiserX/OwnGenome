@@ -1,0 +1,466 @@
+{
+  "hba": [
+    [
+      [
+        30,
+        30,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 30,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "4.00",
+        "alpha_globin_genes": "4",
+        "status": "called",
+        "message": "four alpha-globin genes (aa/aa): no deletion seen"
+      }
+    ],
+    [
+      [
+        15,
+        30,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 15,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "3.00",
+        "alpha_globin_genes": "3",
+        "status": "called",
+        "message": "three alpha-globin genes: one gene lost on one chromosome (-a/aa, as -a3.7 or -a4.2), a silent carrier; unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything"
+      }
+    ],
+    [
+      [
+        15,
+        15,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 15,
+        "hba1_depth": 15,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "2.00",
+        "alpha_globin_genes": "2",
+        "status": "called",
+        "message": "two alpha-globin genes: alpha-thalassaemia trait, either both genes lost on one chromosome (--/aa, as --SEA; a child with a partner who carries the same can have Hb Bart's) or one on each (-a/-a); depth cannot tell these apart; unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything"
+      }
+    ],
+    [
+      [
+        45,
+        30,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 45,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "5.00",
+        "alpha_globin_genes": "5",
+        "status": "called",
+        "message": "5 alpha-globin genes: more than four, a triplication (as aaa/aa)"
+      }
+    ],
+    [
+      [
+        22.5,
+        30,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 22.5,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "3.50",
+        "alpha_globin_genes": ".",
+        "status": "not assessed",
+        "message": "not assessed: the estimate 3.50 lies between 3 and 4 alpha-globin genes"
+      }
+    ],
+    [
+      [
+        5,
+        5,
+        6,
+        6,
+        0.25
+      ],
+      {
+        "hba2_depth": 5,
+        "hba1_depth": 5,
+        "flank_left_depth": 6,
+        "flank_right_depth": 6,
+        "mapq0_share": "0.250",
+        "estimate": ".",
+        "alpha_globin_genes": ".",
+        "status": "not assessed",
+        "message": "not assessed: flank depth under 8x (6.0x and 6.0x), too low to compare"
+      }
+    ],
+    [
+      [
+        30,
+        30,
+        30,
+        15,
+        0.25
+      ],
+      {
+        "hba2_depth": 30,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 15,
+        "mapq0_share": "0.250",
+        "estimate": ".",
+        "alpha_globin_genes": ".",
+        "status": "not assessed",
+        "message": "not assessed: the two flanks disagree (30.0x and 15.0x); a deletion larger than --SEA, or uneven coverage, would skew the count"
+      }
+    ],
+    [
+      [
+        15.5,
+        25.68,
+        30.11,
+        31.25,
+        0
+      ],
+      {
+        "hba2_depth": 15.5,
+        "hba1_depth": 25.68,
+        "flank_left_depth": 30.11,
+        "flank_right_depth": 31.25,
+        "mapq0_share": "0.000",
+        "estimate": "2.68",
+        "alpha_globin_genes": ".",
+        "status": "not assessed",
+        "message": "not assessed: reads of mapping quality 0 make up 0.0% of the depth over HBA1 and HBA2, so the aligner left out the reads that fit both genes (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM"
+      }
+    ],
+    [
+      [
+        30,
+        30,
+        30,
+        30,
+        0.01
+      ],
+      {
+        "hba2_depth": 30,
+        "hba1_depth": 30,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.010",
+        "estimate": "4.00",
+        "alpha_globin_genes": ".",
+        "status": "not assessed",
+        "message": "not assessed: reads of mapping quality 0 make up 1.0% of the depth over HBA1 and HBA2, so the aligner left out the reads that fit both genes (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM"
+      }
+    ],
+    [
+      [
+        0,
+        0,
+        30,
+        30,
+        0
+      ],
+      {
+        "hba2_depth": 0,
+        "hba1_depth": 0,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.000",
+        "estimate": "0.00",
+        "alpha_globin_genes": "0",
+        "status": "called",
+        "message": "no alpha-globin gene: the pattern of Hb Bart's hydrops fetalis (--/--); unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything"
+      }
+    ],
+    [
+      [
+        7.4,
+        7.6,
+        30,
+        30,
+        0.25
+      ],
+      {
+        "hba2_depth": 7.4,
+        "hba1_depth": 7.6,
+        "flank_left_depth": 30,
+        "flank_right_depth": 30,
+        "mapq0_share": "0.250",
+        "estimate": "1.00",
+        "alpha_globin_genes": "1",
+        "status": "called",
+        "message": "one alpha-globin gene: the pattern of HbH disease (--/-a); unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything"
+      }
+    ],
+    [
+      [
+        30.2,
+        29.1,
+        29.4,
+        31.9,
+        0.2
+      ],
+      {
+        "hba2_depth": 30.2,
+        "hba1_depth": 29.1,
+        "flank_left_depth": 29.4,
+        "flank_right_depth": 31.9,
+        "mapq0_share": "0.200",
+        "estimate": "3.87",
+        "alpha_globin_genes": "4",
+        "status": "called",
+        "message": "four alpha-globin genes (aa/aa): no deletion seen"
+      }
+    ]
+  ],
+  "lpa": [
+    [
+      [
+        12,
+        30,
+        0,
+        0,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "12.0",
+        "ci95_low": "12.0",
+        "ci95_high": "12.0",
+        "class": "low",
+        "kiv2_depth": "30.00",
+        "flank_depth": "30.00",
+        "mapq0_share": "0.900",
+        "message": "about 12 KIV-2 repeats in total over both copies (95% interval for read sampling, 12.0 to 12.0; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+      }
+    ],
+    [
+      [
+        20,
+        30,
+        0.1,
+        0.15,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "19.8",
+        "ci95_low": "17.9",
+        "ci95_high": "22.0",
+        "class": "low",
+        "kiv2_depth": "47.45",
+        "flank_depth": "30.43",
+        "mapq0_share": "0.900",
+        "message": "about 20 KIV-2 repeats in total over both copies (95% interval for read sampling, 17.9 to 22.0; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+      }
+    ],
+    [
+      [
+        29,
+        30,
+        0.03,
+        0.03,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "29.0",
+        "ci95_low": "28.3",
+        "ci95_high": "29.7",
+        "class": "low",
+        "kiv2_depth": "66.56",
+        "flank_depth": "30.09",
+        "mapq0_share": "0.900",
+        "message": "about 29 KIV-2 repeats in total over both copies (95% interval for read sampling, 28.3 to 29.7; aligner or library bias not included): fewer KIV-2 repeats than most people (the whole 95% interval is under 30; about 70% of the 1000 Genomes samples had 30 to 45): a low count goes with small apo(a) isoforms and a higher Lp(a) level"
+      }
+    ],
+    [
+      [
+        29,
+        30,
+        0.25,
+        0.25,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "28.8",
+        "ci95_low": "23.5",
+        "ci95_high": "35.1",
+        "class": "typical",
+        "kiv2_depth": "67.50",
+        "flank_depth": "30.72",
+        "mapq0_share": "0.900",
+        "message": "about 29 KIV-2 repeats in total over both copies (95% interval for read sampling, 23.5 to 35.1; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+      }
+    ],
+    [
+      [
+        47,
+        30,
+        0.25,
+        0.25,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "46.6",
+        "ci95_low": "38.3",
+        "ci95_high": "56.6",
+        "class": "typical",
+        "kiv2_depth": "106.69",
+        "flank_depth": "30.72",
+        "mapq0_share": "0.900",
+        "message": "about 47 KIV-2 repeats in total over both copies (95% interval for read sampling, 38.3 to 56.6; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+      }
+    ],
+    [
+      [
+        60,
+        30,
+        0.03,
+        0.03,
+        0.9
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "59.9",
+        "ci95_low": "58.6",
+        "ci95_high": "61.4",
+        "class": "high",
+        "kiv2_depth": "133.11",
+        "flank_depth": "30.09",
+        "mapq0_share": "0.900",
+        "message": "about 60 KIV-2 repeats in total over both copies (95% interval for read sampling, 58.6 to 61.4; aligner or library bias not included): more KIV-2 repeats than most people (the whole 95% interval is over 45): a high count goes with large apo(a) isoforms and, on average, a lower Lp(a) level"
+      }
+    ],
+    [
+      [
+        20,
+        8,
+        0,
+        0,
+        0.9
+      ],
+      {
+        "status": "too little depth",
+        "kiv2_copies": ".",
+        "ci95_low": ".",
+        "ci95_high": ".",
+        "class": ".",
+        "kiv2_depth": "12.57",
+        "flank_depth": "8.00",
+        "mapq0_share": "0.900",
+        "message": "too little depth: 8.0x over the single-copy LPA exons, under the 10x the count needs"
+      }
+    ],
+    [
+      [
+        20,
+        30,
+        0,
+        0,
+        0
+      ],
+      {
+        "status": "not assessed",
+        "kiv2_copies": ".",
+        "ci95_low": ".",
+        "ci95_high": ".",
+        "class": ".",
+        "kiv2_depth": "47.14",
+        "flank_depth": "30.00",
+        "mapq0_share": "0.000",
+        "message": "not assessed: reads of mapping quality 0 make up 0.0% of the depth over the KIV-2 exons, so the aligner left out the reads that fit several KIV-2 copies (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM"
+      }
+    ],
+    [
+      [
+        -1.5,
+        30,
+        0,
+        0,
+        0.9
+      ],
+      {
+        "status": "not assessed",
+        "kiv2_copies": ".",
+        "ci95_low": ".",
+        "ci95_high": ".",
+        "class": ".",
+        "kiv2_depth": "1.07",
+        "flank_depth": "30.00",
+        "mapq0_share": "0.900",
+        "message": "not assessed: the KIV-2 exons have 1.1x against 30.0x over the single-copy exons, too little for any repeat count (a deletion or a mapping problem)"
+      }
+    ],
+    [
+      [
+        38,
+        12,
+        0.3,
+        0.2,
+        0.5
+      ],
+      {
+        "status": "estimated",
+        "kiv2_copies": "38.0",
+        "ci95_low": "31.0",
+        "ci95_high": "46.5",
+        "class": "typical",
+        "kiv2_depth": "34.95",
+        "flank_depth": "12.23",
+        "mapq0_share": "0.500",
+        "message": "about 38 KIV-2 repeats in total over both copies (95% interval for read sampling, 31.0 to 46.5; aligner or library bias not included): within or overlapping the range most people have (30 to 45 for about 70% of the 1000 Genomes samples)"
+      }
+    ],
+    [
+      [
+        -2,
+        30,
+        0,
+        0,
+        0.9
+      ],
+      {
+        "status": "not assessed",
+        "kiv2_copies": ".",
+        "ci95_low": ".",
+        "ci95_high": ".",
+        "class": ".",
+        "kiv2_depth": "0.00",
+        "flank_depth": "30.00",
+        "mapq0_share": "0.000",
+        "message": "not assessed: reads of mapping quality 0 make up 0.0% of the depth over the KIV-2 exons, so the aligner left out the reads that fit several KIV-2 copies (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM"
+      }
+    ]
+  ]
+}

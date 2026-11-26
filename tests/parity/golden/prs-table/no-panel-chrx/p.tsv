@@ -1,0 +1,2 @@
+Condition	PGS_ID	Score_SUM	Variants_Matched	Variants_Total	Matched_Pct	Percentile	Ancestry_Group	ChrX	Ambiguous	Applies_To	Sex_Check	Input
+Coronary artery disease	PGS000001	1.25	2	4	50.0	94.4	EUR	3 scored	0			gvcf

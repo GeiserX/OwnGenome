@@ -6,17 +6,19 @@
     workflows/bam_analysis.nf passes the BAMs whose sex is male, the sex
     INDEXCOV has checked against the reads.
 
-    Yleaf (4.1.6, its own tree YFull v14.01) reads its marker tables from
-    --yleaf_data (setup.sh --yleaf-data), and its pileup is made in the
-    samtools pass that also writes the chrY BAM, so the work is three
-    processes, as in scripts/37-y-haplogroup.sh (bin/yleaf_run.py says why):
+    Yleaf (its own tree YFull v14.01) reads a pileup at its marker positions
+    (from --yleaf_data, setup.sh --yleaf-data) made in the samtools pass that
+    also writes the chrY BAM, so the work is three processes, as in
+    scripts/37-y-haplogroup.sh (its comments say why):
       Y_POSITIONS   Yleaf's GRCh38 marker positions (og y yleaf-positions,
                     in the Yleaf image, once)
       Y_PILEUP      samtools idxstats and the pileup at those positions, and
                     <id>_chrY.bam (+ .bai), the chrY reads only: the file
                     YFull and the Y-DNA projects read. Nothing is uploaded.
-      Y_HAPLOGROUP  Yleaf on that pileup, offline; Hg NA means too few Y
-                    markers had reads to call a haplogroup
+      Y_HAPLOGROUP  Yleaf's own command line on that pileup (-rp), offline;
+                    Hg NA means too few Y markers had reads to call a
+                    haplogroup (og y yleaf-no-reads writes that table when
+                    the pileup is empty, where Yleaf stops)
     Each process also does the same for the pinned YFull YTree release in
     <yleaf_data>/ytree (og y tree-positions and og y tree-place): its SNP positions, a second
     pileup at them, and the placement, published as <id>_y_tree.txt and
@@ -98,13 +100,16 @@ process Y_PILEUP {
 
     script:
     // -ABQ20q1: the flags Yleaf 4 gives samtools mpileup at its default quality 20
-    // (bin/yleaf_run.py stops if Yleaf asks for others). The current tree's
-    // pileup keeps -AQ20q1, the flags og y tree-place was checked with.
+    // (the YLEAF_IMAGE row of tests/smoke/commands.tsv checks they are still
+    // Yleaf's; samtools reads "20q1" as the -Q value, so that pileup keeps
+    // MQ0 reads, as Yleaf's own does). The current tree's pileup is ours:
+    // -A -Q20 -q20, written out so the mapping-quality filter holds (the
+    // og-reports test i411_ytree_ranking checks the three copies of it).
     """
     samtools idxstats ${bam} > ${meta.id}_idxstats.txt
     samtools mpileup -l ${positions} -ABQ20q1 ${bam} > ${meta.id}_y_pileup.txt
     if [ -s ${tree_positions} ]; then
-        samtools mpileup -l ${tree_positions} -AQ20q1 ${bam} > ${meta.id}_y_tree_pileup.txt
+        samtools mpileup -l ${tree_positions} -A -Q20 -q20 ${bam} > ${meta.id}_y_tree_pileup.txt
     else
         touch ${meta.id}_y_tree_pileup.txt
     fi
@@ -149,8 +154,25 @@ process Y_HAPLOGROUP {
 
     script:
     """
-    yleaf_run.py predict --data ${yleaf_data} --bam ${bam} --reference "\$(readlink -f ${reference})" \\
-        --idxstats ${idxstats} --pileup ${pileup} --out yleaf
+    # Yleaf names the sample, and its folder, after the BAM without its
+    # extension, and reads the pileup it finds there (-rp). --ref-fasta names
+    # the reference so it downloads none; it never reads a BAM's sequence.
+    stem=\$(basename ${bam}); stem=\${stem%.*}
+    if [ -s ${pileup} ]; then
+        mkdir -p "yleaf/\$stem"
+        cp ${pileup} "yleaf/\$stem/temp_haplogroup_pileup.pu"
+        Yleaf -bam ${bam} -o yleaf -rg hg38 --ref-fasta "\$(readlink -f ${reference})" -tree yfull \\
+            -q 20 -t 1 -rp -force --no-update-check
+        rm -f "yleaf/\$stem/temp_haplogroup_pileup.pu"
+    else
+        mkdir -p yleaf
+        og y yleaf-no-reads --bam ${bam} --idxstats ${idxstats} yleaf/hg_prediction.hg
+    fi
+    if [ ! -s yleaf/hg_prediction.hg ] || [ "\$(grep -c . yleaf/hg_prediction.hg)" -lt 2 ]; then
+        # Yleaf logs a failed sample as "Skipping" and goes on: its log says why.
+        echo "ERROR: Yleaf wrote no prediction (yleaf/hg_prediction.hg); its log is yleaf/run.log" >&2
+        exit 1
+    fi
     cp yleaf/hg_prediction.hg ${meta.id}_y_haplogroup.txt
     if [ -s ${yleaf_data}/ytree/version.txt ]; then
         og y tree-place --tree-dir ${yleaf_data}/ytree --pileup ${tree_pileup} \\

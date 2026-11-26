@@ -1,0 +1,7 @@
+Site list: 11 sites; kept 5, dropped 6
+  dropped, no rsID (a 23andMe internal id): 1
+  dropped, not in dbSNP (merged or withdrawn): 1
+  dropped, not an SNV in dbSNP: 1
+  dropped, more than one GRCh38 position in dbSNP: 1
+  dropped, on chromosome 3 in GRCh38: 1
+  dropped, its GRCh37 base is not a dbSNP allele on either strand: 1

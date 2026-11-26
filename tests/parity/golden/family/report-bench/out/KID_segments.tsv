@@ -1,0 +1,45 @@
+child	side	parent	chrom	start	end	length_bp	sites	discordant	ancestor	basis
+KID	paternal	DAD	chr1	200	869400	869201	1203	1227	GF	parent and grandparents
+KID	maternal	MOM	chr1	100	869200	869101	3175	0	.	parent
+KID	paternal	DAD	chr2	1000	869300	868301	1179	1211	GF	parent and grandparents
+KID	maternal	MOM	chr2	200	869300	869101	3161	0	.	parent
+KID	paternal	DAD	chr3	300	869100	868801	1324	1049	GF	parent and grandparents
+KID	maternal	MOM	chr3	800	869300	868501	3120	0	.	parent
+KID	paternal	DAD	chr4	100	868600	868501	1180	1251	GF	parent and grandparents
+KID	maternal	MOM	chr4	100	869500	869401	3248	0	.	parent
+KID	paternal	DAD	chr5	500	869200	868701	1204	1173	GF	parent and grandparents
+KID	maternal	MOM	chr5	100	869500	869401	3221	0	.	parent
+KID	paternal	DAD	chr6	200	869200	869001	1166	1207	GF	parent and grandparents
+KID	maternal	MOM	chr6	200	869300	869101	3186	0	.	parent
+KID	paternal	DAD	chr7	300	869100	868801	1378	1068	GF	parent and grandparents
+KID	maternal	MOM	chr7	200	869500	869301	3201	0	.	parent
+KID	paternal	DAD	chr8	100	869500	869401	1325	1096	GF	parent and grandparents
+KID	maternal	MOM	chr8	100	869200	869101	3140	0	.	parent
+KID	paternal	DAD	chr9	200	869500	869301	1261	1190	GM	parent and grandparents
+KID	maternal	MOM	chr9	600	869200	868601	3138	0	.	parent
+KID	paternal	DAD	chr10	400	869000	868601	1455	977	GM	parent and grandparents
+KID	maternal	MOM	chr10	100	869300	869201	3124	0	.	parent
+KID	paternal	DAD	chr11	200	869500	869301	1320	1114	GF	parent and grandparents
+KID	maternal	MOM	chr11	100	869400	869301	3131	0	.	parent
+KID	paternal	DAD	chr12	100	869500	869401	1202	1232	GF	parent and grandparents
+KID	maternal	MOM	chr12	100	869500	869401	3123	0	.	parent
+KID	paternal	DAD	chr13	100	869400	869301	1211	1244	GF	parent and grandparents
+KID	maternal	MOM	chr13	800	869500	868701	3116	0	.	parent
+KID	paternal	DAD	chr14	100	869100	869001	1237	1126	GM	parent and grandparents
+KID	maternal	MOM	chr14	400	869500	869101	3156	0	.	parent
+KID	paternal	DAD	chr15	300	868900	868601	1219	1178	GF	parent and grandparents
+KID	maternal	MOM	chr15	200	869500	869301	3156	0	.	parent
+KID	paternal	DAD	chr16	300	869500	869201	1218	1173	GF	parent and grandparents
+KID	maternal	MOM	chr16	900	869300	868401	3205	0	.	parent
+KID	paternal	DAD	chr17	100	869400	869301	1327	1110	GF	parent and grandparents
+KID	maternal	MOM	chr17	200	869500	869301	3282	0	.	parent
+KID	paternal	DAD	chr18	100	868900	868801	1222	1209	GM	parent and grandparents
+KID	maternal	MOM	chr18	100	869100	869001	3203	0	.	parent
+KID	paternal	DAD	chr19	400	868400	868001	1239	1168	GF	parent and grandparents
+KID	maternal	MOM	chr19	100	869500	869401	3139	0	.	parent
+KID	paternal	DAD	chr20	100	869300	869201	1217	1220	GM	parent and grandparents
+KID	maternal	MOM	chr20	100	869300	869201	3171	0	.	parent
+KID	paternal	DAD	chr21	300	869500	869201	1262	1156	GF	parent and grandparents
+KID	maternal	MOM	chr21	100	868900	868801	3232	0	.	parent
+KID	paternal	DAD	chr22	400	868800	868401	1161	1203	GM	parent and grandparents
+KID	maternal	MOM	chr22	300	869500	869201	3140	0	.	parent

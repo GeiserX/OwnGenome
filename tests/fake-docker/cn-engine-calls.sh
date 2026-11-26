@@ -10,15 +10,14 @@
 #     with two copies, 20.0 KIV-2 repeats;
 #   - a control segment with no read (FAKE_ZERO=flank_e19, the others at 30x)
 #     fails step 46 with BROKEN_CONTROL, never a count.
-# It needs og built (scripts/setup.sh --og). The fake-docker job builds no og,
-# so there the case says it is skipped; Guard's rust job runs it with og and
-# fails on that line.
+# The case needs bin/og (scripts/setup.sh --og). Guard's og-musl job runs it
+# with bin/og and treats a skip as a failure.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 # shellcheck source=../../versions.env
 . "${REPO_ROOT}/versions.env"
 if ! "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
-  echo "skip: bin/og is not built here (Guard's rust job runs this case with og)"
+  echo "skip: bin/og is not built here (Guard's og-musl job runs this case with og)"
   exit 0
 fi
 
@@ -33,26 +32,23 @@ printf 'placeholder\n' > "${P}/homology_table/GRCh38.bed.gz"
 printf 'placeholder\n' > "${P}/models_GRCh38_1KGP/EUR/SMN1.gz"
 use_output_hook   # writes host-path.sh, which the hook below reads
 
-# fakecov.py BED [q1]: samtools bedcov over BED (any number of columns; the
+# fakecov.sh BED [q1]: samtools bedcov over BED (any number of columns; the
 # name is column 6 of a marker row, else column 4), one summed depth appended.
-cat > "${CASE_WORK}/fakecov.py" <<'PY'
-import os, sys
-q1 = len(sys.argv) > 2
-kiv = 30.0 * (float(os.environ.get("FAKE_KIV2", "20")) + 2) / 14
-for line in open(sys.argv[1]):
-    c = line.rstrip("\n").split("\t")
-    if not line.strip() or line.startswith("#") or c[0] == "chrom":
-        continue
-    name = c[5] if len(c) >= 6 else c[3]
-    mean = kiv if name.startswith("kiv2_") else 30.0
-    if q1 and name.startswith("kiv2_"):
-        mean *= 0.1
-    elif q1 and name in ("HBA1", "HBA2"):
-        mean *= 0.75
-    if name == os.environ.get("FAKE_ZERO"):
-        mean = 0.0
-    print("\t".join(c + [str(int(mean * (int(c[2]) - int(c[1]))))]))
-PY
+cat > "${CASE_WORK}/fakecov.sh" <<'SH'
+#!/usr/bin/env bash
+awk -F'\t' -v OFS='\t' -v q1="${2:+1}" -v kiv2="${FAKE_KIV2:-20}" -v zero="${FAKE_ZERO:-}" '
+  BEGIN { kiv = 30.0 * (kiv2 + 2) / 14 }
+  $0 !~ /[^ \t\r\n\f\v]/ || /^#/ || $1 == "chrom" { next }
+  {
+    name = NF >= 6 ? $6 : $4
+    mean = name ~ /^kiv2_/ ? kiv : 30.0
+    if (q1 && name ~ /^kiv2_/) mean *= 0.1
+    else if (q1 && (name == "HBA1" || name == "HBA2")) mean *= 0.75
+    if (zero != "" && name == zero) mean = 0.0
+    printf "%s\t%.0f\n", $0, int(mean * ($3 - $2))
+  }' "$1"
+SH
+chmod +x "${CASE_WORK}/fakecov.sh"
 
 cat > "${CASE_WORK}/hook" <<'HOOK'
 #!/usr/bin/env bash
@@ -71,13 +67,13 @@ map() {  # a container path on the host; anything else as it is
     *) printf '%s' "$1" ;;
   esac
 }
-cov() { python3 "${CASE_WORK}/fakecov.py" "$@"; }
+cov() { "${CASE_WORK}/fakecov.sh" "$@"; }
 case "$*" in
   "parascopy depth"*) : > "$(host_path "$(arg -o "$@")")" ;;
   "parascopy cn-using"*)
     o=$(host_path "$(arg -o "$@")"); mkdir -p "$o"
     printf 'chr5\t70925087\t70953015\tSMN1\t.\tPASS\t4\t40\tPASS\t2,2\t30\t.\tchr5:70049669-70077595\n' | gzip -c > "${o}/res.samples.bed.gz" ;;
-  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
+  "/pgp-bin/og "*)
     args=(); for a in "$@"; do args+=("$(map "$a")"); done
     exec "${args[@]}" ;;
   "sh -c "*)
@@ -88,6 +84,8 @@ case "$*" in
   "samtools bedcov "*) cov "$(map "$3")" ;;
   "bash -euo pipefail -c "*)
     case "$5" in
+      *"bcftools norm"*)   # step 41: the records near the markers, left-aligned (here as they are)
+        cp "$(map "$8")" "$(map "${11}")" ;;
       *targets.bed*)   # step 41: the marker sites, then the RHD regions
         o=$(map "$8")
         { grep -v '^#' "$(map "$7")" | tail -n +2; cat "${o}/rhd.bed"; } > "${o}/targets.bed"
@@ -103,6 +101,9 @@ export FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/hook"
 S="${GENOME_DIR}/sample1"
 # calls TEXT: docker calls whose command holds TEXT (the log quotes with %q: backslashes dropped)
 calls() { awk -v p="$1" '{gsub(/\\/, "")} index($0, p) {n++} END {print n + 0}' "$FAKE_DOCKER_LOG"; }
+# pycalls: docker calls that run a .py file, matched as a whole word: a temp folder
+# from mktemp (fake-docker.<case>.XXXXXX) can hold ".py" in its random part
+pycalls() { awk '{gsub(/\\/, "")} /\.py([^[:alnum:]_]|$)/ {n++} END {print n + 0}' "$FAKE_DOCKER_LOG"; }
 val() { awk -F'\t' -v k="$2" '$1 == k {print $2; exit}' "$1"; }
 
 # --- step 35 ---------------------------------------------------------------------------
@@ -110,7 +111,7 @@ val() { awk -F'\t' -v k="$2" '$1 == k {print $2; exit}' "$1"; }
 run_expect 0 paralogs "${SCRIPTS}/35-paralogs.sh" sample1
 [ "$(calls 'og cn bed --locus HBA')" = 1 ] || fail "step 35: og cn bed --locus HBA was not called once"
 [ "$(calls 'og cn call --locus HBA')" = 1 ] || fail "step 35: og cn call --locus HBA was not called once"
-[ "$(calls '.py')" = 0 ] || fail "step 35 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 35 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 H="${S}/paralogs/sample1_hba_copy_number.tsv"
 [ "$(val "$H" alpha_globin_genes)" = 4 ] || fail "step 35: four alpha-globin genes expected: $(cat "$H")"
 [ "$(val "$H" status)" = called ] || fail "step 35: HBA not called: $(cat "$H")"
@@ -120,7 +121,7 @@ H="${S}/paralogs/sample1_hba_copy_number.tsv"
 run_expect 0 bloodtype "${SCRIPTS}/41-bloodtype.sh" sample1
 [ "$(calls 'og cn bed --locus RHD')" = 1 ] || fail "step 41: og cn bed --locus RHD was not called once"
 [ "$(calls 'og bloodtype report')" = 1 ] || fail "step 41: og bloodtype report was not called once"
-[ "$(calls '.py')" = 0 ] || fail "step 41 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 41 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 [ "$(awk -F'\t' '$4 == "RHD_GENE" {n++} END {print n + 0}' "${S}/bloodtype/sample1_bloodtype_depth.tsv")" = 1 ] \
   || fail "step 41: the depth table has no RHD_GENE row"
 R=$(awk -F'\t' '$1 == "RhD"' "${S}/bloodtype/sample1_bloodtype.tsv")
@@ -132,7 +133,7 @@ run_expect 0 lpa "${SCRIPTS}/46-lpa.sh" sample1
 [ "$(calls 'og cn bed --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn bed --locus LPA_KIV2 was not called once"
 [ "$(calls 'og cn call --locus LPA_KIV2')" = 1 ] || fail "step 46: og cn call --locus LPA_KIV2 was not called once"
 [ "$(calls '--marker LPA_KIV2_4925')" = 1 ] || fail "step 46: the 4925G>A marker was not read in the count's call"
-[ "$(calls '.py')" = 0 ] || fail "step 46 still calls Python: $(grep -F '.py' "$FAKE_DOCKER_LOG")"
+[ "$(pycalls)" = 0 ] || fail "step 46 still calls Python: $(grep -E '\.py([^[:alnum:]_]|$)' "$FAKE_DOCKER_LOG")"
 L="${S}/lpa/sample1_lpa_kiv2.tsv"
 [ "$(val "$L" kiv2_copies)" = 20.0 ] || fail "step 46: 20.0 KIV-2 repeats expected: $(cat "$L")"
 N="${S}/lpa/sample1_lpa_kiv2_4925.tsv"

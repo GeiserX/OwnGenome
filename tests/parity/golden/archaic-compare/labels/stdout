@@ -1,0 +1,9 @@
+| chromosome | Chen A (bp) | Chen EUR median | Chen EUR max | x (bp) | y (bp) |
+|---|---|---|---|---|---|
+| 21 | 50 | 25 | 50 | 30 | 30 |
+| 22 | 300 | 175 | 300 | 400 | 150 |
+| all | 350 | 200 | 350 | 430 | 180 |
+
+Chen et al., 2 EUR people, these 2 chromosomes: lowest 50, median 200, highest 350 bp; A 350 bp.
+x: 430 bp, 1.23 times the released A figure; 220 bp under the released calls, 210 bp only here, 130 bp only released.
+y: 180 bp, 0.51 times the released A figure; 20 bp under the released calls, 160 bp only here, 330 bp only released.

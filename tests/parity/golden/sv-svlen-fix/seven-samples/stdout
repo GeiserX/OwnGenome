@@ -1,0 +1,3 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Length">

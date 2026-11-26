@@ -21,11 +21,13 @@ The genome preset of Exomiser also scores non-coding variants, but it needs the 
 
 ## Docker Image
 
-- `EXOMISER_IMAGE` (the `-bash` build of Exomiser 15.1.0), plus `PYTHON_IMAGE` for the terms and the report
+- `EXOMISER_IMAGE` (the `-bash` build of Exomiser 15.1.0), plus `OG_IMAGE` for the terms and the report
 
 The `-bash` build is used because the plain `15.1.0` tag is distroless: it has no shell, and Nextflow needs one in the task container. Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. The image is optional: `setup.sh --exomiser-data` pulls it.
 
 ## Data
+
+Exomiser's hg38 and phenotype bundles include third-party data with their own terms. Review Exomiser's [data source notes](https://exomiser.readthedocs.io/en/15.1.0/advanced_analysis.html#pathogenicitysources) before installing, including the terms for REVEL and SpliceAI.
 
 Exomiser's data release `EXOMISER_DATA_VERSION` (2602, from 13 May 2026), installed by
 

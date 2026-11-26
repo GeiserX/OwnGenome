@@ -89,7 +89,8 @@ D="${SAMPLE}dup"
 BUNDLE="${G}/reference/pypgx-bundle"
 if [ ! -d "$BUNDLE" ]; then
   V="${PYPGX_IMAGE##*:}"
-  git clone -q --branch "${V%%--*}" --depth 1 https://github.com/sbslee/pypgx-bundle.git "$BUNDLE"
+  clone_shallow_with_retry "${V%%--*}" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
+    || { fail "the pypgx bundle clone"; finish; }
 fi
 DUP_ID="$D" EXTRA_TOOLS=pypgx,pharmcat,cpic nf_run male male --sex_check warn --pypgx_bundle "$BUNDLE"
 check_eq "declared male, --sex_check warn: the run exits 0" "$RC" 0
@@ -118,36 +119,39 @@ JSON="${R}/summary.json"
 check "the report exists" test -s "$HTML"
 check "summary.json validates against the schema" \
   "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "$JSON"
-FREEMIX=$(python3 -c "import json; print(json.load(open('${JSON}'))['sections']['sample_qc']['data']['freemix'])" 2>/dev/null)
+FREEMIX=$(jq -r '.sections.sample_qc.data.freemix // empty' "$JSON" 2>/dev/null)
 check "the summary has FREEMIX (${FREEMIX:-none})" test -n "$FREEMIX"
 grep -o '<div class="stat"><span class="label">\(Sex from the reads (somalier)\|Contamination (FREEMIX)\)</span>.*</div>' "$HTML" 2>/dev/null
 check "the QC card shows somalier's sex" \
   has 'Sex from the reads \(somalier\)</span><span class="value"><span class="badge badge-green">male<' "$(cat "$HTML" 2>/dev/null)"
-check "the QC card shows FREEMIX" \
-  has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-green\">${FREEMIX} \\(warning above 0.03" "$(cat "$HTML" 2>/dev/null)"
+if [ "$(jq -r '.sections.sample_qc.data.contamination_confidence' "$JSON" 2>/dev/null)" = uncertain ]; then
+  check "the QC card shows FREEMIX as uncertain" \
+    has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-yellow\">uncertain \\(FREEMIX $FREEMIX\\)" "$(cat "$HTML" 2>/dev/null)"
+else
+  check "the QC card shows FREEMIX" \
+    has "Contamination \\(FREEMIX\\)</span><span class=\"value\"><span class=\"badge badge-green\">$FREEMIX \\(warning above 0.03" "$(cat "$HTML" 2>/dev/null)"
+fi
 check "the QC card shows mosdepth's depth" has 'Mean depth</span><span class="value">[0-9.]+x<' "$(cat "$HTML" 2>/dev/null)"
 check "the ROH card is filled" has '<h2>Runs of Homozygosity</h2>' "$(cat "$HTML" 2>/dev/null)"
 check "the haplogroup card is filled" has '<h2>Mitochondrial Haplogroup</h2>' "$(cat "$HTML" 2>/dev/null)"
 check "the Variant Calling card counts the VCF" has 'Total variants</span><span class="value">[1-9][0-9]*<' "$(cat "$HTML" 2>/dev/null)"
 
 # section JSON KEY: the state of a section of a summary.json (ok, stale, missing, ...)
-section() { python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['sections'][sys.argv[2]]['state'])" "$1" "$2" 2>/dev/null; }
+section() { jq -r --arg k "$2" '.sections[$k].state // empty' "$1" 2>/dev/null; }
 # card HTML TITLE: "Not run" when the card titled TITLE says so, "filled" when it
 # is there and does not, "absent" when the report has no such card
 card() {
-  python3 - "$1" "$2" <<'PY' 2>/dev/null || echo absent
-import sys
-html, title = open(sys.argv[1]).read(), sys.argv[2]
-i = html.find(f"<h2>{title}</h2>")
-if i < 0:
-    print("absent")
-else:
-    j = html.find('<div class="card', i)
-    print("Not run" if ">Not run<" in html[i:j if j > 0 else len(html)] else "filled")
-PY
+  awk -v t="<h2>$2</h2>" '{s = s $0 "\n"}
+    END {
+      i = index(s, t)
+      if (!i) {print "absent"; exit}
+      r = substr(s, i); j = index(r, "<div class=\"card")
+      if (j) r = substr(r, 1, j - 1)
+      print index(r, ">Not run<") ? "Not run" : "filled"
+    }' 2>/dev/null < "$1" || echo absent
 }
 check_eq "pypgx ran: its section is filled" "$(section "$JSON" pypgx)" ok
-check "the Steps Not Run list does not name pypgx" lacks '<li>pypgx</li>' "$(cat "$HTML" 2>/dev/null)"
+check "the Steps Not Run list does not name pypgx" lacks '<li>pypgx( \([^)]*\))?</li>' "$(cat "$HTML" 2>/dev/null)"
 
 # The indexcov sex check: HTML_REPORT gets INDEXCOV's folder from UPSTREAM.
 # The report must show the sex INDEXCOV's own table holds, not "not available".
@@ -162,7 +166,7 @@ check "the QC card shows the sex INDEXCOV inferred (${IXS:-none})" \
 # The PharmCAT vs pypgx comparison: HTML_REPORT gets CPIC_LOOKUP's table
 # from PGX and places it beside the pypgx summary.
 check "CPIC_LOOKUP published the comparison" test -s "${R}/pypgx/${SAMPLE}_pharmcat_comparison.tsv"
-COMP=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['sections']['pypgx']['data']['comparison']['conflicts'])" "$JSON" 2>/dev/null)
+COMP=$(jq -r '.sections.pypgx.data.comparison.conflicts // empty' "$JSON" 2>/dev/null)
 check "the summary's pypgx section has the comparison (conflicts: ${COMP:-none})" test -n "$COMP"
 check "the Pharmacogenomics card shows the comparison" \
   has "PharmCAT vs pypgx conflicts</span><span class=\"value\">${COMP:-none}<" "$(cat "$HTML" 2>/dev/null)"

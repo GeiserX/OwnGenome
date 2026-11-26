@@ -13,7 +13,7 @@ Assembly-based structural variant caller that identifies breakpoints through loc
 
 ## Why
 
-GRIDSS complements Manta and Delly in the SV consensus pipeline (step 22):
+GRIDSS adds to Manta and Delly. Its calls stay out of the SV consensus of step 22 (see Notes), so you read them here:
 - **Complex rearrangements** — GRIDSS assembles across breakpoints rather than relying on read pair signals alone
 - **Small SVs (50-300bp)** — too small for discordant read pair detection but too large for standard SNP callers
 - **Breakpoint precision** — assembly provides single-nucleotide resolution at breakpoints
@@ -28,9 +28,9 @@ GRIDSS complements Manta and Delly in the SV consensus pipeline (step 22):
 
 ## Docker Image
 
-- `GRIDSS_IMAGE`
+- `GRIDSS_IMAGE` (GRIDSS), `BCFTOOLS_IMAGE` (the high-confidence filter)
 
-Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
+Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 
 Image size: ~1.5 GB (includes Java 11, R, bwa, samtools, all dependencies).
 
@@ -41,7 +41,7 @@ export GENOME_DIR=/path/to/data
 ./scripts/04b-gridss.sh <sample_name>
 ```
 
-`run-all.sh` runs GRIDSS only when asked, because it needs a classic BWA index that `setup.sh` does not build and about 32 GB of RAM:
+`run-all.sh` runs GRIDSS only when asked, because it needs a classic BWA index and about 32 GB of RAM:
 
 ```bash
 GRIDSS=true ./scripts/run-all.sh <sample_name> <male|female>
@@ -53,23 +53,21 @@ Before it starts, the step reads Docker's memory limit (`docker info`). Below 32
 
 ## Prerequisites
 
-GRIDSS requires a **classic BWA index** (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) alongside the reference FASTA. **BWA-MEM2 index files (`.bwt.2bit.64`) are NOT compatible** — GRIDSS bundles classic `bwa` internally for its read realignment step. Generate the classic index if you don't have one:
+GRIDSS requires a **classic BWA index** (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) alongside the reference FASTA. GRIDSS bundles classic BWA for read realignment. BWA-MEM2 writes a different index format. Build the classic index once for the reference you use.
 
 ```bash
-REF_FASTA=reference/GRCh38_no_alt_analysis_set.fasta   # see 00-reference-setup.md#the-reference-path-on-every-page
-source versions.env   # from the repository root: BWA_IMAGE, the image step 04b uses for this
-docker run --rm -v "${GENOME_DIR}:/genome" \
-  "${BWA_IMAGE}" \
-  bwa index "/genome/${REF_FASTA}"
+./scripts/setup.sh --bwa-index "$GENOME_DIR"
 ```
 
-This takes about an hour (an estimate, not measured here) and produces 5 index files (~5 GB total). Only needed once.
+`setup.sh --everything` builds this index too. Expect about an hour, 5 GB of disk space, and 5.4 GB of RAM for the build.
 
 ## Output
 
+
 | File | Description |
 |---|---|
-| `sv_gridss/<sample>_gridss.vcf.gz` | SV calls in BND notation |
+| `sv_gridss/<sample>_gridss.vcf.gz` | Every GRIDSS call, in BND notation, as GRIDSS wrote it |
+| `sv_gridss/<sample>_gridss.high.vcf.gz` | The high-confidence calls (see Quality filtering), and its `.tbi` index |
 | `sv_gridss/<sample>_assembly.bam` | Assembly contigs (intermediate, can be deleted) |
 | `sv_gridss/work/` | GRIDSS's working directory (`--workingdir`), about 50 GB during the run; removed once the VCF is written, kept when GRIDSS fails so you can look at it |
 
@@ -83,6 +81,8 @@ GRIDSS reports all variants as **BND** (breakend) records, not DEL/DUP/INV/INS. 
 |---|---|
 | High | `QUAL >= 1000` and `AS > 0` and `RAS > 0` |
 | Medium | `QUAL >= 500` and (`AS > 0` or `RAS > 0`) |
+
+The step writes the high tier, the threshold GRIDSS's authors give for high-confidence calls, to `<sample>_gridss.high.vcf.gz` with `bcftools view -i 'QUAL>=1000 && INFO/AS>0 && INFO/RAS>0'`. `AS` counts the assemblies that support the breakend and `RAS` those from its partner breakend, so the rule asks for assembly support on both sides. Both records of a breakend pair carry the same `QUAL`, and one record's `AS` is the other's `RAS`, so the filter keeps or drops a pair together. The raw VCF stays as GRIDSS wrote it. When the raw VCF is already there, the step skips GRIDSS and writes the high-confidence file again from it, which takes seconds. For the medium tier, filter the raw VCF yourself.
 
 Note: GRIDSS QUAL scores are uncorrected for multiple testing and tend to be overestimated.
 
@@ -115,7 +115,7 @@ Not measured here; the end test does not run GRIDSS. These are estimates:
 
 ## Notes
 
-- GRIDSS output is not part of the SV consensus (step 22): GRIDSS reports every event as a pair of breakends (`SVTYPE=BND`), which never match the DEL, DUP and INV records of the other callers
+- GRIDSS output is left out of the SV consensus (step 22). GRIDSS reports every event as a pair of breakends (`SVTYPE=BND`), and nothing in the pipeline turns a pair into one DEL, DUP or INV. SURVIVOR 1.0.7 counts BND as the same type as INV and TRA, so a GRIDSS breakend would pair with another caller's inversion or translocation and count as a vote for an event GRIDSS never typed
 - The assembly BAM (`_assembly.bam`) can be deleted after the VCF is generated to save disk space
 - Supports `ALIGN_DIR` variable: `ALIGN_DIR=aligned_bwamem2 ./scripts/04b-gridss.sh sample`
 - GRIDSS does not have ARM64 support — runs under emulation on Apple Silicon (very slow)

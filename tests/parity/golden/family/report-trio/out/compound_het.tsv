@@ -1,0 +1,4 @@
+child	gene	variant_a	variant_b	a_from	b_from	phase
+kid	G1	chr2:100:A>G	chr2:200:C>T	father	mother	in trans
+kid	G2	chr3:100:A>G	chr3:200:C>T	mother	mother	in cis
+kid	G3	chr1:100:A>G	chr2:200:C>T	mother	mother	in cis

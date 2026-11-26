@@ -1,37 +1,20 @@
 #!/usr/bin/env bash
-# The copy-number engine (og cn, bin/cn_loci.tsv) against the
-# per-gene code it replaced, on real reads: HG002's Illumina reads at the
-# alpha-globin cluster (chr16:95,001-235,000), the RH locus
-# (chr1:25.15-25.45 Mb) and LPA (chr6:160.53-160.67 Mb) from the 35x BWA-MEM
-# GRCh38 no-ALT BAM of DeepVariant's case study, written again under the
-# fixture's header, at full depth and at an eighth of it. For each BAM:
-#   - step 46 of this tree and of the old tree write the same lpa table, byte
-#     for byte;
-#   - step 41 of this tree and of the old tree write the same RhD row and the
-#     same RhD evidence rows (other systems may change after the engine);
-#   - step 35's HBA block (bedcov all MAPQ and MAPQ >= 1, then the verdict)
-#     writes the same table through og cn as the old hba_copy_number.py
-#     does.
-# The old tree is main at OLD_SHA, the last commit before the engine (the one
-# tests/test_copy_number.py froze its GOLD tables from), fetched by its sha
-# at run time, so the comparison keeps its meaning once the engine is on main.
+# Compare the copy-number engine (og cn) against frozen results from the
+# per-gene tools at 605645249e6762c52a84ac58a28968f269b16536. The input is
+# HG002's public 35x BWA-MEM GRCh38 no-ALT reads at HBA, RH, and LPA,
+# on the fixture header at full depth and after sampling one eighth.
+# The RhD phenotype, genotype, confidence, and evidence must match.
+# The LPA table must match after normalizing the interval wording and
+# bounds. Its current interval must contain the old interval.
+# The HBA regions and result table must both match byte for byte.
 . "$(dirname "$0")/lib.sh"
 
 G="$GENOME_DIR" T="$CASE_TMP"
+GOLDEN="$REPO/tests/parity/golden/cn-engine"
 SRC="https://storage.googleapis.com/deepvariant/case-study-testdata/HG002.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam"
 FIX="${G}/${SAMPLE}/aligned/${SAMPLE}_sorted.bam"
 dk() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -w "$T" "$1" "${@:2}"; }
 retry() { local i; for i in 1 2 3 4; do "$@" && return 0; [ "$i" -lt 4 ] && { echo "  try ${i} of 4 failed; again in $((i * 15)) s"; sleep $((i * 15)); }; done; return 1; }
-
-# --- the tree before the engine ----------------------------------------------------
-OLD_SHA=605645249e6762c52a84ac58a28968f269b16536
-BASE="${T}/old"
-rm -rf "$BASE"; mkdir -p "$BASE"
-check "the tree before the engine fetches" retry git -C "$REPO" fetch --quiet --depth 1 origin "$OLD_SHA"
-git -C "$REPO" archive "$OLD_SHA" bin scripts assets versions.env | tar -x -C "$BASE"
-check "the old tree has the step scripts" test -x "${BASE}/scripts/46-lpa.sh"
-check "the old tree has no engine (so the comparison is with the per-gene code)" \
-  test ! -e "${BASE}/bin/copy_number.py"
 
 # --- HG002's reads at the three loci, on the fixture's header --------------------------
 fetch_reads() {
@@ -53,26 +36,23 @@ check_ge "HG002 reads at the three loci" "$(dk "$SAMTOOLS_IMAGE" samtools view -
 
 # dkb BIN IMAGE CMD...: dk with a tree's bin/ at its own path (this checkout is outside the work folder).
 dkb() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${E2E_WORK}:${E2E_WORK}" -v "$1:$1:ro" -w "$T" "$2" "${@:3}"; }
-# hba_block TREE OUT BAM: step 35's HBA block with TREE's bin (this tree: og cn;
-# the old tree: hba_copy_number.py).
+HBA_BED="$T/hba.bed"
+dkb "$REPO/bin" "$PARASCOPY_IMAGE" "$REPO/bin/og" cn bed --locus HBA > "$HBA_BED"
+check "the HBA regions match the golden" cmp -s "$GOLDEN/regions/hba.bed" "$HBA_BED"
+
+# hba_block OUT BAM: step 35 uses all MAPQ and MAPQ >= 1 before og cn.
 hba_block() {
-  local bin="$1/bin" out=$2 bam=$3 d="${T}/hba.$$"
-  rm -rf "$d"; mkdir -p "$d"
-  if [ -e "${bin}/og" ]; then
-    dkb "$bin" "$PARASCOPY_IMAGE" "${bin}/og" cn bed --locus HBA > "${d}/r.bed"
-  else
-    dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/hba_copy_number.py" bed > "${d}/r.bed"
-  fi
-  dkb "$bin" "$PARASCOPY_IMAGE" samtools bedcov "${d}/r.bed" "$bam" > "${d}/c.tsv"
-  dkb "$bin" "$PARASCOPY_IMAGE" samtools bedcov -Q 1 "${d}/r.bed" "$bam" > "${d}/q.tsv"
-  if [ -e "${bin}/og" ]; then
-    dkb "$bin" "$PARASCOPY_IMAGE" "${bin}/og" cn call --locus HBA --bedcov "${d}/c.tsv" \
-      --bedcov-mapq1 "${d}/q.tsv" --table "$out"
-  else
-    dkb "$bin" "$PARASCOPY_IMAGE" python3 "${bin}/hba_copy_number.py" check --bedcov "${d}/c.tsv" \
-      --bedcov-mapq1 "${d}/q.tsv" --out "$out"
-  fi
-  rm -rf "$d"
+  local out=$1 bam=$2
+  dk "$PARASCOPY_IMAGE" samtools bedcov "$HBA_BED" "$bam" > "$T/hba-all.tsv"
+  dk "$PARASCOPY_IMAGE" samtools bedcov -Q 1 "$HBA_BED" "$bam" > "$T/hba-q1.tsv"
+  dkb "$REPO/bin" "$PARASCOPY_IMAGE" "$REPO/bin/og" cn call --locus HBA \
+    --bedcov "$T/hba-all.tsv" --bedcov-mapq1 "$T/hba-q1.tsv" --table "$out"
+}
+
+check_golden() {
+  local description=$1 expected=$2 actual=$3
+  check "$description" cmp -s "$expected" "$actual"
+  cmp -s "$expected" "$actual" || diff -u "$expected" "$actual" | sed -n '1,20p'
 }
 
 for V in full thin; do
@@ -82,44 +62,52 @@ for V in full thin; do
   dk "$SAMTOOLS_IMAGE" samtools index "${G}/${N}/aligned/${N}_sorted.bam"
   cp "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz" "${G}/${N}/vcf/${N}.vcf.gz"
   cp "${G}/${SAMPLE}/vcf/${SAMPLE}.vcf.gz.tbi" "${G}/${N}/vcf/${N}.vcf.gz.tbi"
-  NEW="${T}/new-${V}" OLDO="${T}/old-${V}"
-  rm -rf "$NEW" "$OLDO"; mkdir -p "$NEW" "$OLDO"
+  NEW="${T}/new-${V}" WANT="$GOLDEN/$V"
+  rm -rf "$NEW"; mkdir -p "$NEW"
 
   run_step 46-lpa.sh "$N"; check_step_exit 46-lpa.sh
   cp "${G}/${N}/lpa/${N}_lpa_kiv2.tsv" "${NEW}/lpa.tsv"
   run_step 41-bloodtype.sh "$N"; check_step_exit 41-bloodtype.sh
   cp "${G}/${N}/bloodtype/${N}_bloodtype.tsv" "${NEW}/bloodtype.tsv"
   cp "${G}/${N}/bloodtype/${N}_bloodtype_evidence.tsv" "${NEW}/evidence.tsv"
-  hba_block "$REPO" "${NEW}/hba.tsv" "${G}/${N}/aligned/${N}_sorted.bam"
+  hba_block "${NEW}/hba.tsv" "${G}/${N}/aligned/${N}_sorted.bam"
   for f in lpa bloodtype evidence hba; do check "${V}: this tree wrote its ${f} table" test -s "${NEW}/${f}.tsv"; done
   cat "${NEW}/lpa.tsv" "${NEW}/hba.tsv"; grep '^RhD' "${NEW}/bloodtype.tsv"
   echo "cn-engine: ${V} LPA $(awk -F'\t' '$1 == "kiv2_copies" {print $2}' "${NEW}/lpa.tsv")," \
     "HBA $(awk -F'\t' '$1 == "alpha_globin_genes" {print $2}' "${NEW}/hba.tsv")," \
     "RhD $(awk -F'\t' '$1 == "RhD" {print $3}' "${NEW}/bloodtype.tsv")" >> "$E2E_NOTES"
 
-  echo "+ the old scripts/46-lpa.sh ${N}"
-  "${BASE}/scripts/46-lpa.sh" "$N" 2>&1 | tail -n 3
-  cp "${G}/${N}/lpa/${N}_lpa_kiv2.tsv" "${OLDO}/lpa.tsv"
-  echo "+ the old scripts/41-bloodtype.sh ${N}"
-  "${BASE}/scripts/41-bloodtype.sh" "$N" 2>&1 | tail -n 3
-  cp "${G}/${N}/bloodtype/${N}_bloodtype.tsv" "${OLDO}/bloodtype.tsv"
-  cp "${G}/${N}/bloodtype/${N}_bloodtype_evidence.tsv" "${OLDO}/evidence.tsv"
-  hba_block "$BASE" "${OLDO}/hba.tsv" "${G}/${N}/aligned/${N}_sorted.bam"
-  for f in lpa bloodtype evidence hba; do
-    check "${V}: the old tree wrote its ${f} table" test -s "${OLDO}/${f}.tsv"
-  done
-  # Step 41: the header and the RhD rows only; other systems are not the engine's.
+  # Keep the header and the RhD rows. The other systems have their own tests.
   for f in bloodtype evidence; do
-    for d in "$NEW" "$OLDO"; do awk -F'\t' 'NR == 1 || $1 == "RhD"' "${d}/${f}.tsv" > "${d}/${f}.rhd.tsv"; done
-    check_ge "${V}: RhD rows in this tree's ${f} table" "$(($(wc -l < "${NEW}/${f}.rhd.tsv") - 1))" 1
+    awk -F'\t' -v OFS='\t' -v f="$f" 'NR == 1 || $1 == "RhD" {if (f == "bloodtype") NF = 4; print}' \
+      "$NEW/$f.tsv" > "$NEW/$f.rhd.tsv"
+    check_ge "$V: RhD rows in the $f table" "$(($(wc -l < "$NEW/$f.rhd.tsv") - 1))" 1
   done
-  for f in lpa bloodtype.rhd evidence.rhd hba; do
-    check "${V}: the ${f} table is the old tree's, byte for byte" cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv"
-    cmp -s "${NEW}/${f}.tsv" "${OLDO}/${f}.tsv" || diff "${OLDO}/${f}.tsv" "${NEW}/${f}.tsv" | head -20
+  # Step 46's message names what its interval covers since the old tree, and
+  # the interval adds the error measured against assembled genomes (bin/cn_loci.tsv
+  # interval cv:SYS, CHANGELOG). The count, the class and every other row
+  # stay the old tree's: both tables lose the interval's bounds (the rows
+  # and the message's), are compared byte for byte, and this tree's interval
+  # must hold the old one (the term only widens it).
+  sed -E -e '/^ci95_(low|high)\t/d' \
+    -e '/^message\t/s/ in total \(95% interval [0-9.]+ to [0-9.]+\)/ in total over both copies (95% interval)/' \
+    "${WANT}/lpa.tsv" > "${NEW}/lpa.golden.now.tsv"
+  sed -E -e '/^ci95_(low|high)\t/d' \
+    -e '/^message\t/s/ \(95% interval [0-9.]+ to [0-9.]+, read sampling plus the error measured against assembled genomes\)/ (95% interval)/' \
+    "${NEW}/lpa.tsv" > "${NEW}/lpa.now.tsv"
+  lpa_ci() { awk -F'\t' '$1 == "ci95_low" {l = $2} $1 == "ci95_high" {h = $2} END {print l, h}' "$1"; }
+  read -r ol oh <<< "$(lpa_ci "${WANT}/lpa.tsv")"
+  read -r nl nh <<< "$(lpa_ci "${NEW}/lpa.tsv")"
+  check "${V}: this tree's interval (${nl} to ${nh}) holds the old tree's (${ol} to ${oh})" \
+    awk -v ol="$ol" -v oh="$oh" -v nl="$nl" -v nh="$nh" \
+    'BEGIN {if (ol == "." || nl == ".") exit !(ol == nl && oh == nh); exit !(nl + 0 <= ol + 0 && nh + 0 >= oh + 0)}'
+  check_golden "$V: normalized LPA matches the golden" "$NEW/lpa.golden.now.tsv" "$NEW/lpa.now.tsv"
+  for f in bloodtype.rhd evidence.rhd hba; do
+    check_golden "$V: the $f table matches the golden" "$WANT/$f.tsv" "$NEW/$f.tsv"
   done
 done
 check "control: the comparison sees a difference (full against thin)" bash -c '! cmp -s "$1" "$2"' _ \
   "${T}/new-full/lpa.tsv" "${T}/new-thin/lpa.tsv"
 
-rm -rf "${G:?}/${SAMPLE}cnfull" "${G:?}/${SAMPLE}cnthin" "${T:?}"/*.bam "$BASE"
+rm -rf "${G:?}/${SAMPLE}cnfull" "${G:?}/${SAMPLE}cnthin" "${T:?}"/*.bam
 finish

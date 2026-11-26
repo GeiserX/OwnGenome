@@ -20,7 +20,7 @@ BIN_SIZE=1000
 # The pinned biocontainer ships WITHOUT the reference GC/mask resources and its
 # built-in `-download` is broken in 1.3.2, so we bind-mount pre-fetched pinned
 # files onto the container's package data dir. That directory depends on the
-# image's Python version, so it is asked from the image below, not written here.
+# image's Python version, so it is found in the image below, not written here.
 
 echo "=== CNVpytor: ${SAMPLE} ==="
 echo "Input BAM: ${BAM}"
@@ -54,8 +54,14 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 
+# The package sits under the lib directory of the prefix the cnvpytor command
+# is installed in. The container prints the directory only when exactly one
+# matches, and exits 1 otherwise; the check below then stops the step.
+# shellcheck disable=SC2016  # the dollar signs are for the container's sh
 CNVPYTOR_IMG_DATA=$(run_in "${CNVPYTOR_IMAGE}" \
-  python -c 'import cnvpytor, os; print(os.path.dirname(cnvpytor.__file__) + "/data")' | tail -n 1)
+  sh -c 'bin=$(command -v cnvpytor) &&
+    d=$(find "${bin%/bin/*}/lib" -type d -path "*/site-packages/cnvpytor/data") &&
+    [ -d "$d" ] && echo "$d"') || CNVPYTOR_IMG_DATA=
 case "$CNVPYTOR_IMG_DATA" in
   /*/cnvpytor/data) ;;
   *)
@@ -128,5 +134,5 @@ echo "Total CNVs called: ${CNV_COUNT}"
 echo "Calls (TSV): ${OUTPUT_DIR}/${SAMPLE}_cnvs.txt"
 echo "Calls (VCF): ${OUTPUT_DIR}/${SAMPLE}_cnvs.vcf.gz"
 echo ""
-echo "Filter significant CNVs (e-val1 < 0.05 in col 5, size > 1kb in col 3):"
-echo "  awk -F'\t' '\$5 < 0.05 && \$3 > 1000' ${OUTPUT_DIR}/${SAMPLE}_cnvs.txt"
+echo "The calls steps 05 and 22 use (e-val1 < 0.01 in col 5, q0 < 0.5 in col 9):"
+printf '%s\n' "  awk -F'\t' '\$5 < 0.01 && \$9 < 0.5' ${OUTPUT_DIR}/${SAMPLE}_cnvs.txt"

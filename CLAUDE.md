@@ -21,8 +21,11 @@ GENOME_DIR=/path/to/data ./scripts/run-all.sh sample_name male
 # Run individual step
 GENOME_DIR=/path/to/data ./scripts/03-deepvariant.sh sample_name
 
-# Lint
-shellcheck scripts/*.sh
+# Lint: CI checks every tracked *.sh and every tracked file with a sh or
+# bash shebang (bin/og, scripts/ci/fake-docker/*, tests/e2e/bin/docker...);
+# a finding not in tests/shellcheck-baseline.txt fails. This command covers
+# the *.sh files only and also prints the findings the baseline lists.
+git ls-files -z '*.sh' | xargs -0 shellcheck
 ```
 
 Requirements: 16+ cores recommended, 500 GB disk per sample, Docker, bash 4.4+; Java 17+ and Nextflow for `run-all.sh`. Runs on Linux, macOS, WSL2.
@@ -33,7 +36,7 @@ After modifying any script, verify:
 1. No personal paths or identifiers remain — grep `scripts/` and `docs/` for your own home paths, server hostnames, and names (e.g. `grep -ri '/mnt/user\|/Users/\|/home/' scripts/ docs/`)
 2. All scripts use `GENOME_DIR` not `GENOMA_DIR`
 3. Docker mount is `:/genome` not `:/genoma`
-4. `shellcheck` passes on all scripts
+4. `shellcheck` reports nothing new on the shell scripts you added or changed (the old findings are listed in `tests/shellcheck-baseline.txt`; never add to it)
 
 ## Architecture
 
@@ -138,7 +141,7 @@ User's FASTQ/BAM/VCF
 6. Add the module to the step list (a `plan` call) in `scripts/run-all.sh` (its `--tools` name and database parameter), so a default run includes it
 7. Add a row for the image to `tests/smoke/commands.tsv`: a real command on the fixture and a check on what it wrote (an image with no row fails `container-test.yml`)
 8. Update `docs/00-reference-setup.md` if new reference data needed
-9. Update `docs/interpreting-results.md` if output needs explanation
+9. Update the chapter page under `docs/results/` (listed in `docs/interpreting-results.md`) if output needs explanation
 10. Test on at least one sample before committing
 
 ### Bumping a Tool
@@ -155,8 +158,8 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 ### PharmCAT 3.x (pinned: 3.4.0)
 - **Two-step workflow**: Preprocessor (`pharmcat_vcf_preprocessor` with `-refFna`) then main jar (`pharmcat.jar`). NOTE: since 3.0 the preprocessor script lost its `.py` extension and the Python package was renamed `preprocessor` → `pcat`. The old `-refFasta` flag is long gone.
 - Preprocessor outputs `.preprocessed.vcf.bgz` (NOT `.vcf`).
-- **3.x JSON changes vs 2.15.x**: `wildtypeAllele` → `referenceAllele`; the HTML report is **no longer emitted unless `-reporterHtml` is passed explicitly**. The `genes` map may be flat (`{gene -> data}`) or nested (`{source -> {gene -> data}}`). `sourceDiplotypes` (or `recommendationDiplotypes`) carry `allele1`/`allele2` objects with a `.name`. Both CPIC consumers (`scripts/27-cpic-lookup.sh` and `modules/local/cpic_lookup`) run one parser, `og pgx cpic-report` (`rust/crates/og-pgx`): it **auto-detects both shapes**, gives each gene a status (`normal`, `non-normal`, `ambiguous` when the possible diplotypes have different phenotypes, `not called`, `unclassified` when a called gene's phenotype says neither normal nor changed function, listed without drug guidance and not counted) and **fails loud**: a recognized report yielding zero genes is reported as a parse failure, never "all genes were successfully called". Guarded by `tests/test_cpic_parser.py`, the `pgx-parse` parity cases and `cargo test -p og-pgx` on real 3.2.0 and 3.4.0 reports of the HG002 fixture, `tests/fixtures/pharmcat/report-<version>.json`.
-- Pipeline pinned to **3.4.0** (3.4.0 still bundles vcf-parser 0.3.1, so the `##` header rewrite in step 7 and the module stays). Before bumping, revalidate steps 7 and 27 end-to-end against a known sample — JSON structure and preprocessor flags change between major versions — and capture the new version's `report.json` as a parser fixture beside the others (a row in the test's `REAL_REPORTS`).
+- **3.x JSON changes vs 2.15.x**: `wildtypeAllele` → `referenceAllele`; the HTML report is **no longer emitted unless `-reporterHtml` is passed explicitly**. The `genes` map may be flat (`{gene -> data}`) or nested (`{source -> {gene -> data}}`). `sourceDiplotypes` (or `recommendationDiplotypes`) carry `allele1`/`allele2` objects with a `.name`. Both CPIC consumers (`scripts/27-cpic-lookup.sh` and `modules/local/cpic_lookup`) run one parser, `og pgx cpic-report` (`rust/crates/og-pgx`): it **auto-detects both shapes**, gives each gene a status (`normal`, `non-normal`, `ambiguous` when the possible diplotypes have different phenotypes, `not called`, `unclassified` when a called gene's phenotype says neither normal nor changed function, listed without drug guidance and not counted) and **fails loud**: a recognized report yielding zero genes is reported as a parse failure, never "all genes were successfully called". Guarded by `cargo test -p og-pgx` (`tests/port_tests_pgx_cpic.rs` runs the verb, `tests/fixtures.rs` the library) on real 3.2.0 and 3.4.0 reports of the HG002 fixture, `tests/fixtures/pharmcat/report-<version>.json`, and by the `pgx-parse` parity cases.
+- Pipeline pinned to **3.4.0** (3.4.0 still bundles vcf-parser 0.3.1, so the `##` header rewrite in step 7 and the module stays). Before bumping, revalidate steps 7 and 27 end-to-end against a known sample — JSON structure and preprocessor flags change between major versions — and capture the new version's `report.json` as a parser fixture beside the others (a row in `REAL_REPORTS` of `rust/crates/og-pgx/tests/port_tests_pgx_cpic.rs`).
 
 ### pgsc_calc (PRS and ancestry, steps 25 and 26)
 - **pgsc_calc runs as its own Nextflow pipeline** (`PGSC_CALC_VERSION` in versions.env; the `PGSC_*_IMAGE` lines move with it). `setup.sh` unpacks the release into `tools/pgsc_calc-<release>`; with `--pgsc_calc` pointing there the pipeline runs it offline (without it the PRS task fetches the release), and `run-all.sh` passes it when it exists.
@@ -167,13 +170,14 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **Labels**: `assets/pgs_scores.tsv` holds each PGS ID with the catalog's trait; `scripts/ci/check-pgs-labels.sh` checks them against the PGS Catalog.
 
 ### Chip Data Conversion
-- **NEVER use plink 1.9 for single-sample chip-to-VCF.** plink's `.bim` format encodes monomorphic sites with one allele. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` cannot fix these. Result: all hom-ALT genotypes silently become hom-REF.
+- **NEVER use plink 1.9 for single-sample chip-to-VCF.** A single-sample import writes monomorphic sites with the second allele missing. For single-sample data, ALL homozygous positions are monomorphic. `--ref-from-fa` does not fill in a missing allele. Result: all hom-ALT genotypes silently become hom-REF.
 - **Use `bcftools convert --tsv2vcf -f <reference.fa>`** instead.
+- **chip-to-vcf.sh checks the genome build, never trusts the vendor.** It stops when a header line names a build other than 37 and not 37 too, or when more than 10% of at least 200 heterozygous calls miss the GRCh37 reference base (positions from another build).
 - **MyHeritage CSV needs pre-conversion** to TSV format.
 - **hg19 VCF needs chr prefix** before liftover — use `bcftools annotate --rename-chrs`.
 - **PharmCAT on chip data**: Misses CYP2C19 (25 positions), VKORC1 (1 position), miscalls CYP3A5.
 - **ROH on chip data** requires `-G30` flag (no FORMAT/PL tags).
-- **PRS on chip data** requires `no-mean-imputation` flag. Matches ~12% of large scoring files vs ~28% from WGS.
+- **PRS on chip data** requires `no-mean-imputation` flag. Matches a much smaller share of large scoring files than WGS.
 
 ### Alternative Callers & Benchmarking
 - **Output isolation**: Alternative tools write to separate directories to never overwrite defaults.
@@ -185,7 +189,8 @@ Change its line in `versions.env`, plus the coupled data variable its comment na
 - **BWA-MEM2 index files**: Created alongside FASTA. Check for `.bwt.2bit.64`.
 - **ALIGN_DIR env var**: All alternative scripts accept `ALIGN_DIR=aligned_bwamem2`.
 - **TIDDIT --skip_assembly auto-detected**: Checks for BWA index files.
-- **benchmark-variants.sh**: Pairwise mode (auto-discovers vcf*/ dirs) and truth set mode (hap.py).
+- **benchmark-variants.sh**: Pairwise mode and truth set mode (hap.py). It compares `vcf/`, Strelka2's `vcf_strelka2/results/variants/variants.vcf.gz` and `<sample>.vcf.gz` in every `vcf_*/` dir (Clair3 included), the same glob `run-all.sh` uses for `BENCHMARK=true`. `comparison.tsv` has the allele-level Jaccard and `GT_Concordant`/`GT_Concordance`, the shared sites whose genotypes also agree.
+- **03a runs without BQSR** and with `-ERC NONE`: not the full GATK Best Practices workflow, so its calls can differ from a clinical lab's GATK calls.
 
 ### bcftools
 - **`bcftools sort` requires `##contig` headers** — fails on VCFs without them. Inject from reference `.fai`.

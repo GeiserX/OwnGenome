@@ -50,7 +50,7 @@
 # OTOAP1, PMS2CL, STRCP1), left out as not protein-coding, and no reason
 # above applies to the other ten (ABCC6, CFH, CFHR4, CHRNA7, DEFA3, KRT86,
 # NEB, PIK3CA, PLG, VWF). Step 35's own report section reads all of them.
-# tests/test_paralog_loci.py holds that list and goes red when it changes.
+# rust/crates/og-steps/tests/paralog_loci.rs holds that list and goes red when it changes.
 #
 # The rules are in og dev build callability
 # (rust/crates/og-dev/src/build/callability.rs). Needs curl, og

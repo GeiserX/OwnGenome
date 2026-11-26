@@ -3,8 +3,9 @@
 # Y-STR regions of HipSTR's annotated marker set (the source of
 # assets/ystr_panel.tsv) lie in the fixture's chrY slices; three of them
 # (DYS570, DYS388, DYS442) are FamilyTreeDNA markers. HipSTR runs with the
-# step's flags, and the image's Python reads the bgzipped VCF that og y
-# str-report turns into step 45's table.
+# step's flags, and awk reads the bgzipped VCF that og y str-report turns
+# into step 45's table. The image's python3 --version is kept for the row's
+# check.
 set -e
 printf 'chrY\t%s\t%s\t%s\t%s\t%s\n' \
   2954700 2954743 4 11 DYS453   2974166 2974201 4 9 DYS579    6993190 6993257 4 17 DYS570 \
@@ -15,16 +16,16 @@ HipSTR --bams /in/HG002_slice.bam --fasta /in/ref.fa --regions regions.bed --str
   --bam-samps HG002 --bam-libs HG002 --haploid-chrs chrY --def-stutter-model --min-reads 5 \
   --max-str-len 150 --output-filters --log hipstr.log
 python3 --version > python_version.txt 2>&1
-python3 - <<'PY'
-import gzip
-called = []
-for line in gzip.open("calls.vcf.gz", "rt"):
-    if line.startswith("#"):
-        continue
-    c = line.rstrip("\n").split("\t")
-    f = dict(zip(c[8].split(":"), c[9].split(":")))
-    if f.get("GT", ".") != "." and "GB" in f and "DP" in f and "Q" in f and "DSTUTTER" in f:
-        called.append(f"{c[2]}\t{f['GT']}\t{f['GB']}\t{f['DP']}\t{f['Q']}")
-open("called.tsv", "w").write("".join(x + "\n" for x in called))
-print("\n".join(called))
-PY
+# called.tsv: id, GT, GB, DP and Q of every call with a genotype and those
+# four fields, DSTUTTER and MALLREADS (each read's most likely length, which
+# og y str-report needs for a high call).
+gzip -dc calls.vcf.gz | awk -F'\t' -v OFS='\t' '
+  /^#/ { next }
+  {
+    split("", f); k = split($9, key, ":"); m = split($10, val, ":")
+    for (i = 1; i <= k && i <= m; i++) f[key[i]] = val[i]
+    if (("GT" in f) && f["GT"] != "." && ("GB" in f) && ("DP" in f) && ("Q" in f) && ("DSTUTTER" in f) \
+        && ("MALLREADS" in f) && f["MALLREADS"] ~ /^-?[0-9]+\|[0-9]+/)
+      print $3, f["GT"], f["GB"], f["DP"], f["Q"]
+  }' > called.tsv
+cat called.tsv

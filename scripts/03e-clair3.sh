@@ -8,10 +8,17 @@
 # Usage: PLATFORM=ont|hifi ./scripts/03e-clair3.sh <sample_name> [male|female]
 #
 # Set PLATFORM to select the appropriate model:
-#   PLATFORM=ont   -> ONT R10.4.1 model (r1041_e82_400bps_sup_v500)
 #   PLATFORM=hifi  -> PacBio HiFi/Revio model (hifi_revio)
+#   PLATFORM=ont   -> the model of the reads' basecaller: og longread
+#                     clair3-model maps the basecall_model= of the BAM's @RG
+#                     DS field (Dorado writes it, step 02b carries it) or
+#                     BASECALL_MODEL (e.g. dna_r10.4.1_e8.2_400bps_sup@v5.0.0)
+#                     to a model directory of the image. With no basecaller,
+#                     one Clair3 has no model for, or a model the image
+#                     lacks, the step stops and lists the image's models: a
+#                     model trained on other basecalls degrades every call.
 # CLAIR3_MODEL overrides the model path inside the image (e.g.
-#   /opt/models/r1041_e82_400bps_sup_v520 for newer Dorado basecalls).
+#   /opt/models/r1041_e82_400bps_sup_v520); for ONT it is still checked.
 # Sex: `male` calls chrX and chrY haploid outside the pseudoautosomal regions
 #   (Clair3 --gender male with assets/par_grch38.bed); `female` leaves chrY
 #   out and calls chrX diploid; no sex calls both diploid.
@@ -40,12 +47,7 @@ OUTPUT_DIR="${SAMPLE_DIR}/vcf_clair3"
 
 # Select model path based on platform
 case "$PLATFORM" in
-  ont)
-    MODEL_PATH="${CLAIR3_MODEL:-/opt/models/r1041_e82_400bps_sup_v500}"
-    ;;
-  hifi)
-    MODEL_PATH="${CLAIR3_MODEL:-/opt/models/hifi_revio}"
-    ;;
+  ont|hifi) ;;
   *)
     echo "ERROR: PLATFORM must be 'ont' or 'hifi', got '${PLATFORM}'" >&2
     exit 1
@@ -54,7 +56,6 @@ esac
 
 echo "=== Clair3 Variant Calling: ${SAMPLE} ==="
 echo "Platform: ${PLATFORM}"
-echo "Model: ${MODEL_PATH}"
 echo "Input BAM: ${BAM}"
 echo "Reference: ${REF}"
 echo "Output: ${OUTPUT_DIR}/"
@@ -70,6 +71,19 @@ for f in "$BAM" "${BAM}.bai" "$REF" "${REF}.fai"; do
 done
 
 mkdir -p "$OUTPUT_DIR"
+
+if [ "$PLATFORM" = hifi ]; then
+  MODEL_PATH="${CLAIR3_MODEL:-/opt/models/hifi_revio}"
+else
+  # Inside the Clair3 image, so the check sees the image's /opt/models.
+  MODEL_ARGS=(--bam "/genome/${SAMPLE}/${ALIGN_DIR}/${SAMPLE}_sorted.bam" --models-dir /opt/models)
+  [ -z "${BASECALL_MODEL:-}" ] || MODEL_ARGS+=(--basecaller "$BASECALL_MODEL")
+  [ -z "${CLAIR3_MODEL:-}" ] || MODEL_ARGS+=(--model "$CLAIR3_MODEL")
+  MODEL_PATH=$(run_in --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$CLAIR3_IMAGE" \
+    /pgp-bin/og longread clair3-model "${MODEL_ARGS[@]}") \
+    || { echo "ERROR: no Clair3 model chosen (see above); Clair3 did not run." >&2; exit 1; }
+fi
+echo "Model: ${MODEL_PATH}"
 
 # --gender exists from Clair3 v2.0.3 on; male also gets the PAR BED, so the
 # pseudoautosomal regions stay diploid.
@@ -131,4 +145,4 @@ echo "  PASS variants: ${PASS_COUNT}"
 echo ""
 echo "Next steps:"
 echo "  - Run downstream VCF steps (ClinVar, PharmCAT, VEP) pointing at vcf_clair3/"
-echo "  - Compare with DeepVariant: ./scripts/benchmark-variants.sh ${SAMPLE}"
+echo "  - Compare with DeepVariant (vcf/) or any other caller's vcf_*/ VCF: ./scripts/benchmark-variants.sh ${SAMPLE}"

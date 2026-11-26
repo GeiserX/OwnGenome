@@ -1,0 +1,8 @@
+chrom	start	end	length_bp	ancestry	matched	lod	genes
+chr21	1000000	1600000	600000	Neanderthal	Altai,Vindija,Denisova	12.5	TOUCHES_START,INSIDE
+chr21	9000000	9500000	500000	Neanderthal	Altai,Vindija	45.5	.
+chr21	20000000	20060000	60000	Neanderthal	Vindija	4.5	.
+chr21	30000000	30700000	700000	Denisovan	Denisova	14.5	DENI
+chr22	17000000	18100000	1100000	Neanderthal	Altai,Vindija,Denisova	22.5	ON22
+chr22	25000000	25900000	900000	Denisovan	Denisova	8.5	.
+chr22	40000000	40050000	50000	Neanderthal	Altai	9.0	.

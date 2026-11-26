@@ -4,8 +4,9 @@
 # old slivar result stale, with its date, instead of showing it as current.
 #
 # The tools are faked as in base-run-all-default.sh, except the report
-# renderer: the hook runs bin/render_report.py with the host's python3 on the
-# host side of the call's mounts, so the reports are the real ones.
+# renderer: the hook runs og report render with the host's bin/og (the Guard
+# fake-docker job builds it into bin/.og) on the host side of the call's
+# mounts, so the reports are the real ones.
 # Also checks the run manifest and the step status file run-all.sh writes.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
@@ -48,7 +49,7 @@ put() {
   printf '%b' "$2" > "$h"
 }
 case "$args" in
-  "python3 /pgp-bin/render_report.py"*)
+  "/pgp-bin/og report render"*)
     # The real renderer, on the host paths of every /... argument.
     shift
     mapped=()
@@ -109,14 +110,14 @@ TXT="${S}/sample1_report.txt"
 HTML="${S}/sample1_report.html"
 [ -s "$TXT" ] || fail "no text report"
 [ -s "$HTML" ] || fail "no HTML report"
-# The schema check needs og: Guard's rust job runs this case with og built
-# and requires the line below; the fake-docker job has no og and says so.
+# The schema check needs bin/og. Guard's og-musl job requires the case to
+# report that summary.json passed the schema check.
 if "${REPO_ROOT}/bin/og" version > /dev/null 2>&1; then
   "${REPO_ROOT}/bin/og" dev schema "${REPO_ROOT}/tests/schema/summary.schema.json" "${S}/summary.json" \
     || fail "summary.json does not validate"
   echo "summary.json validates (og dev schema)"
 else
-  echo "SKIP the schema check of summary.json: og is not built here (Guard's rust job runs it)"
+  echo "SKIP the schema check of summary.json: og is not built here (Guard's og-musl job runs it)"
 fi
 grep -A2 '^## Variant Prioritization (slivar)' "$TXT" | grep -q 'STALE: from an earlier run.*step 31 was skipped' \
   || fail "the text report does not mark the old slivar result stale: $(grep -A3 'slivar' "$TXT" | tr '\n' '|')"

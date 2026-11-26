@@ -177,7 +177,7 @@ fn the_release_stands_next_to_the_commit_in_both_reports() {
 #[test]
 fn every_summary_key_is_in_exactly_one_section() {
     let keys: Vec<&str> = summary_keys().map(|s| s.key).collect();
-    assert_eq!(keys.len(), 48);
+    assert_eq!(keys.len(), 49);
     assert_eq!(key_problems(&CHAPTERS, &keys), Vec::<String>::new());
     // Red controls: a key taken out, and a key in two sections, are caught.
     let cut: Vec<&str> = keys.iter().copied().filter(|k| *k != "telomere").collect();
@@ -202,6 +202,25 @@ fn every_summary_key_is_in_exactly_one_section() {
     let mut missing = key_problems(&short, &keys);
     missing.sort();
     assert_eq!(missing, ["missing consumer_export", "missing viral"]);
+    // acmg_sf is shown with clinical, not as a frame key of its own: listing
+    // it in a section as well is a key shown twice, and the search index
+    // anchors it to the clinical-filter section.
+    let mut also = CHAPTERS.to_vec();
+    also.push(Chapter {
+        id: "x",
+        title: "X",
+        question: "?",
+        sections: &[Sec {
+            id: "x",
+            title: "X",
+            keys: &["acmg_sf"],
+        }],
+    });
+    assert_eq!(key_problems(&also, &keys), ["twice acmg_sf".to_owned()]);
+    assert_eq!(
+        og_render::chapters::section_of("acmg_sf").map(|s| s.id),
+        Some("clinical-filter")
+    );
 }
 
 #[test]
@@ -254,10 +273,48 @@ fn both_reports_follow_the_chapter_order() {
         .flat_map(|c| c.sections.iter().map(|s| s.id))
         .collect();
     let shown = shown_sections(&page);
-    assert_eq!(shown, ["qc", "variants", "not-run", "not-assessed"]);
+    // The sections, in chapter order, then the limits chapter and the
+    // appendix of genes and rsIDs.
+    let n = shown.len();
+    assert!(
+        n >= 5
+            && shown[..2] == ["qc", "variants"]
+            && shown[n - 3..] == ["not-run", "not-assessed", "terms-list"],
+        "{shown:?}"
+    );
+    // ROH, telomere content and the mitochondrial haplogroup show a card
+    // whether or not their step ran.
+    assert!(
+        ["roh", "telomere", "mt-haplogroup"]
+            .iter()
+            .all(|s| shown.contains(s)),
+        "{shown:?}"
+    );
     let in_order: Vec<&str> = sids.iter().copied().filter(|s| shown.contains(s)).collect();
-    assert_eq!(&shown[..2], in_order.as_slice());
-    assert_eq!(text_chapters(&txt), ["QUALITY"]);
+    assert_eq!(&shown[..n - 3], in_order.as_slice());
+    // The HTML report shows a card for a section that did not run; the text
+    // report leaves it out, except the paralogs' "not checked" line, which
+    // prints when neither step 35 nor step 35b ran. So of the chapters with a
+    // card, the text keeps Quality and Carrier, in that order.
+    // Viral DNA, the one ported section of Other and exports, shows a card
+    // only when step 47 ran.
+    let with_card: Vec<String> = CHAPTERS
+        .iter()
+        .filter(|c| c.sections.iter().any(|s| shown[..n - 3].contains(&s.id)))
+        .map(|c| c.title.to_uppercase())
+        .collect();
+    assert_eq!(
+        with_card,
+        [
+            "QUALITY",
+            "CLINICAL",
+            "CARRIER",
+            "MEDICINES",
+            "ANCESTRY",
+            "TRAITS AND SCORES"
+        ]
+    );
+    assert_eq!(text_chapters(&txt), ["QUALITY", "CARRIER"]);
     let q = txt.split("#  1. QUALITY").nth(1).unwrap_or("");
     assert!(q.find("## Quality control") < q.find("## Variant Calling (DeepVariant)"));
     assert!(q.contains("## Variant Calling (DeepVariant)"));
@@ -266,7 +323,7 @@ fn both_reports_follow_the_chapter_order() {
         .replace("id=\"qc\"", "id=\"tmp\"")
         .replace("id=\"variants\"", "id=\"qc\"")
         .replace("id=\"tmp\"", "id=\"variants\"");
-    assert_ne!(shown_sections(&swapped)[..2], in_order[..]);
+    assert_ne!(shown_sections(&swapped)[..n - 3], in_order[..]);
 }
 
 #[test]
@@ -537,16 +594,21 @@ fn the_verb_writes_both_reports_and_refuses_what_it_does_not_take() {
         .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
         .collect();
     assert_eq!(names.len(), 3, "no temporary file is left: {names:?}");
-    // Refused before anything is read: an unknown option, an option of the
-    // parts still in Python, a report name of another kind, no summary.
+    // Refused before anything is read: an unknown option, an option without
+    // its value, a sample without its folder, a report name of another kind,
+    // no summary.
     for (args, why) in [
         (
             vec!["--og-scaffold-probe"],
             "unrecognized arguments: --og-scaffold-probe",
         ),
         (
-            vec!["--summary", "x.json", "--search-index", "i.json"],
-            "--search-index is not ported yet",
+            vec!["--summary", "x.json", "--search-index"],
+            "argument --search-index: expected one argument",
+        ),
+        (
+            vec!["--sample", "S", "-o", "r.txt"],
+            "give --summary, or --sample and --sample-dir",
         ),
         (
             vec!["--summary", "x.json", "-o", "r.pdf"],

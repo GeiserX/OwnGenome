@@ -146,14 +146,18 @@ CONTRIBUTING.md                               /mnt/user\|internal-host\|/home/
 CONTRIBUTING.md                               (`/mnt/user/`, `/home/username/`, etc.)
 modules/local/cyrius/main.nf                  ${prefix}\\t*1/*1\\tPASS
 tests/fake-docker/reports-stale-step.sh       sample1\t*1/*1\tPASS
-tests/test_collect_summary.py                 S\t*1/*4\tPASS
-tests/test_collect_summary.py                 strec("HTT", "17/30"
-tests/test_collect_summary.py                 strec("C9ORF72", "2/8"
-tests/test_collect_summary.py                 strec("ATXN1", "29/31"
-tests/test_collect_summary.py                 strec("DMPK", "5/40"
-tests/test_collect_summary.py                 strec("RFC1", "100/150"
+tests/parity/golden/report-render/*/*         rs10455872: A/G (1 risk allele)
+tests/parity/golden/report-render/*/*         rs3798220: T|C (1 risk allele)
+tests/parity/golden/report-render/*/*.txt     HTT      17/20      normal,normal
+tests/parity/golden/report-render/*/*.txt     ATXN1    30/37      not sized
 tests/smoke/commands.tsv                      HTT at 19/45 repeats
 tests/smoke/commands.tsv                      ATXN3 at 22/24 repeats
+rust/crates/og-facts/tests/facts.rs           "rs2231142 G/G"
+rust/crates/og-facts/tests/facts.rs           "rs9923231 C/C"
+tests/parity/golden/report-render/all*/all*.txt  rs10455872: A/G (1 risk allele)
+tests/parity/golden/report-render/all*/all*.txt  rs3798220: T|C (1 risk allele)
+tests/parity/golden/report-render/all*/all*.txt  HTT      17/20      normal,normal
+tests/parity/golden/report-render/all*/all*.txt  ATXN1    30/37      not sized
 '
 
 # Whole files that are not scanned (glob), with the reason. Keep this list
@@ -163,6 +167,7 @@ tests/fixtures/*                public or invented test data; each fixture direc
 tests/smoke/*.vcf.in            invented tool inputs for the image smoke tests
 tests/parity/inputs/pgx-refblock-fill/*  built from the public PharmCAT data of tests/fixtures/pharmcat
 tests/parity/golden/pgx-refblock-fill/*  the output og writes on those inputs
+tests/parity/inputs/couple-screen/*_eh*.vcf  invented ExpansionHunter calls for the couple screen parity cases
 '
 
 # scan [FILE...]: og dev scan personal-data (rust/crates/og-dev) with the

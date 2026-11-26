@@ -65,10 +65,13 @@ While a VEP cache installs, the tarball and the unpacked tree are on disk togeth
 |---|---|---|
 | Fine-grained ancestry panel (gnomAD HGDP + 1000 Genomes, phased) | ~19 GB read, a few GB kept | step 26b, `setup.sh --ancestry-fine-panel` |
 | T1K HLA index (built from IPD-IMGT/HLA) | ~0.05 GB | step 8, built on first run |
-| CNVpytor GC/mask files | ~0.09 GB | step 18 |
-| pypgx bundle | ~0.4 GB | step 32 |
-| Somatic resources (gnomAD AF-only VCF, panel of normals) | ~3 GB | step 29 |
+| CNVpytor GC/mask files | ~0.09 GB | step 18, `setup.sh --cnvpytor-data` |
+| PyPGx bundle | ~0.4 GB | step 32, `setup.sh --pypgx-data` |
+| GATK somatic resources and indexes | ~3 GiB | steps 29 and 49, `setup.sh --somatic-data` |
+| Classic BWA index | Built locally, ~5 GB on disk and ~5.4 GB RAM during the build | step 04b, `setup.sh --bwa-index` |
 | AADR ancient panel, 1240K (7.1 GB `.geno`; 1.05 GiB kept, 9.6 GiB of extra disk at the peak while it builds) | ~7.1 GB (the `.geno`) plus three small files | step 44, `setup.sh --ancient-panel` |
+
+Use `setup.sh --everything` to install the full set of [optional step resources](00-reference-setup.md#install-data-for-an-everything-run). Reserve space for both the installed resources and the largest installer’s temporary files.
 
 ### Annotation Databases (Optional, for Steps 30-31)
 
@@ -80,10 +83,12 @@ These databases enable deeper pathogenicity scoring via vcfanno (step 30) and va
 | CADD v1.7 gnomAD indels | ~1.2 GB | Non-commercial |
 | SpliceAI masked SNV scores | ~27 GB | Academic and not-for-profit only |
 | SpliceAI masked indel scores | ~64 GB | Academic and not-for-profit only |
-| REVEL v1.3 | ~0.6 GB | Free for research |
+| REVEL v1.3 | ~0.6 GB | [REVEL terms](00-reference-setup.md#revel-v13-06-gb) |
 | AlphaMissense | ~0.6 GB | CC BY-NC-SA 4.0 |
 | gnomAD v4.1 gene constraint | ~0.09 GB | ODC-ODbL |
 | **Total, annotation databases** | **~175 GB** | |
+
+The REVEL authors make the scores freely available for non-commercial use. The [Zenodo record](https://doi.org/10.5281/zenodo.7072866) lists ODbL 1.0. The authors give a contact for other uses on the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads).
 
 ### Total Shared Data
 
@@ -131,17 +136,18 @@ Every step runs in a Docker container with a hard `--memory` limit. The two entr
 | 50 (MEI): MEGAnE | `THREADS` (8) / 16 GB | `MEI` 8 / 16 GB |
 | 50 (MEI): AnnotSV on the insertions and the calls table | 4 / 8 GB for AnnotSV, 1 / 2 GB for the table | `MEI_REPORT` 4 / 8 GB with `--annotsv_annotations`, 1 / 2 GB without |
 
-These are limits, not measured peaks. The two step 44 rows were measured on a 4-CPU GitHub runner on public HG002 ([step 44, Runtime](44-ancient.md#runtime)): the setup's containers held 7.6 GiB of anonymous memory at most (the sampler does not record which container, convertf or smartpca), and the largest container's whole charge, file cache included, reached 11.6 of its 12 GiB; step 44's smartpca used 1.2 GiB. The peaks measured for each task in the end test are in the [runtime table](#runtime-per-step): on 30-40x genomes the alignment task (minimap2 and samtools together) peaked at 18.3-18.4 GB and DeepVariant at 15.9-16.5 GB. For step 25, `PRS_PREPARE` (`og prs format`) peaked at 677 to 698 MB on the 15 default scores, and on the nine scores measured before the four small lipid and blood-pressure scores joined the list pgsc_calc's first task, run on one thread, needed about 14 to 18 GB on a GitHub runner without a genome, and 12.7 to 13.5 GiB on the three end-test genomes ([step 25, Memory](25-prs.md#memory)). Your own run records pgsc_calc's task peaks in `prs/pgsc_calc/pipeline_info/execution_trace.txt`; the `PRS` row of the pipeline's trace is only the launcher.
+These are limits, not measured peaks. The two step 44 rows were measured on a 4-CPU GitHub runner on public HG002 ([step 44, Runtime](44-ancient.md#runtime)): the setup's containers held 7.6 GiB of anonymous memory at most (the sampler does not record which container, convertf or smartpca), and the largest container's whole charge, file cache included, reached 11.6 of its 12 GiB; step 44's smartpca used 1.2 GiB. The peaks measured for each task in the end test are in the [runtime table](#runtime-per-step): on 30-40x genomes the alignment task (minimap2 and samtools together) peaked at 18.3-18.4 GB and DeepVariant at 15.9-16.5 GB. For step 25, `PRS_PREPARE` (`og prs format`) peaked at 677 to 698 MB on all 15 scores, and on the nine scores measured before the four small lipid and blood-pressure scores joined the list pgsc_calc's first task, run on one thread, needed about 14 to 18 GB on a GitHub runner without a genome, and 12.7 to 13.5 GiB on the three end-test genomes ([step 25, Memory](25-prs.md#memory)). Your own run records pgsc_calc's task peaks in `prs/pgsc_calc/pipeline_info/execution_trace.txt`; the `PRS` row of the pipeline's trace is only the launcher.
 
-**Minimum system RAM:** 16 GB. `run-all.sh` passes the machine's RAM as `--max_memory`, so on a 16 GB machine the 32 GB tasks run capped at about 15 GB. A task that needs more is killed (exit 137); its one retry asks for double, and the cap cuts that back to the same 15 GB. With the step scripts, lower DeepVariant's shards and memory with `THREADS` and `DV_MEM`, for example `THREADS=4 DV_MEM=12g ./scripts/03-deepvariant.sh <sample> [male|female]`. The other scripts set a fixed `--memory`; edit it in the script to change it. Step 25's pgsc_calc is the exception that does not fit: its first task needs about 14 to 18 GB on the default scores and was killed under a 14.1 GB limit when the host has no swap, so a 16 GB machine needs swap for it ([step 25, Memory](25-prs.md#memory)).
+**Minimum system RAM:** 16 GB. `run-all.sh` passes the machine's RAM as `--max_memory` (the container engine's when it has less, as on Docker Desktop and colima), so on a 16 GB machine the 32 GB tasks run capped at about 15 GB. A task that needs more is killed (exit 137); its one retry asks for double, and the cap cuts that back to the same 15 GB. With the step scripts, lower DeepVariant's shards and memory with `THREADS` and `DV_MEM`, for example `THREADS=4 DV_MEM=12g ./scripts/03-deepvariant.sh <sample> [male|female]`. The other scripts set a fixed `--memory`; edit it in the script to change it. Step 25's pgsc_calc is the exception that does not fit: its first task needs about 14 to 18 GB on the default scores and was killed under a 14.1 GB limit when the host has no swap, so a 16 GB machine needs swap for it ([step 25, Memory](25-prs.md#memory)).
 **Recommended:** 32 GB or more, so minimap2 and DeepVariant get close to the 32 GB they ask for.
 **GRIDSS (step 4b, opt-in):** its container takes 32 GB (a 28 GB Java heap plus overhead), so it needs a machine with 32 GB or more even when nothing else runs.
+**Scattered callers (steps 03a, 03b, and 29 with `INTERVALS=genome`):** each unit's container takes 8 GB, and `THREADS`/2 units run at once by default. When they do not fit in the memory the container engine reports (`docker info`, rounded to the nearest GB, so a VM given 16 GB that reports 15.6 still counts as 16), fewer run, and the step prints a note that says so: four 8 GB units on a 16 GB engine would be killed. `SCATTER_JOBS` sets the number by hand.
 
 ---
 
 ## CPU Requirements
 
-Each pipeline task asks for the CPUs that `conf/base.config` gives its label or its name: 1, 2, 4 or 8. The 8-CPU tasks are minimap2 (the index, and the alignment with its duplicate marking in the same task), fastp, DeepVariant, Manta and VEP. `--max_cpus` and `--max_memory` cap each task; `run-all.sh` passes the machine's CPU count (or `THREADS`) and its RAM. They do not limit how much runs at once: Nextflow starts tasks until their requests fill the machine's CPUs and RAM. On a Mac with Docker Desktop, that is the Mac's CPUs and RAM, not the Docker VM's. `MAX_JOBS` is no longer read.
+Each pipeline task asks for the CPUs that `conf/base.config` gives its label or its name: 1, 2, 4 or 8. The 8-CPU tasks are minimap2 (the index, and the alignment with its duplicate marking in the same task), fastp, DeepVariant, Manta and VEP. `--max_cpus` and `--max_memory` cap each task; `run-all.sh` passes the machine's CPU count (or `THREADS`) and its RAM. They do not limit how much runs at once: Nextflow starts tasks until their requests fill the machine's CPUs and RAM. Docker Desktop and colima run the containers in a VM that is usually smaller than the Mac. When `docker info` reports fewer CPUs or less memory than the host, `run-all.sh` passes the VM's figures instead, in whole GB. It also writes them to `<sample>/nextflow/executor.config` and passes that file with `-c`. Nextflow then fills the VM, not the Mac, and a task that does not fit waits for room instead of being killed inside the VM. On native Linux the engine reports the host's figures, and nothing changes. `MAX_JOBS` is no longer read.
 
 **DeepVariant's shards.** `run-all.sh` runs DeepVariant with at most 8 shards, however many cores the machine has, and fewer when `--max_cpus` (`THREADS`) is lower. More cores help the steps that run beside it. To give DeepVariant more, run `scripts/03-deepvariant.sh` with `THREADS=N` (its `--cpus` and `--num_shards`), or pass `-c` with a `withName: 'DEEPVARIANT'` block:
 
@@ -178,7 +184,7 @@ executor {
 }
 ```
 
-Check the shares on a running task: `docker ps` lists the pipeline's containers as `nxf-...`, and `docker inspect -f '{{.HostConfig.CpuShares}}' <container>` should print 256. The same `executor` block is the way to keep Docker Desktop's VM from being overbooked: set it to the CPUs and memory the VM has, and pass `THREADS` and `--max_memory` no larger than the VM's (e.g. `THREADS=6 ./scripts/run-all.sh <sample> <sex> --max_memory 14.GB`). On a Mac, `run-all.sh` otherwise passes the Mac's own CPU count and RAM, and Nextflow refuses a task that asks for more than the `executor` block allows.
+Check the shares on a running task: `docker ps` lists the pipeline's containers as `nxf-...`, and `docker inspect -f '{{.HostConfig.CpuShares}}' <container>` should print 256. On Docker Desktop and colima, `run-all.sh` already writes an `executor` block with the VM's CPUs and memory to `<sample>/nextflow/executor.config`. It passes that file before your options, so each setting in an `executor` block of your own (`-c`) wins over it; a setting you leave out keeps the VM's figure. Keep `THREADS` and `--max_memory` no larger than your block, or Nextflow refuses the tasks that ask for more. Without a block of your own, `run-all.sh` never books less than a cap you set: `THREADS`, `--max_cpus` or a whole-GB `--max_memory` above the VM's figure raises the CPUs or memory in `executor.config` to it, and a `--max_memory` in other units leaves the memory to Nextflow. The run then starts as it would without the VM's figure, and a task the VM cannot hold can be killed (exit 137); `run-all.sh` prints a `[Resources]` line that says so.
 
 ### Runtime per step
 
@@ -188,7 +194,7 @@ DeepVariant 1.10 with 8 shards took 8 h 50 min to 13 h 30 min. In the 13.5 h run
 
 A step the end test did not run says "not measured"; where it shows a time, that is the step page's estimate. Step pages link here instead of giving their own figure.
 
-Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` and `hours`). Until a box has run a step under Nextflow, `bin/run_eta.py` uses the lower end as the low end, never scaled, and the upper end as the high end; only the high end is multiplied by 16 / cores, on a box with fewer than 16 cores, and it is never scaled down. A step this table does not measure, including one that shows only an estimate, gets no number. Once the box has a trace of the step, it uses the step's own times from the last 5 runs on that box instead ([How long is left](run-state.md#how-long-is-left)).
+Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` and `hours`). Until a box has run a step under Nextflow, `og run eta` uses the lower end as the low end, never scaled, and the upper end as the high end; only the high end is multiplied by 16 / cores, on a box with fewer than 16 cores, and it is never scaled down. A step this table does not measure, including one that shows only an estimate, gets no number. Once the box has a trace of the step, it uses the step's own times from the last 5 runs on that box instead ([How long is left](run-state.md#how-long-is-left)).
 
 | Step | Wall time | Peak memory | CPU (cores) | Notes |
 |---|---|---|---|---|
@@ -211,7 +217,7 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 | 14 Imputation prep (opt-in) | not measured (estimate ~10 min) | | | |
 | 15 duphold | 3-4 min | 1.0 GB | 3.2-4.1 | plus about a second for its filter |
 | 16 indexcov | 1-3 s | | | |
-| 16b mosdepth | 2-3 min | 1.9 GB | 2.7-3.5 | |
+| 16b mosdepth | 2-3 min | 1.9 GB | 2.7-3.5 | the time is the genome-wide pass only; the gene callability pass adds 3.5-4 min (measured on public HG002 30x, without `--fast-mode`, which costs it about 37% more CPU time), so the step takes about 6-7 min on 30x ([step 16b](16b-mosdepth.md#runtime)) |
 | 17 CPSR | 17-36 min | 12.3-15.6 GB (`peak_rss`, see above) | 1.8-2.3 | |
 | 18 CNVpytor | 14-20 min | 1.4-2.7 GB | 2.3-3.7 | |
 | 19 Delly | 21 min - 3 h 19 min | 1.2-3.1 GB | 1.0-1.1 | five runs: 21 and 25 min on two samples, 1 h 35 min to 3 h 19 min in three runs on the third |
@@ -245,20 +251,20 @@ Both ends of each measured figure are also in `assets/steps.tsv` (`hours_low` an
 
 ### The report step
 
-`run-all.sh` writes both reports ([step 24](24-html-report.md)) after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes in November 2026, on `main` at e7d5919 and on the same server, while it ran other work (load average 10-14). Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
+`run-all.sh` writes both reports ([step 24](24-html-report.md)) after the pipeline, outside Nextflow's trace, so the end test above has no time for them. We measured them apart on the same three genomes in November 2026, on `main` at e7d5919 and on the same server, while it ran other work (load average 10-14). Both scripts then ran the Python renderer `bin/render_report.py`. Step 24, the Nextflow `HTML_REPORT` module and `scripts/generate-report.sh` now run `og report render` instead, and we have not measured it on these genomes yet, so the numbers below are the Python renderer's. Each command ran three times per genome in the pinned Python image, in its own container capped at one CPU and under `nice -n 19`. The genome folder was mounted read-only and every output went to a scratch folder. Wall time and peak memory come from `getrusage` of the child process.
 
 | Command | Wall time | Peak memory | What it does |
 |---|---|---|---|
-| `scripts/24-html-report.sh` (`render_report.py`, HTML, search index, charts) | 11.2-14.5 s | 403-424 MB | collects `summary.json` from every step's output, then renders |
-| `scripts/generate-report.sh`, the text report | 11.6-12.7 s | 403-424 MB | collects `summary.json` again, then renders the text |
+| `scripts/24-html-report.sh` with `render_report.py` (HTML, search index, charts) | 11.2-14.5 s | 403-424 MB | collects `summary.json` from every step's output, then renders |
+| `scripts/generate-report.sh` with `render_report.py`, the text report | 11.6-12.7 s | 403-424 MB | collects `summary.json` again, then renders the text |
 | `render_report.py --summary` (render only, from a written `summary.json`) | 0.40-0.42 s | 62-73 MB | |
 | `run_delta.py` (what changed since the previous run) | 0.11-0.16 s | 19-21 MB | |
 
 So the reports cost about 25 s per sample, not 1-3 minutes, and almost all of it is collecting the summary, which each of the two scripts does once. Under `cProfile` (one HTML run), 82% of the collection was `sec_variants` reading every record of the sample's small-variant VCF in Python, and 9% the ROH section. Rendering is under half a second. The HTML report was 2.0-2.7 MiB and the search index 8.3-12.2 MiB.
 
-Since then the Rust `og summary collect` writes `summary.json`, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
+Since then the Rust `og summary collect` writes `summary.json`, `og report render` renders it, and `generate-report.sh` renders from the `summary.json` step 24 wrote unless a step output is newer than it, so a run collects each sample once. `run_delta.py` is gone: `og run delta` makes the comparison.
 
-The command, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root):
+To time today's step the same way, per genome (`<genome_dir>` holds the sample folder, `<scratch>` is empty and writable, run from the repo root; `bin/og` runs the build `scripts/setup.sh --og` puts in `bin/.og/`):
 
 ```sh
 IMG=$(. ./versions.env; echo "$PYTHON_IMAGE")
@@ -271,12 +277,12 @@ print(f"rc={rc} wall={time.perf_counter() - s:.2f}s maxrss_MB={r.ru_maxrss / 102
 PY
 docker run --rm --cpus 1 --network none -v <genome_dir>:/genome:ro -v "$PWD/bin":/pgp-bin:ro \
   -v "$PWD/assets":/pgp-assets:ro -v <scratch>:/out "$IMG" nice -n 19 python3 /out/tm.py \
-  "python3 /pgp-bin/render_report.py --assets /pgp-assets --sample <sample> --sample-dir /genome/<sample> \
+  "/pgp-bin/og report render --assets /pgp-assets --sample <sample> --sample-dir /genome/<sample> \
    --json /out/summary.json -o /out/report.html --search-index /out/search_index.json \
    --charts-json /out/charts.json >/dev/null"
 ```
 
-The text report is the same line with `-o /out/report.txt` and no `--search-index` or `--charts-json`; render only adds `--summary /out/summary.json`.
+The text report is the same line with `-o /out/report.txt` and no `--search-index` or `--charts-json`; render only replaces `--assets` and `--json` with `--summary /out/summary.json`, as `generate-report.sh` does.
 
 ### The clinical filter, stage by stage
 

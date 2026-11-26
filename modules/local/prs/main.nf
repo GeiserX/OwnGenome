@@ -11,7 +11,9 @@
                      the samples of the run need. With
                      --prs_keep_ambiguous it checks each score's alleles
                      against the reference and keeps the strand-ambiguous
-                     rows of the scores that pass
+                     rows of the scores that pass. A score the list marks
+                     academic-research is written only with
+                     --pgs_academic true (og prs format --academic)
     PRS_SCORE_SITES  genotypes the score positions (and, with a panel, the
                      panel's) from the gVCF, so a site where the sample
                      matches the reference is a real 0/0; without a gVCF it
@@ -24,7 +26,9 @@
                      samplesheet's sex its plink2 gets the sex (--update-sex),
                      which it needs to read chrX
     PRS_SUMMARY      <id>_prs_summary.tsv (og prs table),
-                     a score of the other sex marked not applicable, also
+                     a score of the other sex marked not applicable, a
+                     percentile withheld when PRS_SCORE_SITES' genotypes
+                     list variants only (under one 0/0 in five), also
                      published as <id>_prs_summary.<YYYYMMDD-HHMM>.tsv so a
                      rerun keeps it, and with the panel the ancestry table
                      of step 26
@@ -54,17 +58,21 @@ process PRS_PREPARE {
     script:
     def keep_x = score_set == 'with_x' ? '--keep-x' : ''
     def keep_amb = params.prs_keep_ambiguous.toString() == 'true' ? "--keep-ambiguous --reference ${reference}" : ''
+    def academic = params.pgs_academic.toString() == 'true' ? '--academic' : ''
     """
-    og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb}
+    og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb} ${academic}
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
+    def academic = params.pgs_academic.toString() == 'true' ? '--academic' : ''
     """
+    echo "og prs format options: ${academic}"
     mkdir -p pgs
     touch pgs/PGS000000.txt.gz score_alleles.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -105,10 +113,10 @@ process PRS_SCORE_SITES {
     fi
 
     if [ "${input_kind}" = vcf ]; then
-        bcftools view -T sites.tsv -Ov ${gvcf} | gzip -c > ${meta.id}_score_sites.vcf.gz
+        bcftools view -f PASS,. -T sites.tsv -Ov ${gvcf} | gzip -c > ${meta.id}_score_sites.vcf.gz
     else
     bcftools convert --gvcf2vcf -f ${reference} -R sites.tsv -Ou ${gvcf} \\
-        | bcftools view -T sites.tsv --trim-alt-alleles -i 'GT!="mis"' -Ov \\
+        | bcftools view -f PASS,. -T sites.tsv --trim-alt-alleles -i 'GT!="mis"' -Ov \\
         | awk -F'\\t' -v OFS='\\t' -v alleles=alleles.tsv '
             BEGIN { while ((getline l < alleles) > 0) { split(l, f, "\\t"); k = f[1] ":" f[2]; ea[k] = ea[k] " " f[3] } }
             /^#/ { print; next }
@@ -183,8 +191,17 @@ process PRS {
     // process.containerOptions of docs/hardware-requirements.md's shared-host
     // config). The task script drops their user and network flags. Quoted for
     // the shell.
+    // >>> user flag (tests/test_prs_runopts.sh applies this pattern)
+    // Each user flag goes here first, with its whole value: -u VALUE, -uVALUE,
+    // -u=VALUE, --user VALUE or --user=VALUE, where VALUE is a run of plain
+    // characters, quoted strings, and $(...) or `...` substitutions, which
+    // can hold spaces. The task script splits the options into words, so it
+    // would drop only the first word of such a value: a config's
+    // -u $(id -u):$(id -g) handed pgsc_calc a stray -g).
+    def user_flag = '(?<!\\S)(?:-u(?:=|\\s+)?|--user(?:=|\\s+))(?:\\$\\((?:[^()]|\\([^()]*\\))*\\)|`[^`]*`|\\x22[^\\x22]*\\x22|\\x27[^\\x27]*\\x27|\\$(?!\\()|[^\\s\\x22\\x27`$])+(?!\\S)'
+    // <<< user flag
     def outer_docker = [(nextflow.Global.session?.config?.docker as Map)?.runOptions, task.containerOptions]
-        .findAll { o -> o }.join(' ').replace("'", "'\\''")
+        .findAll { o -> o }.join(' ').replaceAll(user_flag, ' ').replace("'", "'\\''")
     // The sex for pgsc_calc's plink2 (--update-sex: the VCF's sample name, 1
     // male or 2 female), added to the ext.args its conf/modules.config gives
     // PLINK2_VCF at this release; the folder is mounted into its containers.
@@ -328,7 +345,9 @@ process PRS_SUMMARY {
     publishDir { "${params.outdir}/${meta.id}/ancestry" }, mode: params.publish_dir_mode, pattern: '*_ancestry.tsv'
 
     input:
-    tuple val(meta), path(results), val(input_kind), path(scores, stageAs: 'pgs')
+    // target: PRS_SCORE_SITES' genotypes, which pgsc_calc scored; og prs
+    // table withholds the percentiles when they hold no reference calls.
+    tuple val(meta), path(results), val(input_kind), path(scores, stageAs: 'pgs'), path(target, stageAs: 'target/*')
     val(panel_name)      // '' without an ancestry panel
 
     output:
@@ -350,17 +369,18 @@ process PRS_SUMMARY {
     if [ -f ${results}/ZERO_MATCHES ]; then FLAGS=(--zero-matches); fi
     if [ -f ${results}/BELOW_THRESHOLD ]; then FLAGS=(--below-threshold ${results}/pgsc_calc.log); fi
     og prs table --sample ${meta.id} --results ${results} --sampleset sample \\
-        --scores pgs --input-kind ${input_kind} --sex '${sex}' \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
+        --scores pgs --input-kind ${input_kind} --sex '${sex}' --target ${target} \${FLAGS[@]+"\${FLAGS[@]}"} ${anc} --out ${meta.id}_prs_summary.tsv
     cp -p ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.\$(date -r ${meta.id}_prs_summary.tsv +%Y%m%d-%H%M).tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
-    printf 'Condition\\tPGS_ID\\tScore_SUM\\tVariants_Matched\\tVariants_Total\\tMatched_Pct\\tPercentile\\tAncestry_Group\\tChrX\\tAmbiguous\\tApplies_To\\tSex_Check\\tInput\\n' > ${meta.id}_prs_summary.tsv
+    printf 'Condition\\tPGS_ID\\tScore_SUM\\tVariants_Matched\\tVariants_Total\\tMatched_Pct\\tPercentile\\tAncestry_Group\\tChrX\\tAmbiguous\\tApplies_To\\tSex_Check\\tPercentile_Note\\tInput\\n' > ${meta.id}_prs_summary.tsv
     cp ${meta.id}_prs_summary.tsv ${meta.id}_prs_summary.20260101-0000.tsv
     if [ -n "${panel_name}" ]; then printf 'key\\tvalue\\nsample\\t%s\\n' ${meta.id} > ${meta.id}_ancestry.tsv; fi
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

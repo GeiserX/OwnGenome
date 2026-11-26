@@ -16,8 +16,11 @@
     REF or ALT is longer than one base (an indel such as UGT1A1 *28), so
     og pgx refblock-fill writes a 0/0 record with PharmCAT's own
     alleles there when reference blocks with GQ >= 20 cover the whole REF
-    span and no other record overlaps it. The expanded file is named without
-    .g.vcf, which PharmCAT refuses.
+    span and no other record overlaps it. The same GQ 20 floor holds for
+    every reference call it passes on: a 0/0 record (a block or a
+    DeepVariant RefCall) below GQ 20, or without a GQ, is left out, so
+    PharmCAT reads that position as missing, not as a confident 0/0. The
+    expanded file is named without .g.vcf, which PharmCAT refuses.
 
     PharmCAT types neither HLA nor CYP2D6 from a VCF. When PGX_CONSENSUS
     wrote outside calls for the sample (HLA-A and HLA-B from T1K, a CYP2D6
@@ -27,12 +30,13 @@
     PharmCAT 3.4.0 reads MT-RNR1 only as an outside call: its matcher has
     no MT-RNR1 definition, so the gene is No Result from any VCF. When
     MITO_VARIANTS called the sample's chrM, og pgx mito-merge adds
-    an MT-RNR1 line to a copy of the outside calls: a homoplasmic (AF >=
-    0.95) PASS allele PharmCAT names, or Reference when there is none and
-    the BAM has 20 reads or more (samtools depth, MAPQ and base quality 20)
-    at every position PharmCAT names an allele at; no line, with the reason
-    in the task log, for a heteroplasmic or filtered named allele or a
-    position without that depth.
+    an MT-RNR1 line to a copy of the outside calls: a PASS allele PharmCAT
+    names at AF 0.05 or more, heteroplasmic included (CPIC sets no safe
+    heteroplasmy level; the log gives the AF), or Reference when there is
+    none and the BAM has 20 reads or more (samtools depth, MAPQ and base
+    quality 20) at every position PharmCAT names an allele at; no line, with
+    the reason in the task log, for a named allele below AF 0.05 (when no
+    other is called) or filtered, or a position without that depth.
 
     The jar's built-in logback.xml writes pharmcat.log into the working
     directory. A task runs in its own writable work directory, so the log

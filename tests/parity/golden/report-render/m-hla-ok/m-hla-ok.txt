@@ -1,0 +1,137 @@
+================================================================================
+  GENOMICS ANALYSIS REPORT
+  Research software, not a clinical report: confirm any finding in a
+  certified laboratory before acting on it.
+  Sample: S
+  Generated: 2026-01-02 03:04 UTC
+  Latest run-all.sh run: 2020-01-01 00:00 UTC
+================================================================================
+
+################################################################################
+#  1. QUALITY: Can I trust this data?
+################################################################################
+
+## Quality control
+---
+  Mean depth: 31.2x
+  Alignment: 1000 reads in, 1000 primary records in the BAM
+  Inferred sex: male
+  Declared sex: male
+  Sex from the reads (somalier): male (declared and measured sex agree)
+  Contamination (VerifyBamID2 FREEMIX): 0.0010 (warning above )
+  Mean depth is an average over the genome: some genes get far fewer reads, and the gene callability card lists those. The sex, identity and contamination checks catch a swapped or mixed sample, not every lab error.
+
+## Variant Calling (DeepVariant)
+---
+  Total variants: 20000
+  PASS variants:  14545
+  SNPs: 11111  Indels: 6667
+  Counts of the calls DeepVariant made against the reference. A whole genome usually holds 4 to 5 million, most of them common. PASS calls passed the caller's filter; a count says nothing about health on its own.
+
+################################################################################
+#  2. CLINICAL: Is there anything to take to a doctor?
+################################################################################
+
+## Mosaic loss of chromosome Y or X
+---
+  chrY or chrX: not detected above 10% (None)
+  From depth: estimated share of the cells that lost one X 2.0% (95% range -1.0% to 5.0%); None to autosome depth ratio 0.980, 1.0 expected
+  Loss of chrY in a share of the blood cells of men, and of one chrX in women, becomes more common with age. Population studies link loss of Y with smoking and with higher rates of heart disease and some cancers; loss of X is less studied. That is a population-level association, not a diagnosis for one person. Below about 10% of the cells nothing can be told at 30x (docs/33-sample-qc.md).
+
+################################################################################
+#  3. CARRIER: What could I pass on to a child?
+################################################################################
+
+## Paralog Copy Number
+---
+  Paralog copy number: not checked (neither step 35 nor step 35b ran)
+
+################################################################################
+#  4. MEDICINES: How might I respond to medicines?
+################################################################################
+
+## HLA Typing (T1K)
+---
+    HLA-A    A*02:01 (quality 40) / A*31:01 (quality 12)
+    HLA-DRB5 no confident call (12 candidates, quality 0); low confidence (T1K quality 0 or below), not passed to PharmCAT
+    HLA-B    B*57:01 (quality 0) / B*08:01 (quality x); low confidence (T1K quality 0 or below)
+    HLA-HFE  HFE*001:01 (quality 40) / HFE*002:01 [a <label>]
+    HLA-C    no call
+  Coeliac DQ: DQ2.5 present, likely cis (DRB1*03); DQ2.2 absent; DQ8 absent
+  DQB1*02 copies: 1
+  B*57:01 present: abacavir & <x> (Mallal 2008)
+  B*27 uncertain: AS (C)
+  A*31:01 absent: carbamazepine (M)
+  C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006)
+  Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.
+  HLA database: IPD-IMGT/HLA 3.60
+  HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).
+  OptiType check (HLA_QC=true, two fields):
+    HLA-A    agree: T1K A*02:01, OptiType A*02:01
+    HLA-B    disagree: T1K B*57:01, OptiType B*58:01 (check <reads>)
+    HLA-C    not compared: T1K ., OptiType C*07:01
+  KIR genes (T1K, KIR=true):
+    KIR2DL1  KIR2DL1*001 (quality 30) / KIR2DL1*002
+    No allele called (absent, or too few reads): KIR2DS1, KIR3DS1
+  KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.
+
+## Steps Not Run
+---
+  - ClinVar screen
+  - PharmCAT
+  - CPIC drug-gene recommendations
+  - pypgx
+  - Cyrius (CYP2D6)
+  - SMN1/SMN2 copy number (Parascopy, short reads)
+  - Paralog genes (Paraphase, PacBio HiFi)
+  - HLA typing (T1K)
+  - Polygenic risk scores
+  - Fine-grained ancestry
+  - Structural variants (Manta)
+  - Structural variants (Delly)
+  - Copy number (CNVpytor)
+  - SV consensus merge
+  - Structural variants, class 4 and 5 (AnnotSV)
+  - Repeat expansions (ExpansionHunter)
+  - Telomere content (TelomereHunter)
+  - Runs of homozygosity
+  - Mitochondrial haplogroup
+  - Y-chromosome haplogroup (Yleaf)
+  - Y placement on the current public tree
+  - Y-STR markers (HipSTR)
+  - Raw-data export (23andMe v5 layout)
+  - Blood groups (predicted)
+  - Lp(a): LPA KIV-2 repeat count
+  - MUC1 VNTR frameshifts (VNtyper)
+  - Locityper second opinion at hard loci
+  - Mitochondrial variants
+  - Traits panel
+  - Archaic ancestry (IBDmix)
+  - Ancient populations (AADR PCA)
+  - Viral DNA in the unmapped reads
+  - Symptom-driven ranking (Exomiser)
+  - Clonal haematopoiesis (CHIP)
+  - Mobile element insertions (MEGAnE)
+  - Mosaic chromosomal alterations (MoChA)
+  - Cancer predisposition (CPSR)
+  - Clinical variant filter
+  - Variant prioritization (slivar)
+
+## Not Assessed by This Pipeline
+---
+  - Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)
+  - Methylation and imprinting
+  - Repeat expansions outside the ExpansionHunter catalog
+  - Phase: two variants in one gene are compound-het candidates, not confirmed
+  - Variants of uncertain significance (not interpreted)
+  - Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums
+  - HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call
+  - Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)
+  - MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them
+  - Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample
+
+Run manifest: run_manifest.tsv (pipeline commit unknown, 0 images)
+================================================================================
+  DISCLAIMER: This is NOT a clinical report. Discuss findings with a
+  qualified healthcare professional before making medical decisions.
+================================================================================

@@ -1,0 +1,7 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+##ALT=<ID=INS:ME,Description="Insertion of mobile element">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S

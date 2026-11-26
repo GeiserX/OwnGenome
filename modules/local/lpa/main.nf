@@ -34,9 +34,11 @@ process LPA_REGIONS {
     og cn bed --locus LPA_KIV2 > lpa_regions.bed
     og cn marker-regions LPA_KIV2_4925 > lpa_sites.txt
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -46,7 +48,8 @@ process LPA_REGIONS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }
@@ -135,9 +138,11 @@ process LPA {
             'LPA KIV-2 4925G>A: not assessed, the check failed; see the log of step 46.' > ${meta.id}_lpa_kiv2_4925.tsv
     fi
 
+    og_tree=\$(og --tree-hash)
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: \$og_tree
     END_VERSIONS
     """
 
@@ -148,7 +153,8 @@ process LPA {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

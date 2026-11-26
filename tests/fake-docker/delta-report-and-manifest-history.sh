@@ -9,9 +9,11 @@
 #   4. a newer history folder without a summary.json (a copy that stopped
 #      half way) is passed over: the delta is against the newest folder that
 #      holds one, and the report does not fail.
-# The report renderer runs with the host's python3 and og run delta with the
+# The report renderer (og report render) and og run delta run with the
 # host's bin/og, on the host side of the call's mounts, so both are the real
-# code. The Guard fake-docker job builds og into bin/.og.
+# code.
+# The Guard fake-docker job builds og into bin/.og. The case reads the JSON
+# with jq.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -33,7 +35,7 @@ cat > "${CASE_WORK}/tools-hook" <<'HOOK'
 set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 case "${*:2}" in
-  "python3 /pgp-bin/"* | "/pgp-bin/og "*)
+  "/pgp-bin/og "*)
     # The real tool, on the host paths of every /... argument.
     shift
     mapped=()
@@ -50,7 +52,7 @@ export FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/tools-hook"
 "${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 DELTA="${S}/sample1_delta"
 history_dirs() { find "${S}/history" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort; }
-changes() { python3 -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["changes"]))' "${DELTA}.json"; }
+changes() { jq -c '.changes' "${DELTA}.json"; }
 
 # 1. no previous run
 run_expect 0 first "${SCRIPTS}/generate-report.sh" sample1
@@ -70,22 +72,16 @@ grep -q '^No change: the same inputs and the same results' "${DELTA}.txt" || fai
 
 # 3. plant a reclassification and a new digest in the previous run
 prev=$(history_dirs | tail -n 1)
-python3 - "${prev}/summary.json" <<'PY'
-import json, sys
-p = sys.argv[1]
-s = json.load(open(p))
-hit = next(h for h in s["sections"]["clinvar"]["data"]["hits"] if h["pos"] == 2000)
-hit["significance"] = "Uncertain significance"
-json.dump(s, open(p, "w"))
-PY
+jq '(first(.sections.clinvar.data.hits[] | select(.pos == 2000)) | .significance) = "Uncertain significance"' \
+  "${prev}/summary.json" > "${CASE_WORK}/s.json" && mv "${CASE_WORK}/s.json" "${prev}/summary.json"
+[ "$(jq -r '.sections.clinvar.data.hits[] | select(.pos == 2000) | .significance' "${prev}/summary.json")" = "Uncertain significance" ] \
+  || fail "could not plant the reclassification in ${prev}/summary.json"
 PY_REF=$(awk -F'\t' '$1 == "version" && $2 == "PYTHON_IMAGE" {print $3}' "${prev}/run_manifest.tsv")
 awk -F'\t' -v OFS='\t' -v ref="$PY_REF" '$1 == "image" && $2 == ref {$3 = "python@sha256:0000"} {print}' \
   "${prev}/run_manifest.tsv" > "${CASE_WORK}/m.tsv" && mv "${CASE_WORK}/m.tsv" "${prev}/run_manifest.tsv"
 grep -q 'python@sha256:0000' "${prev}/run_manifest.tsv" || fail "could not plant the digest of ${PY_REF}"
 run_expect 0 third "${SCRIPTS}/generate-report.sh" sample1
-got=$(python3 -c 'import json, sys
-for c in json.load(open(sys.argv[1]))["changes"]:
-    print(c["area"], c["kind"], c["item"], sep="|")' "${DELTA}.json" | LC_ALL=C sort)
+got=$(jq -r '.changes[] | "\(.area)|\(.kind)|\(.item)"' "${DELTA}.json" | LC_ALL=C sort)
 want=$(printf '%s\n' 'ClinVar|reclassified|chr2:2000 C>T (GENEB)' 'inputs|input|PYTHON_IMAGE' | LC_ALL=C sort)
 [ "$got" = "$want" ] || fail "the delta should name exactly the two planted changes; got: ${got//$'\n'/ ; }"
 grep -q 'reclassified: chr2:2000 C>T (GENEB): Uncertain significance -> Likely pathogenic' "${DELTA}.txt" \
@@ -99,7 +95,7 @@ half="${S}/history/9999-12-31T235959Z"
 mkdir -p "$half"
 cp -p "${S}/run_manifest.tsv" "${half}/"
 run_expect 0 fourth "${SCRIPTS}/generate-report.sh" sample1
-prev_of() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["previous"])' "${DELTA}.json"; }
+prev_of() { jq -r '.previous' "${DELTA}.json"; }
 [ "$(prev_of)" = "$kept" ] || fail "the delta should be against history/${kept}, the newest folder with a summary.json; got: $(prev_of)"
 grep -qF "Previous run: history/${kept} " "${DELTA}.txt" || fail "the text delta does not name history/${kept}: $(cat "${DELTA}.txt")"
 echo "The delta says no previous run, then no change, then exactly the planted reclassification and digest, and passes over a half-copied history folder."

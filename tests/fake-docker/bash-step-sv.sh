@@ -8,8 +8,18 @@
 #   GRIDSS (04b): runs with --workingdir sv_gridss/work, removed once the VCF
 #     is written; it is skipped, with the reason, when Docker has less memory
 #     than GRIDSS_MIN_MEM_GB (default 32; the fake Docker reports 16 GiB).
+#     After the raw VCF it writes sv_gridss/<sample>_gridss.high.vcf.gz with
+#     bcftools and GRIDSS's high-confidence rule (QUAL>=1000 && INFO/AS>0 &&
+#     INFO/RAS>0), and its index, and says its calls are left out of the SV
+#     consensus (step 22 does not convert them). A second run finds the raw
+#     VCF, skips GRIDSS and writes the high-confidence file again from it.
 #   Delly (19): gets -x with the exclude map setup.sh installs; without it,
 #     runs as before and warns.
+#   Sniffles2 (04c): stops with exit 1, before Sniffles2, when the first
+#     primary reads of the BAM average under 1,000 bp (Sniffles2 finds no SV
+#     in short reads and exits 0 with an empty VCF), or when it has none;
+#     gets --tandem-repeats with the tandem-repeat map setup.sh installs;
+#     without it, runs as before and says so.
 #   duphold (15): writes duphold/<sample>_sv_filtered.vcf.gz with the filter
 #     expression of the Nextflow DUPHOLD_FILTER, and its index.
 #   AnnotSV (05): builds its input from that file, the input of the Nextflow
@@ -31,6 +41,15 @@ set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 args=" ${*:2} "
 case "$args" in
+  *"samtools view -F 0x900 "*)
+    # Step 04c's read-length check: reads read, and their mean length.
+    printf '%s\n' "${FAKE_READS:-10000 15000}" ;;
+  *" sniffles "*)
+    v=$(sed -n 's/.* -v \([^ ]*\) .*/\1/p' <<<"$args")
+    h=$(host_path "$v")
+    mkdir -p "$(dirname "$h")"
+    printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c > "$h"
+    : > "${h}.tbi" ;;
   *" tiddit "*)
     if [ "${FAKE_TIDDIT_NO_VCF:-}" = 1 ]; then
       echo "fake TIDDIT: the BAM index does not match the BAM; stopping"
@@ -48,6 +67,9 @@ case "$args" in
   *" bcftools view -e "*)
     # The expression and the files of a filter call, one per line
     printf '%s\n' "${5}" "${*: -1}" > "${CASE_WORK}/bcftools-filter" ;;
+  *" bcftools view -i "*)
+    # The expression and the input of an include call, one per line
+    printf '%s\n' "${5}" "${*: -1}" > "${CASE_WORK}/bcftools-include" ;;
 esac
 exec "${CASE_WORK}/hook-outputs" "$@"
 HOOK
@@ -80,6 +102,39 @@ GRIDSS_MIN_MEM_GB=8 run_expect 0 gridss "${SCRIPTS}/04b-gridss.sh" sample1
 docker_log_has '^run image=[^ ]*gridss.* --workingdir /genome/sample1/sv_gridss/work ' "GRIDSS ran without --workingdir sv_gridss/work"
 docker_log_has "^run image=[^ ]*gridss.* -t ${THREADS:-8} " "GRIDSS did not get THREADS"
 [ ! -e "${GENOME_DIR}/sample1/sv_gridss/work" ] || fail "step 04b kept sv_gridss/work after GRIDSS wrote its VCF"
+# Step 22 leaves GRIDSS out, and the step says so instead of sending you there.
+output_has gridss 'left out of the SV consensus'
+output_lacks gridss 'converts and integrates'
+# GRIDSS's own high-confidence rule, applied with the pinned bcftools to the raw
+# VCF, which stays beside the filtered one.
+G=/genome/sample1/sv_gridss
+[ "$(sed -n 1p "${CASE_WORK}/bcftools-include" 2>/dev/null)" = 'QUAL>=1000 && INFO/AS>0 && INFO/RAS>0' ] \
+  || fail "step 04b did not filter with GRIDSS's high-confidence rule: $(sed -n 1p "${CASE_WORK}/bcftools-include" 2>/dev/null)"
+[ "$(sed -n 2p "${CASE_WORK}/bcftools-include" 2>/dev/null)" = "${G}/sample1_gridss.vcf.gz" ] \
+  || fail "step 04b did not filter GRIDSS's raw VCF"
+docker_log_has "^run image=[^ ]*bcftools[^ ]* :: .* bcftools view -i .* -o ${G//./\\.}/sample1_gridss\\.high\\.vcf\\.gz " \
+  "step 04b did not write sv_gridss/sample1_gridss.high.vcf.gz with BCFTOOLS_IMAGE"
+docker_log_has "^run image=[^ ]*bcftools.* bcftools index -f -t ${G//./\\.}/sample1_gridss\\.high\\.vcf\\.gz" \
+  "step 04b did not index the high-confidence VCF"
+H="${GENOME_DIR}/sample1/sv_gridss/sample1_gridss"
+[ -f "${H}.vcf.gz" ] && [ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
+  || fail "step 04b did not leave the raw VCF, the high-confidence VCF and its index"
+output_has gridss 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
+# A second run finds the raw VCF: it skips GRIDSS and writes the high-confidence
+# file again from that VCF. The raw VCF is a finished one, ending with the BGZF
+# end-of-file block as htslib writes it, so the step takes it as done.
+{ printf '##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n' | gzip -c
+  printf '\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00\x1b\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00'; } > "${H}.vcf.gz"
+: > "$FAKE_DOCKER_LOG"
+rm -f "${H}.high.vcf.gz" "${H}.high.vcf.gz.tbi"
+GRIDSS_MIN_MEM_GB=8 run_expect 0 gridss-skip "${SCRIPTS}/04b-gridss.sh" sample1
+output_has gridss-skip 'skipping GRIDSS'
+if awk '/^run image=[^ ]*gridss/ { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; then
+  fail "step 04b ran GRIDSS again although its VCF exists"
+fi
+[ -f "${H}.high.vcf.gz" ] && [ -f "${H}.high.vcf.gz.tbi" ] \
+  || fail "step 04b did not write the high-confidence VCF and its index from the existing raw VCF"
+output_has gridss-skip 'High confidence: .*sample1_gridss\.high\.vcf\.gz'
 
 # --- Delly ----------------------------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
@@ -92,6 +147,38 @@ printf 'chr1\t0\t10000\ttelomere\n' > "${GENOME_DIR}/reference/delly_human.hg38.
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 delly "${SCRIPTS}/19-delly.sh" sample1
 docker_log_has '^run image=[^ ]*delly.* delly sr .*-x /genome/reference/delly_human\.hg38\.excl\.tsv ' "Delly ran without its exclude map"
+
+# --- Sniffles2 ------------------------------------------------------------------------
+mkdir -p "${GENOME_DIR}/sample1/aligned_longread"
+cp "${GENOME_DIR}/sample1/aligned/"* "${GENOME_DIR}/sample1/aligned_longread/"
+sniffles_ran() { awk '/^run image=[^ ]*sniffles/ && / sniffles / { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; }
+# A short-read BAM: the step stops before Sniffles2 and names the fix.
+: > "$FAKE_DOCKER_LOG"
+FAKE_READS='10000 151' run_rc sniffles-short "${SCRIPTS}/04c-sniffles2.sh" sample1
+expect_rc sniffles-short 1
+output_has sniffles-short 'average 151 bp'
+output_has sniffles-short 'Point ALIGN_DIR at the long-read BAM'
+docker_log_has '^run image=[^ ]*samtools[^ ]* .*samtools.*view.*-F.*0x900' "step 04c did not read the read lengths with samtools"
+if sniffles_ran; then fail "step 04c ran Sniffles2 on a short-read BAM"; fi
+# No primary read with a sequence: an empty BAM, or one samtools cannot read.
+: > "$FAKE_DOCKER_LOG"
+FAKE_READS='0 0' run_rc sniffles-no-reads "${SCRIPTS}/04c-sniffles2.sh" sample1
+expect_rc sniffles-no-reads 1
+output_has sniffles-no-reads 'no primary read'
+if sniffles_ran; then fail "step 04c ran Sniffles2 on a BAM with no read"; fi
+# Long reads without the tandem-repeat map: Sniffles2 runs without it, with a note.
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 sniffles-no-tr "${SCRIPTS}/04c-sniffles2.sh" sample1
+sniffles_ran || fail "step 04c did not run Sniffles2 on a long-read BAM"
+output_has sniffles-no-tr 'NOTE: no tandem-repeat map'
+if grep -q -- '--tandem-repeats' "$FAKE_DOCKER_LOG"; then fail "Sniffles2 got --tandem-repeats although no map is installed"; fi
+# With the map setup.sh installs (the name of TANDEM_REPEATS_URL, unpacked).
+printf 'chr1\t10000\t11014\n' > "${GENOME_DIR}/reference/GRCh38_AllTandemRepeats.bed"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 sniffles-tr "${SCRIPTS}/04c-sniffles2.sh" sample1
+docker_log_has '^run image=[^ ]*sniffles[^ ]* .* sniffles .*--tandem-repeats /genome/reference/GRCh38_AllTandemRepeats\.bed( |$)' \
+  "Sniffles2 ran without the tandem-repeat map setup.sh installs"
+output_lacks sniffles-tr 'NOTE: no tandem-repeat map'
 
 # --- duphold --------------------------------------------------------------------------
 mkdir -p "${GENOME_DIR}/sample1/manta/results/variants"

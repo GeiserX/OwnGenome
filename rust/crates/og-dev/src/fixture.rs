@@ -8,6 +8,11 @@
 //! - `og dev fixture trim-pharmcat REPORT OUT [MAX_ANNOTATIONS]`: a PharmCAT
 //!   `report.json` cut down to the fields `og pgx` reads. It replaces
 //!   `tests/fixtures/pharmcat/trim_report.py` and writes the same bytes.
+//! - `og dev fixture check-pharmcat FIXTURE_DIR`: checks each derived JSON
+//!   report fixture for its PharmGKB license notice in the adjacent README.
+//!
+//! - `og dev fixture <kind>` for the kinds of [`e2e`]: the inputs the
+//!   genotype, repeat and copy-number e2e cases make for themselves.
 //!
 //! Exit 0 when written, 1 when an input cannot be read or has the wrong
 //! shape, 2 on a usage error.
@@ -20,14 +25,32 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n";
+pub mod e2e;
+
+const USAGE: &str = "usage: og dev fixture comphet OUT_DIR [--swap]\n       og dev fixture trim-pharmcat REPORT.json OUT.json [MAX_ANNOTATIONS]\n       og dev fixture check-pharmcat FIXTURE_DIR\n";
 
 /// Runs `og dev fixture ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
-        let _ = writeln!(err, "{USAGE}og dev fixture: error: {msg}");
+        let _ = writeln!(
+            err,
+            "{USAGE}{}{}{}og dev fixture: error: {msg}",
+            e2e::USAGE,
+            lineage::usage(),
+            clinical::usage()
+        );
         2
     };
+    if let Some(kind) = args.first()
+        && let Some(code) = lineage::cli(kind, &args[1..], out, err)
+    {
+        return code;
+    }
+    if let Some(kind) = args.first()
+        && let Some(code) = clinical::cli(kind, &args[1..], out, err)
+    {
+        return code;
+    }
     let result = match args.first().map(String::as_str) {
         Some("comphet") => {
             let rest: Vec<&String> = args[1..].iter().filter(|a| *a != "--swap").collect();
@@ -56,11 +79,23 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             };
             trim_pharmcat(Path::new(&rest[0]), Path::new(&rest[1]), max)
         }
+        Some("check-pharmcat") => {
+            let [_, dir] = args else {
+                return usage(err, "check-pharmcat takes one FIXTURE_DIR");
+            };
+            check_pharmcat(Path::new(dir))
+        }
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = out.write_all(e2e::USAGE.as_bytes());
+            let _ = out.write_all(lineage::usage().as_bytes());
+            let _ = out.write_all(clinical::usage().as_bytes());
             return 0;
         }
-        Some(other) => return usage(err, &format!("unknown fixture '{other}'")),
+        Some(other) => {
+            return e2e::cli(other, &args[1..], out, err)
+                .unwrap_or_else(|| usage(err, &format!("unknown fixture '{other}'")));
+        }
         None => return usage(err, "the following arguments are required: fixture"),
     };
     match result {
@@ -613,9 +648,77 @@ fn trim_pharmcat(src: &Path, dst: &Path, max: i64) -> Result<(), String> {
     crate::evidence::publish(dst, text.as_bytes())
 }
 
+const PHARMGKB_NOTICE: &str =
+    "PharmGKB ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/))";
+
+fn check_pharmcat(dir: &Path) -> Result<(), String> {
+    let readme = dir.join("README.md");
+    let contents = fs::read_to_string(&readme).map_err(|e| format!("{}: {e}", readme.display()))?;
+    let entries = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut missing = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("{}: {e}", dir.display()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // These hand-written reports contain gene calls, with no copied guidance text.
+        if !name.ends_with(".json")
+            || matches!(
+                name.as_ref(),
+                "exome-cyp2c19-unread.json" | "wgs-cyp2c19-complete.json"
+            )
+        {
+            continue;
+        }
+        let file_cell = format!("`{name}`");
+        let credited = contents
+            .lines()
+            .filter_map(|line| line.strip_prefix('|'))
+            .any(|row| {
+                let mut cells = row.split('|').map(str::trim);
+                cells.next() == Some(file_cell.as_str()) && cells.nth(1) == Some(PHARMGKB_NOTICE)
+            });
+        if !credited {
+            missing.push(name.into_owned());
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        missing.sort_unstable();
+        Err(format!(
+            "{} needs a PharmGKB CC BY-SA 4.0 notice in the row for each fixture: {}",
+            readme.display(),
+            missing.join(", ")
+        ))
+    }
+}
+
+// The kinds of the ancestry, family, QC, PRS, Y, CHIP, MoChA, viral and
+// live e2e cases (`og dev fixture <kind> --help`).
+pub mod lineage;
+
+// The kinds of the clinical, consumer-export and HLA e2e cases.
+pub mod clinical;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn committed_pharmcat_reports_have_license_notices() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/pharmcat");
+        let args = [
+            "check-pharmcat".to_owned(),
+            dir.to_str().unwrap().to_owned(),
+        ];
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(
+            cli(&args, &mut out, &mut err),
+            0,
+            "{}",
+            String::from_utf8_lossy(&err)
+        );
+    }
 
     #[test]
     fn fixture_verbs_use_checked_runner_even_with_empty_status() {
@@ -633,6 +736,31 @@ mod tests {
             crate::stream_tests::assert_status_errors(cli, &args, false);
         }
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_kind_lists_every_kind_in_its_usage() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&["bogus".into()], &mut out, &mut err), 2);
+        let err = String::from_utf8(err).unwrap();
+        assert!(err.contains("unknown fixture 'bogus'"), "{err}");
+        for kind in [
+            "comphet",
+            "trim-pharmcat",
+            "append-n",
+            "rfc1",
+            "str-extra",
+            "tas2r38",
+            "mito-sam",
+            "hba-tiles",
+            "cut-haplotype",
+            "contains",
+        ] {
+            assert!(
+                err.contains(&format!("og dev fixture {kind} ")),
+                "{kind}: {err}"
+            );
+        }
     }
 
     #[test]

@@ -8,11 +8,16 @@
 #   run      written_utc, written_by, git_commit, og_tree_hash (the rust/ tree
 #            the og binary in bin/.og was built from, or "not built"),
 #            pipeline_version (the OwnGenome release: the version in
-#            nextflow.config's manifest block), declared_sex
+#            nextflow.config's manifest block), declared_sex, intervals (the
+#            regions the run called, INTERVALS as run-all.sh passes it to
+#            --intervals; no row for a whole-genome run, nor for step 29's
+#            genome and chip)
 #   version  every NAME=VALUE line of versions.env
 #   image    each *_IMAGE reference and the digest Docker resolved it to
 #            ("not pulled" when the image is not on this machine)
-#   data     clinvar_file_date (##fileDate of the ClinVar file), gnomad_mito
+#   data     clinvar_file_date (##fileDate of the ClinVar file),
+#            clinvar_conflicting (step 06's conflicting subset: its ##fileDate
+#            and sha256, or "not installed"), gnomad_mito
 #            (step 20's gnomAD chrM sites, installed or not), vep_cache,
 #            pcgr_bundle, cpsr_clinvar_release (the ClinVar release in the PCGR
 #            bundle CPSR uses), pypgx_bundle, ancestry_panel (pgsc_calc's panel,
@@ -42,8 +47,14 @@ validate_sample "$SAMPLE"
 
 OUT="${GENOME_DIR}/${SAMPLE}/run_manifest.tsv"
 mkdir -p "${GENOME_DIR}/${SAMPLE}"
-TMP="${OUT}.tmp"
-: > "$TMP"
+# Each writer builds its manifest in a temporary file of its own beside the
+# manifest, then renames it over run_manifest.tsv. A run and a report script
+# can write one sample's manifest at the same time: with one shared temporary
+# name they truncated and appended to each other's file, and the rename left
+# a manifest with rows missing or repeated. A rename within one folder is
+# atomic, so a reader sees one writer's whole manifest, the last one's.
+TMP=$(mktemp "${OUT}.XXXXXX")
+trap 'rm -f "$TMP"' EXIT
 row() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$TMP"; }
 
 row run written_utc "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -71,6 +82,17 @@ if [ ! -r "${PGP_ROOT}/nextflow.config" ]; then
 fi
 [ -z "$release" ] || row run pipeline_version "$release"
 [ -z "$DECLARED_SEX" ] || row run declared_sex "$DECLARED_SEX"
+# The regions the run was limited to (INTERVALS, run-all.sh's --intervals), on
+# one line with single spaces, so a tab or newline in the value cannot break
+# the row. og summary collect reads it and marks the genome-wide sections
+# partial. No row when the run called the whole genome, nor for genome or
+# chip: step 29 reads the same INTERVALS, and those two are its whole genome
+# and its CHIP genes, not regions the run was limited to.
+read -r -d '' -a regions <<< "${INTERVALS:-}" || true
+case "${regions[*]:-}" in
+  ''|genome|chip) ;;
+  *) row run intervals "${regions[*]}" ;;
+esac
 
 # versions.env as written (comments and blank lines dropped)
 while IFS= read -r line || [ -n "$line" ]; do
@@ -112,6 +134,18 @@ for f in clinvar/clinvar_pathogenic_chr.vcf.gz clinvar/clinvar_chr.vcf.gz clinva
   if [ -n "$d" ]; then clinvar_date="${d} (${f})"; break; fi
 done
 row data clinvar_file_date "$clinvar_date"
+
+# Step 06's conflicting subset (setup.sh builds it from the same release):
+# its ##fileDate and sha256, as og recheck reads the installed one, so a subset
+# that appears or is rebuilt for an unchanged release makes step 06 rerun-ready.
+# "not installed" without the file or its .tbi (step 06 then does not check it).
+conflicting="${GENOME_DIR}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"
+if [ -f "$conflicting" ] && [ -f "${conflicting}.tbi" ]; then
+  d=$(header_lines "$conflicting" | awk -F= '/^##fileDate=/ && d == "" {d = $2} END {print d}')
+  row data clinvar_conflicting "${d:-no fileDate} (sha256 $(_digest sha256 "$conflicting"))"
+else
+  row data clinvar_conflicting "not installed"
+fi
 
 # Step 20's gnomAD chrM sites: the pinned file (setup.sh) or not installed.
 gnomad_mito="${GENOME_DIR}/gnomad_mito/${GNOMAD_MITO_URL##*/}"

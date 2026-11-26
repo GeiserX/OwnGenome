@@ -1,0 +1,10 @@
+metric	value
+marker	LPA KIV-2 4925G>A
+rsid	rs1484919544 (first KIV-2 copy)
+status	not seen
+alt_reads	0
+depth	280
+fraction	0.0000
+copies	.
+kiv2_copies	12.0
+message	LPA KIV-2 4925G>A (a splice variant that lowers the Lp(a) made from its chromosome, Coassin 2017): not seen, 0 of 280 reads at its seven GRCh38 copies carry it. Not seen in the reads is not proof of absence: one carrying repeat among many gives few reads, and a short-read fraction never says which chromosome or repeat holds a variant.

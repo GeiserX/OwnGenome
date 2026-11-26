@@ -1,0 +1,6 @@
+sample	sex	father	mother	partner
+A	.	.	.	B
+B	.	.	.	A
+E	female	.	.	F
+F	male	.	.	E
+G	female	.	.	.

@@ -50,6 +50,122 @@
     },
     "data": {
      "type": "object"
+    },
+    "partial": {
+     "type": "string"
+    }
+   }
+  },
+  "clinvar_condition": {
+   "description": "The conditions ClinVar names for the allele (CLNDN), joined by ' / ', without 'not provided' and 'not specified'; null when no other name is left. Present only when step 06's hits carry CLNDN or CLNDISDB.",
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "clinvar_condition_ids": {
+   "description": "The database ids of those conditions (CLNDISDB), such as OMIM:171400, and of a condition CLNDISDB gives with no CLNDN name; not those of 'not provided' and 'not specified'.",
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "carrier_row": {
+   "type": "object",
+   "required": [
+    "gene",
+    "variant",
+    "genotype",
+    "zygosity",
+    "significance",
+    "stars",
+    "gq",
+    "dp",
+    "low_confidence",
+    "inheritance",
+    "condition"
+   ],
+   "properties": {
+    "gene": {
+     "type": "string"
+    },
+    "variant": {
+     "type": "string"
+    },
+    "genotype": {
+     "type": "string"
+    },
+    "zygosity": {
+     "enum": [
+      "het",
+      "hom",
+      "hemizygous",
+      "unknown"
+     ]
+    },
+    "significance": {
+     "type": "string"
+    },
+    "stars": {
+     "enum": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    "gq": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "dp": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "low_confidence": {
+     "type": "boolean"
+    },
+    "inheritance": {
+     "type": "string"
+    },
+    "condition": {
+     "type": "string"
+    },
+    "clinvar_condition": {
+     "$ref": "#/definitions/clinvar_condition"
+    },
+    "clinvar_condition_ids": {
+     "$ref": "#/definitions/clinvar_condition_ids"
+    },
+    "combined_allele": {
+     "type": "string"
+    },
+    "kind": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "hemizygous": {
+     "type": "string"
+    },
+    "pair": {
+     "enum": [
+      "two hits",
+      "possible two hits",
+      "possible two hits (low-confidence call)"
+     ]
+    },
+    "phase": {
+     "type": "string"
     }
    }
   }
@@ -311,6 +427,12 @@
              },
              "common": {
               "type": "boolean"
+             },
+             "clinvar_condition": {
+              "$ref": "#/definitions/clinvar_condition"
+             },
+             "clinvar_condition_ids": {
+              "$ref": "#/definitions/clinvar_condition_ids"
              }
             }
            }
@@ -318,6 +440,99 @@
           "low_confidence": {
            "type": "integer",
            "minimum": 0
+          },
+          "conflicting": {
+           "type": "object",
+           "required": [
+            "checked",
+            "note",
+            "count",
+            "hits"
+           ],
+           "properties": {
+            "checked": {
+             "type": "boolean"
+            },
+            "note": {
+             "type": [
+              "string",
+              "null"
+             ]
+            },
+            "count": {
+             "type": [
+              "integer",
+              "null"
+             ],
+             "minimum": 0
+            },
+            "hits": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "required": [
+               "chrom",
+               "pos",
+               "ref",
+               "alt",
+               "genotype",
+               "gene",
+               "clinvar_id",
+               "stars",
+               "review_status",
+               "submissions",
+               "plp_submissions"
+              ],
+              "properties": {
+               "pos": {
+                "type": "integer",
+                "minimum": 0
+               },
+               "stars": {
+                "enum": [
+                 0,
+                 1,
+                 2,
+                 3,
+                 4,
+                 null
+                ]
+               },
+               "plp_submissions": {
+                "type": [
+                 "integer",
+                 "null"
+                ],
+                "minimum": 0
+               },
+               "submissions": {
+                "type": "string"
+               },
+               "clinvar_condition": {
+                "$ref": "#/definitions/clinvar_condition"
+               },
+               "clinvar_condition_ids": {
+                "$ref": "#/definitions/clinvar_condition_ids"
+               },
+               "dp": {
+                "type": [
+                 "integer",
+                 "null"
+                ]
+               },
+               "gq": {
+                "type": [
+                 "integer",
+                 "null"
+                ]
+               },
+               "low_confidence": {
+                "type": "boolean"
+               }
+              }
+             }
+            }
+           }
           },
           "call_floor": {
            "type": "object",
@@ -395,6 +610,7 @@
                "ambiguous",
                "not called",
                "unclassified",
+               "incomplete",
                ""
               ]
              }
@@ -425,6 +641,11 @@
           "unclassified": {
            "type": "integer",
            "minimum": 0
+          },
+          "incomplete": {
+           "description": "Genes whose call rests on positions PharmCAT never read; written only when there is one.",
+           "type": "integer",
+           "minimum": 1
           }
          }
         }
@@ -454,6 +675,30 @@
              "total"
             ]
            }
+          },
+          "skipped": {
+           "description": "Scores of assets/pgs_scores.tsv free for academic research use only that this run did not score (og prs format leaves them out without --academic); written only when there is one.",
+           "type": "array",
+           "minItems": 1,
+           "items": {
+            "type": "object",
+            "required": [
+             "pgs_id",
+             "condition",
+             "reason"
+            ],
+            "properties": {
+             "pgs_id": {
+              "type": "string"
+             },
+             "condition": {
+              "type": "string"
+             },
+             "reason": {
+              "type": "string"
+             }
+            }
+           }
           }
          }
         }
@@ -476,6 +721,9 @@
             "number",
             "null"
            ]
+          },
+          "on_target": {
+           "const": true
           }
          }
         }
@@ -552,6 +800,9 @@
         "data": {
          "type": "object",
          "properties": {
+          "af_used": {
+           "type": "string"
+          },
           "segments": {
            "type": "integer",
            "minimum": 0
@@ -614,7 +865,50 @@
            "type": "integer",
            "minimum": 0
           },
+          "heteroplasmic_sites": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "pos",
+             "ref",
+             "alt",
+             "af"
+            ],
+            "properties": {
+             "pos": {
+              "type": "integer"
+             },
+             "ref": {
+              "type": "string"
+             },
+             "alt": {
+              "type": "string"
+             },
+             "af": {
+              "type": "number"
+             },
+             "origin_edge": {
+              "type": "boolean"
+             },
+             "low_af": {
+              "type": "boolean"
+             }
+            }
+           }
+          },
+          "heteroplasmic_origin_edge": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "heteroplasmic_low_af": {
+           "type": "integer",
+           "minimum": 0
+          },
           "heteroplasmy_floor": {
+           "type": "number"
+          },
+          "low_af_ceiling": {
            "type": "number"
           },
           "polyc_heteroplasmic": {
@@ -640,6 +934,15 @@
            "items": {
             "type": "string"
            }
+          },
+          "origin_edge_regions": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "shifted_pass": {
+           "type": "string"
           },
           "annotation": {
            "type": "object",
@@ -744,6 +1047,12 @@
                 ]
                },
                "polyc": {
+                "type": "boolean"
+               },
+               "origin_edge": {
+                "type": "boolean"
+               },
+               "low_af": {
                 "type": "boolean"
                }
               }
@@ -1290,6 +1599,164 @@
       }
      ]
     },
+    "acmg_sf": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "version": {
+           "type": "string"
+          },
+          "unavailable": {
+           "type": "string"
+          },
+          "clinvar_hits": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "variant",
+             "genotype"
+            ],
+            "properties": {
+             "clinvar_condition": {
+              "$ref": "#/definitions/clinvar_condition"
+             },
+             "clinvar_condition_ids": {
+              "$ref": "#/definitions/clinvar_condition_ids"
+             },
+             "acmg_phenotype": {
+              "type": "string"
+             },
+             "condition_not_acmg": {
+              "type": "boolean"
+             }
+            }
+           }
+          },
+          "clinvar_checked": {
+           "type": "boolean"
+          },
+          "high_impact": {
+           "type": "array"
+          },
+          "high_impact_checked": {
+           "type": "boolean"
+          },
+          "high_impact_note": {
+           "type": "string"
+          },
+          "structural": {
+           "type": "array"
+          },
+          "not_reported": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "variant",
+             "source",
+             "reason"
+            ]
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
+    "carrier": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "unavailable": {
+           "type": "string"
+          },
+          "genes_on_list": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "list": {
+           "type": "string"
+          },
+          "carriers": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "hom_or_hemizygous": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "set_aside": {
+           "type": "array",
+           "items": {
+            "$ref": "#/definitions/carrier_row"
+           }
+          },
+          "two_hits": {
+           "type": "object",
+           "properties": {
+            "genes": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "required": [
+               "gene",
+               "verdict",
+               "why",
+               "deletion",
+               "variant",
+               "genotype"
+              ],
+              "properties": {
+               "verdict": {
+                "enum": [
+                 "biallelic",
+                 "possibly biallelic",
+                 "possibly biallelic (low-confidence call)"
+                ]
+               }
+              }
+             }
+            },
+            "deletions_read": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            },
+            "deletions_not_read": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
     "cpsr": {
      "allOf": [
       {
@@ -1667,8 +2134,161 @@
              },
              "common": {
               "type": "boolean"
+             },
+             "clinical_common": {
+              "enum": [
+               "yes",
+               "no",
+               "unknown"
+              ]
+             },
+             "benign_match": {
+              "enum": [
+               "same",
+               "contained",
+               "none",
+               ".",
+               "not checked"
+              ]
              }
             }
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
+    "callability": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/section"
+      },
+      {
+       "properties": {
+        "data": {
+         "type": "object",
+         "properties": {
+          "min_share": {
+           "type": "number"
+          },
+          "read": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "catalog_genes": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "exons_checked": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "not_read": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "share",
+             "status",
+             "hgnc_id"
+            ],
+            "properties": {
+             "gene": {
+              "type": "string"
+             },
+             "share": {
+              "type": [
+               "number",
+               "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+             },
+             "status": {
+              "enum": [
+               "not read",
+               "exon not read",
+               "not on this reference"
+              ]
+             },
+             "worst_exon": {
+              "type": "object",
+              "required": [
+               "exon",
+               "share"
+              ],
+              "properties": {
+               "exon": {
+                "type": "string",
+                "pattern": ":exon[0-9]+$"
+               },
+               "share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              }
+             }
+            }
+           }
+          },
+          "not_read_owned": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "gene",
+             "share",
+             "status",
+             "owner"
+            ],
+            "properties": {
+             "gene": {
+              "type": "string"
+             },
+             "share": {
+              "type": [
+               "number",
+               "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+             },
+             "status": {
+              "enum": [
+               "not read",
+               "exon not read",
+               "not on this reference"
+              ]
+             },
+             "worst_exon": {
+              "type": "object",
+              "required": [
+               "exon",
+               "share"
+              ],
+              "properties": {
+               "exon": {
+                "type": "string",
+                "pattern": ":exon[0-9]+$"
+               },
+               "share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              }
+             }
+            }
+           }
+          },
+          "not_on_reference": {
+           "type": "array",
+           "items": {
+            "type": "string"
            }
           }
          }
@@ -1763,12 +2383,83 @@
     "type": "string"
    }
   },
+  "selected_no_result": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
   "not_assessed": {
    "type": "array",
    "items": {
     "type": "string"
    },
    "minItems": 1
+  },
+  "scope": {
+   "type": "object",
+   "required": [
+    "autosomes_covered",
+    "autosomes",
+    "chrx",
+    "intervals",
+    "partial",
+    "mark"
+   ],
+   "properties": {
+    "autosomes_covered": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "autosomes": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "chr1",
+       "chr2",
+       "chr3",
+       "chr4",
+       "chr5",
+       "chr6",
+       "chr7",
+       "chr8",
+       "chr9",
+       "chr10",
+       "chr11",
+       "chr12",
+       "chr13",
+       "chr14",
+       "chr15",
+       "chr16",
+       "chr17",
+       "chr18",
+       "chr19",
+       "chr20",
+       "chr21",
+       "chr22"
+      ]
+     },
+     "maxItems": 22
+    },
+    "chrx": {
+     "type": "boolean"
+    },
+    "intervals": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "partial": {
+     "type": "boolean"
+    },
+    "mark": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   }
   }
  }
 }

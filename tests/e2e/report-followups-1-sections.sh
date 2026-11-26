@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Three tables reach both reports, with the real images of step 24 (the
-# report's Python) and of the Nextflow HTML_REPORT process:
+# Three tables reach both reports, with the real images of step 24 (og
+# report render) and of the Nextflow HTML_REPORT process:
 #   - step 42's genotype rules (traits/<id>_genotype_rules.tsv): the TAS2R38
 #     line, PAV/PAV, under the traits rows;
 #   - step 05's rules: a class 4 call over half inside an IG locus is moved
@@ -10,7 +10,7 @@
 #     gives MUC1 no thresholds, so it is not graded, never normal; and step
 #     9b's motif table of the other flagged motif loci
 #     (expansion_hunter/<id>_str_motifs.tsv) gives SAMD12 its verdict.
-# The tables are made with the repository's own writers (bin/traits_report.py,
+# The tables are made with the repository's own writers (og traits table,
 # og sv postfilter) on made-up genotypes and calls; the Stranger
 # VCF, the catalog and the motif table are made up in their real layouts.
 #   1. Step 24 and generate-report.sh on the sample: both reports carry the
@@ -37,67 +37,66 @@ rm -rf "$G"
 mkdir -p "$G"
 
 # --- the tables: DIR/full has the three, DIR/bare has none of them ------------------------
-python3 - "$REPO" "$G" "$T" <<'PY'
-import json, os, shutil, subprocess, sys
-repo, g, s = sys.argv[1:4]
-sys.path.insert(0, os.path.join(repo, "bin"))
-
-
-def put(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        f.write(text)
-
-
-for kind in ("full", "bare"):
-    d = os.path.join(g, kind, s)
-    put(f"{d}/run_manifest.tsv", "run\tscript\te2e\n")
-    # Step 42: TAS2R38 homozygous for PAV (G, G, C on the plus strand).
-    geno = os.path.join(g, kind, "genotypes.tsv")
-    put(geno, "chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n")
-    os.makedirs(f"{d}/traits", exist_ok=True)
-    subprocess.run([os.environ.get("OG", os.path.join(repo, "bin", "og")), "traits", "table",
-                    "--table", os.path.join(repo, "assets", "traits.tsv"),
-                    "--rules", os.path.join(repo, "assets", "genotype_rules.tsv"),
-                    "--genotypes", geno, "--sample", s,
-                    "--out", f"{d}/traits/{s}_traits.tsv",
-                    "--rules-out", f"{d}/traits/{s}_genotype_rules.tsv"], check=True)
-    if kind == "bare":
-        os.remove(f"{d}/traits/{s}_genotype_rules.tsv")
-    # Step 05: two class 4 deletions; the rule table puts the second over half inside an IG locus.
-    head = ("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tINFO\tAnnotation_mode\tGene_name\t"
-            "B_loss_source\tB_loss_AFmax\tACMG_class\tAnnotSV_ranking_score\n")
-    calls = ("20_3000001_3450000_DEL_1\t20\t3000000\t3450000\t-450000\tDEL\tKEEP\tEND=3450000;SVTYPE=DEL;"
-             "SVCALLER=manta\tfull\tFIXK1\t\t\t4\t0.90\n"
-             "20_20000001_20450000_DEL_1\t20\t20000000\t20450000\t-450000\tDEL\tMOVED\tEND=20450000;SVTYPE=DEL;"
-             "SVCALLER=manta\tfull\tFIXM1\t\t\t4\t0.90\n")
-    put(f"{d}/annotsv/{s}_sv_class4_5.tsv", head + calls)
-    args = ["--class45", f"{d}/annotsv/{s}_sv_class4_5.tsv", "--out", f"{d}/annotsv/{s}_sv_class4_5_checked.tsv"]
-    if kind == "full":
-        put(os.path.join(g, "rules.tsv"), "#chrom\tstart\tend\trule\taction\tname\tsource\n"
-            "chr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n")
-        args += ["--rules", os.path.join(g, "rules.tsv")]
-    subprocess.run([os.path.join(repo, "bin", "og"), "sv", "postfilter", *args], check=True)
-    os.remove(f"{d}/annotsv/{s}_sv_class4_5.tsv")
-    # Steps 09 and 9b: MUC1 without a status, SAMD12 flagged.
-    vhead = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-    fmt = "GT:REPCN"
-    eh = ("chr1\t155188000\t.\tC\t<STR25>\t.\tPASS\tEND=155188001;REPID=MUC1;VARID=MUC1\t" + fmt + "\t0/1:20/25\n"
-          "chr8\t118366913\t.\tA\t<STR40>\t.\tPASS\tEND=118366918;REPID=SAMD12;VARID=SAMD12{st}\t" + fmt + "\t0/1:1/40\n")
-    put(f"{d}/expansion_hunter/{s}_eh.vcf", vhead + eh.format(st=""))
-    t = os.path.getmtime(f"{d}/expansion_hunter/{s}_eh.vcf") - 60
-    os.utime(f"{d}/expansion_hunter/{s}_eh.vcf", (t, t))
-    put(f"{d}/expansion_hunter/{s}_eh_stranger.vcf", vhead + eh.format(st=";STR_STATUS=pre_mutation"))
-    if kind == "full":
-        put(f"{d}/expansion_hunter/{s}_eh_catalog.json", json.dumps([
-            {"LocusId": "MUC1", "NoThresholds": "the reference repeat is 1200 bases, longer than 300: "
-                                                "short reads cannot size it"},
-            {"LocusId": "SAMD12", "NormalMax": 1, "PathologicMin": 105}], indent=1))
-        put(f"{d}/expansion_hunter/{s}_str_motifs.tsv",
-            "locus\tchrom\tstart\tend\trepeat_reads\tdominant_motif\tdominant_class\tdominant_share\tmotif_shares"
-            "\tverdict\tnote\nSAMD12\tchr8\t118366812\t118366918\t5\tTGAAA\tpathogenic\t1.0\tTGAAA=1.0"
-            "\tpathogenic_motif\tmotif TGAAA (pathogenic) in 5 of 5 repeat reads: confirm with repeat-primed PCR\n")
-PY
+VHEAD=$'##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS'
+FMT=GT:REPCN
+eh_vcf() {  # eh_vcf SAMD12_INFO_TAIL: MUC1 without a status and SAMD12 with INFO ending in the tail
+  printf '%s\n' "$VHEAD"
+  printf 'chr1\t155188000\t.\tC\t<STR25>\t.\tPASS\tEND=155188001;REPID=MUC1;VARID=MUC1\t%s\t0/1:20/25\n' "$FMT"
+  printf 'chr8\t118366913\t.\tA\t<STR40>\t.\tPASS\tEND=118366918;REPID=SAMD12;VARID=SAMD12%s\t%s\t0/1:1/40\n' "$1" "$FMT"
+}
+for kind in full bare; do
+  d="${G}/${kind}/${T}"
+  mkdir -p "${d}/traits" "${d}/annotsv" "${d}/expansion_hunter"
+  printf 'run\tscript\te2e\n' > "${d}/run_manifest.tsv"
+  # Step 42: TAS2R38 homozygous for PAV (G, G, C on the plus strand).
+  geno="${G}/${kind}/genotypes.tsv"
+  printf 'chr7\t141972804\tT\tC\tC/C\t40\nchr7\t141972905\tG\t.\tG/G\t40\nchr7\t141973545\tC\tG\tG/G\t40\n' > "$geno"
+  "${OG:-${REPO}/bin/og}" traits table --table "${REPO}/assets/traits.tsv" --rules "${REPO}/assets/genotype_rules.tsv" \
+    --genotypes "$geno" --sample "$T" \
+    --out "${d}/traits/${T}_traits.tsv" --rules-out "${d}/traits/${T}_genotype_rules.tsv"
+  [ "$kind" = full ] || rm -f "${d}/traits/${T}_genotype_rules.tsv"
+  # Step 05: two class 4 deletions; the rule table puts the second over half inside an IG locus.
+  {
+    printf 'AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_length\tSV_type\tID\tINFO\tAnnotation_mode\tGene_name\t'
+    printf 'B_loss_source\tB_loss_AFmax\tACMG_class\tAnnotSV_ranking_score\n'
+    printf '20_3000001_3450000_DEL_1\t20\t3000000\t3450000\t-450000\tDEL\tKEEP\tEND=3450000;SVTYPE=DEL;'
+    printf 'SVCALLER=manta\tfull\tFIXK1\t\t\t4\t0.90\n'
+    printf '20_20000001_20450000_DEL_1\t20\t20000000\t20450000\t-450000\tDEL\tMOVED\tEND=20450000;SVTYPE=DEL;'
+    printf 'SVCALLER=manta\tfull\tFIXM1\t\t\t4\t0.90\n'
+  } > "${d}/annotsv/${T}_sv_class4_5.tsv"
+  rules=()
+  if [ "$kind" = full ]; then
+    printf '#chrom\tstart\tend\trule\taction\tname\tsource\nchr20\t19990000\t20500000\tig_tr_locus\tclass_3\tIGFIX\tfixture\n' \
+      > "${G}/rules.tsv"
+    rules=(--rules "${G}/rules.tsv")
+  fi
+  "${REPO}/bin/og" sv postfilter --class45 "${d}/annotsv/${T}_sv_class4_5.tsv" \
+    --out "${d}/annotsv/${T}_sv_class4_5_checked.tsv" "${rules[@]}"
+  rm -f "${d}/annotsv/${T}_sv_class4_5.tsv"
+  # Steps 09 and 9b: MUC1 without a status, SAMD12 flagged. The plain VCF is a
+  # minute older than Stranger's.
+  eh_vcf "" > "${d}/expansion_hunter/${T}_eh.vcf"
+  touch -r "${d}/expansion_hunter/${T}_eh.vcf" -d '-60 seconds' "${d}/expansion_hunter/${T}_eh.vcf"
+  eh_vcf ";STR_STATUS=pre_mutation" > "${d}/expansion_hunter/${T}_eh_stranger.vcf"
+  if [ "$kind" = full ]; then
+    printf '%s' '[
+ {
+  "LocusId": "MUC1",
+  "NoThresholds": "the reference repeat is 1200 bases, longer than 300: short reads cannot size it"
+ },
+ {
+  "LocusId": "SAMD12",
+  "NormalMax": 1,
+  "PathologicMin": 105
+ }
+]' > "${d}/expansion_hunter/${T}_eh_catalog.json"
+    {
+      printf 'locus\tchrom\tstart\tend\trepeat_reads\tdominant_motif\tdominant_class\tdominant_share\tmotif_shares'
+      printf '\tverdict\tnote\nSAMD12\tchr8\t118366812\t118366918\t5\tTGAAA\tpathogenic\t1.0\tTGAAA=1.0'
+      printf '\tpathogenic_motif\tmotif TGAAA (pathogenic) in 5 of 5 repeat reads: confirm with repeat-primed PCR\n'
+    } > "${d}/expansion_hunter/${T}_str_motifs.tsv"
+  fi
+done
 check "the full set has the three tables" test -s "${G}/full/${T}/traits/${T}_genotype_rules.tsv" \
   -a -s "${G}/full/${T}/expansion_hunter/${T}_eh_catalog.json" -a -s "${G}/full/${T}/expansion_hunter/${T}_str_motifs.tsv"
 check "the bare set has none of them" test ! -e "${G}/bare/${T}/traits/${T}_genotype_rules.tsv" \

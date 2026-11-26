@@ -1,0 +1,1 @@
+ERROR: 50 of 50 gVCF records at a site have another reference base than the site table: the gVCF is not on GRCh38, or the site table is wrong. Nothing was written.

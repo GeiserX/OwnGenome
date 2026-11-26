@@ -1,0 +1,10 @@
+bad-table.tsv: DNMT3A: missense 'R88X2' has a token that is not none, all, R882, V617F, 102-292 or exons:A-B
+bad-table.tsv: TET2: truncating 'exons:9-2' is not all, none or exons:A-B
+bad-table.tsv: TET2: listed twice
+bad-table.tsv: asxl1: not a gene symbol
+bad-table.tsv: asxl1: counts no class at all
+bad-table.tsv: asxl1: no note
+bad-table.tsv: asxl1: pmids 'PMID1' is not a ;-separated list of PubMed ids
+bad-table.tsv: JAK2: truncating 'some' is not all, none or exons:A-B
+bad-table.tsv: JAK2: missense 'V617F,B12' has a token that is not none, all, R882, V617F, 102-292 or exons:A-B
+bad-table.tsv: JAK2: pmids '1234567890' is not a ;-separated list of PubMed ids

@@ -88,7 +88,7 @@ These tools are specifically designed for short-read data and will produce incor
 | 4a | TIDDIT | Short-read coverage/discordance model | Sniffles2 |
 | 4b | GRIDSS | Assembly-based, short-read specific | Sniffles2 |
 | 9 | ExpansionHunter | Illumina short-read graph model; expects paired-end data | TRGT (PacBio) or Straglr (ONT), outside this pipeline (vendor workflows) |
-| 15 | duphold | Re-genotypes SVs using short-read depth models | Not needed — Sniffles2 QUAL scores are reliable |
+| 15 | duphold | Adds depth fold-change tags (DHFFC, DHBFC) to Manta's calls and filters on them; reads Manta's VCF and the short-read BAM only | Not needed: Sniffles2 writes its own QUAL and GQ |
 | 18 | CNVpytor | Read-depth model calibrated for short reads | Sniffles2 detects CNVs natively |
 | 19 | Delly | Paired-end and split-read model | Sniffles2 |
 | 21 | Cyrius (CYP2D6) | Short-read depth-based star allele caller | Paraphase (long-read CYP2D6 resolver), outside this pipeline (vendor workflows) |
@@ -149,6 +149,12 @@ The script auto-detects input files in this order:
 
 Override with: `INPUT=${GENOME_DIR}/your_sample/fastq/custom_reads.fastq.gz PLATFORM=ont ./scripts/02b-alignment-longread.sh your_sample`
 
+For ONT reads the script also records the basecaller model in the aligned BAM's read group (`DS:basecall_model=...`), where step 3e reads it to pick the Clair3 model. It takes `BASECALL_MODEL` when set, else the `basecall_model=` that Dorado writes into an unaligned BAM's read group. A FASTQ does not carry it, so set it for FASTQ input:
+
+```bash
+BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 PLATFORM=ont ./scripts/02b-alignment-longread.sh your_sample
+```
+
 > **Note:** The INPUT path must be **physically** inside `GENOME_DIR` because Docker only mounts that directory. Symlinks that point outside `GENOME_DIR` will not work — Docker cannot follow them. Copy or move the file instead.
 
 ### Step 3: Variant Calling (SNPs + Indels)
@@ -167,7 +173,21 @@ PLATFORM=hifi ./scripts/03e-clair3.sh your_sample
 
 Output: `${GENOME_DIR}/your_sample/vcf_clair3/your_sample.vcf.gz`
 
-Clair3 uses deep-learning models trained specifically on long-read error profiles. It auto-selects the correct model based on your PLATFORM setting.
+Clair3 uses deep-learning models trained on long-read error profiles, one per platform and, for ONT, one per basecaller model. HiFi uses `hifi_revio`. For ONT the step picks the model that matches the reads' basecaller (`og longread clair3-model`):
+
+1. `CLAIR3_MODEL`, a model directory, when you set it.
+2. Else `BASECALL_MODEL`, a Dorado model name such as `dna_r10.4.1_e8.2_400bps_sup@v5.0.0`.
+3. Else the `basecall_model=` in the BAM's read group (step 2b writes it; a BAM aligned by Dorado has it too).
+
+| Basecaller model | Clair3 model |
+|---|---|
+| `dna_r10.4.1_e8.2_400bps_sup@vX.Y.Z` | `r1041_e82_400bps_sup_vXYZ` (for example v5.0.0 gives `r1041_e82_400bps_sup_v500`) |
+| `dna_r10.4.1_e8.2_400bps_hac@vX.Y.Z` | `r1041_e82_400bps_hac_vXYZ` |
+| R9.4.1 SUP (Dorado `dna_r9.4.1_e8_sup@v3.3`, Guppy `dna_r9.4.1_450bps_sup`) | `r941_prom_sup_g5014` |
+| R9.4.1 HAC | `r941_prom_hac_g360+g422` |
+| fast models, other pores or speeds, RNA | none |
+
+The pinned image holds the R10.4.1 SUP models v4.1.0, v5.0.0 and v5.2.0 and the HAC models v4.1.0, v5.0.0, v5.2.0 and v6.0.0. Before Clair3 runs, the step checks that the chosen directory exists in the image, `CLAIR3_MODEL` included. With no basecaller model known, read groups that name different models or only some that name one, a basecaller with no Clair3 model (fast basecalls), or a model the image lacks (for example SUP v4.3.0), the step stops with exit 1 and lists the image's models. It never falls back to another model: a model trained on other basecalls still writes a VCF, but every call is less accurate and nothing in the output says so. Set `CLAIR3_MODEL` to use a model by hand.
 
 #### Option B: DeepVariant (long-read mode)
 
@@ -217,11 +237,18 @@ ALIGN_DIR=aligned_longread ./scripts/04c-sniffles2.sh your_sample
 
 Output: `${GENOME_DIR}/your_sample/sv_sniffles/your_sample_sv.vcf.gz`
 
-Sniffles2 excels at detecting all SV types from long reads. Typical output for a 30X long-read genome:
-- 15,000-25,000 SVs (vs 7,000-9,000 from short-read Manta)
-- Much better at insertions (short reads systematically miss these)
-- Better breakpoint resolution (often single-nucleotide)
-- Reliable in repetitive regions where short reads struggle
+Before Sniffles2 runs, the step reads the first 10,000 primary reads of the BAM with the pinned samtools image. When their mean length is below 1,000 bp, it stops with exit 1 and names the long-read BAM to use. Sniffles2 finds no SV in short reads and still exits 0, so without this check a short-read BAM gave an empty VCF that looked like a finished run. Short-read SVs come from steps 04 (Manta), 04a, 04b and 19.
+
+`setup.sh` installs a tandem-repeat map for Sniffles2: every GRCh38 tandem repeat in GIAB's genome stratifications v3.6 (`reference/GRCh38_AllTandemRepeats.bed`, pinned by sha256 in `TANDEM_REPEATS_URL` and `TANDEM_REPEATS_SHA256`; NIST data, free to reuse). When the map is there, the step passes it as `--tandem-repeats`, which gives SVs inside repeats better breakpoints and merging. When it is not, the step prints a note and runs without it. We do not use the GRCh38 file that ships with Sniffles: it comes from PacBio's pbsv under a licence that allows PacBio data only.
+
+What we measured: the step on GIAB's public HG002 PacBio HiFi BAM (Sequel II, 15-20 kb, 10x), chr20:10-20 Mb, scored with truvari against GIAB's v5.0q SV benchmark inside its benchmark regions (chr20:10.1-19.9 Mb, PASS calls, 1 kb matching distance):
+
+| | Calls on chr20 | Recall | Precision |
+|---|---|---|---|
+| Without the tandem-repeat map | 62 | 0.77 (49 of 64) | 0.96 |
+| With the map | 63 | 0.78 (50 of 64) | 0.96 |
+
+That is one 10 Mb window at low depth, not a genome-wide benchmark. For Sniffles2's own accuracy figures, see Smolka et al., Nature Biotechnology 2024 (https://doi.org/10.1038/s41587-023-02024-y). No CI case runs this step on real long reads; [Testing](testing.md) lists what checks it.
 
 ### Step 5: Continue with Standard Pipeline Steps
 
@@ -286,7 +313,7 @@ dorado basecaller sup pod5_dir/ > reads.bam
 dorado demux reads.bam  # if barcoded
 ```
 
-The Clair3 model (`r1041_e82_400bps_sup_v500`) assumes R10.4.1 chemistry with SUP basecalling. Using a different chemistry or basecaller may reduce accuracy.
+Step 3e picks the Clair3 model from the basecaller model (see Step 3 above), so keep the `basecall_model=` that Dorado writes into the BAM, or set `BASECALL_MODEL`. Clair3 has no model for fast basecalls.
 
 ### Read Length Distribution
 
@@ -338,18 +365,17 @@ Long-read alignment uses more memory than short-read because the index is loaded
 # In the script, change --memory 16g to --memory 24g or higher
 ```
 
-### "Clair3 model not found"
+### "names no basecaller model", "has no model" or "is not in the image"
 
-The Docker image `CLAIR3_IMAGE` bundles models at `/opt/models/`. If you get a model-not-found error:
+Step 3e stopped before Clair3 ran, because it could not match a model to the reads' basecaller. The message lists the models in `CLAIR3_IMAGE` (`/opt/models/`).
 
-1. Verify the image is pulled: `docker images | grep clair3`
-2. Check available models: `docker run --rm "${CLAIR3_IMAGE}" ls /opt/models/` (after `source versions.env` in the repository root)
-3. If your ONT chemistry is different (e.g., R9.4.1), look for a matching model in the container
+1. No basecaller model, or read groups that do not agree on one: set `BASECALL_MODEL` to the Dorado model the reads were basecalled with. Dorado's BAM names it in its `@RG` line (`samtools view -H reads.bam | grep '^@RG'`), and its FASTQ headers carry `basecall_model_version_id=`.
+2. No Clair3 model or not in the image: set `CLAIR3_MODEL` to the listed model closest to your basecaller, for example `CLAIR3_MODEL=/opt/models/r1041_e82_400bps_sup_v520`, or use a newer `CLAIR3_IMAGE` that ships the matching model.
 
-### "Sniffles2 produces 0 SVs"
+### "Sniffles2 needs long reads" or "Sniffles2 produces 0 SVs"
 
-- Verify the BAM is from long-read alignment (not short-read): `samtools stats your.bam | grep "average length"`
-- Average read length should be >1000bp for ONT or >5000bp for HiFi
+- Step 04c stops when the first 10,000 primary reads of the BAM average below 1,000 bp. Point `ALIGN_DIR` at the long-read BAM (step 02b writes `aligned_longread/<sample>_sorted.bam`).
+- A mean above that but still low (below about 5,000 bp for HiFi) usually means a filtered or fragmented run: check `samtools stats your.bam | grep "average length"`
 - Check that the BAM is sorted and indexed
 
 ### "DeepVariant long-read model fails"

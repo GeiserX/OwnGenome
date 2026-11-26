@@ -1,0 +1,11 @@
+sample_a	sample_b	declared	expected_relatedness	segments	shared_cm	ibd2_cm	longest_cm	analysed_cm	shared_fraction	relatedness	degree
+DAD	KID	parent-child	0.500	50	1030.98	0.00	50.00	1099.98	0.9373	0.469	first degree (parent-child)
+DAD	MUM	unrelated	0.000	0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment
+DAD	OTHER	not in the pedigree		0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment
+DAD	SIB	parent-child	0.500	51	1003.99	0.00	45.00	1099.98	0.9127	0.456	first degree (parent-child)
+KID	MUM	parent-child	0.500	53	1027.98	0.00	49.00	1099.98	0.9345	0.467	first degree (parent-child)
+KID	OTHER	not in the pedigree		0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment
+KID	SIB	full siblings	0.500	30	1085.98	952.99	50.00	1099.98	0.9873	0.927	same person or identical twins
+MUM	OTHER	not in the pedigree		0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment
+MUM	SIB	parent-child	0.500	0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment
+OTHER	SIB	not in the pedigree		0	0.00	0.00	0.00	1099.98	0.0000	0.000	no shared segment

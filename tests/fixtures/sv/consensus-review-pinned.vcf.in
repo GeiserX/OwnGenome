@@ -1,0 +1,44 @@
+##fileformat=VCFv4.1
+##source=SURVIVOR
+##contig=<ID=chr20,length=64444167>
+##contig=<ID=chr21,length=46709983>
+##contig=<ID=chr22,length=50818468>
+##ALT=<ID=DEL,Description="Deletion">
+##ALT=<ID=DUP,Description="Duplication">
+##ALT=<ID=INV,Description="Inversion">
+##ALT=<ID=BND,Description="Translocation">
+##ALT=<ID=INS,Description="Insertion">
+##INFO=<ID=CIEND,Number=2,Type=String,Description="PE confidence interval around END">
+##INFO=<ID=CIPOS,Number=2,Type=String,Description="PE confidence interval around POS">
+##INFO=<ID=CHR2,Number=1,Type=String,Description="Chromosome for END coordinate in case of a translocation">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the structural variant">
+##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of paired-ends">
+##INFO=<ID=RE,Number=1,Type=Integer,Description="read support">
+##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">
+##INFO=<ID=PRECISE,Number=0,Type=Flag,Description="Precise structural variation">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="Length of the SV">
+##INFO=<ID=SVMETHOD,Number=1,Type=String,Description="Method for generating this merged VCF file.">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of the SV.">
+##INFO=<ID=SUPP_VEC,Number=1,Type=String,Description="Vector of supporting samples.">
+##INFO=<ID=SUPP,Number=1,Type=String,Description="Number of samples supporting the variant">
+##INFO=<ID=STRANDS,Number=1,Type=String,Description="Indicating the direction of the reads with respect to the type and breakpoint.">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=PSV,Number=1,Type=String,Description="Previous support vector">
+##FORMAT=<ID=LN,Number=1,Type=Integer,Description="predicted length">
+##FORMAT=<ID=DR,Number=2,Type=Integer,Description="# supporting reference,variant reads in that order">
+##FORMAT=<ID=ST,Number=1,Type=String,Description="Strand of SVs">
+##FORMAT=<ID=QV,Number=1,Type=String,Description="Quality values: if not defined a . otherwise the reported value.">
+##FORMAT=<ID=TY,Number=1,Type=String,Description="Types">
+##FORMAT=<ID=ID,Number=1,Type=String,Description="Variant ID from input.">
+##FORMAT=<ID=RAL,Number=1,Type=String,Description="Reference allele sequence reported from input.">
+##FORMAT=<ID=AAL,Number=1,Type=String,Description="Alternative allele sequence reported from input.">
+##FORMAT=<ID=CO,Number=1,Type=String,Description="Coordinates">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	manta	delly	cnvpytor
+chr20	1000000	small	N	<INS>	90	PASS	SUPP=2;SUPP_VEC=110;SVLEN=650;SVTYPE=INS;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=1000001;CIPOS=0,300;CIEND=-500,0;STRANDS=++	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:1000:0,0:++:90,50:INS,INS:small:NA:NA:chr20_1000000-chr20_1000001,chr20_1000200-chr20_1000201	0/1:NA:300:0,0:++:55:INS:insD:NA:NA:chr20_1000300-chr20_1000301	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	2000000	DEL001SUR	N	<DEL>	91	PASS	SUPP=2;SUPP_VEC=110;SVLEN=-998;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=2001000;CIPOS=0,900;CIEND=0,0;STRANDS=+-	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:1000:0,0:+-:91,51:DEL,DEL:short-strand:NA:NA:chr20_2000000-chr20_2001000,chr20_2000900-chr20_2001000	0/1:NA:995:0,0:+-:56:DEL:strandD:NA:NA:chr20_2000005-chr20_2001000	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	3000005	TRA002SUR	N	N[chr21:3001000[	92	PASS	SUPP=2;SUPP_VEC=110;SVLEN=0;SVTYPE=TRA;SVMETHOD=SURVIVOR1.0.7;CHR2=chr21;END=3001000;CIPOS=-5,0;CIEND=0,0;STRANDS=++	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:1000:0,0:++:92:TRA:diff-chrM:NA:NA:chr20_3000000-chr21_3001000	0/1:NA:995:0,0:++:57:TRA:diff-chrD:NA:NA:chr20_3000005-chr21_3001000	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	4000000	middle	N	<DEL>	93	PASS	SUPP=2;SUPP_VEC=110;SVLEN=-600;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=4000600;CIPOS=0,500;CIEND=0,500;STRANDS=+-	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:600:0,0:+-:93,53:DEL,DEL:middle:NA:NA:chr20_4000000-chr20_4000600,chr20_4000250-chr20_4000850	0/1:NA:600:0,0:+-:58:DEL:last:NA:NA:chr20_4000500-chr20_4001100	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	5000000	discard	N	<DEL>	94	PASS	SUPP=2;SUPP_VEC=110;SVLEN=-998;SVTYPE=DEL;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=5000100;CIPOS=0,55;CIEND=0,950;STRANDS=+-	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:1000:0,0:+-:94,54:DEL,DEL:discard:NA:NA:chr20_5000000-chr20_5000100,chr20_5000050-chr20_5001050	0/1:NA:995:0,0:+-:59:DEL:memberD:NA:NA:chr20_5000055-chr20_5001050	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	6000005	traD	N	<TRA>	95	PASS	SUPP=2;SUPP_VEC=110;SVLEN=998;SVTYPE=TRA;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=6001000;CIPOS=-5,0;CIEND=0,0;STRANDS=++	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:1000:0,0:++:95:INV:invM:NA:NA:chr20_6000000-chr20_6001000	0/1:NA:995:0,0:++:55:TRA:traD:NA:NA:chr20_6000005-chr20_6001000	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN
+chr20	7000700	TRA006SUR	N	N[chr21:7005000[	90	PASS	SUPP=3;SUPP_VEC=111;SVLEN=0;SVTYPE=TRA;SVMETHOD=SURVIVOR1.0.7;CHR2=chr21;END=7005700;CIPOS=-700,200;CIEND=-700,0;STRANDS=++	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:5000:0,0:++:50:TRA:kept-bnd:NA:NA:chr20_7000000-chr21_7005000	0/1:NA:5000:0,0:++:55:TRA:kept-bndD:NA:NA:chr20_7000700-chr21_7005700	0/1:NA:4100:0,0:--:90:TRA:discarded-bnd:NA:NA:chr20_7000900-chr21_7005000
+chr20	8000100	INS007SUR	N	<INS>	60	PASS	SUPP=2;SUPP_VEC=110;SVLEN=300;SVTYPE=INS;SVMETHOD=SURVIVOR1.0.7;CHR2=chr20;END=8000101;CIPOS=-100,0;CIEND=-100,0;STRANDS=++	GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO	0/1:NA:300:0,0:++:60:INS:valid-insM:NA:NA:chr20_8000000-chr20_8000001	0/1:NA:300:0,0:++:60:INS:valid-insD:NA:NA:chr20_8000100-chr20_8000101	./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN

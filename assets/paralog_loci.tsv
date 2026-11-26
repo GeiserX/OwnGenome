@@ -19,7 +19,7 @@
 # Every row's region lies in its model's main region: SMN1 exon 7 for SMN1, the whole main region for the
 # others. agCN counts the copies of all the model's regions together.
 # psCN is marked reliable only where it was validated (SMN1); elsewhere the report reads agCN.
-# tests/test_paralog_loci.py checks every row against the model list and bin/cn_loci.tsv.
+# rust/crates/og-steps/tests/paralog_loci.rs checks every row against the model list and bin/cn_loci.tsv.
 model	genes	region	reading	pscn_reliable	tag	cross_check	table	source
 SMN1.gz	SMN1,SMN2	chr5:70951946-70951946	psCN of SMN1 at exon 7 (c.840): 0 = the pattern of SMA; 1 = an SMA carrier; 2 or more = not a carrier by copy number (a 2+0 carrier is not ruled out)	yes	carrier	paraphase	smn	Prodanov and Bansal 2022, PMID 35680869
 GBA.gz	GBA1,GBAP1	chr1:155231479-155244699	agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy	no	carrier	paraphase	gba1	Prodanov and Bansal 2022, PMID 35680869; Mandelker 2016, PMID 27228465

@@ -1,5 +1,5 @@
 {
- "_comment": "Invented sections for tests/test_report_charts.py: 52 sure ClinVar hits plus a low-confidence one, one on chrM and one on an alt contig; three runs of homozygosity, one under 5 MB; three PRS scores (a percentile, none, and one of the other sex); two heteroplasmic chrM sites and one poly-C call; two levels of fine-grained ancestry.",
+ "_comment": "Invented sections for the chart tests: 52 sure ClinVar hits plus a low-confidence one, one on chrM and one on an alt contig; three runs of homozygosity, one under 5 MB; three PRS scores (a percentile, none, and one of the other sex); two heteroplasmic chrM sites and one poly-C call; two levels of fine-grained ancestry.",
  "sections": {
   "clinvar": {
    "state": "ok",

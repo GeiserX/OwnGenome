@@ -1,0 +1,11 @@
+metric	value
+marker	SMN1 g.27134T>G
+rsid	rs143838139
+status	not assessed
+alt_reads	.
+depth	.
+fraction	.
+copies	.
+smn1_pscn	2 (quality 40, filter PASS)
+agcn	4
+message	SMN1 g.27134T>G (rs143838139): not assessed, the reads at the marker could not be read. With two SMN1 copies the marker would refine the chance of 2+0; here it gives no reading. This marker does not prove 2+0, and its absence does not rule 2+0 out.

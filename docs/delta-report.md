@@ -9,7 +9,7 @@ When you run the pipeline again on the same sample, for example after a ClinVar 
 ## How it works
 
 1. Each time `generate-report.sh` runs, it keeps a copy of the run's `summary.json` and `run_manifest.tsv` in `${SAMPLE}/history/<UTC time>/`, for example `history/2026-10-18T091500Z/`.
-2. Before it keeps that copy, `og run delta` (OwnGenome's Rust binary, run in the Python image) compares the current `summary.json` and `run_manifest.tsv` with the newest folder in `history/` that holds a `summary.json`. A newer folder without one, from a copy that stopped half way, is passed over.
+2. Before it keeps that copy, `og run delta` (OwnGenome's Rust binary, run in `OG_IMAGE` on stock Ubuntu) compares the current `summary.json` and `run_manifest.tsv` with the newest folder in `history/` that holds a `summary.json`. A newer folder without one, from a copy that stopped half way, is passed over.
 3. It writes `${SAMPLE}/${SAMPLE}_delta.txt`, `${SAMPLE}_delta.html` and `${SAMPLE}_delta.json`, and prints the text version at the end of the script's output.
 
 The first run with no `history/` folder says there is no previous run and becomes the baseline. A run whose inputs and results match the previous one says "No change".
@@ -31,7 +31,7 @@ The report needs `og` in `bin/.og/`, as steps 04, 05 and 07 do: `scripts/setup.s
 
 The other sections (structural variants, repeat expansions, HLA alleles, haplogroups, QC metrics) are compared only by whether they ran.
 
-For each change in a result, the delta lists the changed inputs that feed that section: for ClinVar, the ClinVar file date and the fastp, aligner, DeepVariant, GATK and bcftools images; for CPSR, the PCGR image and data, the VEP image and cache, and DeepVariant; for pharmacogenomics, the PharmCAT, pypgx and Cyrius versions and the pypgx bundle (for the CPIC genes, DeepVariant and bcftools too); for PRS, the PGS headers, the pgsc_calc images and panel, plink2 and DeepVariant. A new pipeline commit counts for every section. When none of those changed, it says "the inputs this delta tracks for it are the same; the call itself differs". That line is a pointer, not a proof of cause.
+For each change in a result, the delta's "why" names the changed inputs that feed that section, worded as a guess: `likely from changed inputs: VEP_CACHE_RELEASE 115 -> 116`. The delta knows which inputs changed and which inputs a section reads. It does not know that one of them caused the change, so a reason that names inputs always starts with "likely". The inputs it looks at: for ClinVar, the ClinVar file date and the fastp, aligner, DeepVariant, GATK and bcftools images; for CPSR, the PCGR image and data, the VEP image and cache, and DeepVariant; for pharmacogenomics, the PharmCAT, pypgx and Cyrius versions and the pypgx bundle (for the CPIC genes, DeepVariant and bcftools too); for PRS, the PGS headers, the pgsc_calc images and panel, plink2 and DeepVariant. A new pipeline commit counts for every section. When none of those changed, it says "the inputs this delta tracks for it are the same; the call itself differs". That line names no cause: an input the delta does not track can still have changed.
 
 ## Command
 
@@ -66,6 +66,6 @@ With a previous run on record, the delta heads its changes with "New since" and 
 | PharmCAT | With each release | Steps 07 and 27 |
 | PGS Catalog | When a score you use gets a new version | Step 25 |
 
-`bin/owngenome_recheck.py` finds these for you: it says which database your run used has a newer release, which steps that changes, and with `--rerun` runs the same `run-all.sh` command again ([Newer Databases Since a Run](recheck.md)).
+`bin/og recheck` finds these for you: it says which database your run used has a newer release, which steps that changes, and with `--rerun` runs the same `run-all.sh` command again ([Newer Databases Since a Run](recheck.md)).
 
 `run-all.sh` runs Nextflow with `-resume`, so running the same command again redoes only the processes whose inputs or code changed. A new ClinVar file reruns the ClinVar screen and what reads it; the alignment and the variant calls come from the cache. One exception: when the sample started from FASTQ, the first call after that run ended with every task done starts from the BAM and VCF it published instead, so the steps after the variant calls run once more, without aligning or calling again; later calls hit the cache as usual. The delta then shows what the new release moved.

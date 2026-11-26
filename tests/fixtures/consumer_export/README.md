@@ -26,3 +26,8 @@ dbSNP's rCRS position (see docs/40-export-consumer.md).
 
 The slice has rsIDs, positions and reference bases only: no genotype of
 anyone.
+
+Sources and terms: the 23andMe v5 site list is from 23andme2vcf
+(https://github.com/arrogantrobot/23andme2vcf), Copyright (c) 2015 Rob
+Long, MIT licence; its notice is `assets/licences/23andme2vcf-LICENSE.txt`.
+dbSNP is NCBI's, with no restriction on use.

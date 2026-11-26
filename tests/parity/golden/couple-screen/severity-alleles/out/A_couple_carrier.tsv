@@ -1,0 +1,3 @@
+gene	inheritance	lists	condition	result	offspring_risk	partner_a	findings_a	partner_b	findings_b	explanation
+CFTR	AR	ACMG,ACOG	Cystic fibrosis	one_partner	none shared	A	.	B	chr7:117501545 A>G het, Pathogenic, 2 stars, ClinVar 90000	Only B carries a change in CFTR (Cystic fibrosis, autosomal recessive). A child can be a carrier like B, not affected, unless A carries a change this screen does not see.
+HEXA	AR	ACMG,ACOG	Tay-Sachs disease	one_partner	none shared	A	chr15:72358680 A>G het, Pathogenic, 2 stars, ClinVar 900011	B	.	Only A carries a change in HEXA (Tay-Sachs disease, autosomal recessive). A child can be a carrier like A, not affected, unless B carries a change this screen does not see.

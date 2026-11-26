@@ -6,7 +6,39 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Planted mistakes for the red controls of tests/ops*.rs (og_runlog::eta::fault).
+fault-inject = ["og-runlog/fault-inject"]
+
 [dependencies]
+pycompat.workspace = true
+indexmap.workspace = true
+og-nf.workspace = true
+og-dev.workspace = true
+og-runlog.workspace = true
+jiff.workspace = true
+og-io.workspace = true
+# The family page: the pedigree and its drawing, the couple screen's caveat
+# and step 41's order of the blood group systems, each from its one source.
+og-pedigree.workspace = true
+og-render.workspace = true
+og-bloodtype.workspace = true
+# og live serve: the summary the step headlines read while summary.json is
+# older than the steps that are done (og summary collect, in-process).
+og-summary.workspace = true
+# og live serve: the password hash (PBKDF2-SHA256), the session ids and
+# HTTPS (--tls-cert), with ring as its only crypto, built from source.
+sha2 = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The ingest port's state folder: files opened relative to it, never
+# through a symlink, and the account the server runs as.
+rustix = { workspace = true, features = ["process"] }
+
+[dev-dependencies]
+regex.workspace = true
+# tests/port_viewer.rs: the synthetic BAM and VCFs (BGZF), and the page in Chrome.
+flate2.workspace = true
+og-browser = { path = "../og-browser" }
 
 [lints]
 workspace = true

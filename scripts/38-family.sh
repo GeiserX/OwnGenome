@@ -64,9 +64,9 @@ unset SAMPLE
 validate_sample "$FAMILY"
 IBD_ONLY=${FAMILY_IBD_ONLY:-false}
 if [ "$IBD_ONLY" = true ]; then
-  require_image BCFTOOLS_IMAGE BEAGLE_IMAGE HAP_IBD_IMAGE PYTHON_IMAGE
+  require_image BCFTOOLS_IMAGE BEAGLE_IMAGE HAP_IBD_IMAGE OG_IMAGE
 else
-  require_image GLNEXUS_IMAGE BCFTOOLS_IMAGE SOMALIER_IMAGE WHATSHAP_IMAGE PYTHON_IMAGE
+  require_image GLNEXUS_IMAGE BCFTOOLS_IMAGE SOMALIER_IMAGE WHATSHAP_IMAGE OG_IMAGE
 fi
 GLNEXUS_MEM=${GLNEXUS_MEM:-16}
 OUT="${GENOME_DIR}/${FAMILY}"
@@ -122,7 +122,7 @@ ibd_segments() {
             || { tail -n 20 "$2/$c.hapibd.out"; exit 1; }
         done' _ "$P" "$C" "$THREADS" "$chroms" || { echo "ERROR: hap-ibd failed (log above)" >&2; return 1; }
   fi
-  run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
     /pgp-bin/og family ibd --pedigree "${OUT_C}/pedigree.tsv" --chroms "${C}/chroms.txt" \
       --maps "${P}/maps" --phased "$C" --ibd "$C" --out-dir "$OUT_C" || return 1
   echo "Shared segments: ${OUT}/ibd_pairs.tsv, ${OUT}/ibd_segments.tsv"
@@ -159,7 +159,7 @@ if awk -F'\t' '{ sub(/\r+$/, "") } /^[ \t]*$/ { next }
   NEW_OUT=$([ -d "$OUT" ] || echo yes)
   mkdir -p "$OUT"
   [ "$PEDIGREE" -ef "${OUT}/families.tsv" ] || cp -f "$PEDIGREE" "${OUT}/families.tsv"
-  if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  if ! run_in --rw "$OUT" --cpus 1 --memory 1g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
       /pgp-bin/og family plan --families "${OUT_C}/families.tsv" --family "$FAMILY" --write-pedigree /genome \
       > /dev/null; then
     echo "  (families.tsv is the step's copy of ${PEDIGREE})" >&2
@@ -231,7 +231,7 @@ echo "Members: ${MEMBERS[*]}"
 mkdir -p "$OUT"
 [ "$PEDIGREE" -ef "${OUT}/pedigree.tsv" ] || cp -f "$PEDIGREE" "${OUT}/pedigree.tsv"
 OG=(run_in --rw "$OUT" --cpus 2 --memory 4g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets/par_grch38.bed:/pgp/par_grch38.bed:ro"
-    "$PYTHON_IMAGE" /pgp-bin/og family)
+    "$OG_IMAGE" /pgp-bin/og family)
 
 # --- 1. The pedigree, and each gVCF's sample name --------------------------------------
 GVCF_ARGS=()
@@ -289,8 +289,8 @@ PHASED=()
 if [ -s "${OUT}/trios.ped" ]; then
   run_in --rw "$OUT" --cpus 4 --memory 8g "$WHATSHAP_IMAGE" \
     whatshap phase --ped "${OUT_C}/trios.ped" --use-ped-samples -o "${OUT_C}/family.phased.vcf.gz" "${OUT_C}/family.vcf.gz"
-  run_in --rw "$OUT" --cpus 1 --memory 2g "$WHATSHAP_IMAGE" \
-    python -c "import pysam; pysam.tabix_index('${OUT_C}/family.phased.vcf.gz', preset='vcf', force=True)"
+  run_in --rw "$OUT" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
+    /pgp-bin/og vcf index -f "${OUT_C}/family.phased.vcf.gz"
   PHASED=(--phased "${OUT_C}/family.phased.vcf.gz")
 else
   echo "No child has both parents sequenced: nothing to phase by inheritance."

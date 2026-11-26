@@ -13,8 +13,9 @@
 # skip). Without it the step says so in one line and exits 0.
 #
 # Reads the gVCF of step 3 (vcf/<sample>.g.vcf.gz), so a site where the
-# sample matches the reference is a real genotype and a site without reads is
-# missing, never taken for the reference. The same commands run in the
+# sample matches the reference can be a real genotype. Only PASS or unfiltered
+# records with GQ >= 20 count; no-calls and missing GQ stay missing.
+# The same commands run in the
 # Nextflow ANCIENT_SITES, ANCIENT_GENO, ANCIENT_PCA and ANCIENT_REPORT processes.
 #
 # Output in ancient/:
@@ -30,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image BCFTOOLS_IMAGE PYTHON_IMAGE EIGENSOFT_IMAGE
+require_image BCFTOOLS_IMAGE OG_IMAGE EIGENSOFT_IMAGE
 
 PANEL=${ANCIENT_PANEL_DIR:-${GENOME_DIR}/reference/ancient/aadr_${AADR_VERSION}}
 if [ "$PANEL" = none ] || [ ! -s "${PANEL}/DONE" ]; then
@@ -62,7 +63,8 @@ rm -f "${OUTDIR}/${SAMPLE}"_ancient*
 echo "[1/4] Genotyping the panel's sites from the gVCF..."
 # gvcf2vcf expands each reference block over a site into a record with the
 # reference base, -T keeps the panel's sites, --trim-alt-alleles drops <*>,
-# and a no-call is dropped, so a site without reads has no line.
+# and only PASS or unfiltered calls with GQ >= 20 survive. No-calls,
+# filtered records and missing GQ have no line.
 # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
 run_in --cpus 2 --memory 4g "$BCFTOOLS_IMAGE" \
   bash -euo pipefail -c '
@@ -70,14 +72,14 @@ run_in --cpus 2 --memory 4g "$BCFTOOLS_IMAGE" \
     [ "$n" -eq 1 ] || { echo "ERROR: $3 holds $n samples; step 44 reads a one-sample gVCF (keep one with bcftools view -s <sample>)." >&2; exit 1; }
     awk -F"\t" -v OFS="\t" "NR > 1 {print \$2, \$3}" "$2/sites_grch38.tsv" > "$4/sites.tsv"
     bcftools convert --gvcf2vcf -f "$1" -R "$4/sites.tsv" -Ou "$3" \
-      | bcftools view -T "$4/sites.tsv" --trim-alt-alleles -i "GT!=\"mis\"" -Ou \
+      | bcftools view -f PASS,. -T "$4/sites.tsv" --trim-alt-alleles -i "GT!=\"mis\" && FMT/GQ>=20" -Ou \
       | bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t[%TGT]\n" > "$4/genotypes.tsv"
     rm -f "$4/sites.tsv"' \
   _ "$REF_FASTA_C" "$P" "$(cpath "$GVCF")" "$W" \
   || { echo "ERROR: step 44 could not genotype ${GVCF} at the panel's sites (the line above says why)." >&2; exit 1; }
 
 echo "[2/4] Adding ${SAMPLE} to the present-day panel..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og ancient person-geno --sites "${P}/sites_grch38.tsv" --genotypes "${W}/genotypes.tsv" \
     --snp "${P}/moderns.snp" --moderns-geno "${P}/moderns.geno" --out "${W}/merged.geno" --stats "${W}/stats.tsv"
 { cat "${PANEL}/moderns.ind"; printf '%s\tU\tPerson\n' "$SAMPLE"; } > "${WORK}/merged.ind"
@@ -92,7 +94,7 @@ run_in --cpus "$THREADS" --memory 8g "$EIGENSOFT_IMAGE" smartpca -p "${W}/run.pa
   || { tail -n 20 "${WORK}/smartpca.log" >&2; echo "ERROR: smartpca failed (log: ${WORK}/smartpca.log)." >&2; exit 1; }
 
 echo "[4/4] The nearest ancient groups..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og ancient report --panel-evec "${P}/panel.evec" --run-evec "${W}/run.evec" \
     --ancients "${P}/ancients.tsv" --sample "$SAMPLE" --release "$RELEASE" --stats "${W}/stats.tsv" \
     --out-tsv "${O}/${SAMPLE}_ancient.tsv" --out-info "${O}/${SAMPLE}_ancient_info.tsv" \

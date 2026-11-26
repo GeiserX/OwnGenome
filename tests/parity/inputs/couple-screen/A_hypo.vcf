@@ -1,0 +1,5 @@
+##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr15	72350584	.	G	A	.	PASS	GENEINFO=HEXA:1;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel	GT	0/1
+chr1	145927447	.	C	T	.	PASS	GENEINFO=RBM8A:1;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel	GT	0/1
+chr15	72358680	900011	A	G	.	PASS	GENEINFO=HEXA:1;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_multiple_submitters,_no_conflicts	GT	0/1

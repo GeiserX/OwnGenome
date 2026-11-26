@@ -18,7 +18,7 @@
 #   4. The control: the rule of before (skip a non-empty .rfmix.map), run on
 #      the folder of 1, keeps the cut-short map, so check 1 can fail.
 # Run: OG=bin/og bash tests/test_setup_fine_maps.sh (skips without og; with
-# OG_REQUIRED set, the skip is a failure, as guard.yml's rust job sets it).
+# OG_REQUIRED set, the skip is a failure, as guard.yml's og-musl job sets it).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -28,7 +28,7 @@ if ! "$OG" version > /dev/null 2>&1; then
   echo "skip: og is not built for this machine (scripts/setup.sh --og)"
   exit 0
 fi
-PY=$(command -v python3)
+command -v zip > /dev/null || { echo "FAIL: zip is needed to run this test"; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 FAILS=0
@@ -42,12 +42,12 @@ grep -q '^install_fine_maps() {$' "${WORK}/fn.sh" || { echo "FAIL: install_fine_
 # shellcheck source=/dev/null
 . "${WORK}/fn.sh"
 # shellcheck disable=SC2034  # PGP_ROOT is read by install_fine_maps
-PYTHON_IMAGE=python-image PGP_ROOT=$REPO ANCESTRY_FINE_MAP_SHA256=0123abcd
+OG_IMAGE=og-image PGP_ROOT=$REPO ANCESTRY_FINE_MAP_SHA256=0123abcd
 OG_CALLS="${WORK}/og.calls"
 need_og() { return 0; }
 cpath() { printf '%s\n' "$1"; }
 run_in() {
-  while [ "$1" != "$PYTHON_IMAGE" ]; do shift; done
+  while [ "$1" != "$OG_IMAGE" ]; do shift; done
   shift
   [ "$1" = /pgp-bin/og ] || { echo "run_in: unexpected command $1" >&2; return 1; }
   shift
@@ -58,13 +58,18 @@ run_in() {
 # A zip with two chromosomes, laid out as Beagle's plink.GRCh38.map.zip
 # (its members are named plink.chrchrN).
 mkzip() {
-  "$PY" - "$1" <<'PY'
-import sys, zipfile
-with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
-    for c, n in (("chr21", 300), ("chr22", 400)):
-        rows = "".join(f"{c}\t.\t{i * 0.0123:.6f}\t{10000000 + i * 997}\n" for i in range(n))
-        z.writestr(f"chr_in_chrom_field/plink.chr{c}.GRCh38.map", rows)
-PY
+  local d
+  d=$(mktemp -d "${WORK}/zip.XXXXXX")
+  mkdir -p "${d}/chr_in_chrom_field"
+  awk -v d="${d}/chr_in_chrom_field" 'BEGIN {
+    split("chr21 chr22", c, " "); split("300 400", n, " ")
+    for (k = 1; k <= 2; k++) {
+      f = d "/plink.chr" c[k] ".GRCh38.map"
+      for (i = 0; i < n[k]; i++) printf "%s\t.\t%.6f\t%d\n", c[k], i * 0.0123, 10000000 + i * 997 > f
+      close(f)
+    }
+  }'
+  (cd "$d" && zip -q -D -r out.zip chr_in_chrom_field) && mv "${d}/out.zip" "$1"
 }
 
 # The fresh install every other folder is checked against.
@@ -141,7 +146,7 @@ CTRL="${WORK}/control"
 old_install "$CTRL"
 for c in chr21 chr22; do
   [ -s "${CTRL}/maps/${c}.rfmix.map" ] && continue
-  run_in --rw "$CTRL" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" --rfmix "$c" > /dev/null
+  run_in --rw "$CTRL" "$OG_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" --rfmix "$c" > /dev/null
 done
 if same_maps "$CTRL"; then
   bad "control: the rule of before also left whole maps, so check 1 cannot fail"

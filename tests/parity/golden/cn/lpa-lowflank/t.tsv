@@ -1,0 +1,11 @@
+metric	value
+status	too little depth
+kiv2_copies	.
+ci95_low	.
+ci95_high	.
+class	.
+kiv2_depth	13.71
+flank_depth	6.00
+mapq0_share	0.900
+message	too little depth: 6.0x over the single-copy LPA exons, under the 10x the count needs
+advice	A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.

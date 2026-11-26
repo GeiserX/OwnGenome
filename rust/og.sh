@@ -5,14 +5,18 @@
 # host runs amd64 images under emulation, where uname -m says x86_64. On a
 # macOS host (the live site, scripts/owngenome-live.sh) bin/og runs
 # bin/.og/og-darwin-<arm64|x86_64> instead: built without the cargo feature
-# `bam`, because that host never reads a BAM and htslib is C.
+# `bam`, because that host never reads a BAM (htslib is still linked,
+# through og-summary and og-setup).
 #
 #   rust/og.sh install     scripts/setup.sh --og: on a release tag (vX.Y.Z,
 #                          clean rust/) download the release's binaries and
 #                          check them against SHA256SUMS (and the build
 #                          attestation when gh is logged in); otherwise, or
 #                          when the release has none, build them
-#   rust/og.sh build       build all four from rust/ in OG_BUILDER (versions.env)
+#   rust/og.sh build       build all four from rust/ in OG_BUILDER (versions.env),
+#                          and bin/.og/THIRD-PARTY-LICENSES.txt: the licences of
+#                          every crate and C library they link, which a
+#                          release ships beside them (og dev licences notices)
 #   rust/og.sh check [--required]
 #                          one line, OK, NOTE or ERROR; exit 1 on ERROR: a
 #                          binary built from another rust/, or (with
@@ -22,6 +26,14 @@
 #   rust/og.sh tree-hash   the source hash of rust/ and its embedded table
 #   rust/og.sh built       the tree hash the binaries were built from, for
 #                          run_manifest.tsv ("not built" when there are none)
+#
+# Env: OG_ARCHES         the Linux arches to build, fetch and require (default
+#                        "x86_64 aarch64"); one of them must be the arch the
+#                        builder runs on, which writes the licence notices
+#      OG_DARWIN_ARCHES  the macOS arches to build and fetch (default
+#                        "arm64 x86_64"; empty for none)
+#      The E2E workflow sets OG_ARCHES=x86_64 and OG_DARWIN_ARCHES= for the
+#      one binary its runners run; a release and Guard build all four.
 #
 # The source stamp hashes two git object IDs: rust/'s tree as it is on
 # disk and the blob of assets/imprinted_regions.tsv. The latter is embedded
@@ -40,9 +52,15 @@ REQUIRED=false
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BIN="${ROOT}/bin/.og"
-ARCHES="x86_64 aarch64"
+ARCHES=${OG_ARCHES:-x86_64 aarch64}
 # macOS arches as uname -m names them, so bin/og finds og-darwin-$(uname -m).
-DARWIN_ARCHES="arm64 x86_64"
+DARWIN_ARCHES=${OG_DARWIN_ARCHES-arm64 x86_64}
+for a in $ARCHES; do
+  case $a in x86_64|aarch64) ;; *) echo "ERROR: OG_ARCHES may name x86_64 and aarch64, not '${a}'" >&2; exit 2 ;; esac
+done
+for a in $DARWIN_ARCHES; do
+  case $a in arm64|x86_64) ;; *) echo "ERROR: OG_DARWIN_ARCHES may name arm64 and x86_64, not '${a}'" >&2; exit 2 ;; esac
+done
 REPO="GeiserX/OwnGenome"
 ENGINE=${CONTAINER_ENGINE:-docker}
 
@@ -141,16 +159,19 @@ check() {
 }
 
 built() {
-  local hs="" a
+  local hs="" a h n=0 first="" same=true
   for a in $ARCHES; do
-    if [ -x "${BIN}/og-linux-${a}" ]; then hs+="${a}=$(embedded "${BIN}/og-linux-${a}") "; fi
+    n=$((n + 1))
+    [ -x "${BIN}/og-linux-${a}" ] || { same=false; continue; }
+    h=$(embedded "${BIN}/og-linux-${a}")
+    hs+="${a}=${h} "
+    if [ -z "$first" ]; then first=$h; elif [ "$h" != "$first" ]; then same=false; fi
   done
   hs=${hs% }
   if [ -z "$hs" ]; then echo "not built"; return; fi
-  # One hash when both arches agree, as they do after setup.sh --og.
-  local -a h
-  read -r -a h <<< "$hs"
-  if [ "${#h[@]}" -eq 2 ] && [ "${h[0]#*=}" = "${h[1]#*=}" ]; then echo "${h[0]#*=}"; else echo "$hs"; fi
+  # One hash when every arch of ARCHES is built and they agree, as after
+  # setup.sh --og.
+  if $same && [ "$n" -gt 0 ]; then echo "$first"; else echo "$hs"; fi
 }
 
 # put SRC...: one binary per name of names(), in that order, into bin/.og.
@@ -184,11 +205,11 @@ build() {
   for a in $DARWIN_ARCHES; do mac_targets+=(--target "$(darwin_triple "$a")"); done
   cache="${ROOT}/rust/target/og-build"
   mkdir -p "$cache"
-  echo "Building og ${hash} for ${ARCHES} and macOS ${DARWIN_ARCHES} in ${OG_BUILDER%@*} ..."
+  echo "Building og ${hash} for ${ARCHES} and macOS ${DARWIN_ARCHES:-(none)} in ${OG_BUILDER%@*} ..."
   t0=$(date +%s)
   # Two cargo runs, because the feature set is per run: Linux with BAM (the
   # default features), macOS without it (zig links against the image's
-  # macOS SDK; no C is compiled).
+  # macOS SDK).
   zigbuild() {
     "$ENGINE" run --rm --user "$(id -u):$(id -g)" \
       -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target -e OG_TREE_HASH="$hash" \
@@ -197,14 +218,37 @@ build() {
       cargo zigbuild --release --locked -p og "$@"
   }
   zigbuild "${targets[@]}" || return
-  zigbuild --no-default-features "${mac_targets[@]}" || return
+  # No macOS target: skip the run, which would otherwise build for the host.
+  if [ "${#mac_targets[@]}" -gt 0 ]; then zigbuild --no-default-features "${mac_targets[@]}" || return; fi
   for a in $ARCHES; do outs+=("${cache}/target/$(triple "$a")/release/og"); done
   for a in $DARWIN_ARCHES; do outs+=("${cache}/target/$(darwin_triple "$a")/release/og"); done
   for out in "${outs[@]}"; do
     [ "$(embedded "$out")" = "$hash" ] || { echo "ERROR: ${out} does not carry tree ${hash}" >&2; return 1; }
   done
+  # The notices of everything the four link, written by the new og itself in
+  # the builder, where cargo and the crate sources are: the Linux binary of
+  # the builder's own arch, with the targets and feature sets built above.
+  # Two parts are no crate, so the builder names their notices: the Rust
+  # standard library (the toolchain's COPYRIGHT-library.html) and musl, the
+  # C library of the Linux pair (musl's COPYRIGHT, which zig ships).
+  local lic=() notices="${cache}/THIRD-PARTY-LICENSES.txt"
+  for a in $ARCHES; do lic+=(--target "$(triple "$a")"); done
+  for a in $DARWIN_ARCHES; do lic+=(--target-no-default "$(darwin_triple "$a")"); done
+  rm -f "$notices"
+  # shellcheck disable=SC2016 # the sh -c script expands in the builder
+  "$ENGINE" run --rm --user "$(id -u):$(id -g)" \
+    -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target \
+    -v "${ROOT}/rust:/src:ro" -v "${cache}:/cache" -w /src "$OG_BUILDER" \
+    sh -c 'sr=$(rustc --print sysroot) || exit
+      set -- "$@" --extra "Rust standard library=${sr}/share/doc/rust/COPYRIGHT-library.html"
+      for m in /usr/local/zig*/lib/libc/musl/COPYRIGHT; do set -- "$@" --extra "musl libc=${m}"; done
+      exec "/cache/target/$(uname -m)-unknown-linux-musl/release/og" "$@"' og \
+    dev licences notices "${lic[@]}" --out /cache/THIRD-PARTY-LICENSES.txt || return
+  [ -s "$notices" ] || { echo "ERROR: og dev licences notices wrote no ${notices}" >&2; return 1; }
   put "${outs[@]}" || return 1
-  echo "Built bin/.og/og-linux-{${ARCHES// /,}} and bin/.og/og-darwin-{${DARWIN_ARCHES// /,}} in $(($(date +%s) - t0)) s"
+  { cp "$notices" "${BIN}/.THIRD-PARTY-LICENSES.txt.tmp" && mv -f "${BIN}/.THIRD-PARTY-LICENSES.txt.tmp" "${BIN}/THIRD-PARTY-LICENSES.txt"; } \
+    || { echo "ERROR: could not install ${BIN}/THIRD-PARTY-LICENSES.txt" >&2; return 1; }
+  echo "Built $(names | sed "s|^|bin/.og/|" | paste -sd" " -) and bin/.og/THIRD-PARTY-LICENSES.txt in $(($(date +%s) - t0)) s"
 }
 
 sha256() {

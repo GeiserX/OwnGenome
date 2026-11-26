@@ -26,7 +26,7 @@ Before implementing a new step, open an issue to discuss it. Include:
 1. Fork the repository and create a feature branch
 2. Follow the conventions below
 3. Test your changes on at least one sample
-4. Ensure `shellcheck` passes on all scripts
+4. Ensure `shellcheck` reports nothing new on the shell scripts you add or change. CI checks every tracked shell script, under `scripts/`, `tests/` and elsewhere. Only the findings listed in `tests/shellcheck-baseline.txt`, which were there before, still pass. Never add a line to it
 5. Ensure no personal data leaks: `grep -r '/mnt/user\|internal-host\|/home/' scripts/ docs/`
 6. Open a PR with a clear description of what changed and why
 
@@ -65,7 +65,7 @@ Every pipeline step needs:
 - `scripts/NN-tool-name.sh` — The executable script
 - An entry in the `nav` of [`zensical.toml`](zensical.toml), or the docs site check fails on the orphan page
 - A mention in the category table of [`docs/pipeline-overview.md`](docs/pipeline-overview.md)
-- Section in `docs/interpreting-results.md` if the output needs explanation
+- A section in the chapter page under `docs/results/` (listed in [`docs/interpreting-results.md`](docs/interpreting-results.md)) if the output needs explanation
 
 ### No Personal Data
 
@@ -99,7 +99,7 @@ The CI pipeline enforces this with automated scanning.
    - `scripts/run-all.sh`: one entry in its step list (a `plan` call), so a default run passes the module's name in `--tools` (and its database parameter when the data is under `GENOME_DIR`). A bash-only step that a default run should include gets a switch there instead, run after the pipeline
    - [`tests/smoke/commands.tsv`](tests/smoke/commands.tsv): a row for the image, a real command on the fixture and a check on what the tool wrote. [`container-test.yml`](.github/workflows/container-test.yml) fails for an image with no row
    - `scripts/validate-setup.sh`: only if the step needs reference data to check
-   - `docs/interpreting-results.md`: add output interpretation
+   - the chapter page under `docs/results/` (listed in `docs/interpreting-results.md`): add output interpretation
    - `docs/00-reference-setup.md`: if new reference data is needed
    - `CLAUDE.md` — if the architecture tree changes
 8. **Document failures** in `docs/lessons-learned.md` if you hit any issues during development.

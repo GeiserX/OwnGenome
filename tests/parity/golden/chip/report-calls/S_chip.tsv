@@ -1,0 +1,26 @@
+gene	chrom	pos	ref	alt	consequence	protein_change	exon	vaf	alt_reads	depth	filter	status	class	note
+DNMT3A	chr2	1150	C	T	missense	R882H	2	0.130	6	46	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): hotspot R882
+DNMT3A	chr2	1151	C	T	missense	M880L	2	0.130	6	46	PASS	other_change		a missense change outside the table's hotspots
+DNMT3A	chr2	1302	C	T	splice_acceptor		2	0.130	6	46	PASS	chip	truncating	possible clonal haematopoiesis (not a diagnosis): splice_acceptor
+DNMT3A	chr2	1152	C	T	missense	R882H	2	0.480	19	39	PASS	likely_germline	missense	VAF 0.48: at or above the 35% cut, where an inherited variant (near 50% or 100%) and a large clone look the same without a matched normal sample; not counted
+DNMT3A	chr2	1153	C	T	missense	R882H	2	0.970	35	36	PASS	likely_germline	missense	VAF 0.97: at or above the 35% cut, where an inherited variant (near 50% or 100%) and a large clone look the same without a matched normal sample; not counted
+DNMT3A	chr2	1154	C	T	missense	R882H	2	0.340	13	38	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): hotspot R882; 13 of 38 reads also fit an inherited heterozygous variant
+DNMT3A	chr2	1155	C	T	missense	R882H	2	0.130	6	46	weak_evidence;strand_bias	filtered	missense	FilterMutectCalls: weak_evidence;strand_bias
+DNMT3A	chr2	1156	C	T	missense	R882H	2	0.060	2	32	PASS	low_support	missense	2 reads with the change, under 3
+DNMT3A	chr2	1157	C	T	missense	R882H	2	0.250	10	40	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): hotspot R882
+DNMT3A	chr2	1158	C	T	missense	R882H	2	0.250	10	40	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): hotspot R882
+DNMT3A	chr2	1159	C	T	missense	R882H	2		0		PASS	low_support	missense	0 reads with the change, under 3
+DNMT3A	chr2	1163	C	T	missense&splice_region	R882	2	0.130	6	46	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): hotspot R882
+DNMT3A	chr2	1164	C	T	inframe_deletion	R882	2	0.130	6	46	PASS	other_change		a protein change outside the table's classes
+TET2	chr4	15500	C	T	frameshift	Q1200fs	2	0.130	6	46	PASS	chip	truncating	possible clonal haematopoiesis (not a diagnosis): frameshift
+TET2	chr4	10600	C	T	stop_gained&splice_donor	R100*	1	0.130	6	46	.	chip	truncating	possible clonal haematopoiesis (not a diagnosis): splice_donor
+TET2	chr4	15501	C	T	missense	E1201K	2	0.130	6	46	PASS	other_change		a missense change outside the table's hotspots
+JAK2	chr9	500	C	T	missense	V617F	1	0.130	6	46	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): V617F
+JAK2	chr9	501	C	T	missense	V617L	1	0.130	6	46	PASS	other_change		a missense change outside the table's hotspots
+JAK2	chr9	502	C	T	stop_gained	R618*	1	0.130	6	46	PASS	other_change		truncating changes of this gene are not counted
+PPM1D	chr17	60663500	C	T	stop_gained	R500*	6	0.130	6	46	PASS	chip	truncating	possible clonal haematopoiesis (not a diagnosis): stop_gained in exon 6
+PPM1D	chr17	60600100	C	T	stop_gained	R100*	5	0.130	6	46	PASS	other_change		truncating, but in exon 5 of 2 (the table counts exons 6-6)
+TP53	chr17	7673800	C	T	missense	R248Q	7	0.130	6	46	PASS	chip	missense	possible clonal haematopoiesis (not a diagnosis): missense in codons 102-292
+TP53	chr17	7673801	C	T	missense	E340K	7	0.130	6	46	PASS	other_change		a missense change outside the table's hotspots
+TP53	chr17	7673802	C	T	start_lost	M1	7	0.130	6	46	PASS	other_change		a protein change outside the table's classes
+DNMT3A	chr2	1166	C	CA,CAA	frameshift	R882fs	2	0.300	5	17	PASS	chip	truncating	possible clonal haematopoiesis (not a diagnosis): frameshift; 5 of 17 reads also fit an inherited heterozygous variant

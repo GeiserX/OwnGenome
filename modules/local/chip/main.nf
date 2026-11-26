@@ -7,7 +7,9 @@
                    side) on the reference's contigs as a BED (once per run)
     CHIP_MUTECT2   Mutect2 tumour-only on that BED, the read orientation
                    model and FilterMutectCalls; gnomAD's germline resource
-                   and a panel of normals when given
+                   and a panel of normals when given, and with the common
+                   sites the contamination estimate (GetPileupSummaries,
+                   CalculateContamination) FilterMutectCalls reads
     CHIP_ANNOTATE  bcftools csq names each change on its transcript, and
                    bcftools mpileup counts the depth over the BED
     CHIP_REPORT    <id>_chip.tsv (each protein change with its status) and
@@ -45,14 +47,15 @@ process CHIP_PREPARE {
         exit 1
     fi
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     touch chip.gff3
     printf 'chr2\\t25234268\\t25234430\\tDNMT3A\\n' > chip.bed
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }
 
@@ -72,6 +75,8 @@ process CHIP_MUTECT2 {
     path(germline_index)
     path(pon)             // [] without --chip_pon
     path(pon_index)
+    path(common)          // [] without --chip_common_sites
+    path(common_index)
 
     output:
     tuple val(meta), path("${meta.id}_chip_filtered.vcf.gz"), emit: vcf
@@ -83,11 +88,24 @@ process CHIP_MUTECT2 {
     script:
     // The same commands as scripts/49-chip.sh
     def resources = (germline ? "--germline-resource ${germline} " : '') + (pon ? "-pon ${pon}" : '')
+    def common_sites = common ? "${common}" : ''
     """
     gatk Mutect2 -R ${reference} -I ${bam} -L ${bed} -O unfiltered.vcf.gz --f1r2-tar-gz f1r2.tar.gz \\
         --native-pair-hmm-threads ${task.cpus} --max-mnp-distance 0 ${resources}
     gatk LearnReadOrientationModel -I f1r2.tar.gz -O orientation.tar.gz
-    gatk FilterMutectCalls -R ${reference} -V unfiltered.vcf.gz --ob-priors orientation.tar.gz \\
+    # Another person's DNA in the sample adds alleles at the VAF of a small
+    # clone. The estimate reads every common site across the genome (the BED
+    # holds too few) and lets FilterMutectCalls mark those calls.
+    common_sites='${common_sites}'
+    contamination=''
+    if [ -n "\$common_sites" ]; then
+        gatk GetPileupSummaries -I ${bam} -V "\$common_sites" -L "\$common_sites" -O pileups.table
+        gatk CalculateContamination -I pileups.table --tumor-segmentation segments.table -O contamination.table
+        contamination='--contamination-table contamination.table --tumor-segmentation segments.table'
+    else
+        echo "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate." >&2
+    fi
+    gatk FilterMutectCalls -R ${reference} -V unfiltered.vcf.gz --ob-priors orientation.tar.gz \$contamination \\
         -O ${meta.id}_chip_filtered.vcf.gz
 
     printf '"%s":\\n    gatk: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
@@ -162,13 +180,14 @@ process CHIP_REPORT {
     og chip report --genes ${genes} --gff ${gff} --bed ${bed} --calls ${calls} --depth ${pileup} \\
         --sample ${meta.id} --out ${meta.id}_chip.tsv --depth-out ${meta.id}_chip_depth.tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
     """
     printf 'gene\\tchrom\\tpos\\tref\\talt\\tconsequence\\tprotein_change\\texon\\tvaf\\talt_reads\\tdepth\\tfilter\\tstatus\\tclass\\tnote\\n' > ${meta.id}_chip.tsv
-    printf 'gene\\ttranscript\\tchrom\\tcoding_bases\\tmean_depth\\tdetection_limit_vaf\\tstatus\\n' > ${meta.id}_chip_depth.tsv
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    printf 'gene\\ttranscript\\tchrom\\tcoding_bases\\tmean_depth\\tdetection_limit_vaf\\tstatus\\tcallable_fraction\\tassessable_fraction\\n' > ${meta.id}_chip_depth.tsv
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml
     """
 }

@@ -43,8 +43,21 @@ MISSING_IMAGES=()
 # results on a BAM from another reference long before any of them fails, so
 # this stops the run here. A header with no @SQ line at all is left to
 # check_bam_quickcheck, which fails a BAM without one.
+#
+# Names and lengths cannot tell two FASTAs with other bases apart, such as the
+# default reference and its masked copy. An @SQ line can also carry M5, the
+# MD5 of the sequence's bases: Picard, GATK and many vendors write it, the
+# minimap2 and bwa-mem2 of steps 02 and 02a do not. When the names match and
+# REF_DICT is there, each M5 of the BAM is compared with REF_DICT's, and a
+# difference fails: the BAM was aligned to other bases. BAM_M5 tells
+# check_bam_masked_reference what was found: "match" when every @SQ line has
+# an M5 and each is REF_DICT's, "differ" on a difference, empty otherwise.
+# The M5 awk reads the whole header even after the first difference: leaving
+# early would end printf with SIGPIPE on a large header, and under pipefail
+# and set -e that would stop this script before the [FAIL] line.
 check_bam_reference() {
-  local header=$1 fai="${REF_FASTA}.fai" diff so bam
+  local header=$1 fai="${REF_FASTA}.fai" diff so bam m5
+  BAM_M5=""
   if [ -f "$fai" ] && grep -q '^@SQ' <<< "$header"; then
     diff=$(printf '%s\n' "$header" | awk -F'\t' '
       FNR == 1 { file++ }
@@ -69,6 +82,37 @@ check_bam_reference() {
       }' - "$fai")
     if [ -z "$diff" ]; then
       pass "BAM header matches the reference: the same $(grep -c . "$fai") sequences in the same order"
+      if [ -s "${REF_DICT:-}" ]; then
+        m5=$(printf '%s\n' "$header" | awk -F'\t' '
+          function tag(t,   i) {
+            for (i = 2; i <= NF; i++) if (index($i, t ":") == 1) return substr($i, length(t) + 2)
+            return ""
+          }
+          FNR == 1 { file++ }
+          found { next }
+          file == 1 && /^@SQ/ { s = tag("SN"); r = tolower(tag("M5")); if (s != "" && r != "") ref[s] = r; next }
+          file == 2 && /^@SQ/ {
+            n++; s = tag("SN"); b = tolower(tag("M5"))
+            if (b == "" || !(s in ref)) { partial = 1; next }
+            if (b != ref[s]) {
+              printf "differ:sequence %d (%s) has MD5 %s in the BAM and %s in the reference dictionary", n, s, b, ref[s]
+              found = 1
+              next
+            }
+            hit++
+          }
+          END { if (!found && hit > 0 && !partial) print "match" }' "$REF_DICT" -)
+        case "$m5" in
+          match)
+            BAM_M5=match
+            pass "BAM's @SQ MD5s (M5) match the reference dictionary: it was aligned to these bases" ;;
+          differ*)
+            BAM_M5=differ
+            fail "this BAM was aligned to a FASTA with other bases than REF_FASTA, though with the same names and lengths (the masked reference, or another copy of GRCh38): realign (docs/realignment.md)"
+            echo "       First difference: ${m5#differ:}."
+            echo "       Reference: ${REF_FASTA}" ;;
+        esac
+      fi
     else
       fail "this BAM was aligned to a different reference: realign (docs/realignment.md)"
       echo "       First difference: ${diff}."
@@ -127,7 +171,14 @@ check_stale_indexes() {
 # whose aligner lines name both (reads merged from the two) fails. A BAM with
 # no aligner line, or only lines without a CL (a vendor's, or a header
 # rewritten without them), cannot be told apart: a warning on the masked
-# reference, nothing on the default one.
+# reference, nothing on the default one. The bases decide before the file
+# names: when check_bam_reference found every @SQ M5 equal to REF_DICT's
+# (BAM_M5=match), the BAM was aligned to REF_FASTA's bases whatever its @PG
+# lines name, and this check has nothing to add. Two cases keep the @PG rule
+# even then. Aligner lines that name both references still fail: samtools
+# merge keeps the first input's @SQ lines, so a merge of the two can carry
+# only matching M5s. And a REF_DICT older than REF_FASTA may hold the MD5s of
+# an earlier FASTA, so its M5s do not speak for REF_FASTA.
 check_bam_masked_reference() {
   local header=$1 kinds want=false
   case "$(basename "$REF_FASTA")" in *_maskedGRC.*) want=true ;; esac
@@ -157,6 +208,9 @@ check_bam_masked_reference() {
     *default*) kinds=default ;;
     *) kinds=none ;;
   esac
+  if [ "$kinds" != both ] && [ "${BAM_M5:-}" = match ] && [ ! "${REF_DICT:-}" -ot "$REF_FASTA" ]; then
+    return 0
+  fi
   case "${want}:${kinds}" in
     *:both)
       fail "this BAM's aligner @PG lines name both the masked and the default reference (reads merged from the two): realign it to one (docs/realignment.md#the-masked-reference)" ;;
@@ -169,6 +223,75 @@ check_bam_masked_reference() {
       fail "this BAM was aligned to the masked reference (its aligner @PG line names a _maskedGRC file), but REF_FASTA is ${REF_FASTA}: set REF_FASTA to the masked reference (docs/realignment.md#the-masked-reference)" ;;
     true:masked)
       pass "BAM was aligned to the masked reference (its aligner @PG line names a _maskedGRC file)" ;;
+  esac
+}
+
+# check_reference_content: REF_FASTA holds the bases of NCBI's GRCh38 no-ALT
+# analysis set, or of its masked copy when its name says so. The size and the
+# .fai only show names and lengths; the bases come from REF_DICT, where
+# setup.sh (GATK CreateSequenceDictionary, samtools dict for the masked copy)
+# wrote the MD5 of each sequence (M5) when it made it from the FASTA. Pinned
+# here: the sha256 of the lines "name<TAB>length" (SHAPE) and of the lines
+# "name<TAB>length<TAB>M5" (M5 in lower case), one per sequence in order, of
+# the dictionary of NCBI's GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
+# (md5 a08035b6a6e31780e96a34008ff21bd6 in NCBI's md5checksums.txt) and of the
+# masked FASTA setup.sh builds from it (sha256 GRC_MASKED_REF_SHA256). The
+# masked copy has the same names and lengths and other M5s on chr9, chr13,
+# chr16, chr21, chrX and two unlocalized scaffolds. A reference with other
+# names or lengths (the decoy set, a test slice) has nothing pinned and gets
+# an INFO line. A dictionary that lists other names or lengths than the .fai
+# belongs to another FASTA, and fails.
+check_reference_content() {
+  local dict=$REF_DICT fai="${REF_FASTA}.fai" lines masked=false bases
+  local shape=8502b755744bd2d708d866bf3e68a58c7bd9369c737e922ba32d7fea4aedaf51
+  local stock=f6d0a052602c69fe61c3efe9aab12112f1cafc2b4a5140d4fd240d27e6ba8743
+  local stock_masked=73724d8ce85ff35460f369c9d0cd899a285258e1e66dcbaeedf22ab90518712c
+  { [ -s "$dict" ] && [ -f "$fai" ]; } || return 0
+  case "$(basename "$REF_FASTA")" in *_maskedGRC.*) masked=true ;; esac
+  lines=$(awk -F'\t' '/^@SQ/ {
+      sn = ""; ln = ""; m5 = ""
+      for (i = 2; i <= NF; i++) {
+        if ($i ~ /^SN:/) sn = substr($i, 4)
+        else if ($i ~ /^LN:/) ln = substr($i, 4)
+        else if ($i ~ /^M5:/) m5 = tolower(substr($i, 4))
+      }
+      print sn "\t" ln "\t" m5
+    }' "$dict")
+  if [ "$(cut -f1,2 <<< "$lines")" != "$(cut -f1,2 "$fai")" ]; then
+    fail "The sequence dictionary ${dict} does not list the names and lengths of ${fai}: it was made from another FASTA"
+    echo "       Delete it and run ./scripts/setup.sh ${GENOME_DIR}, which makes it again from REF_FASTA."
+    return 0
+  fi
+  if [ "$dict" -ot "$REF_FASTA" ]; then
+    warn "The sequence dictionary ${dict} is older than REF_FASTA, so the MD5s it holds may be of an earlier FASTA"
+    echo "       If the FASTA changed, delete the .dict and run ./scripts/setup.sh ${GENOME_DIR}; if it was only copied, touch the .dict."
+  fi
+  if [ "$(_digest sha256 <(cut -f1,2 <<< "$lines"))" != "$shape" ]; then
+    info "Reference is not NCBI's GRCh38 no-ALT analysis set (other sequence names or lengths): no pinned MD5s to check its bases against"
+    return 0
+  fi
+  if grep -q $'\t$' <<< "$lines"; then
+    warn "The sequence dictionary ${dict} has no MD5 (M5) for some sequences, so the reference's bases are not checked"
+    echo "       Delete it and run ./scripts/setup.sh ${GENOME_DIR}, which makes it again with them."
+    return 0
+  fi
+  bases=$(_digest sha256 <(printf '%s\n' "$lines"))
+  case "${bases}:${masked}" in
+    "${stock}:false")
+      pass "Reference bases: NCBI's GRCh38 no-ALT analysis set (the MD5 of each of its $(grep -c . "$fai") sequences in the .dict is the pinned one)" ;;
+    "${stock_masked}:true")
+      pass "Reference bases: the masked copy of NCBI's GRCh38 no-ALT analysis set (the MD5 of each of its $(grep -c . "$fai") sequences in the .dict is the pinned one)" ;;
+    "${stock}:true")
+      fail "REF_FASTA is named as the masked reference (_maskedGRC) but holds the bases of the default one: build it again (./scripts/setup.sh --masked-reference ${GENOME_DIR} after deleting it, its .fai and its .dict)" ;;
+    "${stock_masked}:false")
+      fail "REF_FASTA holds the bases of the masked reference but its name has no _maskedGRC, which the BAM check goes by: use the file setup.sh --masked-reference writes (docs/realignment.md#the-masked-reference)" ;;
+    *)
+      fail "REF_FASTA has the names and lengths of NCBI's GRCh38 no-ALT analysis set but other bases: the MD5s in ${dict} match neither that set nor its masked copy"
+      if $masked; then
+        echo "       Build it again: delete ${REF_FASTA}, its .fai and its .dict, and run ./scripts/setup.sh --masked-reference ${GENOME_DIR}."
+      else
+        echo "       Download it again: delete ${REF_FASTA}, its .fai and its .dict, and run ./scripts/setup.sh ${GENOME_DIR}."
+      fi ;;
   esac
 }
 
@@ -362,6 +485,14 @@ if [ "$RAM_KB" -gt 0 ] 2>/dev/null; then
 else
   info "Could not detect system RAM"
 fi
+# --- Container engine smaller than the host ---
+# Docker Desktop and colima run the containers in a VM. run-all.sh then sizes the run to the VM, by the same rule (whole GB).
+ENGINE_GB=0 HOST_GB=0
+[[ "${DOCKER_MEM_BYTES:-}" =~ ^[0-9]+$ ]] && ENGINE_GB=$((DOCKER_MEM_BYTES / 1073741824))
+[[ "$RAM_KB" =~ ^[0-9]+$ ]] && HOST_GB=$((RAM_KB / 1048576))
+if [ "$ENGINE_GB" -ge 1 ] && [ "$HOST_GB" -ge 1 ] && [ "$ENGINE_GB" -lt "$HOST_GB" ]; then
+  info "Docker has ${ENGINE_GB} GB of this host's ${HOST_GB} GB: run-all.sh sizes the tasks to Docker's ${ENGINE_GB} GB, not the host's"
+fi
 
 # --- Disk space ---
 # Check free space in GENOME_DIR if set, otherwise CWD
@@ -511,6 +642,21 @@ else
         echo "       Download and prepare it — see docs/00-reference-setup.md"
       fi
     fi
+
+    # --- ClinVar conflicting subset (step 6's table of records some labs call
+    # pathogenic; optional: without it the table says "not checked") ---
+    CLINVAR_CONF="${GENOME_DIR}/clinvar/clinvar_conflicting_plp_chr.vcf.gz"
+    if [ -f "$CLINVAR_CONF" ] && [ -f "${CLINVAR_CONF}.tbi" ] \
+       && ! { [ -f "$CLINVAR" ] && [ "$CLINVAR" -nt "$CLINVAR_CONF" ]; }; then
+      pass "ClinVar conflicting subset: present"
+    elif [ -f "$CLINVAR_PATH" ]; then
+      if [ -f "$CLINVAR_CONF" ] && [ -f "${CLINVAR_CONF}.tbi" ]; then
+        info "ClinVar conflicting subset is older than ${CLINVAR#"${GENOME_DIR}"/}: step 6 lists conflicting records of an older release."
+      else
+        info "ClinVar conflicting subset not built: step 6's table of conflicting records some labs call pathogenic says \"not checked\"."
+      fi
+      echo "       Build it: ./scripts/setup.sh ${GENOME_DIR}"
+    fi
   fi
 
   # --- ClinVar release date (clinvar/RELEASE, written by setup.sh) ---
@@ -541,7 +687,7 @@ else
   for name in $DATA_FILES; do
     case "$name" in
       delly_exclude) what="Delly exclude map (step 19 runs without it, slower and with more artefacts)" ;;
-      cytoband) what="GRCh38 chromosome bands (step 10 falls back to hg19 bands)" ;;
+      cytoband) what="GRCh38 chromosome bands (step 10 installs them from assets/reference when missing)" ;;
       hla_dat) what="IPD-IMGT/HLA ${HLA_DB_RELEASE} (step 08 is skipped without it)" ;;
       gencode_genes) what="GENCODE ${GENCODE_RELEASE} gene coordinates (step 08 is skipped without them)" ;;
       gencode_exons) what="GENCODE ${GENCODE_RELEASE} exons (steps 06 and 17 skip their cDNA read check without them)" ;;
@@ -722,15 +868,28 @@ else
   fi
 
   # --- Step 25 (pgsc_calc, its scores) and its ancestry panel (step 26) ---
-  n_pgs=0 missing_pgs=""
-  while read -r id; do
+  # The four scores free for academic research use only (licence
+  # academic-research) are opt-in: setup.sh --prs-academic, PRS_ACADEMIC=true.
+  n_pgs=0 missing_pgs="" n_acad=0 missing_acad=""
+  while IFS=$'\t' read -r id lic; do
+    if [ "$lic" = academic-research ]; then
+      n_acad=$((n_acad + 1))
+      [ -s "${GENOME_DIR}/prs_scores/${id}.txt.gz" ] || missing_acad="${missing_acad} ${id}"
+      continue
+    fi
     n_pgs=$((n_pgs + 1))
     [ -s "${GENOME_DIR}/prs_scores/${id}.txt.gz" ] || missing_pgs="${missing_pgs} ${id}"
-  done < <(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${PGP_ROOT}/assets/pgs_scores.tsv")
+  done < <(awk -F'\t' '!h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+    h && $1 ~ /^PGS[0-9]+$/ { print $1 "\t" (c["licence"] ? $c["licence"] : "") }' "${PGP_ROOT}/assets/pgs_scores.tsv")
   if [ -z "$missing_pgs" ]; then
     pass "PGS Catalog scores (step 25): all ${n_pgs} of assets/pgs_scores.tsv present"
   else
     warn "PGS Catalog scores missing (step 25 downloads them, run-all.sh skips PRS until then):${missing_pgs}"
+  fi
+  if [ "$n_acad" -gt 0 ] && [ -z "$missing_acad" ]; then
+    pass "Academic-only PGS Catalog scores (step 25 with PRS_ACADEMIC=true): all ${n_acad} present"
+  elif [ "$n_acad" -gt 0 ]; then
+    info "Academic-only PGS Catalog scores not installed (opt-in, PRS_ACADEMIC=true):${missing_acad}: ./scripts/setup.sh --prs-academic ${GENOME_DIR}"
   fi
   if [ -f "${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}/main.nf" ]; then
     pass "pgsc_calc ${PGSC_CALC_VERSION} (step 25): present"
@@ -765,6 +924,9 @@ else
     echo "       docker run --rm -v \"${GENOME_DIR}:/genome\" ${GATK_IMAGE} \\"
     echo "         gatk CreateSequenceDictionary -R ${REF_FASTA_C}"
   fi
+
+  # --- The reference's bases (the MD5 of each sequence in the .dict) ---
+  check_reference_content
 fi
 
 ###############################################################################
@@ -840,10 +1002,10 @@ else
   fi
 
   # An opt-in step's image (`# optional` in versions.env) matters once its
-  # data is installed: setup.sh --parascopy-data, --yleaf-data and
-  # --ancestry-fine-panel pull it.
+  # data or the tool is installed. The corresponding setup.sh flag pulls it.
   if [ -n "${GENOME_DIR:-}" ]; then
-    for opt in "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
+    for opt in "PYTHON_IMAGE|21|tools/cyrius-${CYRIUS_VERSION}/INSTALLED|cyrius" \
+               "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
                "YLEAF_IMAGE|37|reference/yleaf-${YLEAF_DATA_VERSION}/data/hg38/new_positions.txt|yleaf-data" \
                "ADMIXTURE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
                "BEAGLE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
@@ -861,18 +1023,20 @@ else
 fi
 
 # --- OwnGenome's og binary (bin/.og, scripts/setup.sh --og) ---
-# One built from another rust/ than this checkout's would give results from
-# other code than the checkout says, so it fails; none at all is a note until
-# a step calls og (rust/og.sh, REQUIRED).
 header "OwnGenome binary"
-# A partial copy of the scripts (some tests make one) has no rust/og.sh.
-OG_MSG="NOTE: rust/og.sh is not here, so og was not checked"
-[ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || true
-case "$OG_MSG" in
-  OK:*) pass "${OG_MSG#OK: }" ;;
-  NOTE:*) info "${OG_MSG#NOTE: }" ;;
-  *) fail "${OG_MSG#ERROR: }" ;;
-esac
+# A single build is enough on x86_64. Check both when both were installed,
+# or on Arm where tools may run in amd64 images under emulation.
+og_arches="${OG_ARCHES:-x86_64 aarch64}"
+if [ -z "${OG_ARCHES:-}" ] && [ "$(uname -m)" = x86_64 ] && [ ! -e "${PGP_ROOT}/bin/.og/og-linux-aarch64" ]; then
+  og_arches=x86_64
+fi
+if [ ! -x "${PGP_ROOT}/bin/og" ]; then
+  fail "bin/og is missing or not executable. Restore it from the checkout and run scripts/setup.sh --og."
+elif OG_MSG=$(OG_ARCHES="$og_arches" bash "${PGP_ROOT}/rust/og.sh" check --required 2>&1); then
+  pass "${OG_MSG#OK: }"
+else
+  fail "${OG_MSG#ERROR: }"
+fi
 
 ###############################################################################
 # 5. Sample Data (optional — only if $1 is provided)
@@ -960,6 +1124,22 @@ if [ -n "$SAMPLE" ]; then
     fi
 
     check_stale_indexes "$SAMPLE_DIR"
+
+    case "${INPUT:-auto}" in
+      fastq)
+        $HAS_BAM && info "INPUT=fastq: the existing BAM is not read, so it is not checked"
+        $HAS_VCF && info "INPUT=fastq: the existing VCF is not read, so it is not checked"
+        HAS_BAM=false HAS_VCF=false
+        ;;
+      bam)
+        $HAS_VCF && info "INPUT=bam: the existing VCF is not read, so it is not checked"
+        HAS_VCF=false
+        ;;
+      vcf)
+        $HAS_BAM && info "INPUT=vcf: the BAM is not read, so it is not checked"
+        HAS_BAM=false
+        ;;
+    esac
 
     # Validate genome build (GRCh38) if BAM or VCF exists
     if $HAS_BAM && command -v "$CONTAINER_ENGINE" >/dev/null 2>&1; then
@@ -1102,6 +1282,8 @@ if [ -n "$SAMPLE" ]; then
       echo "       or step by step, starting with:  ./scripts/06-clinvar-screen.sh ${SAMPLE}"
       if $HAS_BAM; then
         echo "       BAM also available — all pipeline steps can run."
+      elif [ -f "$BAM" ]; then
+        echo "       INPUT=vcf: the BAM is not read — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       else
         echo "       No BAM found — BAM-dependent steps (4, 10, 15, 16, 18, 19, 20) will be skipped."
       fi

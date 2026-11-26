@@ -1,0 +1,1 @@
+ERROR: PGS000011.txt.gz has dosage weights (a non-additive score); only additive scores are supported

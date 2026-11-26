@@ -3,7 +3,7 @@
 //! counts. Each returns the file it read and its typed data, `None` when
 //! the step wrote nothing, or the note of an unreadable section.
 
-use super::model::opt_str;
+use super::model::{Manifest, RUN_ALL_STEPS, RunStatus, Section, State, is_stale, opt_str};
 use crate::{basename, float, int, text_lines};
 use indexmap::IndexMap;
 use pycompat::csv::{DictReader, DictRow, Quoting};
@@ -24,6 +24,7 @@ pub enum Data {
     Json(Value),
     ClinVar(super::clinvar::ClinVar),
     Carrier(super::carrier::Carrier),
+    AcmgSf(super::acmg_card::AcmgCard),
     PharmCat(super::pgx::PharmCat),
     Cpic(super::pgx::Cpic),
     Pypgx(super::pgx::Pypgx),
@@ -46,6 +47,7 @@ impl Data {
             Data::Json(v) => v.clone(),
             Data::ClinVar(d) => d.to_json(),
             Data::Carrier(d) => d.to_json(),
+            Data::AcmgSf(d) => d.to_json(),
             Data::PharmCat(d) => d.to_json(),
             Data::Cpic(d) => d.to_json(),
             Data::Pypgx(d) => d.to_json(),
@@ -138,28 +140,133 @@ fn kv_json(rows: &IndexMap<String, Option<String>>) -> IndexMap<String, Value> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Coverage {
-    /// The `mean` of the `total` row, the last one when there are several.
+    /// The `mean` of the `total` row, the last one when there are several;
+    /// for an exome, of the `total_region` row.
     pub mean_depth: Option<f64>,
+    /// The run is an exome (by the rule `read` describes), so the mean is
+    /// over the capture regions. summary.json carries `on_target: true`
+    /// only then, so a whole genome's section keeps its one key; og facts
+    /// reads it to write the assay type `wes`.
+    pub on_target: bool,
 }
 
 impl Coverage {
-    pub fn read(path: &str) -> Result<Coverage, String> {
-        let mut mean = None;
+    /// Reads mosdepth's summary. A whole genome's mean depth is the `total`
+    /// row. An exome's is the `total_region` row, the mean over the capture
+    /// regions mosdepth was given: `total` spreads the reads over the whole
+    /// genome, a few X for a 100x exome, and every reader of the mean (the
+    /// QC lines, the live headline, the genome facts' depth floor) would
+    /// read the exome as too thin. An exome summary without `total_region`
+    /// has no mean depth.
+    ///
+    /// The run is an exome when `exome` says so (the run manifest's
+    /// `run model_type` is `WES`), or when the summary shows a capture: a
+    /// `total_region` under half as long as `total`. 500 bp windows tile
+    /// every contig mosdepth reads, so their `total_region` is exactly as
+    /// long as `total`; a capture kit covers 1-3% of the genome. The second
+    /// rule serves every path that writes no manifest row: run-all.sh with
+    /// `--model_type WES`, a re-render with 24-html-report.sh, og live's
+    /// re-read of a sample folder, and step 16b with `CAPTURE_BED`.
+    pub fn read(path: &str, exome: bool) -> Result<Coverage, String> {
+        // The `length` and `mean` of the last `total` and `total_region` rows.
+        let (mut total, mut region) = (None, None);
         for r in read_tsv(path)? {
-            if r.get("chrom") == Some(Some("total")) {
-                mean = Some(r.get("mean").flatten().map(str::to_owned));
-            }
+            let row = match r.get("chrom") {
+                Some(Some("total")) => &mut total,
+                Some(Some("total_region")) => &mut region,
+                _ => continue,
+            };
+            let cell = |k: &str| r.get(k).flatten().map(str::to_owned);
+            *row = Some((cell("length"), cell("mean")));
         }
-        let mean_depth = match mean.flatten() {
+        let length = |row: &Option<(Option<String>, Option<String>)>| {
+            row.as_ref()
+                .and_then(|(l, _)| l.as_deref())
+                .and_then(|l| l.parse::<u64>().ok())
+        };
+        let capture = matches!((length(&region), length(&total)), (Some(r), Some(t)) if r.saturating_mul(2) < t);
+        let on_target = exome || capture;
+        let row = if on_target { region } else { total };
+        let mean_depth = match row.and_then(|(_, m)| m) {
             Some(m) if !m.is_empty() => Some(float(&m).map_err(|e| py_error("ValueError", &e))?),
             _ => None,
         };
-        Ok(Coverage { mean_depth })
+        Ok(Coverage {
+            mean_depth,
+            on_target,
+        })
     }
 
     fn to_json(&self) -> Value {
-        obj([("mean_depth", opt_float(self.mean_depth))])
+        let mut pairs = vec![("mean_depth", opt_float(self.mean_depth))];
+        if self.on_target {
+            pairs.push(("on_target", Value::Bool(true)));
+        }
+        obj(pairs)
     }
+}
+
+// --- selected steps that left no result ------------------------------------------
+
+/// What a section's note and its `not_run` line say of a step the run
+/// selected that wrote nothing for the sample.
+pub const SELECTED_NO_RESULT: &str = "selected, no result";
+
+/// The sections whose step the run selected and that have no file, in the
+/// order of `sections`, each with a note that says so.
+///
+/// The selection is the `run tools` row of `run_manifest.tsv`: the
+/// `--tools` names, separated by spaces (HTML_REPORT writes it from
+/// main.nf's tool list). `assets/steps.tsv` names the step of each tool and
+/// the sections each step feeds; the one in `assets` is read, else the one
+/// beside the binary. A section is marked when it is `missing` (a `failed`
+/// one already says its step failed), a selected step feeds it, and it is
+/// not in `skip` (the sections that are no step of their own).
+/// Nextflow runs the Y haplogroup and Y-STR steps only for declared males.
+///
+/// `None` when the run did not say what it selected (no `run tools` row:
+/// the bash runner writes none), or the catalogue cannot be read: the
+/// sections then read as before, `missing` with no note.
+pub fn selected_no_result(
+    sections: &mut [Section],
+    manifest: Option<&Manifest>,
+    assets: &str,
+    skip: &[&str],
+    declared_sex: Option<&str>,
+) -> Option<Vec<&'static str>> {
+    let tools: Vec<&str> = manifest?
+        .value("run", "tools")?
+        .split_whitespace()
+        .collect();
+    let here = std::path::Path::new(assets).join("steps.tsv");
+    let catalogue = if here.is_file() {
+        here
+    } else {
+        og_runlog::steps::default_path()?
+    };
+    let steps = og_runlog::steps::read_steps(&catalogue).ok()?;
+    let mut out = Vec::new();
+    const MALE_ONLY: [&str; 3] = ["y_haplogroup", "y_tree", "y_str"];
+    for s in sections.iter_mut().filter(|s| {
+        let key = s.spec.key;
+        s.state == State::Missing
+            && !skip.contains(&key)
+            && (declared_sex == Some("male") || !MALE_ONLY.contains(&key))
+    }) {
+        let Some(step) = steps.iter().find(|st| {
+            !st.tool.is_empty()
+                && tools.contains(&st.tool.as_str())
+                && st.sections.iter().any(|k| k == s.spec.key)
+        }) else {
+            continue;
+        };
+        s.note = Some(format!(
+            "{SELECTED_NO_RESULT}: --tools named {}, but step {} wrote nothing for this sample",
+            step.tool, step.step
+        ));
+        out.push(s.spec.key);
+    }
+    Some(out)
 }
 
 // --- gene callability (step 16b) -----------------------------------------------------
@@ -172,6 +279,9 @@ pub const CALLABLE_SHARE: f64 = 0.9;
 pub enum Reading {
     Read(f64),
     NotRead(f64),
+    /// The body reached the share, a coding exon did not (step 16b's exon
+    /// table): the gene is not read.
+    ExonNotRead(f64),
     NotOnReference,
 }
 
@@ -180,16 +290,25 @@ impl Reading {
         match self {
             Reading::Read(_) => "read",
             Reading::NotRead(_) => "not read",
+            Reading::ExonNotRead(_) => "exon not read",
             Reading::NotOnReference => "not on this reference",
         }
     }
 
     fn share(&self) -> Value {
         match self {
-            Reading::Read(s) | Reading::NotRead(s) => Value::Float(*s),
+            Reading::Read(s) | Reading::NotRead(s) | Reading::ExonNotRead(s) => Value::Float(*s),
             Reading::NotOnReference => Value::Null,
         }
     }
+}
+
+/// A gene's coding exon with the lowest share at the depth.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorstExon {
+    /// `GENE:exonN`, as `assets/callability_exons.tsv` names it.
+    pub exon: String,
+    pub share: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,13 +317,209 @@ pub struct Gene {
     pub hgnc_id: String,
     pub reasons: Vec<String>,
     pub owner: Option<String>,
+    /// The owner's step and whether it ran, for an owner [`owner_step`] knows.
+    pub owner_run: Option<OwnerRun>,
     pub reading: Reading,
+    /// Its worst coding exon, when step 16b measured exons and one was
+    /// under the share.
+    pub worst_exon: Option<WorstExon>,
+}
+
+/// The step that calls an owned gene, and what it left for this sample.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnerRun {
+    pub step: &'static str,
+    pub status: OwnerStatus,
+}
+
+/// What the owner's step left in the sample folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnerStatus {
+    /// Its file is there, from this run.
+    Ran,
+    /// Its file is not there.
+    NotRun,
+    /// Its file is older than the last run and the step was not ok in that
+    /// run: the rule that makes a section stale.
+    Earlier,
+}
+
+impl OwnerStatus {
+    fn word(self) -> &'static str {
+        match self {
+            OwnerStatus::Ran => "ran",
+            OwnerStatus::NotRun => "not run",
+            OwnerStatus::Earlier => "from an earlier run",
+        }
+    }
+}
+
+/// The step behind an owner of `assets/callability_genes.tsv` and the file
+/// that step writes in the sample folder (`{s}` the sample, `{t}` the
+/// gene's table in `assets/paralog_loci.tsv`) when it ran. `None` for an
+/// owner this list does not know.
+fn owner_step(owner: &str) -> Option<(&'static str, &'static str)> {
+    Some(match owner {
+        "parascopy" => ("35", "paralogs/{s}_{t}_copy_number.tsv"),
+        "pypgx" => ("32", "pypgx/{s}_pypgx_summary.tsv"),
+        "cn_loci:HBA" => ("35", "paralogs/{s}_hba_copy_number.tsv"),
+        "cn_loci:CYP21A2" => ("35", "paralogs/{s}_cyp21a2_psv.tsv"),
+        "cn_loci:HP" | "cn_loci:CCL3L1" | "cn_loci:LCE3BC" => ("35", "paralogs/{s}_cn_dosage.tsv"),
+        "cn_loci:LPA_KIV2" => ("46", "lpa/{s}_lpa_kiv2.tsv"),
+        "cn_loci:RHD" => ("41", "bloodtype/{s}_bloodtype.tsv"),
+        _ => return None,
+    })
+}
+
+/// The file the owner's step writes for this gene in `dir`, the sample
+/// folder, and its step. A Parascopy gene without a table has no file:
+/// step 35 never answers for it.
+fn owner_file(
+    r: &CatalogRow,
+    dir: &std::path::Path,
+    s: &str,
+) -> Option<(&'static str, Option<std::path::PathBuf>)> {
+    let (step, file) = owner_step(&r.owner)?;
+    let file = if r.owner == "parascopy" {
+        r.table.as_deref().map(|t| file.replace("{t}", t))
+    } else {
+        Some(file.to_owned())
+    };
+    Some((step, file.map(|f| dir.join(f.replace("{s}", s)))))
+}
+
+/// What the owner's step left at `file`, judged as a section is
+/// ([`super::model::Section::new`]): a file older than the run's start, from
+/// a step that was not ok in that run, is from an earlier run.
+fn owner_status(
+    step: &str,
+    file: Option<&std::path::Path>,
+    run: Option<&RunStatus>,
+) -> OwnerStatus {
+    let Some(mtime) = file
+        .filter(|f| f.is_file())
+        .and_then(|f| pycompat::mtime::mtime(f).ok())
+    else {
+        return OwnerStatus::NotRun;
+    };
+    if let Some(run) = run
+        && let Some(started) = run.started_epoch
+        && RUN_ALL_STEPS.contains(&step)
+        && run.steps.get(step).map(String::as_str) != Some("ok")
+        && is_stale(mtime, started)
+    {
+        return OwnerStatus::Earlier;
+    }
+    OwnerStatus::Ran
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Callability {
     pub min_depth: i128,
     pub genes: Vec<Gene>,
+    /// The coding exons of catalog genes step 16b's exon table measured;
+    /// `None` when there was no exon table (a folder from before it).
+    pub exons_checked: Option<usize>,
+}
+
+/// The data rows of a mosdepth thresholds table of one depth: the depth,
+/// and (chrom, region, bases, bases at the depth) of each row.
+type Thresholds = (i128, Vec<(String, String, i128, i128)>);
+
+fn thresholds(table: &str) -> Result<Thresholds, String> {
+    let name = basename(table);
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut lines = text_lines(table).map_err(|e| os_note(&e))?;
+    let mut line = String::new();
+    while lines
+        .read_line(&mut line)
+        .map_err(|e| py_error("OSError", &e.to_string()))?
+    {
+        if pycompat::num::py_strip(&line).is_empty() {
+            continue;
+        }
+        let body = line.trim_end_matches('\n');
+        rows.push(body.split('\t').map(str::to_owned).collect());
+    }
+    let depth_col = rows.first().filter(|h| {
+        h[0].starts_with('#')
+            && h.len() == 5
+            && h[4]
+                .strip_suffix('X')
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
+    });
+    let Some(head) = depth_col else {
+        return Err(format!(
+            "{name} is not mosdepth's thresholds table of one depth"
+        ));
+    };
+    let min_depth = int(&head[4][..head[4].len() - 1]).map_err(|e| py_error("ValueError", &e))?;
+    let mut out = Vec::with_capacity(rows.len() - 1);
+    for c in &rows[1..] {
+        if c.len() != 5 {
+            return Err(format!("{name}: a row has {} columns, not 5", c.len()));
+        }
+        let v = |s: &str| int(s).map_err(|e| py_error("ValueError", &e));
+        let (start, end, ok) = (v(&c[1])?, v(&c[2])?, v(&c[4])?);
+        out.push((c[0].clone(), c[3].clone(), end - start, ok));
+    }
+    Ok((min_depth, out))
+}
+
+/// The share of `n` bases that `ok` are, to four decimals; 0 for no bases.
+fn share(n: i128, ok: i128) -> Result<f64, String> {
+    if n == 0 {
+        return Ok(0.0);
+    }
+    pycompat::fmt::round(ok as f64 / n as f64, 4)
+        .map_err(|e| py_error(e.exception(), &e.to_string()))
+}
+
+/// Step 16b's exon table (`<s>_callability_exons.bed.gz`, rows named
+/// `GENE:exonN`) read against the catalog: the worst coding exon of each
+/// catalog gene it has rows for (the lower exon number on a tie), and how
+/// many exon rows of catalog genes it holds. Rows of other genes are left
+/// out: the table follows the catalog it was measured with.
+fn worst_exons(
+    catalog: &[CatalogRow],
+    table: &str,
+) -> Result<(std::collections::HashMap<String, WorstExon>, usize), String> {
+    let name = basename(table);
+    let (_, rows) = thresholds(table)?;
+    let genes: std::collections::HashSet<&str> = catalog.iter().map(|r| r.gene.as_str()).collect();
+    let number = |exon: &str| {
+        exon.rsplit_once(":exon")
+            .and_then(|(_, n)| n.parse::<u64>().ok())
+    };
+    let mut worst: std::collections::HashMap<String, WorstExon> = std::collections::HashMap::new();
+    let mut checked = 0;
+    for (_, region, n, ok) in rows {
+        let Some((gene, _)) = region
+            .rsplit_once(":exon")
+            .filter(|_| number(&region).is_some())
+        else {
+            return Err(format!("{name}: {region:?} is not named GENE:exonN"));
+        };
+        if !genes.contains(gene) {
+            continue;
+        }
+        checked += 1;
+        let s = share(n, ok)?;
+        let gene = gene.to_owned();
+        let better = worst
+            .get(&gene)
+            .is_none_or(|w| (s, number(&region)) < (w.share, number(&w.exon)));
+        if better {
+            worst.insert(
+                gene,
+                WorstExon {
+                    exon: region,
+                    share: s,
+                },
+            );
+        }
+    }
+    Ok((worst, checked))
 }
 
 /// One row of `assets/callability_genes.tsv`.
@@ -215,6 +530,8 @@ pub struct CatalogRow {
     pub start: String,
     pub reasons: String,
     pub owner: String,
+    /// A Parascopy gene's table in `assets/paralog_loci.tsv`.
+    pub table: Option<String>,
 }
 
 /// Reads the catalog: its comment lines left out, cells as written.
@@ -249,7 +566,24 @@ pub fn read_catalog(assets: &str) -> Result<Vec<CatalogRow>, String> {
             start: cell("start")?,
             reasons: cell("reasons")?,
             owner: cell("owner")?,
+            table: None,
         });
+    }
+    // Step 35 writes one Parascopy table per row of paralog_loci.tsv, for
+    // the genes the row names.
+    if out.iter().any(|r| r.owner == "parascopy")
+        && crate::is_file(crate::join(assets, "paralog_loci.tsv"))
+    {
+        let mut tables = std::collections::HashMap::new();
+        for r in super::assets::asset_rows(assets, "paralog_loci.tsv")? {
+            let cell = |k: &str| r.get(k).flatten().unwrap_or_default().to_owned();
+            for g in cell("genes").split(',') {
+                tables.entry(g.to_owned()).or_insert_with(|| cell("table"));
+            }
+        }
+        for r in out.iter_mut().filter(|r| r.owner == "parascopy") {
+            r.table = tables.get(&r.gene).cloned();
+        }
     }
     Ok(out)
 }
@@ -260,42 +594,11 @@ impl Callability {
     /// read against the catalog.
     pub fn read(catalog: &[CatalogRow], table: &str) -> Result<Callability, String> {
         let name = basename(table);
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        let mut lines = text_lines(table).map_err(|e| os_note(&e))?;
-        let mut line = String::new();
-        while lines
-            .read_line(&mut line)
-            .map_err(|e| py_error("OSError", &e.to_string()))?
-        {
-            if pycompat::num::py_strip(&line).is_empty() {
-                continue;
-            }
-            let body = line.trim_end_matches('\n');
-            rows.push(body.split('\t').map(str::to_owned).collect());
-        }
-        let depth_col = rows.first().filter(|h| {
-            h[0].starts_with('#')
-                && h.len() == 5
-                && h[4]
-                    .strip_suffix('X')
-                    .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
-        });
-        let Some(head) = depth_col else {
-            return Err(format!(
-                "{name} is not mosdepth's thresholds table of one depth"
-            ));
-        };
-        let min_depth =
-            int(&head[4][..head[4].len() - 1]).map_err(|e| py_error("ValueError", &e))?;
+        let (min_depth, rows) = thresholds(table)?;
         let mut bases: std::collections::HashMap<&str, (i128, i128)> =
             std::collections::HashMap::new();
-        for c in &rows[1..] {
-            if c.len() != 5 {
-                return Err(format!("{name}: a row has {} columns, not 5", c.len()));
-            }
-            let v = |s: &str| int(s).map_err(|e| py_error("ValueError", &e));
-            let (start, end, ok) = (v(&c[1])?, v(&c[2])?, v(&c[4])?);
-            bases.insert(&c[3], (end - start, ok));
+        for (_, region, n, ok) in &rows {
+            bases.insert(region, (*n, *ok));
         }
         if bases.is_empty() {
             return Err(format!("{name} has no gene rows"));
@@ -303,8 +606,33 @@ impl Callability {
         // mosdepth writes no row on a contig the BAM lacks: a chromosome with
         // no row at all is not on the sample's reference; a gene missing from
         // a chromosome that has rows means another catalog wrote the table.
-        let contigs: std::collections::HashSet<&str> =
-            rows[1..].iter().map(|c| c[0].as_str()).collect();
+        let contigs: std::collections::HashSet<&str> = rows.iter().map(|c| c.0.as_str()).collect();
+        // The table is <sample folder>/mosdepth/ (bash) or coverage/ (Nextflow)
+        // <s>_callability.bed.gz: the owner steps write into the same folder.
+        let folder = std::path::Path::new(table)
+            .parent()
+            .and_then(|p| p.parent());
+        let sample = name.strip_suffix("_callability.bed.gz");
+        // run-all.sh's run status, which tells a file of this run from one an
+        // earlier run left (Folder::open has read it already; a run status it
+        // could not read stopped the summary before this reader).
+        let run = folder
+            .and_then(|d| std::fs::read_to_string(d.join("logs").join("run_status.tsv")).ok())
+            .map(|t| RunStatus::parse(&t));
+        // Step 16b's exon table beside it, when that step measured exons:
+        // the worst coding exon of each catalog gene.
+        let exon_table = sample.and_then(|s| {
+            let p =
+                std::path::Path::new(table).with_file_name(format!("{s}_callability_exons.bed.gz"));
+            p.is_file().then(|| p.to_string_lossy().into_owned())
+        });
+        let (worst, exons_checked) = match &exon_table {
+            Some(p) => {
+                let (w, n) = worst_exons(catalog, p)?;
+                (w, Some(n))
+            }
+            None => (std::collections::HashMap::new(), None),
+        };
         let mut genes = Vec::with_capacity(catalog.len());
         for r in catalog {
             let reading = if r.start == "." || !contigs.contains(r.chrom.as_str()) {
@@ -316,27 +644,46 @@ impl Callability {
                         r.gene
                     ));
                 };
-                let share = if n == 0 {
-                    0.0
-                } else {
-                    pycompat::fmt::round(ok as f64 / n as f64, 4)
-                        .map_err(|e| py_error(e.exception(), &e.to_string()))?
-                };
-                if share >= CALLABLE_SHARE {
-                    Reading::Read(share)
-                } else {
+                let share = share(n, ok)?;
+                if share < CALLABLE_SHARE {
                     Reading::NotRead(share)
+                } else if worst
+                    .get(r.gene.as_str())
+                    .is_some_and(|w| w.share < CALLABLE_SHARE)
+                {
+                    Reading::ExonNotRead(share)
+                } else {
+                    Reading::Read(share)
                 }
+            };
+            // The worst coding exon, named only when it was not read.
+            let worst_exon = worst
+                .get(r.gene.as_str())
+                .filter(|w| w.share < CALLABLE_SHARE && reading != Reading::NotOnReference)
+                .cloned();
+            let owner = (r.owner != ".").then(|| r.owner.clone());
+            let owner_run = match (folder, sample) {
+                (Some(dir), Some(s)) => owner_file(r, dir, s).map(|(step, file)| OwnerRun {
+                    step,
+                    status: owner_status(step, file.as_deref(), run.as_ref()),
+                }),
+                _ => None,
             };
             genes.push(Gene {
                 gene: r.gene.clone(),
                 hgnc_id: r.hgnc_id.clone(),
                 reasons: r.reasons.split(',').map(str::to_owned).collect(),
-                owner: (r.owner != ".").then(|| r.owner.clone()),
+                owner,
+                owner_run,
                 reading,
+                worst_exon,
             });
         }
-        Ok(Callability { min_depth, genes })
+        Ok(Callability {
+            min_depth,
+            genes,
+            exons_checked,
+        })
     }
 
     fn to_json(&self) -> Value {
@@ -354,6 +701,11 @@ impl Callability {
                             ("hgnc_id", Value::Str(g.hgnc_id.clone()))
                         };
                         let mut m = vec![("gene", Value::Str(g.gene.clone())), who];
+                        if owned {
+                            let run = g.owner_run.as_ref();
+                            m.push(("owner_step", opt_str(run.map(|r| r.step))));
+                            m.push(("owner_status", opt_str(run.map(|r| r.status.word()))));
+                        }
                         if !owned {
                             m.push((
                                 "reasons",
@@ -364,6 +716,15 @@ impl Callability {
                         }
                         m.push(("share", g.reading.share()));
                         m.push(("status", Value::Str(g.reading.word().into())));
+                        if let Some(w) = &g.worst_exon {
+                            m.push((
+                                "worst_exon",
+                                obj([
+                                    ("exon", Value::Str(w.exon.clone())),
+                                    ("share", Value::Float(w.share)),
+                                ]),
+                            ));
+                        }
                         obj(m)
                     })
                     .collect(),
@@ -374,7 +735,7 @@ impl Callability {
             .iter()
             .filter(|g| matches!(g.reading, Reading::Read(_)))
             .count();
-        obj([
+        let mut m = vec![
             ("min_depth", Value::Int(self.min_depth)),
             ("min_mapq", Value::Int(20)),
             ("min_share", Value::Float(CALLABLE_SHARE)),
@@ -392,7 +753,12 @@ impl Callability {
                         .collect(),
                 ),
             ),
-        ])
+        ];
+        // Only when step 16b measured exons, so a folder from before keeps its summary.
+        if let Some(n) = self.exons_checked {
+            m.push(("exons_checked", Value::Int(n as i128)));
+        }
+        obj(m)
     }
 }
 

@@ -228,7 +228,7 @@ fn callability_against_the_catalog() {
     let want = loads(
         r#"{"not_read": [{"gene": "C3", "hgnc_id": "HGNC:3", "reasons": ["segdup"], "share": null, "status": "not on this reference"},
                          {"gene": "D4", "hgnc_id": "HGNC:4", "reasons": ["ALT-only"], "share": null, "status": "not on this reference"}],
-            "not_read_owned": [{"gene": "B2", "owner": "parascopy", "share": 0.5, "status": "not read"}],
+            "not_read_owned": [{"gene": "B2", "owner": "parascopy", "owner_step": "35", "owner_status": "not run", "share": 0.5, "status": "not read"}],
             "not_on_reference": ["C3", "D4"]}"#,
     )
     .unwrap();
@@ -471,7 +471,7 @@ fn the_command_line() {
             "--sample",
             "S",
             "--sample-dir",
-            "x",
+            &d.path("S"),
             "--out",
             &d.path("no/such/dir/x.json"),
             "--only",

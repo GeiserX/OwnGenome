@@ -1,24 +1,28 @@
 //! Step 26b, fine-grained ancestry (`docs/26b-ancestry-fine.md`): the
-//! commands around ADMIXTURE and RFMix, as `og ancestry-fine <verb>`.
+//! commands of the step, as `og ancestry-fine <verb>`.
 //!
 //! - [`panel`]: `panel-map` writes the panel's sample table once, at setup;
 //!   `check-map` refuses a table given with `ANCESTRY_FINE_SAMPLE_MAP` that
 //!   has a group too small to model.
-//! - [`order`]: the group of each column of a supervised ADMIXTURE `.Q`.
-//! - [`sample_bed`]: ADMIXTURE's input for one person, and the bootstrap
-//!   script the ADMIXTURE image runs.
-//! - [`chroms`]: the chromosomes long enough for RFMix to paint.
+//! - [`chroms`]: the chromosomes with enough SNVs and span to paint.
 //! - [`report`]: the fractions table, the painting (BED and PNG) and the
 //!   plain-text summary.
-//! - [`freqs`], [`project`], [`paint`], [`simulate`]: `og ancestry-fine
-//!   freqs|project|paint|simulate`, the engines that replace ADMIXTURE and
-//!   RFMix, and [`compare`]: `og archaic compare|genomes`. Not ported yet:
-//!   each says so and exits 2.
+//! - [`freqs`]: each reference group's allele frequencies, counted at
+//!   install in place of a supervised ADMIXTURE run.
+//! - [`project`]: `og ancestry-fine project`, the fractions at each level
+//!   projected on the groups' frequencies, with their block bootstrap (in
+//!   place of ADMIXTURE).
+//! - [`paint`]: `og ancestry-fine paint`, the chromosome painting with our
+//!   own local-ancestry model, in place of RFMix.
+//! - [`simulate`]: `og ancestry-fine simulate`, an admixed genome with known
+//!   truth that those engines test against.
+//! - [`compare`]: `og archaic compare|genomes`, Chen et al.'s Neanderthal
+//!   totals beside step 43 (the archaic jobs of `public-evidence.yml`).
 //!
 //! Each command writes what `bin/ancestry_fine_report.py` wrote (checked by
 //! `tests/parity`), with three deliberate changes: every output is written
 //! under a temporary name and renamed into place only once every input has
-//! been read and checked, so a failure leaves no partial ADMIXTURE input; a
+//! been read and checked, so a failure leaves no partial output; a
 //! missing or malformed input is an `ERROR:` line and exit 1, never a
 //! traceback; and the PNG's pixels are the contract, not its compressed
 //! bytes.
@@ -31,12 +35,10 @@ pub mod archaic;
 pub mod chroms;
 pub mod compare;
 pub mod freqs;
-pub mod order;
 pub mod paint;
 pub mod panel;
 pub mod project;
 pub mod report;
-pub mod sample_bed;
 pub mod simulate;
 
 use std::fmt;
@@ -225,12 +227,10 @@ pub const COLOURS: &[(&str, [u8; 3])] = &[
     ("OCE", [86, 180, 233]),
 ];
 
-/// The fewest unrelated reference people a group needs to be modelled.
-/// RFMix fits its CRF weight on people it simulates from `floor(n / 10) +
-/// 1` of each group's references and leaves those parents out of the
-/// reference meanwhile, so a group of one has no reference haplotype at all
-/// and RFMix can segfault; two is its hard floor. We ask for 10 because a
-/// group is meant to stand for a population.
+/// The fewest unrelated reference people a group needs to be modelled. A
+/// group of fewer than 10 people does not stand for a population: its
+/// allele frequencies would be those of a few families. The painter alone
+/// needs much less, one reference haplotype of each group.
 pub const MIN_REFERENCES: usize = 10;
 
 /// Why a command stopped: printed as `ERROR: <message>`, exit 1.
@@ -291,21 +291,6 @@ fn for_each_line(path: &Path, mut f: impl FnMut(&str) -> Result<()>) -> Result<(
         .map_err(|e| cannot_read(path, &e))?
     {
         f(line.strip_suffix('\n').unwrap_or(&line))?;
-    }
-    Ok(())
-}
-
-/// The raw lines of a text file with their endings (`f.readlines()`),
-/// read by `f`, one at a time.
-fn for_each_raw_line(path: &Path, mut f: impl FnMut(&str) -> Result<()>) -> Result<()> {
-    let input = og_io::open(path).map_err(|e| cannot_read(path, &e))?;
-    let mut lines = og_io::Lines::new(input, og_io::Utf8::Strict);
-    let mut line = String::new();
-    while lines
-        .read_line(&mut line)
-        .map_err(|e| cannot_read(path, &e))?
-    {
-        f(&line)?;
     }
     Ok(())
 }
@@ -551,7 +536,7 @@ fn is_negative_number(s: &str) -> bool {
 /// A verb's body: the parsed options and stdout.
 type Run = fn(&Args, &mut dyn io::Write) -> Result<()>;
 
-const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,order,sample-bed,chroms,report,freqs,project,paint,simulate} ...\n";
+const USAGE: &str = "usage: og ancestry-fine {panel-map,check-map,chroms,report,freqs,project,paint,simulate} ...\n";
 
 /// `og ancestry-fine <verb> [args]`: the exit code. Output goes to `out`,
 /// messages to `err`.
@@ -567,7 +552,6 @@ pub fn cli(args: &[String], out: &mut dyn io::Write, err: &mut dyn io::Write) ->
     let rest = &args[1..];
     // The engines read their own command lines, outside the Spec table.
     match verb.as_str() {
-        "freqs" => return freqs::cli(rest, out, err),
         "project" => return project::cli(rest, out, err),
         "paint" => return paint::cli(rest, out, err),
         "simulate" => return simulate::cli(rest, out, err),
@@ -576,8 +560,7 @@ pub fn cli(args: &[String], out: &mut dyn io::Write, err: &mut dyn io::Write) ->
     let (spec, run): (&Spec, Run) = match verb.as_str() {
         "panel-map" => (&panel::PANEL_MAP, panel::panel_map_main),
         "check-map" => (&panel::CHECK_MAP, panel::check_map_main),
-        "order" => (&order::SPEC, order::main),
-        "sample-bed" => (&sample_bed::SPEC, sample_bed::main),
+        "freqs" => (&freqs::SPEC, freqs::main),
         "chroms" => (&chroms::SPEC, chroms::main),
         "report" => (&report::SPEC, report::main),
         "-h" | "--help" => {
@@ -632,6 +615,14 @@ fn check_types(spec: &Spec, a: &Args) -> std::result::Result<(), ArgError> {
             }
             _ => {}
         }
+    }
+    // report's folder has two names, --fractions and the older --admixture,
+    // so Spec.required cannot hold it; a missing folder stays a usage
+    // error (exit 2), as when --admixture was required.
+    if spec.verb == "report" && a.get("--fractions").is_none() && a.get("--admixture").is_none() {
+        return Err(ArgError::Usage(
+            "the following arguments are required: --fractions".into(),
+        ));
     }
     Ok(())
 }
@@ -732,10 +723,10 @@ mod tests {
         let (rc, _, err) = testutil::run(&["no-such-verb"]);
         assert_eq!(rc, 2);
         assert!(err.contains("invalid choice: 'no-such-verb'"), "{err}");
-        let (rc, _, err) = testutil::run(&["order", "--pop", "x"]);
+        let (rc, _, err) = testutil::run(&["freqs", "--vcf", "x"]);
         assert_eq!(rc, 2);
         assert!(
-            err.contains("the following arguments are required: --q"),
+            err.contains("the following arguments are required: --samples, --out"),
             "{err}"
         );
         let (rc, _, err) =
@@ -757,8 +748,6 @@ mod tests {
         for verb in [
             "panel-map",
             "check-map",
-            "order",
-            "sample-bed",
             "chroms",
             "report",
             "freqs",

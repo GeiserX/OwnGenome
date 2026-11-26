@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Both reports from one summary (bin/collect_summary.py, bin/render_report.py)
+# Both reports from one summary (og summary collect, og report render)
 # and the run manifest (bin/write_manifest.sh), on the outputs of the cases
 # before this one:
 #   1. HG002: summary.json validates against tests/schema/summary.schema.json;
@@ -49,8 +49,7 @@ cp "$TXT" "${E2E_WORK}/logs/${SAMPLE}_report.txt" 2>/dev/null || true
 # 1. one summary, two reports
 check "summary.json validates against the schema" \
   "${REPO}/bin/og" dev schema "${REPO}/tests/schema/summary.schema.json" "$JSON"
-jq_py() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print($1)" "$JSON" 2>/dev/null; }
-N=$(jq_py "d['sections']['clinvar']['data'].get('count', 'none')")
+N=$(jq -r '.sections.clinvar.data | if has("count") then .count // "None" else "none" end' "$JSON" 2>/dev/null)
 echo "ClinVar hits in summary.json: ${N}"
 check_ge "summary.json counts the planted ClinVar hit" "${N:-0}" 1
 check "the text report shows the same ClinVar count" grep -q "^  Pathogenic/Likely Pathogenic hits: ${N}\$" "$TXT"

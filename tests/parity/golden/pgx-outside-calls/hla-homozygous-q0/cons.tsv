@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	*02:01/*02:01	yes	T1K (step 08): one allele, read as homozygous	HLA-A*02:01:01 (quality 60)
+HLA-B	indeterminate	no	T1K gives an allele quality 0 or below (T1K says to ignore it)	HLA-B*07:02:01 (quality 60); HLA-B*44:02:01 (quality 0)
+CYP2D6	indeterminate	no	no caller made a call	pypgx: not run; Cyrius: not run; depth check: not run

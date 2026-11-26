@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh — One-stop setup: download references, pull Docker images, validate
 # Usage: ./scripts/setup.sh <genome_dir>
+#        ./scripts/setup.sh --everything <genome_dir>
 #        ./scripts/setup.sh --no-clinical-data <genome_dir>
 #        ./scripts/setup.sh --clinical-data <genome_dir>
 #        ./scripts/setup.sh --pull-only      pull the Docker images and exit
@@ -75,17 +76,25 @@
 #      GENCODE gene coordinates T1K needs (~350 MB) and GENCODE's exons for
 #      the cDNA read check of steps 06 and 17, both from one ~80 MB download,
 #      and somalier's sites and VerifyBamID2's marker panel for step 33 (~10 MB),
-#      and gnomAD v3.1's mitochondrial sites for step 20 (~5 MB), and the
-#      STRchive repeat catalog of steps 09 and 9b (~0.5 MB)
+#      and gnomAD v3.1's mitochondrial sites for step 20 (~5 MB), the
+#      STRchive repeat catalog of steps 09 and 9b (~0.5 MB), and GIAB's
+#      tandem-repeat map for Sniffles2 in step 04c (~9 MB, ~35 MB unpacked)
 #   5. AnnotSV annotation data for step 5 (~5.3 GB download, ~20 GB unpacked),
 #      plus gnomAD-SV's common SVs (~1.7 GB download, kept as a few MB) and the
 #      MANE Select transcript list
 #   6. Step 25: the PGS Catalog scores of assets/pgs_scores.tsv (~400 MB), a
 #      checkout of pgsc_calc and the Nextflow plugin it needs, so step 25 and
-#      the PRS process run without the network
+#      the PRS process run without the network. The four scores free for
+#      academic research use only (licence academic-research) are left out:
+#      --prs-academic installs them (PRS_ACADEMIC=true scores them)
 #
 #   7. VEP 116, PCGR/CPSR data and VEP 115 (~57 GB download, ~65 GB unpacked).
 #      --no-clinical-data skips them; --clinical-data installs only these three.
+#
+# Exit status of a full setup: 0 when everything is installed ("Setup
+# complete!"); 3 when the core is ready but an item of 4 to 7 failed or was
+# skipped ("Setup finished: core ready, N items missing", each listed with the
+# command that retries it); 1 when the reference, ClinVar or an image failed.
 #
 # Every download goes through fetch (scripts/lib/common.sh): it is written to
 # <file>.part, checked, and only then renamed, so a file that exists is whole.
@@ -104,19 +113,35 @@ set -euo pipefail
 # Keep an explicit checksum override for fixture tests and verified mirrors.
 PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
 
+# These notices also print before the corresponding downloads.
+ANNOTSV_TERMS="AnnotSV's annotation bundle includes third-party data with their own terms."
+EXOMISER_TERMS="Exomiser's hg38 and phenotype bundles include third-party data with their own terms."
+CYRIUS_TERMS="Cyrius: PolyForm Strict 1.0.0, non-commercial use only."
+PRS_ACADEMIC_TERMS=(
+  'PGS000014: freely available to the academic community for research use.'
+  'PGS000016: freely available to the academic community for research use.'
+  'PGS000017: freely available to the academic community for research use.'
+  'PGS000027: freely available to the academic community for research use.'
+)
+UCSC_CHAIN_TERMS="UCSC allows free non-commercial use of its hg19ToHg38 chain by independent researchers and nonprofit organisations. Other uses require a commercial licence."
+
 # The usage text below names data releases, so read them before it prints.
 # shellcheck source=../versions.env
 . "$(dirname "$0")/../versions.env"
 
+EVERYTHING_SETUP=false
 PULL_ONLY=false
 REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
 CLINICAL_DATA=true
 case "${1:-}" in
+  --everything)
+    EVERYTHING_SETUP=true
+    shift ;;
   --og)
     exec "$(dirname "$0")/../rust/og.sh" install ;;
-  --cyrius|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--archaic)
+  --cyrius|--prs-academic|--parascopy-data|--kir-data|--ancestry-panel|--ancestry-fine-panel|--yleaf-data|--consumer-sites|--ancient-panel|--viral-data|--masked-reference|--exomiser-data|--chip-data|--strchive-data|--megane-kmers|--mocha-data|--locityper-data|--vep-cache|--annotsv-data|--annotation-scores|--somatic-data|--bwa-index|--cnvpytor-data|--pypgx-data|--archaic)
     OPT_IN=${1#--}
     shift ;;
   --clinical-data)
@@ -139,21 +164,29 @@ case "${1:-}" in
       exit 1
     fi
     shift 2 ;;
+  --*) echo "ERROR: unknown setup flag: $1" >&2; exit 2 ;;
 esac
 
 GENOME_DIR=${1:-${GENOME_DIR:-""}}
 if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "Usage: $0 <genome_dir>"
+  echo "       $0 --everything <genome_dir>"
   echo "       $0 --no-clinical-data <genome_dir>"
   echo "       $0 --clinical-data <genome_dir>"
   echo "       $0 --pull-only"
   echo "       $0 --og"
   echo "       $0 --refresh clinvar <genome_dir>"
   echo "       $0 --sample-qc-data <genome_dir>"
-  echo "       $0 --cyrius | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
+  echo "       $0 --cyrius | --prs-academic | --parascopy-data | --kir-data | --ancestry-panel | --ancestry-fine-panel | --yleaf-data | --consumer-sites | --ancient-panel | --viral-data | --masked-reference | --exomiser-data | --chip-data | --strchive-data | --megane-kmers | --mocha-data | --locityper-data | --archaic | --vep-cache | --annotsv-data <genome_dir>"
   echo ""
   echo "  <genome_dir>  Where to store reference data and sample outputs."
   echo "                Needs at least 500 GB free space per sample."
+  echo "  --everything  Run full setup and every installer in assets/everything.tsv."
+  echo "  --annotation-scores  Install CADD, masked SpliceAI, REVEL and AlphaMissense (~175 GiB)."
+  echo "  --somatic-data       Install GATK somatic resources for steps 29 and 49."
+  echo "  --bwa-index          Build the classic BWA index for GRIDSS."
+  echo "  --cnvpytor-data      Install CNVpytor reference files (step 18)."
+  echo "  --pypgx-data         Install the upstream PyPGx bundle (step 32)."
   echo "  --no-clinical-data  Skip both VEP caches and the PCGR/CPSR bundle."
   echo "  --clinical-data     Install only those three downloads for an existing setup."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
@@ -166,6 +199,9 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "                Install only somalier's sites and VerifyBamID2's panel (step 33) and exit."
   echo "  --cyrius      Install Cyrius for the opt-in step 21 (PyPI, hash-locked) and exit."
   echo "                Cyrius is under the PolyForm Strict licence: non-commercial use only."
+  echo "  --prs-academic"
+  echo "                Install the four PGS Catalog scores of step 25 that are free for academic research use only"
+  echo "                (PGS000014, PGS000016, PGS000017, PGS000027; PRS_ACADEMIC=true scores them) and exit."
   echo "  --parascopy-data"
   echo "                Install Parascopy's GRCh38 homology table and models (step 35, ~50 MB), pull its image and exit."
   echo "  --kir-data    Install the IPD-KIR ${KIR_DB_RELEASE:-} database (KIR=true in step 08, ~40 MB) and exit."
@@ -215,6 +251,15 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "                unpacked, both on disk during the install) and exit. Without it a run skips VEP, vcfanno,"
   echo "                the clinical filter and slivar."
   echo ""
+  echo "Download and use terms (see docs/licences.md for the sources):"
+  echo "  ${ANNOTSV_TERMS}"
+  echo "  PCGR/CPSR reference data includes third-party databases with their own terms."
+  echo "  ${EXOMISER_TERMS}"
+  echo "  The REVEL authors make the scores freely available for non-commercial use."
+  echo "  ${UCSC_CHAIN_TERMS}"
+  echo "  Illumina's DRAGEN ORA Decompression Software requires acceptance of its end-user licence."
+  echo "  The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio."
+  echo ""
   echo "Example:"
   echo "  ./scripts/setup.sh /data/genomics"
   echo "  ./scripts/setup.sh ~/genome_data"
@@ -227,6 +272,25 @@ export GENOME_DIR
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
+
+# What a full setup could not install, one "what|retry command" entry each.
+# The summary lists them, and a run with any left exits SETUP_PARTIAL_EXIT.
+MISSING=()
+SETUP_PARTIAL_EXIT=3
+# The retry commands quote the script path, so a checkout path with a space
+# still copies and pastes as one word.
+SETUP_CMD=$(printf '%q' "$0")
+note_missing() { MISSING+=("$1|$2"); }
+
+print_missing() {
+  local item
+  echo ""
+  echo "Missing (the steps named run without it or say it is missing; the warnings above say why):"
+  for item in "${MISSING[@]}"; do
+    echo "  - ${item%%|*}"
+    echo "      retry: ${item#*|}"
+  done
+}
 
 # NCBI's GRCh38 analysis set without ALT contigs: chr1-22, X, Y, M, the
 # unplaced and unlocalized scaffolds and chrEBV, 195 sequences. NCBI lists the
@@ -249,22 +313,34 @@ https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phas
 https://raw.githubusercontent.com/Griffan/VerifyBamID/v2.0.3/resource/1000g.phase3.100k.b38.vcf.gz.dat.bed 0025d782137e5906bbc7afc553c49d2c82c5b8f0bfa0649bc415887442f42869"
 
 # install_sample_qc_data: install both under GENOME_DIR/reference unless they
-# are there. Returns 1 when a download fails its check.
+# are there with their pinned sha256. A file already there is checked again on
+# every run: one with another sha256 (copied by hand, damaged, or from an older
+# pin) is downloaded again. Returns 1 when a download fails its check.
 install_sample_qc_data() {
-  local dest="${GENOME_DIR}/reference" url sha rc=0
-  if [ -s "${dest}/somalier/sites.hg38.vcf.gz" ]; then
-    echo "[OK] somalier sites (step 33) already present."
-  elif fetch "$SOMALIER_SITES_URL" "${dest}/somalier/sites.hg38.vcf.gz" sha256 "$SOMALIER_SITES_SHA256"; then
-    echo "[OK] somalier sites (step 33): ${dest}/somalier/sites.hg38.vcf.gz"
+  local dest="${GENOME_DIR}/reference" url sha rc=0 f
+  f="${dest}/somalier/sites.hg38.vcf.gz"
+  if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$SOMALIER_SITES_SHA256" ]; then
+    echo "[OK] somalier sites (step 33) already present (sha256 matches)."
   else
-    echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
-    rc=1
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if fetch "$SOMALIER_SITES_URL" "$f" sha256 "$SOMALIER_SITES_SHA256"; then
+      echo "[OK] somalier sites (step 33): ${f}"
+    else
+      echo "[WARN] Could not install somalier's sites. Step 33 needs them; re-run setup.sh."
+      rc=1
+    fi
   fi
   while read -r url sha; do
-    if [ -s "${dest}/verifybamid2/$(basename "$url")" ]; then
+    f="${dest}/verifybamid2/$(basename "$url")"
+    if [ -s "$f" ] && [ "$(_digest sha256 "$f")" = "$sha" ]; then
       continue
     fi
-    if ! fetch "$url" "${dest}/verifybamid2/$(basename "$url")" sha256 "$sha"; then
+    if [ -s "$f" ]; then
+      echo "[WARN] ${f} is not the pinned file (sha256 differs): downloading it again."
+    fi
+    if ! fetch "$url" "$f" sha256 "$sha"; then
       echo "[WARN] Could not install $(basename "$url") of VerifyBamID2's panel. Step 33 needs it; re-run setup.sh."
       rc=1
     fi
@@ -296,7 +372,6 @@ install_cyrius() {
     return 0
   fi
   echo "Installing Cyrius ${CYRIUS_VERSION} from ${lock} (hash-locked) into ${dest}"
-  echo "  Cyrius is under the PolyForm Strict licence 1.0.0: non-commercial use only."
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
   # --net: pip downloads the locked wheels from PyPI.
@@ -502,10 +577,8 @@ need_og() {
 # have GRC_MASKED_REF_SHA256, or MASKED_REF_SHA256 when that is set (a source
 # other than NCBI's file, as the CI case's chr21), or it is deleted. The
 # masking is og's `og setup mask-fasta` (rust/crates/og-intervals), run in
-# PYTHON_IMAGE with bin/ mounted, so og is built first when it is missing or
-# stale. It runs from the reference's directory with relative paths, so
-# bin/og's shadow mode (OG_SHADOW, tests/parity/README.md) can run the
-# Python it replaced beside it in CI.
+# OG_IMAGE with bin/ mounted, so og is built first when it is missing or
+# stale. The command uses relative paths from the reference directory.
 install_masked_reference() {
   local src=$REF_FASTA dest bed want got dir log
   case "$src" in
@@ -536,8 +609,7 @@ install_masked_reference() {
       return 1
     fi
     echo "Masking the false duplications of $(basename "$src") (under a minute for GRCh38)..."
-    # -e OG_SHADOW passes the variable only when it is set (CI).
-    if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$dir")" "$PYTHON_IMAGE" \
+    if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$dir")" "$OG_IMAGE" \
           /pgp-bin/og setup mask-fasta "$(basename "$src")" "$(basename "$bed")" "$(basename "$dest").part"); then
       rm -f "${dest}.part"
       echo "[WARN] Could not write the masked reference."
@@ -577,6 +649,7 @@ install_exomiser_data() {
     echo "[OK] Exomiser ${EXOMISER_DATA_VERSION} data (step 48) already present: ${dest}"
     return 0
   fi
+  echo "  ${EXOMISER_TERMS} See docs/48-exomiser.md."
   mkdir -p "$dest"
   while read -r part sha; do
     [ -d "${dest}/${EXOMISER_DATA_VERSION}_${part}" ] && continue
@@ -591,7 +664,7 @@ install_exomiser_data() {
     fi
     rm -rf "${dest}/unpack.part"
     need_og "unpacks Exomiser's data" || return 1
-    if ! run_in --rw "$dest" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dest" --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og setup unzip "$(cpath "$zip")" "$(cpath "${dest}/unpack.part")" \
         || [ ! -d "${dest}/unpack.part/${EXOMISER_DATA_VERSION}_${part}" ]; then
       rm -rf "${dest}/unpack.part"
@@ -683,9 +756,7 @@ install_megane_kmers() {
 # the catalogs inside their images. catalog.stamp names the inputs and the
 # converter's output format, so a changed one converts again: bump format
 # below whenever og str catalog writes something different.
-# og runs from the catalog's directory with relative paths, so bin/og's
-# shadow mode (OG_SHADOW, tests/parity/README.md) can run the Python it
-# replaced beside it in CI.
+# og uses relative paths from the catalog's directory in OG_IMAGE.
 # STR_EXTRA_LOCI=yes (opt-in) also appends assets/str_extra_loci.json, the
 # repeats STRchive leaves out (CFTR TG/poly-T, UGT1A1 TA): ExpansionHunter
 # sizes them and Stranger leaves them ungraded (docs/09-str-expansions.md).
@@ -720,9 +791,8 @@ install_strchive_data() {
       return 1
     fi
   done
-  # -e OG_SHADOW passes the variable only when it is set (CI).
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" -e OG_SHADOW \
-       -w "$(cpath "$dir")" "$PYTHON_IMAGE" /pgp-bin/og str catalog \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-extra:ro" \
+       -w "$(cpath "$dir")" "$OG_IMAGE" /pgp-bin/og str catalog \
        --eh "$eh" --loci "$loci" --release "$STRCHIVE_VERSION" \
        --out catalog.json --ranges str_ranges.tsv ${extra_args[@]+"${extra_args[@]}"} \
        || [ ! -s "${dir}/catalog.json" ] || [ ! -s "${dir}/str_ranges.tsv" ]; then
@@ -734,6 +804,33 @@ install_strchive_data() {
   echo "[OK] STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b): ${dir}/catalog.json"
 }
 
+# install_tandem_repeats: the tandem-repeat map step 04c passes to Sniffles2
+# (--tandem-repeats): TANDEM_REPEATS_URL, checked against
+# TANDEM_REPEATS_SHA256, and its unpacked copy beside it, because Sniffles2
+# reads a plain BED only. The copy is written under a temporary name first,
+# so a file under the final name is whole. Without the map step 04c runs as
+# before and says so.
+install_tandem_repeats() {
+  local gz="${GENOME_DIR}/reference/${TANDEM_REPEATS_URL##*/}"
+  local bed="${gz%.gz}"
+  if [ -s "$bed" ] && [ -s "$gz" ] && [ "$(_digest sha256 "$gz")" = "$TANDEM_REPEATS_SHA256" ]; then
+    echo "[OK] GIAB tandem-repeat map (step 04c) already present."
+    return 0
+  fi
+  rm -f "$bed"
+  if ! fetch "$TANDEM_REPEATS_URL" "$gz" sha256 "$TANDEM_REPEATS_SHA256"; then
+    echo "[WARN] Could not install GIAB's tandem-repeat map (${TANDEM_REPEATS_URL}). Step 04c runs Sniffles2 without it; re-run setup.sh to try again."
+    return 1
+  fi
+  if ! gzip -dc "$gz" > "${bed}.part" || [ ! -s "${bed}.part" ]; then
+    rm -f "${bed}.part"
+    echo "[WARN] Could not unpack ${gz}. Step 04c runs Sniffles2 without the tandem-repeat map; re-run setup.sh to try again."
+    return 1
+  fi
+  mv -f "${bed}.part" "$bed"
+  echo "[OK] GIAB tandem-repeat map (step 04c): ${bed}"
+}
+
 # install_consumer_sites: the site table of the raw-data export (step 40). The
 # 23andMe v5 site list (GRCh37 positions and reference bases) of
 # CONSUMER_SITES_COMMIT, checked against CONSUMER_SITES_SHA256, is joined by
@@ -742,7 +839,7 @@ install_strchive_data() {
 # (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
 # of a liftover and lists every site it drops with the reason. It reads the
 # BGZF file on 4 cores and looks at the ID column of a line before anything
-# else, so no grep pass runs first. It runs in PYTHON_IMAGE with bin/
+# else, so no grep pass runs first. It runs in OG_IMAGE with bin/
 # mounted, so og is built first when it is missing or stale.
 # The dbSNP file is deleted once the table is built. The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
@@ -786,7 +883,7 @@ install_consumer_sites() {
   fi
   echo "Building the site table (reads the whole dbSNP file once)..."
   # The table is written to reference/consumer/, outside any sample directory.
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$PYTHON_IMAGE" \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$OG_IMAGE" \
        /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
        --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
        --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
@@ -845,6 +942,9 @@ install_ancient_panel() {
   for f in "$REF_FASTA" "${REF_FASTA}.fai"; do
     [ -s "$f" ] || { echo "[WARN] ${f} is missing: install the reference first (${0} ${GENOME_DIR})."; return 1; }
   done
+  if [ -z "${ANCIENT_CHAIN:-}" ] && [ ! -s "$chain" ]; then
+    echo "  ${UCSC_CHAIN_TERMS} See docs/44-ancient.md."
+  fi
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
   need_og "chooses the ancient panel's people and places its sites" || return 1
@@ -884,7 +984,7 @@ install_ancient_panel() {
   echo "  [1/5] Choosing the present-day reference people and the ancient people to project..."
   echo "  [2/5] Placing the 1240K sites on GRCh38..."
   # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
-  if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$PYTHON_IMAGE" \
+  if ! run_in --rw "$part" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$OG_IMAGE" \
          bash -euo pipefail -c '
            /pgp-bin/og ancient select --anno "$1/aadr.anno" --ind "$1/aadr.ind" \
              --out-ind "$2/panel.ind" --poplist "$2/poplist.txt" --ancients "$2/ancients.tsv"
@@ -911,7 +1011,7 @@ install_ancient_panel() {
     echo "[WARN] EIGENSOFT failed on the AADR files (logs in ${part}); run: $0 --ancient-panel ${GENOME_DIR}"
     return 1
   fi
-  if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+  if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
          /pgp-bin/og ancient align --panel-evec "${P}/panel.evec" --run-evec "${P}/check.evec"; then
     echo "[WARN] The two smartpca runs on the same present-day people gave different axes (logs in ${part})."
     return 1
@@ -955,14 +1055,17 @@ install_pgsc_calc() {
   mv "${dir}.part" "$dir"
 }
 
-# install_prs: the GRCh38-harmonised file of every score in
-# assets/pgs_scores.tsv (each checked against the md5 the PGS Catalog
-# publishes beside it), pgsc_calc PGSC_CALC_VERSION in tools/, and the
-# nf-schema plugin its nextflow.config names. With them
-# step 25 and the PRS process need no network. A failure is a warning: step
-# 25 fetches what is missing the first time it runs.
-install_prs() {
-  local id url dest rc=0 calc="${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}"
+# fetch_prs_scores LICENCE: the GRCh38-harmonised file of every score of
+# assets/pgs_scores.tsv whose licence column is LICENCE (an empty cell counts
+# as author), each checked against the md5 the PGS Catalog publishes beside
+# it. Exit 1 when one download failed.
+fetch_prs_scores() {
+  local id url dest rc=0 list="${PGP_ROOT}/assets/pgs_scores.tsv"
+  if [ ! -r "$list" ]; then
+    echo "[WARN] Could not read the PGS score list ${list}"
+    return 1
+  fi
+  mkdir -p "${GENOME_DIR}/prs_scores" || return 1
   while read -r id; do
     dest="${GENOME_DIR}/prs_scores/${id}.txt.gz"
     [ -s "$dest" ] && continue
@@ -971,7 +1074,20 @@ install_prs() {
       echo "[WARN] Could not download ${id} (step 25 tries again when it runs): ${url}"
       rc=1
     fi
-  done < <(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${PGP_ROOT}/assets/pgs_scores.tsv")
+  done < <(awk -F'\t' -v want="$1" '!h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+    h && $1 ~ /^PGS[0-9]+$/ { l = c["licence"] ? $c["licence"] : ""; if (l == "") l = "author"; if (l == want) print $1 }' "$list")
+  return "$rc"
+}
+
+# install_prs: the scores of assets/pgs_scores.tsv under the PGS Catalog's
+# default terms (licence author; the four free for academic research use
+# only come with --prs-academic), pgsc_calc PGSC_CALC_VERSION in tools/, and
+# the nf-schema plugin its nextflow.config names. With them
+# step 25 and the PRS process need no network. A failure is a warning: step
+# 25 fetches what is missing the first time it runs.
+install_prs() {
+  local rc=0 calc="${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}"
+  fetch_prs_scores author || rc=1
   [ "$rc" -eq 0 ] && echo "[OK] PGS Catalog scores (step 25): ${GENOME_DIR}/prs_scores/"
   if [ -f "${calc}/main.nf" ]; then
     echo "[OK] pgsc_calc ${PGSC_CALC_VERSION} (step 25) already present."
@@ -979,16 +1095,20 @@ install_prs() {
     echo "[OK] pgsc_calc ${PGSC_CALC_VERSION} (step 25): ${calc}"
   else
     echo "[WARN] Could not fetch pgsc_calc ${PGSC_CALC_VERSION}; step 25 tries again when it runs."
+    rc=1
   fi
   if ! command -v nextflow >/dev/null 2>&1; then
     echo "[WARN] Nextflow is not installed: run-all.sh and step 25 need it (docs/nextflow.md)."
+    rc=1
   elif [ -d "${NXF_HOME:-${HOME}/.nextflow}/plugins/nf-schema-${PGSC_CALC_NF_SCHEMA}" ]; then
     echo "[OK] Nextflow plugin nf-schema ${PGSC_CALC_NF_SCHEMA} (pgsc_calc) already present."
   elif nextflow plugin install "nf-schema@${PGSC_CALC_NF_SCHEMA}" >/dev/null; then
     echo "[OK] Nextflow plugin nf-schema ${PGSC_CALC_NF_SCHEMA} (pgsc_calc)."
   else
     echo "[WARN] Could not install the nf-schema ${PGSC_CALC_NF_SCHEMA} plugin; step 25 tries again when it runs."
+    rc=1
   fi
+  if [ "${SETUP_EVERYTHING_SCOPE:-}" = base ]; then return "$rc"; fi
   return 0
 }
 
@@ -1128,7 +1248,7 @@ install_fine_maps() {
   need_og "unpacks the genetic map" || return 1
   # SC2086: one argument per chromosome.
   # shellcheck disable=SC2086
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og setup genetic-map \
       --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
@@ -1149,28 +1269,30 @@ install_fine_maps() {
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
 #                +prune); sites.tsv (chrN, position, REF, ALT) and positions.tsv;
 #   maps/        chrN.map (Beagle) and chrN.rfmix.map (RFMix's column order);
-#   model/       ref.bed of the reference individuals on the SNVs left after LD
-#                pruning (r2 above 0.1 within 500 kb removed); for each level
-#                (continent, region) the group allele frequencies of a supervised
-#                ADMIXTURE run, <level>.P, with their column order in levels.tsv;
-#                and paint_map.tsv, the reference individuals RFMix paints with.
+#   model/       ref.bim, ref.fam and ref.geno: the reference individuals' genotypes
+#                at the SNVs left after LD pruning (r2 above 0.1 within 500 kb
+#                removed); for each level (continent, region) each group's allele
+#                frequencies, <level>.P, counted by og ancestry-fine freqs (the
+#                maximum a supervised ADMIXTURE run climbs to), with their column
+#                order in levels.tsv; and paint_map.tsv, the reference individuals
+#                RFMix paints with.
 # ANCESTRY_FINE_REGIONS (a BED file) keeps only those regions, and
 # ANCESTRY_FINE_EXCLUDE (sample ids) leaves people out of the panel: the e2e
 # case uses both, for the fixture's slices and the two people of its
 # synthetic mix. ANCESTRY_FINE_THIN (default 2kb) is the window that keeps
 # one SNV (the e2e case keeps more of its few megabases with 200bp), and
-# ANCESTRY_FINE_PAINT_PER_GROUP (default 50, at least 10) caps the painting
+# ANCESTRY_FINE_PAINT_PER_GROUP (default 200, at least 10) caps the painting
 # references of each continental group.
 install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
   local regions=${ANCESTRY_FINE_REGIONS:-} exclude=${ANCESTRY_FINE_EXCLUDE:-} smap=${ANCESTRY_FINE_SAMPLE_MAP:-}
   local thin=${ANCESTRY_FINE_THIN:-2kb}
-  local v c e level col k order rstamp="" pstamp mstamp tmp chroms=""
+  local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
-  echo "  Step 26b runs ADMIXTURE, free for academic use, and RFMix, free for academic research use only:"
+  echo "  Step 26b finds the fractions and paints the chromosomes with og. The RFMix image is still pulled; RFMix is free for academic research use only:"
   echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
-  for v in BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
   if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
     echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
@@ -1227,16 +1349,16 @@ install_ancestry_fine_panel() {
     head -n 1 "$smap" | grep -q $'^sample\tpopulation\tcontinent\tregion\treference\tpaint$' \
       || { echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} does not start with the header of samples.tsv"; return 1; }
     cp "$smap" "${dir}/samples.tsv.part"
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og ancestry-fine check-map --map "$(cpath "${dir}/samples.tsv.part")"; then
       rm -f "${dir}/samples.tsv.part"
       echo "[WARN] ANCESTRY_FINE_SAMPLE_MAP=${smap} has a group too small to model"
       return 1
     fi
-  elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+  elif ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
         /pgp-bin/og ancestry-fine panel-map --meta "$(cpath "${dir}/meta.tsv")" \
           --bcf-samples "$(cpath "${dir}/bcf_samples.txt")" --exclude "$exclude" \
-          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-50}" --out "$(cpath "${dir}/samples.tsv.part")"; then
+          --paint-per-group "${ANCESTRY_FINE_PAINT_PER_GROUP:-200}" --out "$(cpath "${dir}/samples.tsv.part")"; then
     rm -f "${dir}/samples.tsv.part"
     echo "[WARN] Could not write the panel's sample table"
     return 1
@@ -1291,47 +1413,31 @@ install_ancestry_fine_panel() {
 
   install_fine_maps "$dir" "$chroms" || return 1
 
-  # model/: redone when samples.tsv or the panel changes.
-  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") admixture=${ADMIXTURE_IMAGE}"
+  # model/: redone when samples.tsv or the panel changes. Bump freqs=og-N
+  # when the output of og ancestry-fine freqs or og_admix::geno (ref.geno) changes.
+  mstamp="panel=$(_digest sha256 "${dir}/panel/sites.tsv") samples=$(_digest sha256 "${dir}/samples.tsv") freqs=og-1"
   if [ "$(cat "${dir}/model/DONE" 2>/dev/null)" != "$mstamp" ]; then
     tmp="${dir}/model/tmp"
     rm -rf "$tmp" "${dir}/model/DONE"
     mkdir -p "$tmp"
     awk -F'\t' 'NR > 1 && $5 == 1 {print $1}' "${dir}/samples.tsv" > "${tmp}/ref.txt"
-    echo "  model: LD pruning on $(wc -l < "${tmp}/ref.txt" | tr -d ' ') reference individuals, then ADMIXTURE's group frequencies..."
+    echo "  model: LD pruning on $(wc -l < "${tmp}/ref.txt" | tr -d ' ') reference individuals, then each group's allele frequencies..."
     # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
     if ! run_in --rw "$dir" "$BCFTOOLS_IMAGE" bash -euo pipefail -c '
           for c in $4; do bcftools view -S "$2" -Ou "$1/$c.vcf.gz" | bcftools +prune -m 0.1 -w 500kb -Ob -o "$3/$c.bcf"; done
           for c in $4; do echo "$3/$c.bcf"; done > "$3/bcfs.txt"
           bcftools concat -f "$3/bcfs.txt" -Oz -o "$3/adm.vcf.gz"' \
           _ "$(cpath "${dir}/panel")" "$(cpath "${tmp}/ref.txt")" "$(cpath "$tmp")" "$chroms" \
-       || ! run_in --rw "$dir" "$PLINK2_IMAGE" plink2 --vcf "$(cpath "${tmp}/adm.vcf.gz")" --make-bed \
-              --set-all-var-ids '@:#' --threads "$THREADS" --out "$(cpath "${tmp}/ref")" > "${tmp}/plink2.log" 2>&1; then
-      tail -n 20 "${tmp}/plink2.log" 2>/dev/null || true
-      echo "[WARN] Could not make the reference's ADMIXTURE input"
+       || ! fit=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og ancestry-fine freqs \
+              --vcf "$(cpath "${tmp}/adm.vcf.gz")" --samples "$(cpath "${dir}/samples.tsv")" --out "$(cpath "$tmp")"); then
+      echo "[WARN] Could not count the reference groups' allele frequencies"
       return 1
     fi
-    : > "${tmp}/levels.tsv"
-    for v in continent:3 region:4; do
-      level=${v%:*} col=${v#*:}
-      awk -F'\t' -v c="$col" 'NR == FNR {if (FNR > 1) g[$1] = $c; next} {print g[$2]}' "${dir}/samples.tsv" "${tmp}/ref.fam" > "${tmp}/ref_${level}.pop"
-      k=$(sort -u "${tmp}/ref_${level}.pop" | grep -cv '^-\{0,1\}$' || true)
-      for e in bed bim fam; do ln -sf "ref.${e}" "${tmp}/ref_${level}.${e}"; done
-      # shellcheck disable=SC2016  # $1 to $4 belong to the inner sh
-      if ! run_in --rw "$dir" "$ADMIXTURE_IMAGE" sh -c 'cd "$1" && admixture --supervised -j"$4" "ref_$2.bed" "$3" > "admixture_$2.log" 2>&1' \
-            _ "$(cpath "$tmp")" "$level" "$k" "$THREADS" \
-         || ! order=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og ancestry-fine order \
-              --pop "$(cpath "${tmp}/ref_${level}.pop")" --q "$(cpath "${tmp}/ref_${level}.${k}.Q")"); then
-        tail -n 20 "${tmp}/admixture_${level}.log" 2>/dev/null || true
-        echo "[WARN] ADMIXTURE could not estimate the frequencies of the ${level} groups"
-        return 1
-      fi
-      mv "${tmp}/ref_${level}.${k}.P" "${tmp}/${level}.P"
-      printf '%s\t%s\t%s\n' "$level" "$k" "$order" >> "${tmp}/levels.tsv"
-    done
+    echo "  model: ${fit}"
     awk -F'\t' -v OFS='\t' 'NR > 1 && $6 == 1 {print $1, $3}' "${dir}/samples.tsv" > "${tmp}/paint_map.tsv"
-    for e in ref.bed ref.bim ref.fam continent.P region.P levels.tsv paint_map.tsv; do mv -f "${tmp}/${e}" "${dir}/model/${e}"; done
-    rm -rf "$tmp"
+    for e in ref.bim ref.fam ref.geno continent.P region.P levels.tsv paint_map.tsv; do mv -f "${tmp}/${e}" "${dir}/model/${e}"; done
+    # ref.bed: ADMIXTURE's input of an older install, read by nothing now.
+    rm -rf "$tmp" "${dir}/model/ref.bed"
     echo "$mstamp" > "${dir}/model/DONE"
   fi
   echo "[OK] fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b): ${dir} ($(wc -l < "${dir}/model/ref.bim" | tr -d ' ') SNVs for ADMIXTURE, $(wc -l < "${dir}/model/paint_map.tsv" | tr -d ' ') painting references)"
@@ -1413,7 +1519,7 @@ install_mocha_data() {
   # og writes each map whole or not at all. SC2086: one argument per chromosome.
   need_og "unpacks the genetic map" || return 1
   # shellcheck disable=SC2086
-  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" /pgp-bin/og setup genetic-map \
+  if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og setup genetic-map \
       --zip "$(cpath "$map")" --out "$(cpath "${dir}/maps")" $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
@@ -1599,6 +1705,7 @@ install_annotsv_bundle() {
     echo "[OK] AnnotSV annotation data already present."
     return 0
   fi
+  echo "  ${ANNOTSV_TERMS} See docs/05-annotsv.md."
   echo "Downloading AnnotSV ${ANNOTSV_ANNOTATIONS_VERSION} annotation data (~5.3 GB)..."
   echo "  The AnnotSV server is slow (about 0.8 MB/s measured from a GitHub runner), so this can take"
   echo "  1-2 hours. An interrupted download resumes when setup.sh runs again."
@@ -1881,8 +1988,10 @@ install_archaic() {
   local regions=${ARCHAIC_REGIONS:-} rstamp=all chroms="" c g v k stamp wk n
   local genomes="Altai:Altai Vindija33.19:Vindija Denisova:Denisova"
   cpath "$dir" >/dev/null || return 1
+  { [ -s "${dir}/hg19ToHg38.over.chain.gz" ] && [ "$(_digest sha256 "${dir}/hg19ToHg38.over.chain.gz")" = "$ARCHAIC_CHAIN_SHA256" ]; } \
+    || echo "  ${UCSC_CHAIN_TERMS} See docs/43-archaic.md."
   echo "Installing the archaic data ${ARCHAIC_DATA_VERSION} (step 43) in ${dir}"
-  for v in BCFTOOLS_IMAGE PICARD_IMAGE PYTHON_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
+  for v in BCFTOOLS_IMAGE PICARD_IMAGE OG_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
   mkdir -p "${dir}/md5" "${dir}/download" "${dir}/work" "${dir}/mask" "${dir}/exclude"
@@ -2009,7 +2118,7 @@ install_archaic() {
           done' _ "$(cpath "${dir}/download")" "$c" "$(cpath "$wk")" "$(cpath "${wk}/regions.bed")"; then
       echo "[WARN] Could not read the archaic genotypes of chr${c}"; return 1
     fi
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og archaic table --chrom "$c" --modern "$(cpath "${wk}/modern.tsv")" \
             --archaic "Altai=$(cpath "${wk}/Altai.tsv")" --archaic "Vindija=$(cpath "${wk}/Vindija33.19.tsv")" \
             --archaic "Denisova=$(cpath "${wk}/Denisova.tsv")" \
@@ -2043,7 +2152,7 @@ install_archaic() {
     if [ ! -s "${wk}/strict.bed" ]; then
       echo "[WARN] the GRCh38 strict mask has no interval on chr${c}: ${dir}/strict_GRCh38.bed"; return 1
     fi
-    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$PYTHON_IMAGE" \
+    if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
           /pgp-bin/og archaic strict --chrom "$c" --strict "$(cpath "${wk}/strict.bed")" \
             --rows "$(cpath "${wk}/lifted.tsv")" --out "$(cpath "${wk}/marked.tsv")"; then
       echo "[WARN] Could not mark the strict mask on chr${c}"; return 1
@@ -2098,6 +2207,7 @@ install_clinical_data() {
   local dir="${GENOME_DIR}/vep_cache" rel peak missing=0
   echo "Clinical data: about 57 GB to download, 65 GB unpacked; allow 1 to 3 hours."
   for rel in "$VEP_CACHE_RELEASE" bundle "$PCGR_VEP_CACHE_RELEASE"; do
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" = row ] && [ "$rel" = "$VEP_CACHE_RELEASE" ]; then continue; fi
     if [ "$rel" = bundle ]; then
       [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
       if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "${GENOME_DIR}/pcgr_data/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"; then
@@ -2105,6 +2215,8 @@ install_clinical_data() {
       else
         missing=1
       fi
+      [ -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] \
+        || note_missing "PCGR/CPSR bundle ${PCGR_DATA_BUNDLE} (step 17)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
     else
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
@@ -2120,15 +2232,300 @@ install_clinical_data() {
       else
         missing=1
       fi
+      if [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
+        if [ "$rel" = "$VEP_CACHE_RELEASE" ]; then
+          note_missing "VEP ${rel} cache (steps 13, 30, 23 and 31)" "${SETUP_CMD} --vep-cache \"${GENOME_DIR}\""
+        else
+          note_missing "VEP ${rel} cache (step 17, CPSR)" "${SETUP_CMD} --clinical-data \"${GENOME_DIR}\""
+        fi
+      fi
     fi
   done
   return "$missing"
 }
 
+# Expand the pin names listed in versions.env to file, digest type and value.
+setup_pin_rows() {
+  local key keys=()
+  read -r -a keys <<< "$1"
+  for key in "${keys[@]}"; do printf '%s\n' "${!key}"; done
+}
+
+# Install a published data/index pair. Keep existing pairs (including manual
+# installs). Before adding an index to a lone data file, verify that the data
+# is the matching release. A failed index fetch leaves the data for a retry.
+install_indexed_downloads() (
+  local dir=$1 base=$2 files=$3 rows file kind pin index index_kind index_pin dest rc=0
+  rows=$(setup_pin_rows "$files") || exit 1
+  mkdir -p "$dir" || exit 1
+  lock_acquire "${dir}/.setup-indexed.lock" || exit 1
+  trap 'lock_release "${dir}/.setup-indexed.lock"' EXIT
+  while read -r file kind pin && read -r index index_kind index_pin; do
+    dest="${dir}/${file}"
+    if [ -s "$dest" ] && [ -s "${dir}/${index}" ]; then
+      continue
+    fi
+    rm -f "${dir}/${index}" || exit 1
+    if ! { [ -s "$dest" ] && _fetch_check "$kind" "$pin" "$dest" "$dest" "$file" >&2; } \
+        && ! fetch "${base}/${file}" "$dest" "$kind" "$pin"; then
+      rc=1
+      continue
+    fi
+    fetch "${base}/${index}" "${dir}/${index}" "$index_kind" "$index_pin" || rc=1
+  done <<< "$rows"
+  exit "$rc"
+)
+
+annotation_score_terms() {
+  printf '  %s\n' \
+    'CADD: free for non-commercial and academic use. Commercial use requires a licence from the University of Washington.' \
+    'SpliceAI precomputed scores: academic and not-for-profit use only. Other use requires a commercial licence from Illumina.' \
+    'REVEL: the authors allow non-commercial use. Zenodo lists ODbL 1.0. Contact the maintainers for other uses.' \
+    'AlphaMissense: CC BY-NC-SA 4.0 (non-commercial, share-alike).'
+}
+
+install_revel() (
+  local dir=$1 dest="${1}/revel_grch38.tsv.gz" zip="${1}/${REVEL_URL##*/}" stage tsv bgz
+  [ -s "$dest" ] && [ -s "${dest}.tbi" ] && exit 0
+  need_og "converts the REVEL scores" || exit 1
+  ensure_image GATK_IMAGE 30 || exit 1
+  if [ ! -s "$zip" ] || [ "$(_digest sha256 "$zip")" != "$REVEL_SHA256" ]; then
+    fetch "$REVEL_URL" "$zip" sha256 "$REVEL_SHA256" || exit 1
+  fi
+  stage=$(mktemp -d "${dir}/.revel.XXXXXX") || exit 1
+  trap 'rm -rf "$stage"' EXIT
+  tsv=$(cpath "${stage}/revel_grch38.tsv") || exit 1
+  bgz="${tsv}.gz"
+  run_in --rw "$stage" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \
+    /pgp-bin/og setup revel "$(cpath "$zip")" "$tsv" || exit 1
+  run_in --rw "$stage" "$GATK_IMAGE" bgzip -f "$tsv" || exit 1
+  run_in --rw "$stage" "$GATK_IMAGE" tabix -s 1 -b 2 -e 2 "$bgz" || exit 1
+  [ -s "${stage}/${dest##*/}" ] && [ -s "${stage}/${dest##*/}.tbi" ] || exit 1
+  rm -f "${dest}.tbi" || exit 1
+  mv -f "${stage}/${dest##*/}" "$dest" && mv -f "${stage}/${dest##*/}.tbi" "${dest}.tbi" || exit 1
+  rm -f "$zip"
+)
+
+install_alphamissense() (
+  local dir=$1 dest="${1}/AlphaMissense_hg38.tsv.gz" stage
+  [ -s "$dest" ] && [ -s "${dest}.tbi" ] && exit 0
+  ensure_image GATK_IMAGE 30 || exit 1
+  if [ ! -s "$dest" ] || [ "$(_digest sha256 "$dest")" != "$ALPHAMISSENSE_SHA256" ]; then
+    rm -f "${dest}.tbi" || exit 1
+    fetch "$ALPHAMISSENSE_URL" "$dest" sha256 "$ALPHAMISSENSE_SHA256" || exit 1
+  fi
+  stage=$(mktemp -d "${dir}/.alphamissense.XXXXXX") || exit 1
+  trap 'rm -rf "$stage"' EXIT
+  # The published file is BGZF. A hard link lets tabix write its index in
+  # staging without another copy of the scores.
+  ln "$dest" "${stage}/${dest##*/}" || cp -f "$dest" "${stage}/${dest##*/}" || exit 1
+  run_in --rw "$stage" "$GATK_IMAGE" tabix -s 1 -b 2 -e 2 "$(cpath "${stage}/${dest##*/}")" || exit 1
+  [ -s "${stage}/${dest##*/}.tbi" ] && mv -f "${stage}/${dest##*/}.tbi" "${dest}.tbi"
+)
+
+annotation_score_disk_ok() {
+  local dir=$1 files=$2 rows file pin index dest bytes size part remaining=0 free retry
+  rows=$(setup_pin_rows "$files") || return 1
+  while read -r file _ pin && read -r index _; do
+    dest="${dir}/${file}"
+    if [ -s "$dest" ] && [ -s "${dir}/${index}" ]; then continue; fi
+    case "$file" in
+      whole_genome_SNVs.tsv.gz) bytes=$CADD_SNV_BYTES ;;
+      gnomad.genomes.r4.0.indel.tsv.gz) bytes=$CADD_INDEL_BYTES ;;
+      *) bytes=${pin%%:*} ;;  # SpliceAI pins start with the byte count.
+    esac
+    # Credit a size-matching file on an index retry. The installer verifies
+    # its content before reusing it.
+    if [ -s "$dest" ]; then
+      size=$(stat -L -c %s "$dest" 2>/dev/null || stat -L -f %z "$dest") || return 1
+      if [ "$size" = "$bytes" ]; then continue; fi
+    fi
+    if [ -s "${dest}.part" ]; then
+      part=$(stat -L -c %s "${dest}.part" 2>/dev/null || stat -L -f %z "${dest}.part") || return 1
+      bytes=$((bytes - part))
+    fi
+    if [ "$bytes" -gt 0 ]; then remaining=$((remaining + bytes)); fi
+  done <<< "$rows"
+  [ "$remaining" -gt 0 ] || return 0
+
+  retry="${SETUP_CMD} --annotation-scores $(printf '%q' "$GENOME_DIR")"
+  free=$(df -Pk "$dir" 2>/dev/null | awk 'NR == 2 {print $4}') || free=""
+  case "$free" in
+    ''|*[!0-9]*)
+      echo "[WARN] Cannot read free space for annotation scores. Retry: ${retry}" >&2
+      return 1 ;;
+  esac
+  if [ "$free" -lt "$(( (remaining + 1023) / 1024 + 5 * 1048576 ))" ]; then
+    echo "[WARN] Skipping annotation scores: needs ${remaining} more bytes for CADD and SpliceAI plus a 5 GiB margin." >&2
+    echo "  Install later: ${retry}" >&2
+    return 1
+  fi
+}
+
+install_annotation_scores() (
+  local dir="${GENOME_DIR}/annotations" rc=0 i key file raw masked_files=""
+  local pin_keys=()
+  mkdir -p "$dir" || exit 1
+  lock_acquire "${dir}/.setup-scores.lock" || exit 1
+  trap 'lock_release "${dir}/.setup-scores.lock"' EXIT
+  read -r -a pin_keys <<< "$SPLICEAI_MASKED_FILES"
+  for ((i = 0; i < ${#pin_keys[@]}; i += 2)); do
+    key=${pin_keys[i]}
+    read -r file _ <<< "${!key}"
+    raw="${dir}/${file/.masked./.raw.}"
+    if [ -s "$raw" ] && [ -s "${raw}.tbi" ]; then
+      echo "[OK] SpliceAI raw scores already present: ${raw} and ${raw}.tbi"
+    else
+      masked_files+=" ${key} ${pin_keys[i+1]}"
+    fi
+  done
+  annotation_score_disk_ok "$dir" "$CADD_FILES $masked_files" || exit 1
+  install_indexed_downloads "$dir" "$CADD_BASE_URL" "$CADD_FILES" || rc=1
+  if [ -n "$masked_files" ]; then
+    install_indexed_downloads "$dir" "$SPLICEAI_MASKED_BASE_URL" "$masked_files" || rc=1
+  fi
+  install_revel "$dir" || { echo '[WARN] Could not install REVEL.' >&2; rc=1; }
+  install_alphamissense "$dir" || { echo '[WARN] Could not install AlphaMissense.' >&2; rc=1; }
+  exit "$rc"
+)
+
+install_somatic_data() {
+  install_indexed_downloads "${GENOME_DIR}/somatic" "$SOMATIC_DATA_BASE_URL" "$SOMATIC_DATA_FILES"
+}
+
+has_bwa_index() {
+  local ext
+  for ext in amb ann bwt pac sa; do
+    [ -s "${1}.${ext}" ] || return 1
+  done
+}
+
+install_bwa_index() (
+  local dir stage prefix ext
+  dir=$(dirname "$REF_FASTA")
+  [ -s "$REF_FASTA" ] || { echo "ERROR: install the reference first: ${REF_FASTA}" >&2; exit 1; }
+  lock_acquire "${REF_FASTA}.bwa-index.lock" || exit 1
+  stage=""
+  trap 'if [ -n "$stage" ]; then rm -rf "$stage"; fi; lock_release "${REF_FASTA}.bwa-index.lock"' EXIT
+  if has_bwa_index "$REF_FASTA"; then
+    echo "[OK] Classic BWA index already present: ${REF_FASTA}"
+    exit 0
+  fi
+  ensure_image BWA_IMAGE 04b || exit 1
+  stage=$(mktemp -d "${dir}/.bwa-index.XXXXXX") || exit 1
+  prefix="${stage}/index"
+  echo 'Building the classic BWA index for GRIDSS (about 5 GB on disk and 5.4 GB RAM)...'
+  run_in --rw "$stage" "$BWA_IMAGE" bwa index -p "$(cpath "$prefix")" "$REF_FASTA_C" || exit 1
+  has_bwa_index "$prefix" || { echo 'ERROR: bwa index did not write all five files.' >&2; exit 1; }
+  # Publish .sa last so a partial move cannot look complete to GRIDSS.
+  rm -f "${REF_FASTA}.sa" || exit 1
+  for ext in amb ann bwt pac sa; do mv -f "${prefix}.${ext}" "${REF_FASTA}.${ext}" || exit 1; done
+  echo "[OK] Classic BWA index: ${REF_FASTA}"
+)
+
+install_cnvpytor_data() (
+  local dir="${GENOME_DIR}/reference/cnvpytor" rows file kind pin rc=0
+  rows=$(setup_pin_rows "$CNVPYTOR_DATA_FILES") || exit 1
+  mkdir -p "$dir" || exit 1
+  lock_acquire "${dir}/.setup.lock" || exit 1
+  trap 'lock_release "${dir}/.setup.lock"' EXIT
+  while read -r file kind pin; do
+    [ -s "${dir}/${file}" ] && continue
+    fetch "${CNVPYTOR_DATA_BASE_URL}/${file}" "${dir}/${file}" "$kind" "$pin" || rc=1
+  done <<< "$rows"
+  exit "$rc"
+)
+
+install_pypgx_data() (
+  local dir="${GENOME_DIR}/reference" dest stage=""
+  dest="${dir}/pypgx-bundle"
+  mkdir -p "$dir" || exit 1
+  lock_acquire "${dest}.setup.lock" || exit 1
+  trap 'if [ -n "$stage" ]; then rm -rf "$stage"; fi; lock_release "${dest}.setup.lock"' EXIT
+  if [ -d "$dest" ]; then
+    [ "$(git -c safe.directory="$dest" -C "$dest" rev-parse HEAD 2>/dev/null)" = "$PYPGX_BUNDLE_COMMIT" ] && exit 0
+    echo "ERROR: move the existing PyPGx bundle aside before installing ${PYPGX_BUNDLE_VERSION}: ${dest}" >&2
+    exit 1
+  fi
+  stage=$(mktemp -d "${dir}/.pypgx.XXXXXX") || exit 1
+  git clone --depth 1 --branch "$PYPGX_BUNDLE_VERSION" "$PYPGX_BUNDLE_URL" "${stage}/bundle" || exit 1
+  if [ "$(git -C "${stage}/bundle" rev-parse HEAD)" != "$PYPGX_BUNDLE_COMMIT" ]; then
+    echo "ERROR: PyPGx bundle tag ${PYPGX_BUNDLE_VERSION} differs from its pinned commit." >&2
+    exit 1
+  fi
+  mv "${stage}/bundle" "$dest"
+)
+
+install_everything() {
+  local manifest="${PGP_ROOT}/assets/everything.tsv" kind flag reason base_retry
+  local dir_arg flags=0
+  [ -s "$manifest" ] || { echo "ERROR: missing installer manifest: ${manifest}" >&2; return 1; }
+  dir_arg=$(printf '%q' "$GENOME_DIR")
+  base_retry="${SETUP_CMD} --everything ${dir_arg}"
+  echo '=== Download and use terms (docs/00-reference-setup.md) ==='
+  annotation_score_terms
+  printf '  %s\n' "$CYRIUS_TERMS"
+  printf '  %s\n' "${PRS_ACADEMIC_TERMS[@]}" \
+    'PyPGx bundle: upstream publishes no licence terms for the data bundle.'
+
+  echo '=== Everything base setup ==='
+  if ! SETUP_EVERYTHING_SCOPE=base "$0" "$GENOME_DIR"; then
+    note_missing 'base setup (see the base setup messages above)' "$base_retry"
+  fi
+  while IFS=$'\t' read -r kind flag _ _ reason; do
+    [ "$kind" = setup ] || continue
+    flags=$((flags + 1))
+    echo "=== Everything installer: ${flag} ==="
+    if [[ "$flag" != --* || "$flag" = --everything ]]; then
+      note_missing "invalid setup row: ${flag}" "$base_retry"
+      continue
+    fi
+    # Each invocation has its own errexit state. A failed installer cannot
+    # end the loop or consume further manifest rows.
+    if ! SETUP_EVERYTHING_SCOPE=row STR_EXTRA_LOCI=yes "$0" "$flag" "$GENOME_DIR" </dev/null; then
+      note_missing "${flag} (${reason})" "STR_EXTRA_LOCI=yes ${SETUP_CMD} ${flag} ${dir_arg}"
+    fi
+  done < "$manifest"
+  if [ "$flags" -eq 0 ]; then
+    echo "ERROR: no installer rows in ${manifest}" >&2
+    return 1
+  fi
+  if [ "${#MISSING[@]}" -eq 0 ]; then
+    echo 'Everything setup complete!'
+    return 0
+  fi
+  print_missing
+  echo "Everything setup exits with status ${SETUP_PARTIAL_EXIT}."
+  return "$SETUP_PARTIAL_EXIT"
+}
+
+# install_prs_academic: the four scores of assets/pgs_scores.tsv free for
+# academic research use only (licence academic-research), which step 25 and
+# the PRS process score with PRS_ACADEMIC=true (Nextflow --pgs_academic true).
+install_prs_academic() {
+  if fetch_prs_scores academic-research; then
+    echo "[OK] Academic-only PGS Catalog scores (step 25 with PRS_ACADEMIC=true): ${GENOME_DIR}/prs_scores/"
+  else
+    return 1
+  fi
+}
+
 case "$OPT_IN" in
+  prs-academic)
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then printf '  %s\n' "${PRS_ACADEMIC_TERMS[@]}"; fi
+    install_prs_academic; exit $? ;;
+  annotation-scores)
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then annotation_score_terms; fi
+    install_annotation_scores; exit $? ;;
+  somatic-data) install_somatic_data; exit $? ;;
+  bwa-index) install_bwa_index; exit $? ;;
+  cnvpytor-data) install_cnvpytor_data; exit $? ;;
+  pypgx-data) install_pypgx_data; exit $? ;;
   ancestry-panel) install_ancestry_panel; exit $? ;;
   ancestry-fine-panel) install_ancestry_fine_panel; exit $? ;;
-  cyrius) install_cyrius; exit $? ;;
+  cyrius)
+    if [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then printf '  %s\n' "$CYRIUS_TERMS"; fi
+    ensure_image PYTHON_IMAGE 21 && install_cyrius; exit $? ;;
   parascopy-data) install_parascopy_data && ensure_image PARASCOPY_IMAGE 35; exit $? ;;
   kir-data) install_kir_data; exit $? ;;
   yleaf-data) install_yleaf_data && ensure_image YLEAF_IMAGE 37; exit $? ;;
@@ -2184,9 +2581,10 @@ pull_images() {
 # --- ClinVar ---------------------------------------------------------------------
 CLINVAR_URL="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz"
 CLINVARDIR="${GENOME_DIR:+${GENOME_DIR}/clinvar}"
-# The raw download and the two files built from it, each with its index.
+# The raw download and the three files built from it, each with its index.
 CLINVAR_SET="clinvar.vcf.gz clinvar.vcf.gz.tbi clinvar_chr.vcf.gz clinvar_chr.vcf.gz.tbi
-  clinvar_pathogenic_chr.vcf.gz clinvar_pathogenic_chr.vcf.gz.tbi"
+  clinvar_pathogenic_chr.vcf.gz clinvar_pathogenic_chr.vcf.gz.tbi
+  clinvar_conflicting_plp_chr.vcf.gz clinvar_conflicting_plp_chr.vcf.gz.tbi"
 
 # clinvar_build_derived RAW_DIR OUT_DIR: from RAW_DIR/clinvar.vcf.gz build, in
 # OUT_DIR (both under GENOME_DIR), clinvar_chr.vcf.gz (NCBI's 1, 2 ... MT
@@ -2208,6 +2606,22 @@ clinvar_build_derived() {
       -Oz -o "${out}/clinvar_pathogenic_chr.vcf.gz" || return 1
   run_in --rw "$2" "$BCFTOOLS_IMAGE" bcftools index -f -t "${out}/clinvar_pathogenic_chr.vcf.gz" || return 1
   rm -f "${2}/chr_rename.txt"
+}
+
+# clinvar_build_conflicting SRC_DIR OUT_DIR: from SRC_DIR/clinvar_chr.vcf.gz build,
+# in OUT_DIR (both under GENOME_DIR), clinvar_conflicting_plp_chr.vcf.gz with its .tbi: the records
+# ClinVar labels conflicting whose CLNSIGCONF counts at least one Pathogenic or
+# Likely_pathogenic submission. og clinvar conflicting-subset selects them; the
+# pathogenic subset holds none of them. Step 06 lists the ones a sample carries
+# apart from its hits, for a clinician to review. Needs og (need_og).
+clinvar_build_conflicting() {
+  local src d
+  src=$(cpath "$1") && d=$(cpath "$2") || return 2
+  echo "  Creating the conflicting subset (records some labs call pathogenic)..."
+  run_in --rw "$2" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$BCFTOOLS_IMAGE" bash -o pipefail -c "set -e
+    /pgp-bin/og clinvar conflicting-subset '${src}/clinvar_chr.vcf.gz' \\
+      | bcftools view --no-version -Oz -o '${d}/clinvar_conflicting_plp_chr.vcf.gz' -
+    bcftools index -f -t '${d}/clinvar_conflicting_plp_chr.vcf.gz'" || return 1
 }
 
 # clinvar_install DIR: move every file of CLINVAR_SET that DIR holds into
@@ -2247,12 +2661,15 @@ clinvar_record_release() {
 }
 
 # refresh_clinvar: download NCBI's current ClinVar into clinvar/.refresh/,
-# check it against NCBI's md5, build both derived files from it there, and only
-# then replace all six files. The normalised copy step 06 keeps is removed, so
+# check it against NCBI's md5, build the three derived files from it there, and
+# only then replace all eight files. The normalised copy step 06 keeps is removed, so
 # step 06 builds it again from the new release. RELEASE and that copy go before
 # the files move: a refresh that stops between two moves leaves no release date
 # on a set that may mix two releases (validate-setup.sh then says the date is
-# unknown) and fails, so the next refresh starts again.
+# unknown) and fails, so the next refresh starts again. When og cannot build the
+# conflicting subset, the other six files still refresh and the old subset is
+# removed, so it never sits beside a newer release: step 06 then says those
+# records were not checked, and the next setup.sh run builds the subset.
 refresh_clinvar() {
   local new="${CLINVARDIR}/.refresh"
   # A download cut short last time (*.part) is resumed; anything else is redone.
@@ -2265,6 +2682,11 @@ refresh_clinvar() {
     echo "ERROR: could not build the ClinVar files from the new release; the old ones are kept." >&2
     return 1
   }
+  if ! need_og "builds the conflicting ClinVar subset of step 06" || ! clinvar_build_conflicting "$new" "$new"; then
+    rm -f "${new}/clinvar_conflicting_plp_chr.vcf.gz.tbi" "${new}/clinvar_conflicting_plp_chr.vcf.gz" \
+      "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz"
+    echo "[WARN] Could not build the conflicting ClinVar subset of the new release; step 06 says those records were not checked until setup.sh builds it." >&2
+  fi
   rm -f "${CLINVARDIR}/RELEASE" \
     "${CLINVARDIR}/clinvar_pathogenic_chr.norm.vcf.gz" "${CLINVARDIR}/clinvar_pathogenic_chr.norm.vcf.gz.tbi"
   clinvar_install "$new" || {
@@ -2273,6 +2695,11 @@ refresh_clinvar() {
   }
   clinvar_record_release
 }
+
+if $EVERYTHING_SETUP; then
+  install_everything
+  exit $?
+fi
 
 echo "============================================"
 echo "  OwnGenome — Setup"
@@ -2306,7 +2733,11 @@ if [ "$REFRESH" = clinvar ]; then
   echo "=== Refreshing ClinVar ==="
   if [ -f "${CLINVARDIR}/RELEASE" ]; then echo "  Current release: $(cat "${CLINVARDIR}/RELEASE")"; fi
   refresh_clinvar || exit 1
-  echo "[OK] ClinVar refreshed: raw file, chr-prefixed file and pathogenic subset replaced."
+  if [ -f "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" ]; then
+    echo "[OK] ClinVar refreshed: raw file, chr-prefixed file, pathogenic and conflicting subsets replaced."
+  else
+    echo "[OK] ClinVar refreshed: raw file, chr-prefixed file and pathogenic subset replaced; the conflicting subset was not built (see the warning above)."
+  fi
   exit 0
 fi
 
@@ -2433,6 +2864,27 @@ elif "${PGP_ROOT}/rust/og.sh" install; then
   echo "[OK] og (bin/.og) built."
 else
   echo "[WARN] Could not build og. Steps 04, 05, 07, 25 and 33 stop without it; run: $0 --og"
+  note_missing "og, OwnGenome's own binary (steps 04, 05, 07, 25 and 33)" "${SETUP_CMD} --og"
+fi
+
+# ClinVar's conflicting subset (step 06 lists the records of it a sample carries,
+# apart from the hits) is built by og, so it comes after og. It is built when
+# it is missing or older than clinvar_chr.vcf.gz, in clinvar/.build-conflicting/,
+# and moved in once complete. Without it step 06 writes "not checked".
+if [ -f "${CLINVARDIR}/clinvar_chr.vcf.gz" ] \
+   && { [ ! -f "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz.tbi" ] \
+        || [ "${CLINVARDIR}/clinvar_chr.vcf.gz" -nt "${CLINVARDIR}/clinvar_conflicting_plp_chr.vcf.gz" ]; }; then
+  rm -rf "${CLINVARDIR}/.build-conflicting"
+  mkdir -p "${CLINVARDIR}/.build-conflicting"
+  if need_og "builds the conflicting ClinVar subset of step 06" \
+     && clinvar_build_conflicting "$CLINVARDIR" "${CLINVARDIR}/.build-conflicting" \
+     && clinvar_install "${CLINVARDIR}/.build-conflicting"; then
+    echo "[OK] ClinVar conflicting subset (records some labs call pathogenic, step 06) built."
+  else
+    rm -rf "${CLINVARDIR}/.build-conflicting"
+    echo "[WARN] Could not build the conflicting ClinVar subset; step 06 says the records were not checked."
+    note_missing "the conflicting ClinVar subset (step 06)" "${SETUP_CMD} --refresh clinvar \"${GENOME_DIR}\""
+  fi
 fi
 
 ###############################################################################
@@ -2457,6 +2909,7 @@ else
   else
     rm -f "$DICT_PART"
     echo "[WARN] Could not create ${REF_DICT}. Steps 03a, 20, 29 and chip-to-vcf need it; re-run setup.sh."
+    note_missing "the sequence dictionary ${REF_DICT##*/} (steps 03a, 20, 29 and chip-to-vcf)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 
@@ -2478,6 +2931,7 @@ for name in $DATA_FILES; do
     echo "[OK] ${what}: ${dest}"
   else
     echo "[WARN] Could not install the ${what}. Re-run setup.sh to try again."
+    note_missing "the ${what}" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 done
 # gnomAD v3.1's chrM sites (step 20 annotates the calls with them), checked
@@ -2493,52 +2947,112 @@ else
     echo "[OK] gnomAD v3.1 mitochondrial sites (step 20): ${GNOMAD_MITO}"
   else
     echo "[WARN] Could not install gnomAD's mitochondrial sites. Step 20 runs without its gnomAD columns; re-run setup.sh to try again."
+    note_missing "gnomAD v3.1 mitochondrial sites (step 20)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
-# A failed download does not stop setup here either.
-install_sample_qc_data || true
-install_strchive_data || true
-# Step 25: its scores, pgsc_calc and its plugin (warnings only).
-install_prs
-
-###############################################################################
-# Phase 5: AnnotSV annotation data (step 5, a default step)
-###############################################################################
-# The bundle, gnomAD-SV's common SVs and the MANE Select transcripts
-# (install_annotsv_data above). A failure is a warning: the rest of setup goes on.
-echo ""
-echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB unpacked) ==="
-
-install_annotsv_data || true
-
-###############################################################################
-# Phase 6: Clinical reference data (default)
-###############################################################################
-echo ""
-echo "=== Phase 6: Clinical reference data ==="
-if $CLINICAL_DATA; then
-  install_clinical_data || true
+# Step 11's allele-frequency panel (ROH_AF_PANEL_URL: gnomAD genomes' common
+# biallelic SNVs, built by og dev build roh-af), checked against
+# ROH_AF_PANEL_SHA256 and indexed here with the tabix of GATK_IMAGE, as
+# REVEL is (scripts/ci/check-container-helpers.sh keeps bgzip and tabix out
+# of BCFTOOLS_IMAGE). Without it step 11 gives every site AF 0.4, so a
+# failed download warns and does not stop setup.
+ROH_AF_PANEL="${GENOME_DIR}/roh_af/${ROH_AF_PANEL_URL##*/}"
+# Download only a missing panel or one whose sha256 is not the pinned one;
+# then index the checked file, so a failed index is retried without
+# downloading the panel again.
+ROH_AF_PANEL_OK=0
+if [ -s "$ROH_AF_PANEL" ] && [ "$(_digest sha256 "$ROH_AF_PANEL")" = "$ROH_AF_PANEL_SHA256" ]; then
+  ROH_AF_PANEL_OK=1
 else
-  echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
-  echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
+  rm -f "${ROH_AF_PANEL}.tbi"
+  if fetch "$ROH_AF_PANEL_URL" "$ROH_AF_PANEL" sha256 "$ROH_AF_PANEL_SHA256"; then
+    ROH_AF_PANEL_OK=1
+  else
+    echo "[WARN] Could not install step 11's allele-frequency panel: step 11 gives every site AF 0.4 without it. Re-run setup.sh to try again."
+  fi
+fi
+if [ "$ROH_AF_PANEL_OK" = 1 ]; then
+  if [ -s "${ROH_AF_PANEL}.tbi" ]; then
+    echo "[OK] ROH allele-frequency panel (step 11) already present (sha256 matches ROH_AF_PANEL_SHA256)."
+  elif run_in --rw "${GENOME_DIR}/roh_af" "$GATK_IMAGE" tabix -f -s1 -b2 -e2 "$(cpath "$ROH_AF_PANEL")"; then
+    echo "[OK] ROH allele-frequency panel (step 11): ${ROH_AF_PANEL}"
+  else
+    rm -f "${ROH_AF_PANEL}.tbi"
+    echo "[WARN] Could not index step 11's allele-frequency panel (${ROH_AF_PANEL}): step 11 gives every site AF 0.4 until it is. Re-run setup.sh to try again."
+  fi
+fi
+# A failed download does not stop setup here either: it goes on the list of
+# what is missing, which the summary prints with the command that retries it.
+if [ "${SETUP_EVERYTHING_SCOPE:-}" != base ]; then
+  install_sample_qc_data \
+    || note_missing "somalier's sites and VerifyBamID2's panel (step 33)" "${SETUP_CMD} --sample-qc-data \"${GENOME_DIR}\""
+  install_strchive_data \
+    || note_missing "STRchive ${STRCHIVE_VERSION} catalog (steps 09 and 9b)" "${SETUP_CMD} --strchive-data \"${GENOME_DIR}\""
+fi
+install_tandem_repeats \
+  || note_missing "GIAB tandem-repeat map (step 04c)" "${SETUP_CMD} \"${GENOME_DIR}\""
+# A plain setup warns when a PRS download fails. Everything lists it as missing.
+if ! install_prs; then
+  note_missing "PGS Catalog scores or pgsc_calc (step 25)" "${SETUP_CMD} --everything \"${GENOME_DIR}\""
+fi
+
+###############################################################################
+if [ "${SETUP_EVERYTHING_SCOPE:-}" != base ]; then
+  echo ""
+  echo "=== Phase 5: AnnotSV annotation data (~5.3 GB + ~1.7 GB download, ~20 GB unpacked) ==="
+
+  install_annotsv_data \
+    || note_missing "AnnotSV data: the bundle, gnomAD-SV ${GNOMAD_SV_VERSION} and MANE ${MANE_RELEASE} (step 05)" "${SETUP_CMD} --annotsv-data \"${GENOME_DIR}\""
+
+  ###############################################################################
+  # Phase 6: Clinical reference data (default)
+  ###############################################################################
+  echo ""
+  echo "=== Phase 6: Clinical reference data ==="
+  if $CLINICAL_DATA; then
+    # Each item it could not install is on the list already (note_missing).
+    install_clinical_data || true
+  else
+    echo "[SKIP] Clinical data (--no-clinical-data): steps 13, 30, 23, 31 and 17 need the caches or bundle."
+    echo "  Install later: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""
+  fi
 fi
 
 ###############################################################################
 # Summary
 ###############################################################################
+# "Setup complete!" only when nothing is missing. Otherwise each missing item
+# with the command that retries it, and the exit status SETUP_PARTIAL_EXIT (3),
+# so a caller can tell a partial setup from a full one.
 echo ""
 echo "============================================"
-echo "  Setup complete!"
+if [ "${#MISSING[@]}" -eq 0 ]; then
+  if [ "${SETUP_EVERYTHING_SCOPE:-}" = base ]; then echo "  Base setup complete!"; else echo "  Setup complete!"; fi
+else
+  n=${#MISSING[@]}
+  echo "  Setup finished: core ready, ${n} item$([ "$n" -eq 1 ] || echo s) missing"
+fi
 echo ""
 echo "  Reference genome:  ${REFDIR}/"
 echo "  ClinVar database:  ${CLINVARDIR}/"
 echo "  Docker images:     ${PULLED} pulled, ${SKIPPED} cached"
 echo "============================================"
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  print_missing
+fi
+if [ "${SETUP_EVERYTHING_SCOPE:-}" = base ]; then
+  if [ "${#MISSING[@]}" -gt 0 ]; then exit "$SETUP_PARTIAL_EXIT"; fi
+  exit 0
+fi
+
 echo ""
 echo "Next steps:"
 echo "  1. Place your FASTQ/BAM/VCF in: ${GENOME_DIR}/<sample_name>/"
 echo "  2. Run: export GENOME_DIR=${GENOME_DIR}"
 echo "  3. Run: ./scripts/validate-setup.sh <sample_name>"
 echo "  4. Run: ./scripts/run-all.sh <sample_name> <male|female>"
-echo ""
-echo "Review any warnings above; use --clinical-data to retry missing clinical downloads."
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  echo ""
+  echo "Setup exits with status ${SETUP_PARTIAL_EXIT}: a partial setup. Run the retry commands above, or this setup again."
+  exit "$SETUP_PARTIAL_EXIT"
+fi

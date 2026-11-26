@@ -19,7 +19,7 @@
 # moderate one. '-' for every other gene: CPIC gives no rule that converts
 # their phenotype, so an inhibitor of one gets a note and no converted
 # phenotype.
-# tests/test_cpic_parser.py checks the shape of every row.
+# cargo test -p og-pgx (tests/port_tests_pgx_cpic.rs) checks the shape of every row.
 Drug	Gene	Strength	Activity_score_factor	Class_source	Rule_source
 bupropion	CYP2D6	strong	0	https://www.fda.gov/drugs/drug-interactions-labeling/healthcare-professionals-fdas-examples-drugs-interact-cyp-enzymes-and-transporter-systems	https://cpicpgx.org/guidelines/guideline-for-codeine-and-cyp2d6/
 fluoxetine	CYP2D6	strong	0	https://www.fda.gov/drugs/drug-interactions-labeling/healthcare-professionals-fdas-examples-drugs-interact-cyp-enzymes-and-transporter-systems	https://cpicpgx.org/guidelines/guideline-for-codeine-and-cyp2d6/

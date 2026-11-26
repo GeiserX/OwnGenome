@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The Nextflow side of step 08's second HLA caller: --hla_qc on a VCF+BAM row
 # of HG002 with hla_typing and pharmcat. HLA_QC_READS and HLA_QC run for real;
+# OptiType types the read pairs HLA_TYPING's T1K extracted, as step 08 does;
 # the concordance table they publish is the one the bash step wrote for the
 # same BAM (case hla-second-caller-1), and PGX_CONSENSUS names both callers
 # for what it passes to PharmCAT, which reports HLA-A and HLA-B as outside
@@ -28,6 +29,9 @@ check "the GENCODE gene lines are installed" test -s "$GENES"
 KIR_DAT="${G}/kir/IPD-KIR_${KIR_DB_RELEASE}/kir.dat"
 check "IPD-KIR is installed" test -s "$KIR_DAT"
 
+# A clean work dir: the checks below find task files in it, and an earlier
+# interrupted run must not leave files they would read instead.
+rm -rf "$WORK"
 echo "+ nextflow run main.nf -profile docker (hla_qc)"
 (
   cd "$CASE_TMP" && nextflow run "${REPO}/main.nf" -profile docker -ansi-log false \
@@ -49,6 +53,28 @@ cp "${CASE_TMP}/.nextflow.log" "${E2E_WORK}/logs/${CASE_NAME}.nextflow.log" 2>/d
 [ "$NF_RC" -eq 0 ] || grep -E 'Error executing process|Command exit status|Command error' -A 12 "${CASE_TMP}/.nextflow.log" | head -80
 
 R="${NF_OUT}/${SAMPLE}"
+# OptiType's input is T1K's extraction: HLA_QC_READS' read pairs are the ones
+# run-t1k took in HLA_TYPING (the reads over the HLA genes and their mates,
+# the unmapped pairs and the ALT and decoy reads that match HLA sequence), not
+# a cut of the BAM around HLA-A, -B and -C. Task files, so read in the work dir
+# (staged inputs are links; -type f finds each task's own file).
+CAND1=$(find "$WORK" -type f -name "${SAMPLE}_hla_candidate_1.fq" | head -n 1)
+CAND2=$(find "$WORK" -type f -name "${SAMPLE}_hla_candidate_2.fq" | head -n 1)
+OTIN1=$(find "$WORK" -type f -name "${SAMPLE}_hla_R1.fq" | head -n 1)
+OTIN2=$(find "$WORK" -type f -name "${SAMPLE}_hla_R2.fq" | head -n 1)
+# shellcheck disable=SC2329  # called through check
+same_reads() { [ -s "$1" ] && cmp -s "$1" "$2"; }
+# shellcheck disable=SC2329  # called through check
+not_same_reads() { ! same_reads "$@"; }
+check "HLA_TYPING kept T1K's candidate read pairs" test -s "$CAND1"
+check "HLA_QC_READS gives OptiType T1K's first reads" same_reads "$CAND1" "$OTIN1"
+check "and T1K's second reads" same_reads "$CAND2" "$OTIN2"
+PAIRS=$(( $(wc -l < "${OTIN1:-/dev/null}") / 4 ))
+check_ge "read pairs OptiType typed" "$PAIRS" 100
+echo "- HLA_QC_READS on the fixture: ${PAIRS} read pairs from T1K's extraction" >> "$E2E_NOTES"
+# Red control: the same reads less their last pair are rejected.
+head -n -4 "${OTIN1:-/dev/null}" > "${CASE_TMP}/ctl_R1.fq"
+check "control: the check above rejects reads that are not T1K's" not_same_reads "$CAND1" "${CASE_TMP}/ctl_R1.fq"
 OT="${R}/hla_optitype/${SAMPLE}_optitype_result.tsv"
 CONC="${R}/hla_optitype/${SAMPLE}_hla_concordance.tsv"
 cat "$OT" "$CONC" 2>/dev/null
@@ -64,7 +90,7 @@ for g in HLA-A HLA-B; do
     grep -Eq "^${g}"$'\t[^\t]+\tyes\tT1K and OptiType \\(step 08\\), which agree at two fields\t' "$CONS"
 done
 source_of() {
-  python3 -c 'import json, sys; g = json.load(open(sys.argv[1]))["genes"][sys.argv[2]]; print(g.get("callSource", ""))' "$1" "$2" 2>/dev/null
+  jq -r --arg g "$2" '.genes[$g] | .callSource // ""' "$1" 2>/dev/null
 }
 for g in HLA-A HLA-B; do
   check_eq "PHARMCAT reports ${g} as an outside call" "$(source_of "${R}/pharmcat/${SAMPLE}.report.json" "$g")" OUTSIDE
@@ -76,14 +102,15 @@ KG="${R}/kir/${SAMPLE}_kir_genotype.tsv"
 check "HTML_REPORT wrote the report" test -s "$HTML"
 check "KIR_TYPING published the KIR genotype file" test -s "$KG"
 hla_of() {
-  python3 -c 'import json, sys; d = json.load(open(sys.argv[1]))["sections"]["hla"]["data"]; print(json.dumps(d.get(sys.argv[2]), sort_keys=True))' "$1" "$2" 2>/dev/null
+  jq -S --arg k "$2" '.sections.hla.data[$k]' "$1" 2>/dev/null
 }
 check "the Nextflow summary has the OptiType rows" has '"agree": "yes"' "$(hla_of "${R}/summary.json" optitype)"
 check_eq "and they are the bash report's (case hla-second-caller-1)" "$(hla_of "${R}/summary.json" optitype)" \
   "$(hla_of "${E2E_WORK}/hla-qc-bash-summary.json" optitype)"
 # nf_report_has HTML: every concordance row and the KIR result are in the report. Each
 # gene's value is matched with its own label, so swapped rows fail.
-html_esc() { python3 -I -c 'import html, sys; print(html.escape(sys.argv[1]))' "$1"; }
+# shellcheck disable=SC2329  # called through check
+html_esc() { printf '%s\n' "$1" | sed -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g' -e "s/'/\&#x27;/g"; }
 nf_report_has() {
   local g t o a w n=0 ok=0
   while IFS=$'\t' read -r g t o a _; do
@@ -106,13 +133,11 @@ nf_report_has() {
 not_nf_report_has() { ! nf_report_has "$@"; }
 grep -A 3 'KIR genes\|OptiType check\|T1K vs OptiType' "$HTML" | head -n 30
 check "the Nextflow report prints each gene's agreement, both calls, and the KIR result" nf_report_has "$HTML"
-# Red control: the same summary through a report without the OptiType and KIR blocks.
-BR="${CASE_TMP}/bin_no_blocks"
-rm -rf "$BR"
-cp -R "${REPO}/bin" "$BR"
-sed -i 's/if hla.get("optitype") is not None:/if False:/; s/if hla.get("kir") is not None:/if False:/' "${BR}/render_report.py"
-check "the control's mutations applied" test "$(grep -c '^    if False:$' "${BR}/render_report.py")" -eq 2
-python3 -I "${BR}/render_report.py" --summary "${R}/summary.json" -o "${CASE_TMP}/ctl.html" >/dev/null
+# Red control: the report of the same summary without its OptiType and KIR blocks.
+jq 'del(.sections.hla.data.optitype, .sections.hla.data.kir)' "${R}/summary.json" > "${CASE_TMP}/ctl.summary.json"
+check "the control summary has no OptiType or KIR block" \
+  jq -e '.sections.hla.data | type == "object" and (has("optitype") or has("kir") | not)' "${CASE_TMP}/ctl.summary.json"
+"${REPO}/bin/og" report render --summary "${CASE_TMP}/ctl.summary.json" -o "${CASE_TMP}/ctl.html" >/dev/null
 check "control: the check above rejects that report" not_nf_report_has "${CASE_TMP}/ctl.html"
 rm -rf "${NF_OUT:?}" "${WORK:?}"
 

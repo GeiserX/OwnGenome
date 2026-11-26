@@ -1,759 +1,768 @@
 {
-  "schema_version": 2,
-  "sample": "S",
-  "generated_utc": "2026-11-15 00:19 UTC",
-  "run": {
-    "status_file": false,
-    "started_utc": null,
-    "declared_sex": null
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-19 23:58 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "coverage": {
+   "title": "Coverage (mosdepth)",
+   "step": "16b",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: could not convert string to float: 'abc'",
+   "data": {}
   },
-  "databases": {
-    "clinvar_release": null,
-    "cpsr_clinvar_release": null,
-    "hla_database": null
+  "callability": {
+   "title": "Gene callability (mosdepth)",
+   "step": "16b",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_callability.bed.gz is not mosdepth's thresholds table of one depth",
+   "data": {}
   },
-  "manifest": [],
-  "sections": {
-    "coverage": {
-      "title": "Coverage (mosdepth)",
-      "step": "16b",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "ValueError: could not convert string to float: 'abc'",
-      "data": {}
-    },
-    "callability": {
-      "title": "Gene callability (mosdepth)",
-      "step": "16b",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_callability.bed.gz is not mosdepth's thresholds table of one depth",
-      "data": {}
-    },
-    "sex_check": {
-      "title": "Sex check (indexcov)",
-      "step": "16",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "indexcov-indexcov.ped has no sex column or no sample row",
-      "data": {}
-    },
-    "sample_qc": {
-      "title": "Sample identity and contamination (somalier, VerifyBamID2)",
-      "step": "33",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_sample_qc.tsv has no inferred_sex row",
-      "data": {}
-    },
-    "mosaic_sex_loss": {
-      "title": "Mosaic loss of chromosome Y or X",
-      "step": "33",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_sample_qc.tsv has no mosaic_call row (detected, not_detected, gain, not_estimated)",
-      "data": {}
-    },
-    "read_count": {
-      "title": "Reads kept by alignment",
-      "step": "02",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_read_count.tsv has no whole number for input_reads",
-      "data": {}
-    },
-    "variants": {
-      "title": "Variant calling",
-      "step": "03",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S.vcf.gz: Compressed file ended before the end-of-stream marker was reached",
-      "data": {}
-    },
-    "clinvar": {
-      "title": "ClinVar screen",
-      "step": "06",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "ValueError: invalid literal for int() with base 10: 'x'",
-      "data": {}
-    },
-    "couple": {
-      "title": "Couple carrier screen",
-      "step": "39",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_couple_carrier.tsv line 2 is not a row of S's couple table",
-      "data": {}
-    },
-    "carrier": {
-      "title": "Carrier list",
-      "step": "06",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "ValueError: invalid literal for int() with base 10: 'x'",
-      "data": {}
-    },
-    "pharmcat": {
-      "title": "PharmCAT",
-      "step": "07",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S.report.json: Expecting value: line 1 column 21 (char 20)",
-      "data": {}
-    },
-    "cpic": {
-      "title": "CPIC drug-gene recommendations",
-      "step": "27",
-      "state": "ok",
-      "source": "cpic/S_phenotypes.tsv",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "genes": [],
-        "non_normal": 0,
-        "ambiguous": 0,
-        "not_called": 0,
-        "unclassified": 0,
-        "parse_failed": true,
-        "warnings": []
+  "sex_check": {
+   "title": "Sex check (indexcov)",
+   "step": "16",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "indexcov-indexcov.ped has no sex column or no sample row",
+   "data": {}
+  },
+  "sample_qc": {
+   "title": "Sample identity and contamination (somalier, VerifyBamID2)",
+   "step": "33",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_sample_qc.tsv has no inferred_sex row",
+   "data": {}
+  },
+  "mosaic_sex_loss": {
+   "title": "Mosaic loss of chromosome Y or X",
+   "step": "33",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_sample_qc.tsv has no mosaic_call row (detected, not_detected, gain, not_estimated)",
+   "data": {}
+  },
+  "read_count": {
+   "title": "Reads kept by alignment",
+   "step": "02",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_read_count.tsv has no whole number for input_reads",
+   "data": {}
+  },
+  "variants": {
+   "title": "Variant calling",
+   "step": "03",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S.vcf.gz: Compressed file ended before the end-of-stream marker was reached",
+   "data": {}
+  },
+  "clinvar": {
+   "title": "ClinVar screen",
+   "step": "06",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: invalid literal for int() with base 10: 'x'",
+   "data": {}
+  },
+  "couple": {
+   "title": "Couple carrier screen",
+   "step": "39",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_couple_carrier.tsv line 2 is not a row of S's couple table",
+   "data": {}
+  },
+  "carrier": {
+   "title": "Carrier list",
+   "step": "06",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: invalid literal for int() with base 10: 'x'",
+   "data": {}
+  },
+  "acmg_sf": {
+   "title": "ACMG secondary findings",
+   "step": "06",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: invalid literal for int() with base 10: 'x'",
+   "data": {}
+  },
+  "pharmcat": {
+   "title": "PharmCAT",
+   "step": "07",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S.report.json: Expecting value: line 1 column 21 (char 20)",
+   "data": {}
+  },
+  "cpic": {
+   "title": "CPIC drug-gene recommendations",
+   "step": "27",
+   "state": "ok",
+   "source": "cpic/S_phenotypes.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes": [],
+    "non_normal": 0,
+    "ambiguous": 0,
+    "not_called": 0,
+    "unclassified": 0,
+    "parse_failed": true,
+    "warnings": []
+   }
+  },
+  "pypgx": {
+   "title": "pypgx",
+   "step": "32",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "KeyError: 'Gene'",
+   "data": {}
+  },
+  "cyrius": {
+   "title": "Cyrius (CYP2D6)",
+   "step": "21",
+   "state": "ok",
+   "source": "cyrius/S_cyp2d6.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genotype": "none",
+    "filter": ""
+   }
+  },
+  "parascopy": {
+   "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
+   "step": "35",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_smn_copy_number.tsv lacks the chrom, start, end, agCN, agCN_filter, agCN_qual, psCN, psCN_qual or psCN_filter column",
+   "data": {}
+  },
+  "paralogs": {
+   "title": "Paralog genes (Paraphase, PacBio HiFi)",
+   "step": "35b",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_paraphase_copy_number.tsv lacks the region, gene, copy_number or status column",
+   "data": {}
+  },
+  "hla": {
+   "title": "HLA typing (T1K)",
+   "step": "08",
+   "state": "ok",
+   "source": "hla_t1k/S_hla_genotype.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "loci": [
+     {
+      "gene": "HLA-A",
+      "alleles": [
+       "A*02:01"
+      ],
+      "quality": [
+       "x"
+      ],
+      "low_confidence": true,
+      "withheld_from_pharmcat": true,
+      "candidates": [
+       1
+      ],
+      "one_allele_type": false
+     }
+    ],
+    "derived": {
+     "coeliac": {
+      "status": "not_determined",
+      "reason": "HLA-DQA1 not typed; HLA-DQB1 not typed",
+      "dq2_5": null,
+      "dq2_5_phase": null,
+      "dq2_2": null,
+      "dq8": null,
+      "dqb1_02_dose": null
+     },
+     "alleles": [
+      {
+       "allele": "A*31:01",
+       "kind": "drug",
+       "association": "carbamazepine hypersensitivity reactions in Europeans",
+       "pmids": "21428769",
+       "citation": "McCormack 2011, N Engl J Med",
+       "state": "not_determined",
+       "reason": "HLA-A low confidence"
+      },
+      {
+       "allele": "B*15:02",
+       "kind": "drug",
+       "association": "carbamazepine Stevens-Johnson syndrome in Han Chinese",
+       "pmids": "15057820",
+       "citation": "Chung 2004, Nature",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*57:01",
+       "kind": "drug",
+       "association": "abacavir hypersensitivity; flucloxacillin liver injury",
+       "pmids": "18256392,19483685",
+       "citation": "Mallal 2008, N Engl J Med; Daly 2009, Nat Genet",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*58:01",
+       "kind": "drug",
+       "association": "allopurinol severe skin reactions",
+       "pmids": "15743917",
+       "citation": "Hung 2005, Proc Natl Acad Sci U S A",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*27",
+       "kind": "disease",
+       "association": "ankylosing spondylitis",
+       "pmids": "4123836,4688372",
+       "citation": "Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "C*06:02",
+       "kind": "disease",
+       "association": "psoriasis",
+       "pmids": "16642438",
+       "citation": "Nair 2006, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-C not typed"
+      },
+      {
+       "allele": "DQB1*06:02",
+       "kind": "disease",
+       "association": "narcolepsy with cataplexy",
+       "pmids": "11179016",
+       "citation": "Mignot 2001, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-DQB1 not typed"
+      },
+      {
+       "allele": "DRB1*15:01",
+       "kind": "disease",
+       "association": "multiple sclerosis",
+       "pmids": "12557126",
+       "citation": "Barcellos 2003, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*01:01",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:01",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:04",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:05",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:08",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*14:02",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
       }
-    },
-    "pypgx": {
-      "title": "pypgx",
-      "step": "32",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "KeyError: 'Gene'",
-      "data": {}
-    },
-    "cyrius": {
-      "title": "Cyrius (CYP2D6)",
-      "step": "21",
-      "state": "ok",
-      "source": "cyrius/S_cyp2d6.tsv",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "genotype": "none",
-        "filter": ""
-      }
-    },
-    "parascopy": {
-      "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
-      "step": "35",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_smn_copy_number.tsv lacks the chrom, start, end, agCN, agCN_filter, agCN_qual, psCN, psCN_qual or psCN_filter column",
-      "data": {}
-    },
-    "paralogs": {
-      "title": "Paralog genes (Paraphase, PacBio HiFi)",
-      "step": "35b",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_paraphase_copy_number.tsv lacks the region, gene, copy_number or status column",
-      "data": {}
-    },
-    "hla": {
-      "title": "HLA typing (T1K)",
-      "step": "08",
-      "state": "ok",
-      "source": "hla_t1k/S_hla_genotype.tsv",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "loci": [
-          {
-            "gene": "HLA-A",
-            "alleles": [
-              "A*02:01"
-            ],
-            "quality": [
-              "x"
-            ],
-            "low_confidence": true,
-            "withheld_from_pharmcat": true,
-            "candidates": [
-              1
-            ],
-            "one_allele_type": false
-          }
-        ],
-        "derived": {
-          "coeliac": {
-            "status": "not_determined",
-            "reason": "HLA-DQA1 not typed; HLA-DQB1 not typed",
-            "dq2_5": null,
-            "dq2_5_phase": null,
-            "dq2_2": null,
-            "dq8": null,
-            "dqb1_02_dose": null
-          },
-          "alleles": [
-            {
-              "allele": "A*31:01",
-              "kind": "drug",
-              "association": "carbamazepine hypersensitivity reactions in Europeans",
-              "pmids": "21428769",
-              "citation": "McCormack 2011, N Engl J Med",
-              "state": "not_determined",
-              "reason": "HLA-A low confidence"
-            },
-            {
-              "allele": "B*15:02",
-              "kind": "drug",
-              "association": "carbamazepine Stevens-Johnson syndrome in Han Chinese",
-              "pmids": "15057820",
-              "citation": "Chung 2004, Nature",
-              "state": "not_determined",
-              "reason": "HLA-B not typed"
-            },
-            {
-              "allele": "B*57:01",
-              "kind": "drug",
-              "association": "abacavir hypersensitivity; flucloxacillin liver injury",
-              "pmids": "18256392,19483685",
-              "citation": "Mallal 2008, N Engl J Med; Daly 2009, Nat Genet",
-              "state": "not_determined",
-              "reason": "HLA-B not typed"
-            },
-            {
-              "allele": "B*58:01",
-              "kind": "drug",
-              "association": "allopurinol severe skin reactions",
-              "pmids": "15743917",
-              "citation": "Hung 2005, Proc Natl Acad Sci U S A",
-              "state": "not_determined",
-              "reason": "HLA-B not typed"
-            },
-            {
-              "allele": "B*27",
-              "kind": "disease",
-              "association": "ankylosing spondylitis",
-              "pmids": "4123836,4688372",
-              "citation": "Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med",
-              "state": "not_determined",
-              "reason": "HLA-B not typed"
-            },
-            {
-              "allele": "C*06:02",
-              "kind": "disease",
-              "association": "psoriasis",
-              "pmids": "16642438",
-              "citation": "Nair 2006, Am J Hum Genet",
-              "state": "not_determined",
-              "reason": "HLA-C not typed"
-            },
-            {
-              "allele": "DQB1*06:02",
-              "kind": "disease",
-              "association": "narcolepsy with cataplexy",
-              "pmids": "11179016",
-              "citation": "Mignot 2001, Am J Hum Genet",
-              "state": "not_determined",
-              "reason": "HLA-DQB1 not typed"
-            },
-            {
-              "allele": "DRB1*15:01",
-              "kind": "disease",
-              "association": "multiple sclerosis",
-              "pmids": "12557126",
-              "citation": "Barcellos 2003, Am J Hum Genet",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*01:01",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*04:01",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*04:04",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*04:05",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*04:08",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            },
-            {
-              "allele": "DRB1*14:02",
-              "kind": "disease",
-              "association": "rheumatoid arthritis, shared epitope allele",
-              "pmids": "2446635",
-              "citation": "Gregersen 1987, Arthritis Rheum",
-              "state": "not_determined",
-              "reason": "HLA-DRB1 not typed"
-            }
-          ]
-        }
-      }
-    },
-    "prs": {
-      "title": "Polygenic risk scores",
-      "step": "25",
-      "state": "missing",
-      "source": null,
-      "file_date": null,
-      "note": null,
-      "data": {}
-    },
-    "ancestry_fine": {
-      "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
-      "step": "26b",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_ancestry_fine.tsv has no rows or lacks a column of ['code', 'fraction', 'group', 'high', 'level', 'low', 'se']",
-      "data": {}
-    },
-    "manta": {
-      "title": "Structural variants (Manta)",
-      "step": "04",
-      "state": "missing",
-      "source": null,
-      "file_date": null,
-      "note": null,
-      "data": {}
-    },
-    "delly": {
-      "title": "Structural variants (Delly)",
-      "step": "19",
-      "state": "missing",
-      "source": null,
-      "file_date": null,
-      "note": null,
-      "data": {}
-    },
-    "cnvpytor": {
-      "title": "Copy number (CNVpytor)",
-      "step": "18",
-      "state": "missing",
-      "source": null,
-      "file_date": null,
-      "note": null,
-      "data": {}
-    },
-    "sv_consensus": {
-      "title": "SV consensus merge",
-      "step": "22",
-      "state": "missing",
-      "source": null,
-      "file_date": null,
-      "note": null,
-      "data": {}
-    },
-    "annotsv": {
-      "title": "Structural variants, class 4 and 5 (AnnotSV)",
-      "step": "05",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_sv_class4_5_checked.tsv lacks a column of ['ACMG_class', 'Caller', 'Common', 'Exon_edge', 'Population_AF', 'SV_chrom', 'SV_end', 'SV_start', 'SV_type']",
-      "data": {}
-    },
-    "expansions": {
-      "title": "Repeat expansions (ExpansionHunter)",
-      "step": "09",
-      "state": "ok",
-      "source": "expansion_hunter/S_eh.vcf",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "records": 2,
-        "key_loci": [
-          {
-            "locus": "HTT",
-            "repeat_count": "not in output"
-          },
-          {
-            "locus": "FMR1",
-            "repeat_count": "not in output"
-          },
-          {
-            "locus": "C9ORF72",
-            "repeat_count": "not in output"
-          },
-          {
-            "locus": "ATXN1",
-            "repeat_count": "not in output"
-          },
-          {
-            "locus": "DMPK",
-            "repeat_count": "not in output"
-          }
-        ],
-        "loci": [
-          {
-            "locus": "CFTR_T",
-            "repeat_count": "7/9",
-            "status": "",
-            "normal_max": "",
-            "pathologic_min": "",
-            "support": "SPANNING/SPANNING",
-            "adsp": "8/9",
-            "ci": "7-7/9-9",
-            "sizing": "sized",
-            "allele_sizing": "sized/sized",
-            "zone": "",
-            "zone_label": "",
-            "zone_citation": ""
-          },
-          {
-            "locus": "CFTR_TG",
-            "repeat_count": "11/12",
-            "status": "",
-            "normal_max": "",
-            "pathologic_min": "",
-            "support": "SPANNING/FLANKING",
-            "adsp": "8/0",
-            "ci": "11-11/12-12",
-            "sizing": "flanking_only",
-            "allele_sizing": "sized/flanking_only",
-            "zone": "",
-            "zone_label": "",
-            "zone_citation": ""
-          }
-        ],
-        "stranger": false,
-        "stranger_outdated": false,
-        "unsized": [
-          "CFTR_TG"
-        ],
-        "intermediate": [],
-        "readings": [
-          {
-            "locus": "CFTR",
-            "repeat": "intron 9 (legacy IVS8) TG and poly-T tract",
-            "source": "Deignan et al. 2020, PMID 32404922",
-            "status": "not_sized",
-            "genotype": ".",
-            "phase": ".",
-            "reading": "ExpansionHunter did not size both tracts (TG 11/12, flanking_only; poly-T 7/9, sized): not read."
-          },
-          {
-            "locus": "UGT1A1",
-            "repeat": "promoter TA repeat",
-            "source": "Gammal et al. 2016, PMID 26417955",
-            "status": "not_sized",
-            "genotype": ".",
-            "pharmcat": ".",
-            "agreement": "not_compared",
-            "reading": "not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28."
-          },
-          {
-            "locus": "SLC6A4",
-            "repeat": "5-HTTLPR promoter length polymorphism",
-            "status": "not_tested",
-            "genotype": ".",
-            "reading": "not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation.",
-            "source": "Bousman et al. 2023, PMID 37032427"
-          }
-        ]
-      }
-    },
-    "telomere": {
-      "title": "Telomere content (TelomereHunter)",
-      "step": "10",
-      "state": "ok",
-      "source": "telomere/S/S_summary.tsv",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "tel_content": "1.5",
-        "intratelomeric_reads": 40,
-        "read_check": "depth unknown (no total_reads or read_lengths in the summary): not checked"
-      }
-    },
-    "roh": {
-      "title": "Runs of homozygosity",
-      "step": "11",
-      "state": "ok",
-      "source": "vcf/S_roh.txt",
-      "file_date": "2021-03-04 05:06 UTC",
-      "note": null,
-      "data": {
-        "segments": 0,
-        "total_mb": 0.0,
-        "largest_mb": 0.0,
-        "autosomal_over_5mb": [],
-        "masked_mb": 0.0,
-        "sex_chromosome_segments": 0,
-        "long_mb": 0.0,
-        "f_roh": null,
-        "relationship": null,
-        "upd_flag": null,
-        "scope": {
-          "source": "segments_only",
-          "autosomes": [],
-          "unmasked_bp": 0,
-          "partial": true,
-          "note": "Partial or unverified chromosome scope: no relationship band or UPD flag. F_ROH uses only the listed chromosomes, not callable bases."
-        }
-      }
-    },
-    "haplogroup": {
-      "title": "Mitochondrial haplogroup",
-      "step": "12",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_haplocheck.txt has no Contamination Status column",
-      "data": {}
-    },
-    "y_haplogroup": {
-      "title": "Y-chromosome haplogroup (Yleaf)",
-      "step": "37",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_y_haplogroup.txt has no Hg column or no sample row",
-      "data": {}
-    },
-    "y_tree": {
-      "title": "Y placement on the current public tree",
-      "step": "37",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_y_tree.txt lacks a column of Hg, Level, Tree",
-      "data": {}
-    },
-    "y_str": {
-      "title": "Y-STR markers (HipSTR)",
-      "step": "45",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_y_str.tsv has a confidence other than high, low, no call or not callable",
-      "data": {}
-    },
-    "consumer_export": {
-      "title": "Raw-data export (23andMe v5 layout)",
-      "step": "40",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_consumer_export.tsv has no whole-number 'sites' row",
-      "data": {}
-    },
-    "bloodtype": {
-      "title": "Blood groups (predicted)",
-      "step": "41",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_bloodtype.tsv has no system, phenotype and confidence columns, or no row",
-      "data": {}
-    },
-    "lpa": {
-      "title": "Lp(a): LPA KIV-2 repeat count",
-      "step": "46",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_lpa_kiv2.tsv has no status row (estimated, too little depth or not assessed)",
-      "data": {}
-    },
-    "vntyper": {
-      "title": "MUC1 VNTR frameshifts (VNtyper)",
-      "step": "52",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_vntyper.tsv has no status row (positive, possible, negative, not assessed)",
-      "data": {}
-    },
-    "locityper": {
-      "title": "Locityper second opinion at hard loci",
-      "step": "53",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_locityper.tsv lacks a row or one of the columns locus, region, status, genotype, haplotype_1, haplotype_2, quality, total_reads, unexplained_reads, weighted_distance, warnings, filter, reason",
-      "data": {}
-    },
-    "mito": {
-      "title": "Mitochondrial variants",
-      "step": "20",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "KeyError: 'length'",
-      "data": {}
-    },
-    "traits": {
-      "title": "Traits panel",
-      "step": "42",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_traits.tsv line 2 does not have one field per column",
-      "data": {}
-    },
-    "archaic": {
-      "title": "Archaic ancestry (IBDmix)",
-      "step": "43",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_archaic.tsv has no percentage for neanderthal_percent",
-      "data": {}
-    },
-    "ancient": {
-      "title": "Ancient populations (AADR PCA)",
-      "step": "44",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_ancient.tsv has no rows or lacks a column of ['country', 'dates', 'distance', 'group', 'locality', 'n', 'rank']",
-      "data": {}
-    },
-    "viral": {
-      "title": "Viral DNA in the unmapped reads",
-      "step": "47",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_viral.tsv has no rows or lacks a column of virus, accession, reads, breadth, relative_depth, copies_per_cell, call",
-      "data": {}
-    },
-    "exomiser": {
-      "title": "Symptom-driven ranking (Exomiser)",
-      "step": "48",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_exomiser_top.tsv lacks a column of rank, gene, moi, exomiser_score, phenotype_score, variant, genotype, consequence, hgvs, acmg, disease",
-      "data": {}
-    },
-    "chip": {
-      "title": "Clonal haematopoiesis (CHIP)",
-      "step": "49",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_chip.tsv lacks a column of gene, protein_change, vaf, alt_reads, depth, status, note",
-      "data": {}
-    },
-    "mei": {
-      "title": "Mobile element insertions (MEGAnE)",
-      "step": "50",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_mei.tsv is missing beside S_mei_sites.tsv",
-      "data": {}
-    },
-    "mosaic": {
-      "title": "Mosaic chromosomal alterations (MoChA)",
-      "step": "51",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_mocha.tsv has 1 reported calls, S_mocha_summary.tsv says 2",
-      "data": {}
-    },
-    "cpsr": {
-      "title": "Cancer predisposition (CPSR)",
-      "step": "17",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S.cpsr.grch38.classification.tsv.gz: Compressed file ended before the end-of-stream marker was reached",
-      "data": {}
-    },
-    "clinical": {
-      "title": "Clinical variant filter",
-      "step": "23",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "ValueError: invalid literal for int() with base 10: 'x'",
-      "data": {}
-    },
-    "slivar": {
-      "title": "Variant prioritization (slivar)",
-      "step": "31",
-      "state": "unreadable",
-      "source": null,
-      "file_date": null,
-      "note": "S_prioritized.vcf.gz: Compressed file ended before the end-of-stream marker was reached",
-      "data": {}
+     ]
     }
+   }
   },
-  "cyp2d6": {
-    "calls": {
-      "PharmCAT": null,
-      "pypgx": null,
-      "Cyrius": "none"
-    },
-    "agree": null,
-    "consensus": null,
-    "probable": null
+  "prs": {
+   "title": "Polygenic risk scores",
+   "step": "25",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
   },
-  "not_run": [
-    "Polygenic risk scores",
-    "Structural variants (Manta)",
-    "Structural variants (Delly)",
-    "Copy number (CNVpytor)",
-    "SV consensus merge"
-  ],
-  "not_assessed": [
-    "Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)",
-    "Methylation and imprinting",
-    "Repeat expansions outside the ExpansionHunter catalog",
-    "Phase: two variants in one gene are compound-het candidates, not confirmed",
-    "Variants of uncertain significance (not interpreted)",
-    "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums",
-    "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call",
-    "MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them",
-    "Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample"
-  ]
+  "ancestry_fine": {
+   "title": "Fine-grained ancestry",
+   "step": "26b",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_ancestry_fine.tsv has no rows or lacks a column of ['code', 'fraction', 'group', 'high', 'level', 'low', 'se']",
+   "data": {}
+  },
+  "manta": {
+   "title": "Structural variants (Manta)",
+   "step": "04",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "delly": {
+   "title": "Structural variants (Delly)",
+   "step": "19",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "cnvpytor": {
+   "title": "Copy number (CNVpytor)",
+   "step": "18",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "sv_consensus": {
+   "title": "SV consensus merge",
+   "step": "22",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
+  "annotsv": {
+   "title": "Structural variants, class 4 and 5 (AnnotSV)",
+   "step": "05",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_sv_class4_5_checked.tsv lacks a column of ['ACMG_class', 'Caller', 'Common', 'Exon_edge', 'Population_AF', 'SV_chrom', 'SV_end', 'SV_start', 'SV_type']",
+   "data": {}
+  },
+  "expansions": {
+   "title": "Repeat expansions (ExpansionHunter)",
+   "step": "09",
+   "state": "ok",
+   "source": "expansion_hunter/S_eh.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "records": 2,
+    "key_loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "not in output"
+     },
+     {
+      "locus": "DMPK",
+      "repeat_count": "not in output"
+     }
+    ],
+    "loci": [
+     {
+      "locus": "CFTR_T",
+      "repeat_count": "7/9",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "8/9",
+      "ci": "7-7/9-9",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "CFTR_TG",
+      "repeat_count": "11/12",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/FLANKING",
+      "adsp": "8/0",
+      "ci": "11-11/12-12",
+      "sizing": "flanking_only",
+      "allele_sizing": "sized/flanking_only",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     }
+    ],
+    "stranger": false,
+    "stranger_outdated": false,
+    "unsized": [
+     "CFTR_TG"
+    ],
+    "intermediate": [],
+    "readings": [
+     {
+      "locus": "CFTR",
+      "repeat": "intron 9 (legacy IVS8) TG and poly-T tract",
+      "source": "Deignan et al. 2020, PMID 32404922",
+      "status": "not_sized",
+      "genotype": ".",
+      "phase": ".",
+      "reading": "ExpansionHunter did not size both tracts (TG 11/12, flanking_only; poly-T 7/9, sized): not read."
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat": "promoter TA repeat",
+      "source": "Gammal et al. 2016, PMID 26417955",
+      "status": "not_sized",
+      "genotype": ".",
+      "pharmcat": ".",
+      "agreement": "not_compared",
+      "reading": "not in step 09's output: STR_EXTRA_LOCI=yes ./scripts/setup.sh --strchive-data <genome_dir> adds the repeat to the catalog (docs/09-str-expansions.md). PharmCAT (step 7) still reads UGT1A1 *28."
+     },
+     {
+      "locus": "SLC6A4",
+      "repeat": "5-HTTLPR promoter length polymorphism",
+      "status": "not_tested",
+      "genotype": ".",
+      "reading": "not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation.",
+      "source": "Bousman et al. 2023, PMID 37032427"
+     }
+    ]
+   }
+  },
+  "telomere": {
+   "title": "Telomere content (TelomereHunter)",
+   "step": "10",
+   "state": "ok",
+   "source": "telomere/S/S_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "tel_content": "1.5",
+    "intratelomeric_reads": 40,
+    "read_check": "depth unknown (no total_reads or read_lengths in the summary): not checked"
+   }
+  },
+  "roh": {
+   "title": "Runs of homozygosity",
+   "step": "11",
+   "state": "ok",
+   "source": "vcf/S_roh.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "segments": 0,
+    "total_mb": 0.0,
+    "largest_mb": 0.0,
+    "autosomal_over_5mb": [],
+    "masked_mb": 0.0,
+    "sex_chromosome_segments": 0,
+    "long_mb": 0.0,
+    "f_roh": null,
+    "relationship": null,
+    "upd_flag": null,
+    "scope": {
+     "source": "segments_only",
+     "autosomes": [],
+     "unmasked_bp": 0,
+     "partial": true,
+     "note": "Partial or unverified chromosome scope: no relationship band or UPD flag. F_ROH uses only the listed chromosomes, not callable bases."
+    }
+   }
+  },
+  "haplogroup": {
+   "title": "Mitochondrial haplogroup",
+   "step": "12",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_haplocheck.txt has no Contamination Status column",
+   "data": {}
+  },
+  "y_haplogroup": {
+   "title": "Y-chromosome haplogroup (Yleaf)",
+   "step": "37",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_y_haplogroup.txt has no Hg column or no sample row",
+   "data": {}
+  },
+  "y_tree": {
+   "title": "Y placement on the current public tree",
+   "step": "37",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_y_tree.txt lacks a column of Hg, Level, Tree",
+   "data": {}
+  },
+  "y_str": {
+   "title": "Y-STR markers (HipSTR)",
+   "step": "45",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_y_str.tsv has a confidence other than high, low, no call or not callable",
+   "data": {}
+  },
+  "consumer_export": {
+   "title": "Raw-data export (23andMe v5 layout)",
+   "step": "40",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_consumer_export.tsv has no whole-number 'sites' row",
+   "data": {}
+  },
+  "bloodtype": {
+   "title": "Blood groups (predicted)",
+   "step": "41",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_bloodtype.tsv has no system, phenotype and confidence columns, or no row",
+   "data": {}
+  },
+  "lpa": {
+   "title": "Lp(a): LPA KIV-2 repeat count",
+   "step": "46",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_lpa_kiv2.tsv has no status row (estimated, too little depth or not assessed)",
+   "data": {}
+  },
+  "vntyper": {
+   "title": "MUC1 VNTR frameshifts (VNtyper)",
+   "step": "52",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_vntyper.tsv has no status row (positive, possible, negative, not assessed)",
+   "data": {}
+  },
+  "locityper": {
+   "title": "Locityper second opinion at hard loci",
+   "step": "53",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_locityper.tsv lacks a row or one of the columns locus, region, status, genotype, haplotype_1, haplotype_2, quality, total_reads, unexplained_reads, weighted_distance, warnings, filter, reason",
+   "data": {}
+  },
+  "mito": {
+   "title": "Mitochondrial variants",
+   "step": "20",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "KeyError: 'length'",
+   "data": {}
+  },
+  "traits": {
+   "title": "Traits panel",
+   "step": "42",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_traits.tsv line 2 does not have one field per column",
+   "data": {}
+  },
+  "archaic": {
+   "title": "Archaic ancestry (IBDmix)",
+   "step": "43",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_archaic.tsv has no percentage for neanderthal_percent",
+   "data": {}
+  },
+  "ancient": {
+   "title": "Ancient populations (AADR PCA)",
+   "step": "44",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_ancient.tsv has no rows or lacks a column of ['country', 'dates', 'distance', 'group', 'locality', 'n', 'rank']",
+   "data": {}
+  },
+  "viral": {
+   "title": "Viral DNA in the unmapped reads",
+   "step": "47",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_viral.tsv has no rows or lacks a column of virus, accession, reads, breadth, relative_depth, copies_per_cell, call",
+   "data": {}
+  },
+  "exomiser": {
+   "title": "Symptom-driven ranking (Exomiser)",
+   "step": "48",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_exomiser_top.tsv lacks a column of rank, gene, moi, exomiser_score, phenotype_score, variant, genotype, consequence, hgvs, acmg, disease",
+   "data": {}
+  },
+  "chip": {
+   "title": "Clonal haematopoiesis (CHIP)",
+   "step": "49",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_chip.tsv lacks a column of gene, protein_change, vaf, alt_reads, depth, status, note",
+   "data": {}
+  },
+  "mei": {
+   "title": "Mobile element insertions (MEGAnE)",
+   "step": "50",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_mei.tsv is missing beside S_mei_sites.tsv",
+   "data": {}
+  },
+  "mosaic": {
+   "title": "Mosaic chromosomal alterations (MoChA)",
+   "step": "51",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_mocha.tsv has 1 reported calls, S_mocha_summary.tsv says 2",
+   "data": {}
+  },
+  "cpsr": {
+   "title": "Cancer predisposition (CPSR)",
+   "step": "17",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S.cpsr.grch38.classification.tsv.gz: Compressed file ended before the end-of-stream marker was reached",
+   "data": {}
+  },
+  "clinical": {
+   "title": "Clinical variant filter",
+   "step": "23",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: invalid literal for int() with base 10: 'x'",
+   "data": {}
+  },
+  "slivar": {
+   "title": "Variant prioritization (slivar)",
+   "step": "31",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_prioritized.vcf.gz: Compressed file ended before the end-of-stream marker was reached",
+   "data": {}
+  }
+ },
+ "cyp2d6": {
+  "calls": {
+   "PharmCAT": null,
+   "pypgx": null,
+   "Cyrius": "none"
+  },
+  "agree": null,
+  "consensus": null,
+  "probable": null
+ },
+ "not_run": [
+  "Polygenic risk scores",
+  "Structural variants (Manta)",
+  "Structural variants (Delly)",
+  "Copy number (CNVpytor)",
+  "SV consensus merge"
+ ],
+ "not_assessed": [
+  "Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)",
+  "Methylation and imprinting",
+  "Repeat expansions outside the ExpansionHunter catalog",
+  "Phase: two variants in one gene are compound-het candidates, not confirmed",
+  "Variants of uncertain significance (not interpreted)",
+  "Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums",
+  "HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35's read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call",
+  "MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them",
+  "Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample"
+ ]
 }

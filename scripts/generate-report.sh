@@ -2,7 +2,7 @@
 # generate-report.sh — Create a plain-text summary report of all pipeline results
 # Usage: ./scripts/generate-report.sh <sample_name>
 #
-# Renders the text report (bin/render_report.py) from ${SAMPLE}/summary.json,
+# Renders the text report (og report render) from ${SAMPLE}/summary.json,
 # the summary og summary collect reads from every step's output. When step 24
 # wrote that summary and nothing it reads has changed since (in a run-all.sh
 # run, step 24 ran just before), the text report is rendered from it as it is:
@@ -57,7 +57,7 @@ summary_current() {
     case $src in *\\*) return 1 ;; esac
     [ -e "${SAMPLE_DIR}/${src}" ] || return 1
   done < <(sed -n 's/^   "source": "\([^"]*\)",\{0,1\}$/\1/p' "$s")
-  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./summary.json \) -prune \
+  newer=$(cd "$SAMPLE_DIR" && find . \( -path ./nextflow -o -path ./facts -o -path ./summary.json \) -prune \
     -o -type d ! -path . ! -path ./logs -newer summary.json -print -quit \
     -o ! -type d -newer summary.json \
     ! \( -path './logs/*' ! -path ./logs/run_status.tsv \) \
@@ -81,8 +81,9 @@ else
   # assets/: the ACMG SF rules (acmg_sf.tsv) and the carrier list (carrier_genes.tsv).
   from=(--assets /pgp-assets --json "/genome/${SAMPLE}/summary.json")
 fi
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${PYTHON_IMAGE}" \
-  python3 /pgp-bin/render_report.py \
+# og is the static binary, so OG_IMAGE (stock Ubuntu) runs it.
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${PGP_ROOT}/assets:/pgp-assets:ro" "${OG_IMAGE}" \
+  /pgp-bin/og report render \
     "${from[@]}" \
     --sample "$SAMPLE" \
     --sample-dir "/genome/${SAMPLE}" \
@@ -101,9 +102,9 @@ HISTORY="${SAMPLE_DIR}/history"
 # og picks the previous run (--newest-history): the newest history/<stamp>/
 # that holds a summary.json, the rule og summary collect's "New since"
 # follows too. A newer folder without one, from a copy that stopped half
-# way, is passed over. og is the static binary, so the python image runs it.
+# way, is passed over. og is the static binary, so OG_IMAGE (stock Ubuntu) runs it.
 echo ""
-if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${PYTHON_IMAGE}" \
+if ! run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" "${OG_IMAGE}" \
   /pgp-bin/og run delta \
     --sample "$SAMPLE" \
     --summary "/genome/${SAMPLE}/summary.json" \

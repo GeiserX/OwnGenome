@@ -31,7 +31,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image MOCHA_IMAGE BEAGLE_IMAGE PYTHON_IMAGE
+require_image MOCHA_IMAGE BEAGLE_IMAGE OG_IMAGE
 
 S="${GENOME_DIR}/${SAMPLE}"
 OUTDIR="${S}/mosaic"
@@ -86,12 +86,14 @@ run_in --cpus 2 --memory 4g "$MOCHA_IMAGE" bash -euo pipefail -c '
 CHROMS=$(tr '\n' ' ' < "${W}/chroms.txt")
 [ -n "${CHROMS// /}" ] || { echo "ERROR: no biallelic PASS SNV on chr1 to chr22 in ${VCF}" >&2; exit 1; }
 
-# 2. Beagle against the panel, one chromosome at a time; a chromosome the panel
-# lacks (a panel cut to regions) is left out.
+# 2. Beagle against the panel, one chromosome at a time. A chromosome the panel
+# lacks (a panel cut to regions) is not phased, but it still goes on to MoChA
+# and the sites table, so og mocha report's phase check names it.
 if [ "$PHASING" = beagle ]; then
-  PHASE=""
-  for c in $CHROMS; do [ -s "${DATA}/panel/${c}.vcf.gz" ] && PHASE+="${c} "; done
+  PHASE="" NOPANEL=""
+  for c in $CHROMS; do if [ -s "${DATA}/panel/${c}.vcf.gz" ]; then PHASE+="${c} "; else NOPANEL+="${c} "; fi; done
   [ -n "$PHASE" ] || { echo "ERROR: the panel has none of the VCF's chromosomes (${CHROMS})" >&2; exit 1; }
+  [ -z "$NOPANEL" ] || echo "[WARN] The panel has no file for ${NOPANEL% }: not phased, so a heterozygous site there makes the sample not assessed"
   echo "[2/4] Phasing with Beagle against the panel (${PHASE% })..."
   # shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
   run_in --cpus "$THREADS" --memory 16g "$BEAGLE_IMAGE" bash -euo pipefail -c '
@@ -104,10 +106,11 @@ if [ "$PHASING" = beagle ]; then
   tr ' ' '\n' <<< "${PHASE% }" > "${W}/phased_chroms.txt"
 else
   echo "[2/4] The VCF is already phased: no Beagle run."
-  cp "${W}/chroms.txt" "${W}/phased_chroms.txt"
 fi
 
-# 3. The phased genotypes onto the prepared sites, then MoChA (WGS mode: AD).
+# 3. The phased genotypes onto the prepared sites of every chromosome, then
+# MoChA (WGS mode: AD). A chromosome Beagle did not phase keeps its unphased
+# genotypes, so its row in the sites table shows its phased share.
 # SITES_AWK sums each chromosome: first and last position, sites, hets, phased hets.
 # shellcheck disable=SC2016  # awk's fields, not shell variables
 SITES_AWK='$1 != c { if (c != "") print c, a, b, n, h, ph; c = $1; a = $2; n = h = ph = 0 }
@@ -116,7 +119,7 @@ SITES_AWK='$1 != c { if (c != "") print c, a, b, n, h, ph; c = $1; a = $2; n = h
 echo "[3/4] MoChA (bcftools +mocha, ${MOCHA_VERSION})..."
 # shellcheck disable=SC2016  # $1 to $7 belong to the inner bash
 run_in --cpus 2 --memory 8g "$MOCHA_IMAGE" bash -euo pipefail -c '
-    w=$1; chroms=$(paste -sd, "$w/phased_chroms.txt")
+    w=$1
     if [ "$2" = beagle ]; then
       # Beagle writes no ##contig lines and concat refuses records on an
       # undeclared contig: give each Beagle VCF the contig lines of prep.bcf.
@@ -129,9 +132,9 @@ run_in --cpus 2 --memory 8g "$MOCHA_IMAGE" bash -euo pipefail -c '
       done
       bcftools concat --no-version -Ob -o "$w/phased_gt.bcf" "${f[@]}"
       bcftools index -f "$w/phased_gt.bcf"
-      bcftools annotate --no-version -a "$w/phased_gt.bcf" -c FMT/GT -r "$chroms" -Ob -o "$w/phased.bcf" "$w/prep.bcf"
+      bcftools annotate --no-version -a "$w/phased_gt.bcf" -c FMT/GT -Ob -o "$w/phased.bcf" "$w/prep.bcf"
     else
-      bcftools view --no-version -r "$chroms" -Ob -o "$w/phased.bcf" "$w/prep.bcf"
+      bcftools view --no-version -Ob -o "$w/phased.bcf" "$w/prep.bcf"
     fi
     bcftools index -f "$w/phased.bcf"
     cnp=(); [ -z "$7" ] || cnp=(--cnp "$7")
@@ -143,7 +146,7 @@ run_in --cpus 2 --memory 8g "$MOCHA_IMAGE" bash -euo pipefail -c '
 echo "  $(cat "${W}/mocha_version.txt")"
 
 echo "[4/4] Calls above the floor (og mocha report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og mocha report --sample "$SAMPLE" --calls "${O}_mocha_calls_raw.tsv" --stats "${O}_mocha_stats.tsv" \
     --sites "${O}_mocha_sites.tsv" --phasing "$PHASING" --out-calls "${O}_mocha.tsv" --out-summary "${O}_mocha_summary.tsv"
 cp "${W}/mocha.log" "${P}_mocha.log"

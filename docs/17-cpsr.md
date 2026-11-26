@@ -25,6 +25,8 @@ PCGR 2.3.2 bundles VEP 115, which requires the **release-115** cache (~24 GB). T
 
 ### 2. PCGR ref data bundle
 PCGR 2.x uses a separate ref data bundle (`20260620`, about 7 GB).
+PCGR/CPSR reference data includes third-party databases with their own terms. The [PCGR bundle report](https://sigven.github.io/pcgrdb/grch38/) lists the sources and licences of the newest bundle release. Setup installs release `20260620`, so that list can differ from the installed bundle.
+
 A plain setup installs the VEP 115 cache and this bundle by default, alongside VEP 116 for step 13.
 For an existing setup, install or retry all three with:
 
@@ -36,7 +38,7 @@ The bundle goes to `pcgr_data/20260620/data/`; the caches coexist under `vep_cac
 Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction, then removes each archive.
 It checks free space for each install and continues with a warning if one fails or does not fit.
 `--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
-See [reference setup](00-reference-setup.md) for disk peaks and the [PCGR resource list](https://sigven.github.io/pcgr/articles/annotation_resources.html) for the bundled databases. Review each source's terms before use.
+See [reference setup](00-reference-setup.md) for disk peaks.
 
 ### Upgrading from PCGR 2.2.5
 PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.
@@ -143,7 +145,7 @@ The final class is ClinVar's whenever ClinVar has a trusted record, so the break
 - **VEP cache version:** PCGR 2.3.2 requires the VEP release-115 cache, while step 13 uses release-116. Both coexist in `vep_cache/homo_sapiens/` (subdirectories `116_GRCh38/` and `115_GRCh38/`). You need both if running both steps.
 - Use `--panel_id 0` for the comprehensive cancer superpanel (500+ genes) — cancer-focused.
 - CPSR 2.3 classifies every variant in the target genes by itself; 2.2's `--classify_all` is gone and 2.3 refuses it. `--clinvar_trust_level` (0 to 4, default 0) decides when CPSR's class replaces ClinVar's; the step keeps the default.
-- `--secondary_findings` reports pathogenic / likely-pathogenic variants in the ACMG SF incidental-findings gene list (cardiac and metabolic genes beyond CPSR's cancer panels; the list itself comes with the PCGR data bundle) in a dedicated section of the report. `scripts/17-cpsr.sh` passes it unless you set `CPSR_SECONDARY_FINDINGS=false`, for when you do not want findings outside cancer predisposition: `CPSR_SECONDARY_FINDINGS=false ./scripts/17-cpsr.sh your_sample`. The Nextflow module always passes it.
+- `--secondary_findings` reports pathogenic / likely-pathogenic variants in the ACMG SF incidental-findings gene list (cardiac and metabolic genes beyond CPSR's cancer panels; the list itself comes with the PCGR data bundle) in a dedicated section of the report. It is on by default. To turn it off, for when you do not want findings outside cancer predisposition, set `CPSR_SECONDARY_FINDINGS=false`. The script and `run-all.sh` both read it: `CPSR_SECONDARY_FINDINGS=false ./scripts/17-cpsr.sh your_sample`, or `CPSR_SECONDARY_FINDINGS=false ./scripts/run-all.sh your_sample <male|female>`. `run-all.sh` passes it to the Nextflow pipeline as `--cpsr_secondary_findings false`, and keeps it in `logs/run_status.tsv`, so `og recheck --rerun` runs with it off too. A direct `nextflow run` takes `--cpsr_secondary_findings false`. Unset or empty means `true`; any other value than `true` or `false` stops the run. CPSR then reports the cancer genes only. The secondary-findings card of the report (step 23, from the step 6 ClinVar hits on every run, plus step 23's rare HIGH-impact records and step 5's class 4 and 5 SVs when those steps ran) is OwnGenome's own and does not follow this switch.
 - CPSR is complementary to ClinVar screening — ClinVar finds known variants, CPSR classifies novel ones.
 - CPSR classifies each record of the VCF on its own. When the caller writes one complex allele as two records a few bases apart, CPSR classes each part, and a part can come out Likely Benign while ClinVar holds a better reviewed record for the whole allele. Step 6 matches such a pair as one combined allele too and marks the part hits "part of a combined allele" in its hits table, so read a CPSR class of a part next to that row.
 - The same ref data bundle is used by PCGR for somatic analysis (not relevant for germline WGS).

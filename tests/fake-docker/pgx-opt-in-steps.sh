@@ -13,9 +13,9 @@
 #                       how to install it
 #   steps 21 and 32     run the CYP2D6 depth check with og (og pgx cyp2d6-bed,
 #                       -measure in step 32, -check) from their output
-#                       directory with relative outputs and OG_SHADOW passed
-#                       on, and never the Python it replaced;
-#                       mark a CYP2D6 call when the depth check fails, and a
+#                       directory with relative outputs. The bed and check
+#                       use OG_IMAGE. The measurement runs in PYPGX_IMAGE.
+#                       Mark a CYP2D6 call when the depth check fails. A
 #                       caller that stops after writing its result leaves no
 #                       call where step 36 reads it
 #   step 27             passes step 36's table, even a missing one, to the
@@ -26,6 +26,7 @@
 # ok by default) and interrupt (the caller writes its result, then fails).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 
 export GENOME_DIR="${CASE_WORK}/genome"
 G=$GENOME_DIR
@@ -69,22 +70,9 @@ case "$args" in
     fi
     put "${@: -1}${@: -2:1}.tsv" 'Sample\tGenotype\tFilter\nsample1\tNone\tNot_assigned_to_haplotypes\n' ;;
   *"og pgx step36-outside"*)
-    # The lister on the report: the real one when OG names an og binary, else
-    # its rule cut to the reports below (an outside call of CYP2D6, HLA-A or
-    # HLA-B with a diplotype). The parity cases step36-outside* hold og to
-    # the whole rule.
-    if [ -n "${OG:-}" ]; then
-      "$OG" pgx step36-outside --report "$(host_path "$(opt --report)")"
-      exit $?
-    fi
-    python3 - "$(host_path "$(opt --report)")" <<'PY'
-import json, sys
-genes = json.load(open(sys.argv[1])).get("genes", {})
-for gene, g in genes.items():
-    if gene in ("CYP2D6", "HLA-A", "HLA-B") and g.get("callSource") == "OUTSIDE" and g.get("sourceDiplotypes"):
-        print(gene)
-PY
-    exit $? ;;
+    # The lister on the report: the real one, OG or the host's bin/og (the
+    # Guard fake-docker job builds it into bin/.og).
+    exec "${OG:-${REPO_ROOT}/bin/og}" pgx step36-outside --report "$(host_path "$(opt --report)")" ;;
   *"/pgp-bin/og pgx pypgx-summary "*)
     # Step 32's summary, at the path it names with --out.
     put "$(opt --out)" \
@@ -129,8 +117,8 @@ if grep -q 'pip install' <<<"$RUNS"; then fail "step 21 still installs with pip"
 og_runs() {  # og_runs STEP OUTDIR: the depth check runs og from OUTDIR, never the Python
   local verb
   for verb in bed check; do
-    grep -q -- "-e OG_SHADOW -w ${2} .*/pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
-      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} with OG_SHADOW passed on: ${RUNS}"
+    grep -Fq -- "-w ${2} ${OG_IMAGE} /pgp-bin/og pgx cyp2d6-${verb} " <<<"$RUNS" \
+      || fail "$1 did not run og pgx cyp2d6-${verb} from ${2} in OG_IMAGE: ${RUNS}"
   done
   grep -q -- "--all cyp2d6_depth/q0.regions.bed.gz --mapq1 cyp2d6_depth/q1.regions.bed.gz" <<<"$RUNS" \
     || fail "$1 did not give og pgx cyp2d6-check relative inputs"
@@ -141,7 +129,7 @@ og_runs "step 21" /genome/sample1/cyrius
 # --- step 36 and step 07 ----------------------------------------------------------
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 consensus "${SCRIPTS}/36-pgx-consensus.sh" sample1
-grep -q '^run image=[^ ]*python[^ ]* :: .*/pgp-bin/og pgx outside-calls --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv' \
+grep -q "^run image=${OG_IMAGE//./\\.} :: .*/pgp-bin/og pgx outside-calls --calls /genome/sample1/pgx_consensus/sample1_outside_calls\.tsv" \
   "$FAKE_DOCKER_LOG" || fail "step 36 did not run og pgx outside-calls"
 grep -q -- '--cyrius /genome/sample1/cyrius/sample1_cyp2d6.tsv' "$FAKE_DOCKER_LOG" || fail "step 36 did not read Cyrius's TSV"
 
@@ -182,7 +170,7 @@ SUMMARY="${G}/sample1/pypgx/sample1_pypgx_summary.tsv"
 run_expect 0 pypgx-unreliable "${SCRIPTS}/32-pypgx.sh" sample1
 RUNS=$(grep '^run image=' "$FAKE_DOCKER_LOG")
 og_runs "step 32" /genome/sample1/pypgx
-grep -q -- "image=${PYPGX_IMAGE%%:*}[^ ]* .*-e OG_SHADOW -w /genome/sample1/pypgx/cyp2d6_depth .*/pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
+grep -Fq -- "-v ${REPO_ROOT}/bin:/pgp-bin:ro -w /genome/sample1/pypgx/cyp2d6_depth ${PYPGX_IMAGE} /pgp-bin/og pgx cyp2d6-measure --bam /genome/sample1/aligned/sample1_sorted.bam --out mapq_shares.tsv" <<<"$RUNS" \
   || fail "step 32 did not run og pgx cyp2d6-measure in the pypgx image from cyp2d6_depth: ${RUNS}"
 [ "$(awk -F'\t' '$1 == "CYP2D6" {print $2 "|" $6}' "$SUMMARY" 2>/dev/null)" = "Indeterminate|no call (CYP2D6 depth check)" ] \
   || fail "step 32 did not mark CYP2D6 Indeterminate after a failed depth check: $(cat "$SUMMARY" 2>/dev/null)"

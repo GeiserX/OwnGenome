@@ -82,11 +82,15 @@ stranger_run() {
         "/genome/${SAMPLE}/expansion_hunter/${SAMPLE}_eh.vcf"
   else
     echo "Repeat catalog: bundled GRCh38 clinical catalog (variant_catalog_grch38.json)"
+    # The catalog sits in the stranger package, under the lib directory of
+    # the prefix the stranger command is installed in. Exactly one match, or
+    # the step stops.
     # shellcheck disable=SC2016  # the dollar signs are for the container's sh
     atomic_out "$OUT_VCF" run_in \
       --cpus 1 --memory 1g \
       "${STRANGER_IMAGE}" \
-      sh -c 'catalog=$(python -c "import os, stranger; print(os.path.join(os.path.dirname(stranger.__file__), \"resources\", \"variant_catalog_grch38.json\"))") &&
+      sh -c 'bin=$(command -v stranger) &&
+        catalog=$(find "${bin%/bin/*}/lib" -path "*/site-packages/stranger/resources/variant_catalog_grch38.json") &&
         [ -f "$catalog" ] || { echo "ERROR: no GRCh38 catalog in the Stranger image (${catalog:-not found})" >&2; exit 1; }
         exec stranger --repeats-file "$catalog" "$1"' \
       stranger "/genome/${SAMPLE}/expansion_hunter/${SAMPLE}_eh.vcf"
@@ -110,10 +114,7 @@ fi
 # reads at the locus (soft-clipped bases and mates mapped elsewhere
 # included) and writes a benign, pathogenic or uncertain verdict. It runs
 # again whenever Stranger did, so its table is never older than the VCF.
-# og runs from OUTPUT_DIR and writes a relative path, so bin/og's shadow
-# mode (OG_SHADOW, set only in CI: tests/parity/README.md) can run the
-# Python it replaced beside it. og reads the BAM itself; the call stays in
-# PYPGX_IMAGE, where that Python ran with pysam.
+# og reads the BAM itself and writes a relative path from OUTPUT_DIR.
 RFC1_FLAG=$(awk -F'\t' '!/^#/ && $8 ~ /(^|;)REPID=RFC1(;|$)/ && $8 ~ /(^|;)STR_STATUS=[^;]*(pre|full)_mutation/ {print "yes"; exit}' "$OUT_VCF")
 if [ -z "$RFC1_FLAG" ]; then
   rm -f "$MOTIF_TSV"
@@ -131,7 +132,7 @@ else
   fi
   echo "RFC1 is flagged: counting the repeat motif of its reads (og str motif)"
   rm -f "${MOTIF_TSV}.part"
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
     /pgp-bin/og str motif --vcf "$(cpath "$OUT_VCF")" --out "${SAMPLE}_rfc1_motif.tsv.part" "${MOTIF_ARGS[@]}" ${CAT_ARGS[@]+"${CAT_ARGS[@]}"}
   mv "${MOTIF_TSV}.part" "$MOTIF_TSV"
   echo "RFC1 motif: ${MOTIF_TSV}"
@@ -151,7 +152,7 @@ elif [ -n "$STRANGER_RAN" ] || [ ! -e "$OTHER_TSV" ] || [ "$OUT_VCF" -nt "$OTHER
     MOTIF_ARGS=(--skip "no BAM (${ALIGN_DIR}/${SAMPLE}_sorted.bam with its .bai)")
   fi
   rm -f "${OTHER_TSV}.part"
-  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -e OG_SHADOW -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
+  run_in --cpus 1 --memory 2g -v "${PGP_ROOT}/bin:/pgp-bin:ro" -w "$(cpath "$OUTPUT_DIR")" "$PYPGX_IMAGE" \
     /pgp-bin/og str motif --vcf "$(cpath "$OUT_VCF")" "${CAT_ARGS[@]}" --flagged \
     --out "${SAMPLE}_str_motifs.tsv.part" "${MOTIF_ARGS[@]}"
   if [ -e "${OTHER_TSV}.part" ]; then

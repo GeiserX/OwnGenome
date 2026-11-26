@@ -37,10 +37,13 @@ for h in 'Runs of Homozygosity' 'Mitochondrial Haplogroup' 'CPIC Drug Recommenda
 done
 "${REPO}/bin/og" summary collect --sample "$SAMPLE" --sample-dir "$R" --assets "${REPO}/assets" \
   --out "${CASE_TMP}/summary.json" > "${CASE_TMP}/summary.log" 2>&1 || cat "${CASE_TMP}/summary.log"
-want() { python3 -c "import json, sys; d = json.load(open('${CASE_TMP}/summary.json'))['sections']$1; print($2)" 2>/dev/null; }
-ROH_TOTAL=$(want "['roh']['data']['total_mb']" "'%.1f MB' % d")
-ROH_LARGEST=$(want "['roh']['data']['largest_mb']" "'%.1f MB' % d")
-HG=$(want "['haplogroup']['data']['haplogroup']" "d")
+mb() {  # mb KEY: the ROH section's KEY as the report prints it, '12.3 MB'
+  jq -r --arg k "$1" '.sections.roh.data[$k] | select(type == "number")' "${CASE_TMP}/summary.json" 2>/dev/null \
+    | awk '{printf "%.1f MB\n", $1}'
+}
+ROH_TOTAL=$(mb total_mb)
+ROH_LARGEST=$(mb largest_mb)
+HG=$(jq -r '.sections.haplogroup.data.haplogroup | select(. != null)' "${CASE_TMP}/summary.json" 2>/dev/null)
 echo "og summary collect: ROH total ${ROH_TOTAL:-?}, largest ${ROH_LARGEST:-?}, haplogroup ${HG:-?}"
 check "og summary collect read the ROH file" test -n "$ROH_TOTAL"
 check_eq "ROH total matches the bash report's" "$(html_stat "$HTML" 'Runs of Homozygosity' 'ROH total')" "$ROH_TOTAL"

@@ -1,0 +1,21 @@
+key	value
+sites	16
+called	5
+no_call	11
+from_reference_blocks	3
+from_variant_records	3
+reference_checked	4
+reference_mismatch	1
+template_sites	99
+table_dropped	0
+sex	male
+file_23andme	S_23andme_v5.zip
+file_ancestrydna	S_ancestrydna_layout.zip
+no_call: inside a deletion or a longer allele	1
+no_call: no gVCF record	3
+no_call: no genotype	1
+no_call: no-call in the gVCF	1
+no_call: reference base differs from the site table	1
+no_call: symbolic allele	1
+no_call: two alleles on a haploid site (chrM heteroplasmy, or male chrX/chrY)	1
+no_call: unreadable genotype	2

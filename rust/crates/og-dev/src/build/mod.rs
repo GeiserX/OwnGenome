@@ -11,15 +11,21 @@
 //!   `assets/callability_genes.tsv` (`scripts/ci/build-callability.sh`).
 //! - `og dev build sv-rule-regions` ([`sv_rules`]):
 //!   `assets/sv_rule_regions.tsv` (`scripts/ci/build-sv-rule-regions.sh`).
-//! - `og dev build roh-af` ([`roh_af`]) and `og dev build acmg-lof`
-//!   ([`acmg_lof`]): not ported yet, each says so and exits 2.
+//! - `og dev build roh-af` ([`roh_af`]): step 11's allele-frequency panel
+//!   from gnomAD's genome sites VCFs, streamed in (`docs/00-reference-setup.md`);
+//!   the panel is a release asset, not a committed file.
+//! - `og dev build acmg-lof` ([`acmg_lof`]): the `clingen_hi`, `lof` and
+//!   TTN `limit` cells of `assets/acmg_sf.tsv`
+//!   (`scripts/ci/build-acmg-lof.sh`).
 //!
 //! Exit 0 when the file was written (or `--check` found it right); 1 when
 //! `--check` found it different, or when the callability or SV rule
 //! downloads hold something their rules refuse (a CMRG gene with no GENCODE
 //! gene, a symbol listed twice, not one MHC region), as the Python builders
-//! exited; 2 for a usage error or an input that cannot be read, and for
-//! every cn-intervals input the rules refuse, as its Python builder exited.
+//! exited, or when acmg-lof finds an ACMG gene whose ClinGen score settles
+//! nothing and that has no hand row; 2 for a usage error or an input that
+//! cannot be read, and for every cn-intervals input the rules refuse, as
+//! its Python builder exited.
 
 pub mod acmg_lof;
 pub mod callability;
@@ -33,7 +39,7 @@ use std::fmt;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-const USAGE: &str = "usage: og dev build cn-intervals --clingen BED --segdups BED --gaps BED --satellites BED --parascopy TXT (--catalog FILE [--check] | --stdout)\n       og dev build callability --work DIR --repo DIR --out FILE\n       og dev build sv-rule-regions --work DIR --out FILE\n       og dev build roh-af [args]\n       og dev build acmg-lof [args]\n";
+const USAGE: &str = "usage: og dev build cn-intervals --clingen BED --segdups BED --gaps BED --satellites BED --parascopy TXT (--catalog FILE [--check] | --stdout)\n       og dev build callability --work DIR --repo DIR --out FILE\n       og dev build sv-rule-regions --work DIR --out FILE\n       og dev build roh-af (rows --vcf FILE [--out FILE] [--threads N] | panel --rows FILE... --out FILE [--check])\n       og dev build acmg-lof --clingen FILE --overrides FILE --ttn-exons FILE --table FILE [--check]\n";
 
 /// GRCh38's primary chromosomes in their sort order: chr1-22, X, Y.
 pub(crate) const CHROMS: [&str; 24] = [

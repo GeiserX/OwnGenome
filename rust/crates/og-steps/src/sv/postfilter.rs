@@ -15,18 +15,30 @@
 //!   lies within 5 bp of an exon's end and its end within 5 bp of a later
 //!   exon's start of one transcript of `--genes`;
 //! - `Population_AF`, `Population_source`, `Common`: AnnotSV's benign-set
-//!   frequency for the type; common at 1% or more;
+//!   frequency for the type and its source; common at 1% or more. AnnotSV
+//!   writes a frequency only when a benign record of 1% or more holds the
+//!   whole call, so a blank is no evidence that the call is rare:
+//!   `Population_source` then says `no frequency data` ([`NO_FREQUENCY`]);
+//! - `Benign_match`, after `Common`, only when AnnotSV's table has a
+//!   `B_*_coord` column: whether a benign record AnnotSV lists for the type
+//!   is about the call's size or much larger ([`benign_match`]);
+//! - `Clinical_common`: `yes` when a single benign BED record has AF at
+//!   least 1% and at least 50% reciprocal overlap with the call. A check
+//!   with insufficient evidence reads `unknown`;
 //! - `AnnotSV_class`: AnnotSV's own class; `ACMG_class` is the class after
 //!   these checks;
 //! - `Depth_support`: duphold's DHFFC (< 0.7 for a deletion) or DHBFC
 //!   (> 1.3 for a duplication), else for a Delly call over 1,000 bp its
 //!   RDCN by the same rule `og sv add-callers` applies
-//!   ([`depth_contradicts`]); `no` moves the call to class 3;
+//!   ([`depth_contradicts`]); `og sv add-callers` keeps RDCN on each Delly
+//!   call it adds. A Delly call over 1,000 bp with no RDCN value (a VCF not
+//!   written by Delly 2.x) reads `unknown`. `no` moves the call to class 3;
 //! - `Rule`, `Rule_detail`: the region rules of `--rules`
 //!   (`assets/sv_rule_regions.tsv`) and the depth rule that fired.
 //!
 //! With `--consensus` (step 22's VCF), `Support` and `Support_callers`
-//! follow; then AnnotSV's FORMAT and sample columns. A summary line goes to
+//! follow, both empty when the consensus cannot tell ([`Membership`]);
+//! then AnnotSV's FORMAT and sample columns. A summary line goes to
 //! stderr.
 //!
 //! Fixes against the Python: inputs are read as gzip by their magic bytes;
@@ -39,8 +51,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::{self, BufRead, Write};
+use std::path::Path;
+use std::rc::Rc;
 
 use og_filters::args::{self, ArgError, Spec};
+use og_intervals::sets::{Index, reciprocal};
 use og_io::{Lines, Utf8};
 use og_pedigree::Par;
 use pycompat::csv::{DictReader, DictRow, Quoting, Writer};
@@ -49,7 +64,7 @@ use pycompat::fmt::{general, percent};
 use super::{DEPTH_MIN_SIZE, Rdcn, Sex, SvKind, chrom_key, depth_contradicts, info_value};
 
 const USAGE: &str = "usage: og sv postfilter --class45 CLASS45.tsv [--genes GENES.bed]
-       [--rules RULES.tsv] [--consensus CONSENSUS.vcf.gz]
+       [--rules RULES.tsv] [--consensus CONSENSUS.vcf.gz] [--benign-dir GRCh38_DIR]
        [--sex male|female] [--par-bed PAR.bed] --out CHECKED.tsv
 ";
 
@@ -61,6 +76,7 @@ const SPEC: Spec = Spec {
         "--genes",
         "--rules",
         "--consensus",
+        "--benign-dir",
         "--sex",
         "--par-bed",
         "--out",
@@ -97,10 +113,24 @@ pub const ADDED: [&str; 10] = [
 ];
 /// The columns `--consensus` adds.
 pub const SUPPORT: [&str; 2] = ["Support", "Support_callers"];
+/// The column the benign records' coordinates add, after `Common`.
+pub const BENIGN_MATCH: &str = "Benign_match";
+/// Per-record common evidence used by the clinical rules.
+pub const CLINICAL_COMMON: &str = "Clinical_common";
+/// `Population_source` of a call AnnotSV gives no benign-set frequency.
+pub const NO_FREQUENCY: &str = "no frequency data";
 
 const EDGE_BP: i64 = 5;
 const COMMON_AF: f64 = 0.01;
-const CONSENSUS_BP: i64 = 1000;
+/// A benign record matches the call's size when each covers this share of
+/// the other, the rule of the couple screen's common deletions.
+const BENIGN_OVERLAP: f64 = 0.5;
+const BENIGN_TYPES: [(&str, &str); 4] = [
+    ("B_loss", "Loss"),
+    ("B_gain", "Gain"),
+    ("B_ins", "Ins"),
+    ("B_inv", "Inv"),
+];
 const DHFFC_MAX: f64 = 0.7;
 const DHBFC_MIN: f64 = 1.3;
 const REPEAT_SLACK_BP: i64 = 10;
@@ -259,6 +289,15 @@ fn number(v: Option<&str>) -> Option<f64> {
     (!x.is_nan()).then_some(x)
 }
 
+fn event_kind(kind: &str) -> String {
+    let kind = pycompat::text::upper(kind);
+    if kind.starts_with("DUP") {
+        "DUP".to_owned()
+    } else {
+        kind
+    }
+}
+
 /// One class 4 or 5 row: AnnotSV's cells by name.
 struct Row {
     cells: DictRow,
@@ -271,12 +310,7 @@ impl Row {
     }
 
     fn kind(&self) -> String {
-        let t = pycompat::text::upper(self.get("SV_type"));
-        if t.starts_with("DUP") {
-            "DUP".to_owned()
-        } else {
-            t
-        }
+        event_kind(self.get("SV_type"))
     }
 
     fn sv_kind(&self) -> SvKind {
@@ -379,14 +413,21 @@ fn exon_edge(chrom: &str, start: i64, end: i64, tx: &Transcripts) -> (&'static s
     ("no", String::new())
 }
 
-/// AnnotSV's benign-set frequency for the type, and its source.
-fn population(row: &Row) -> (Option<f64>, String) {
-    let col = match row.kind().as_str() {
+/// The prefix of AnnotSV's benign-set columns for the call's type.
+fn benign_columns(row: &Row) -> Option<&'static str> {
+    Some(match row.kind().as_str() {
         "DEL" => "B_loss",
         "DUP" => "B_gain",
         "INS" => "B_ins",
         "INV" => "B_inv",
-        _ => return (None, String::new()),
+        _ => return None,
+    })
+}
+
+/// AnnotSV's benign-set frequency for the type, and its source.
+fn population(row: &Row) -> (Option<f64>, String) {
+    let Some(col) = benign_columns(row) else {
+        return (None, String::new());
     };
     let raw = pycompat::num::py_strip(row.get(&format!("{col}_AFmax")));
     match pycompat::num::parse_float(raw) {
@@ -398,7 +439,169 @@ fn population(row: &Row) -> (Option<f64>, String) {
     }
 }
 
-/// `(yes|no|not checked|., detail)` of the read depth of a deletion or
+#[derive(Clone, Copy)]
+struct BedSpan {
+    start: u64,
+    end: u64,
+}
+
+impl BedSpan {
+    /// AnnotSV writes 1-based inclusive intervals. BED uses 0-based starts
+    /// and exclusive ends. An equal start and end in AnnotSV spans one base.
+    fn from_annotsv(start: &str, end: &str) -> Option<Self> {
+        let start = start.parse::<u64>().ok()?.checked_sub(1)?;
+        let end = end.parse().ok()?;
+        (start < end).then_some(Self { start, end })
+    }
+
+    fn matches(self, other: Self) -> bool {
+        let shared = self
+            .end
+            .min(other.end)
+            .saturating_sub(self.start.max(other.start));
+        reciprocal(
+            shared,
+            self.end - self.start,
+            other.end - other.start,
+            BENIGN_OVERLAP,
+        )
+    }
+
+    fn longer_enclosure_of(self, call: Self) -> bool {
+        self.start <= call.start
+            && self.end >= call.end
+            && self.end - self.start > call.end - call.start
+    }
+}
+
+fn call_span(row: &Row) -> Option<BedSpan> {
+    BedSpan::from_annotsv(row.get("SV_start"), row.get("SV_end"))
+}
+
+/// The geometry of the records AnnotSV lists. Its annotation uses a
+/// full enclosure, so this list can omit reciprocally overlapping records.
+fn benign_match(row: &Row) -> &'static str {
+    let Some(col) = benign_columns(row) else {
+        return ".";
+    };
+    let Some(Some(coords)) = row.cells.get(&format!("{col}_coord")) else {
+        return "not checked";
+    };
+    let coords = coords.trim();
+    if coords.is_empty() {
+        return "none";
+    }
+    let Some(call) = call_span(row) else {
+        return "not checked";
+    };
+    let chrom = chrom_key(row.get("SV_chrom"));
+    let mut contained = true;
+    for coord in coords.split(';') {
+        let record = coord
+            .trim()
+            .rsplit_once(':')
+            .filter(|(c, _)| !c.is_empty() && chrom_key(c) == chrom)
+            .and_then(|(_, span)| span.split_once('-'))
+            .and_then(|(start, end)| BedSpan::from_annotsv(start, end));
+        if record.is_some_and(|record| call.matches(record)) {
+            return "same";
+        }
+        contained &= record.is_some_and(|record| record.longer_enclosure_of(call));
+    }
+    if contained {
+        "contained"
+    } else {
+        "not checked"
+    }
+}
+
+/// One benign-type BED. A BED row names one record and carries its own
+/// AF in column six. Keep unknown AFs so a matching row can report uncertainty.
+struct BenignBed {
+    by_chrom: HashMap<String, Index<Option<bool>>>,
+    incomplete: bool,
+}
+
+impl BenignBed {
+    fn read(path: &Path, chroms: &HashSet<String>) -> Result<Self, Error> {
+        let mut by_chrom: HashMap<String, Vec<_>> = HashMap::new();
+        let mut incomplete = false;
+        for_each_line(&path.to_string_lossy(), |_, line| {
+            let line = line.trim_end_matches(['\r', '\n']);
+            if line.is_empty()
+                || line.starts_with('#')
+                || line.starts_with("track ")
+                || line.starts_with("browser ")
+            {
+                return Ok(());
+            }
+            let mut cells = line.split('\t');
+            let chrom = chrom_key(cells.next().unwrap_or_default());
+            if chrom.is_empty() {
+                incomplete = true;
+            }
+            if !chroms.contains(chrom) {
+                return Ok(());
+            }
+            let start = cells.next().and_then(|v| v.parse::<u64>().ok());
+            let end = cells.next().and_then(|v| v.parse::<u64>().ok());
+            let (Some(start), Some(end)) = (start, end) else {
+                incomplete = true;
+                return Ok(());
+            };
+            if end <= start {
+                incomplete = true;
+                return Ok(());
+            }
+            let common = cells
+                .nth(2)
+                .and_then(|af| pycompat::num::parse_float(af).ok())
+                .filter(|af| af.is_finite())
+                .map(|af| af >= COMMON_AF);
+            if common != Some(false) {
+                by_chrom
+                    .entry(chrom.to_owned())
+                    .or_default()
+                    .push((start, end, common));
+            }
+            Ok(())
+        })?;
+        let by_chrom = by_chrom
+            .into_iter()
+            .map(|(chrom, rows)| (chrom, Index::new(rows)))
+            .collect();
+        Ok(Self {
+            by_chrom,
+            incomplete,
+        })
+    }
+
+    fn common(&self, chrom: &str, call: BedSpan) -> &'static str {
+        let mut unknown = self.incomplete;
+        if let Some(index) = self.by_chrom.get(chrom) {
+            for &(start, end, common) in index.overlapping(call.start, call.end) {
+                if call.matches(BedSpan { start, end }) {
+                    if common == Some(true) {
+                        return "yes";
+                    }
+                    unknown = true;
+                }
+            }
+        }
+        if unknown { "unknown" } else { "no" }
+    }
+}
+
+fn clinical_common(row: &Row, beds: &HashMap<&str, BenignBed>) -> &'static str {
+    let bed = benign_columns(row).and_then(|kind| beds.get(kind));
+    let chrom = chrom_key(row.get("SV_chrom"));
+    match (bed, call_span(row)) {
+        (Some(bed), Some(call)) if !chrom.is_empty() => bed.common(chrom, call),
+        _ => "unknown",
+    }
+}
+
+/// `(yes|no|unknown|not checked|., detail)` of the read depth of a deletion or
 /// duplication.
 fn depth_support(
     row: &Row,
@@ -474,13 +677,7 @@ fn depth_support(
         );
     }
     if caller == "delly" && rdcn.is_none() && len > DEPTH_MIN_SIZE {
-        // og sv add-callers keeps FORMAT GT only on a Delly call it adds,
-        // after it set aside every call over 1,000 bp whose RDCN does not
-        // show the change.
-        return (
-            "yes",
-            "RDCN checked when step 05 added the call (og sv add-callers)".to_owned(),
-        );
+        return ("unknown", "no Delly RDCN in the record".to_owned());
     }
     (
         "not checked",
@@ -629,59 +826,133 @@ fn region_rules(
     (hits, new_genes, downgrade)
 }
 
-/// One consensus record: chrom (no `chr`), POS, END, type, SUPP, SUPP_VEC.
-struct ConsensusRec {
-    chrom: String,
-    pos: i64,
-    end: i64,
-    kind: String,
-    supp: i64,
-    vec: String,
+/// SURVIVOR's own membership, indexed by contig, type, caller and source
+/// record ID. Several caller IDs can point to the same set of votes.
+#[derive(Default)]
+pub struct ConsensusSupport {
+    names: Vec<String>,
+    members: HashMap<MemberKey, Option<Rc<[String]>>>,
+    /// Callers that voted in an event whose member ID cannot be read: a
+    /// record of theirs that no key names may still be in an event.
+    unnamed: HashSet<String>,
 }
 
-fn read_consensus(path: &str) -> Result<(Vec<String>, Vec<ConsensusRec>), Error> {
-    let mut names = Vec::new();
-    let mut recs = Vec::new();
-    for_each_line(path, |_, line| {
-        if line.starts_with("##") {
-            return Ok(());
+/// Whether a checked row's source record is a voting member of a
+/// consensus event.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Membership<'a> {
+    /// A voting member: the event's voting callers, in column order.
+    Member(&'a [String]),
+    /// In no event, and the consensus names every member of this caller:
+    /// the call is the row's caller's alone.
+    NotMember,
+    /// Not known: the row has no ID (empty or `.`), its caller is not a
+    /// column of the consensus, its ID is a member of two events, or a vote
+    /// of its caller carries no ID this can read.
+    Unknown,
+}
+
+#[derive(Eq, Hash, PartialEq)]
+struct MemberKey {
+    chrom: String,
+    kind: String,
+    caller: String,
+    id: String,
+}
+
+impl MemberKey {
+    fn new(chrom: &str, kind: &str, caller: &str, id: &str) -> Self {
+        Self {
+            chrom: chrom_key(chrom).to_owned(),
+            kind: event_kind(kind),
+            caller: caller.to_owned(),
+            // SURVIVOR 1.0.7 replaces colons in FORMAT/ID with underscores.
+            id: id.replace(':', "_"),
         }
-        let c: Vec<&str> = line.trim_end_matches('\n').split('\t').collect();
-        if line.starts_with("#CHROM") {
-            names = c.iter().skip(9).map(|s| (*s).to_owned()).collect();
-            return Ok(());
+    }
+}
+
+impl ConsensusSupport {
+    /// Read a header or record from the step 22 VCF. A record whose FILTER
+    /// is not `PASS` or `.` is no event. A PASS record whose votes cannot
+    /// be read (no SVTYPE, a SUPP_VEC or SUPP that does not fit the
+    /// columns, no FORMAT/ID) marks each caller it may count as unnamed.
+    pub fn add_line(&mut self, line: &str) {
+        if line.starts_with("#CHROM\t") {
+            self.names = line.split('\t').skip(9).map(str::to_owned).collect();
+            if self.names.iter().collect::<HashSet<_>>().len() != self.names.len() {
+                self.names.clear();
+            }
+            return;
         }
-        if c.len() < 8 {
-            return Ok(());
+        if line.starts_with('#') {
+            return;
         }
-        let t = pycompat::text::upper(info_value(c[7], "SVTYPE"));
-        let Some(pos) = int(c[1]) else { return Ok(()) };
-        let end = match info_value(c[7], "END") {
-            "" => Some(pos),
-            v => int(v),
+        let fields: Vec<&str> = line.split('\t').collect();
+        let [chrom, _, _, _, _, _, "PASS" | ".", info, rest @ ..] = fields.as_slice() else {
+            return;
         };
-        let supp = match info_value(c[7], "SUPP") {
-            "" => Some(0),
-            v => int(v),
+        let bits = info_value(info, "SUPP_VEC").as_bytes();
+        let bits_ok =
+            bits.len() == self.names.len() && bits.iter().all(|&b| matches!(b, b'0' | b'1'));
+        let voters = bits.iter().filter(|&&b| b == b'1').count();
+        let kind = info_value(info, "SVTYPE");
+        let id_index = rest
+            .first()
+            .and_then(|format| format.split(':').position(|key| key == "ID"));
+        let samples = rest.get(1..).unwrap_or_default();
+        let readable = bits_ok
+            && !kind.is_empty()
+            && samples.len() == self.names.len()
+            && voters > 0
+            && info_value(info, "SUPP").parse() == Ok(voters);
+        let (true, Some(id_index)) = (readable, id_index) else {
+            for (i, name) in self.names.iter().enumerate() {
+                if !bits_ok || bits[i] == b'1' {
+                    self.unnamed.insert(name.clone());
+                }
+            }
+            return;
         };
-        let (Some(end), Some(supp)) = (end, supp) else {
-            return Ok(());
-        };
-        recs.push(ConsensusRec {
-            chrom: chrom_key(c[0]).to_owned(),
-            pos,
-            end,
-            kind: if t.starts_with("DUP") {
-                "DUP".to_owned()
-            } else {
-                t
-            },
-            supp,
-            vec: info_value(c[7], "SUPP_VEC").to_owned(),
-        });
-        Ok(())
-    })?;
-    Ok((names, recs))
+        let callers: Rc<[String]> = self
+            .names
+            .iter()
+            .zip(bits)
+            .filter(|&(_, &bit)| bit == b'1')
+            .map(|(name, _)| name.clone())
+            .collect();
+        for ((caller, sample), &bit) in self.names.iter().zip(samples).zip(bits) {
+            if bit != b'1' {
+                continue;
+            }
+            match sample.split(':').nth(id_index) {
+                Some(id) if !matches!(id, "" | ".") => {
+                    self.members
+                        .entry(MemberKey::new(chrom, kind, caller, id))
+                        // A source ID in two events has no unique one.
+                        .and_modify(|old| *old = None)
+                        .or_insert_with(|| Some(Rc::clone(&callers)));
+                }
+                _ => {
+                    self.unnamed.insert(caller.clone());
+                }
+            }
+        }
+    }
+
+    /// Whether the source record `id` of `caller` is a voting member of an
+    /// event of this contig and type, and that event's voting callers.
+    pub fn membership(&self, chrom: &str, kind: &str, caller: &str, id: &str) -> Membership<'_> {
+        if matches!(id, "" | ".") || !self.names.iter().any(|name| name == caller) {
+            return Membership::Unknown;
+        }
+        match self.members.get(&MemberKey::new(chrom, kind, caller, id)) {
+            Some(Some(callers)) => Membership::Member(callers),
+            Some(None) => Membership::Unknown,
+            None if self.unnamed.contains(caller) => Membership::Unknown,
+            None => Membership::NotMember,
+        }
+    }
 }
 
 /// The checked table: header and rows of cells.
@@ -692,6 +963,10 @@ struct Checked {
 
 /// Runs the step; returns the summary line.
 pub fn run(o: &Opts) -> Result<String, Error> {
+    run_with_benign(o, None)
+}
+
+fn run_with_benign(o: &Opts, benign_dir: Option<&str>) -> Result<String, Error> {
     let par = match o.par_bed.as_deref() {
         Some(p) if !std::path::Path::new(p).is_file() => {
             return Err(Error(format!("no PAR file {p}")));
@@ -749,6 +1024,30 @@ pub fn run(o: &Opts) -> Result<String, Error> {
     let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
     let sample = sample_columns(&key_refs);
     let no_rules = HashMap::new();
+    // Benign_match needs the records' coordinates, which AnnotSV 3 writes;
+    // a table without them keeps the columns it had.
+    let coords = BENIGN_TYPES
+        .iter()
+        .any(|(t, _)| keys.iter().any(|k| *k == format!("{t}_coord")));
+    let clinical = coords || (benign_dir.is_some() && !rows.is_empty());
+    let mut beds = HashMap::new();
+    if let Some(dir) = benign_dir {
+        let types: HashSet<_> = rows.iter().filter_map(benign_columns).collect();
+        for (key, file_type) in BENIGN_TYPES {
+            if !types.contains(key) {
+                continue;
+            }
+            let path = Path::new(dir).join(format!("benign_{file_type}_SV_GRCh38.sorted.bed"));
+            if path.is_file() {
+                match BenignBed::read(&path, &chroms) {
+                    Ok(bed) => {
+                        beds.insert(key, bed);
+                    }
+                    Err(e) => eprintln!("WARNING: {e}. Clinical common status is unknown."),
+                }
+            }
+        }
+    }
 
     let mut checked = Checked {
         cols: KEEP
@@ -758,6 +1057,14 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             .collect(),
         rows: Vec::with_capacity(rows.len()),
     };
+    if let Some(i) = checked.cols.iter().position(|c| c == "Common") {
+        if clinical {
+            checked.cols.insert(i + 1, CLINICAL_COMMON.to_owned());
+        }
+        if coords {
+            checked.cols.insert(i + 1, BENIGN_MATCH.to_owned());
+        }
+    }
     for r in &rows {
         let mut o_row: HashMap<String, String> = KEEP
             .iter()
@@ -812,7 +1119,25 @@ pub fn run(o: &Opts) -> Result<String, Error> {
             "Population_AF",
             af.map_or(String::new(), |a| general(a, 6)),
         );
-        set(&mut o_row, "Population_source", src);
+        set(
+            &mut o_row,
+            "Population_source",
+            if af.is_some() {
+                src
+            } else {
+                NO_FREQUENCY.to_owned()
+            },
+        );
+        if coords {
+            set(&mut o_row, BENIGN_MATCH, benign_match(r).to_owned());
+        }
+        if clinical {
+            set(
+                &mut o_row,
+                CLINICAL_COMMON,
+                clinical_common(r, &beds).to_owned(),
+            );
+        }
         set(
             &mut o_row,
             "Common",
@@ -864,7 +1189,7 @@ pub fn run(o: &Opts) -> Result<String, Error> {
         .filter(|r| r["ACMG_class"] != r["AnnotSV_class"])
         .count();
     Ok(format!(
-        "Class 4-5 SVs checked: {}; deletions on exon edges: {}; common (benign-set AF >= 1%): {}; moved to class 3: {moved}{}; depth support no: {}, not checked: {}",
+        "Class 4-5 SVs checked: {}; deletions on exon edges: {}; common (benign-set AF >= 1%): {}; moved to class 3: {moved}{}; depth support no: {}, not checked: {}{}",
         checked.rows.len(),
         if tx.is_some() {
             count("Exon_edge", "yes").to_string()
@@ -879,13 +1204,17 @@ pub fn run(o: &Opts) -> Result<String, Error> {
         },
         count("Depth_support", "no"),
         count("Depth_support", "not checked"),
+        match count("Depth_support", "unknown") {
+            0 => String::new(),
+            n => format!(", unknown: {n}"),
+        },
     ))
 }
 
-/// Support and Support_callers of each row from step 22's consensus:
-/// the record of the same type whose two breakpoints lie within 1,000 bp
-/// (the nearest, the first of a tie), else 1 and the row's own caller.
-/// Without the file both are empty.
+/// Support and Support_callers of each row from its SURVIVOR membership
+/// ([`ConsensusSupport::membership`]): a member has its event's voting
+/// callers, a row in no event its own caller alone, and a row whose
+/// membership is not known both cells empty, as without the file.
 fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error> {
     if !std::path::Path::new(path).is_file() {
         for r in rows {
@@ -894,61 +1223,18 @@ fn support(rows: &mut [HashMap<String, String>], path: &str) -> Result<(), Error
         }
         return Ok(());
     }
-    let (names, recs) = read_consensus(path)?;
-    let mut by: HashMap<(&str, &str), Vec<&ConsensusRec>> = HashMap::new();
-    for rec in &recs {
-        by.entry((rec.chrom.as_str(), rec.kind.as_str()))
-            .or_default()
-            .push(rec);
-    }
+    let mut consensus = ConsensusSupport::default();
+    for_each_line(path, |_, line| {
+        consensus.add_line(line.trim_end_matches('\n'));
+        Ok(())
+    })?;
     for r in rows {
-        let kind = {
-            let t = pycompat::text::upper(&r["SV_type"]);
-            if t.starts_with("DUP") {
-                "DUP".to_owned()
-            } else {
-                t
-            }
-        };
-        let se = int(&r["SV_start"]).zip(int(&r["SV_end"]));
-        let mut best: Option<(i64, &ConsensusRec)> = None;
-        if let Some((start, end)) = se {
-            let chrom = chrom_key(&r["SV_chrom"]).to_owned();
-            for rec in by
-                .get(&(chrom.as_str(), kind.as_str()))
-                .map_or(&[][..], Vec::as_slice)
-            {
-                let (dp, de) = ((rec.pos - start).abs(), (rec.end - end).abs());
-                if dp <= CONSENSUS_BP && de <= CONSENSUS_BP && best.is_none_or(|(d, _)| dp + de < d)
-                {
-                    best = Some((dp + de, rec));
-                }
-            }
-        }
-        let (s, c) = match best {
-            Some((_, rec)) => (
-                rec.supp.to_string(),
-                rec.vec
-                    .chars()
-                    .enumerate()
-                    .filter(|&(_, x)| x == '1')
-                    .map(|(i, _)| {
-                        names
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| format!("caller {}", i + 1))
-                    })
-                    .collect::<Vec<_>>()
-                    .join(","),
-            ),
-            None => (
-                "1".to_owned(),
-                match r["Caller"].as_str() {
-                    "" => ".".to_owned(),
-                    c => c.to_owned(),
-                },
-            ),
-        };
+        let (s, c) =
+            match consensus.membership(&r["SV_chrom"], &r["SV_type"], &r["Caller"], &r["ID"]) {
+                Membership::Member(callers) => (callers.len().to_string(), callers.join(",")),
+                Membership::NotMember => ("1".to_owned(), r["Caller"].clone()),
+                Membership::Unknown => (String::new(), String::new()),
+            };
         r.insert("Support".to_owned(), s);
         r.insert("Support_callers".to_owned(), c);
     }
@@ -970,7 +1256,7 @@ fn write(path: &str, t: &Checked) -> Result<(), Error> {
     f.commit().map_err(err)
 }
 
-fn opts(argv: &[String]) -> Result<Opts, u8> {
+fn opts(argv: &[String]) -> Result<(Opts, Option<String>), u8> {
     let p = args::parse(&SPEC, argv).map_err(|e| args::report(&SPEC, &e))?;
     let sex = p.get("--sex").unwrap_or("");
     let Some(sex) = Sex::parse(sex) else {
@@ -982,7 +1268,7 @@ fn opts(argv: &[String]) -> Result<Opts, u8> {
     };
     // An empty path is "not given", as the Python's `if a.genes:` reads it.
     let given = |name| p.get(name).filter(|v| !v.is_empty()).map(str::to_owned);
-    Ok(Opts {
+    let opts = Opts {
         class45: p.get("--class45").unwrap_or("").to_owned(),
         genes: given("--genes"),
         rules: given("--rules"),
@@ -990,17 +1276,18 @@ fn opts(argv: &[String]) -> Result<Opts, u8> {
         sex,
         par_bed: given("--par-bed"),
         out: p.get("--out").unwrap_or("").to_owned(),
-    })
+    };
+    Ok((opts, given("--benign-dir")))
 }
 
 /// `og sv postfilter ARGS`: exit 0, 1 for an input or output problem, 2
 /// for a usage error.
 pub fn cli(argv: &[String]) -> u8 {
-    let o = match opts(argv) {
+    let (o, benign_dir) = match opts(argv) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    match run(&o) {
+    match run_with_benign(&o, benign_dir.as_deref()) {
         Ok(summary) => {
             eprintln!("{summary}");
             0

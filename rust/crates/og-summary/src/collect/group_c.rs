@@ -38,11 +38,7 @@ pub const GROUP_C: [Spec; 32] = [
     spec("paralogs", "Paralog genes (Paraphase, PacBio HiFi)", "35b"),
     spec("hla", "HLA typing (T1K)", "08"),
     spec("prs", "Polygenic risk scores", "25"),
-    spec(
-        "ancestry_fine",
-        "Fine-grained ancestry (ADMIXTURE, RFMix)",
-        "26b",
-    ),
+    spec("ancestry_fine", "Fine-grained ancestry", "26b"),
     spec("manta", "Structural variants (Manta)", "04"),
     spec("delly", "Structural variants (Delly)", "19"),
     spec("cnvpytor", "Copy number (CNVpytor)", "18"),
@@ -219,8 +215,8 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
 /// chrY filter of CNVpytor's count. Each part runs on its own: one that
 /// returns an error is returned as its section's key and why, and the
 /// others still run. The parts read with defaults, so a row of an
-/// unexpected shape is no error. A panic is not caught: the release binary
-/// aborts on one (`panic = "abort"`).
+/// unexpected shape is no error. A panic is not caught: it ends og with an
+/// error.
 pub fn post(
     c: &Ctx<'_>,
     sections: &mut [(Spec, State, Option<&mut Data>)],

@@ -16,7 +16,7 @@
 | Resource | Minimum | Recommended | Notes |
 |---|---|---|---|
 | **CPU** | 4 cores | 8-16 cores | `run-all.sh` runs DeepVariant with at most 8 shards, fewer when `--max_cpus` is lower; more cores run other steps beside it ([CPU](hardware-requirements.md#cpu-requirements)) |
-| **RAM** | 16 GB | 32 GB | Every container has a hard memory limit; the 8-CPU steps ask for 32 GB, capped at the machine's RAM |
+| **RAM** | 16 GB | 32 GB | Every container has a hard memory limit; the 8-CPU steps ask for 32 GB, capped at the machine's RAM. A 16 GB machine needs swap for step 25's pgsc_calc ([step 25, Memory](25-prs.md#memory)) |
 | **Disk** | 500 GB free from a BAM, about 700 GB from FASTQ | 1 TB+ | See [detailed breakdown](hardware-requirements.md#disk-space-breakdown) |
 | **Internet** | Broadband | 100+ Mbps | ~73-78 GB core downloads + ~175 GB optional annotation databases |
 | **OS** | Linux (amd64) | Ubuntu 22.04+ | macOS/ARM works but slower (see below) |
@@ -28,9 +28,9 @@
 | Software | Version | Install |
 |---|---|---|
 | Docker | 20.10+ | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
-| bash | 4.4+ | Pre-installed on Linux; macOS ships 3.2, install a newer one with `brew install bash` |
-| Java *(for a full run)* | 17+ | Any OpenJDK build, e.g. `apt install openjdk-17-jre-headless` or [Adoptium Temurin](https://adoptium.net/) |
-| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | `curl -s https://get.nextflow.io \| NXF_VER=26.10.5 bash`, see [Full run](#full-run) |
+| bash | 4.4+ | Pre-installed on Linux; macOS ships 3.2, and the [Mac steps](#intel-mac) install a newer one with Homebrew |
+| Java *(for a full run)* | 17+ | Any OpenJDK build, such as [Adoptium Temurin](https://adoptium.net/); [Install the requirements](#install-the-requirements) has the command for each platform |
+| Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | The pinned install command in [Install the requirements](#install-the-requirements) |
 | wget or curl | Any | For downloading references |
 | python3 *(optional)* | 3.6+ | Used by long-read alignment (02b) for symlink resolution. Falls back to `readlink -f` on GNU/Linux if absent |
 
@@ -57,6 +57,141 @@ Use `./scripts/setup.sh --no-clinical-data "$GENOME_DIR"` to opt out.
 Use `./scripts/setup.sh --clinical-data "$GENOME_DIR"` to add or retry only these data later.
 `run-all.sh` skips steps whose data are still missing; inspect its plan and setup warnings.
 
+Setup ends in one of three ways:
+
+| Exit status | Last banner | What it means |
+| --- | --- | --- |
+| 0 | `Setup complete!` | Everything is installed. `--no-clinical-data` skips the clinical data on purpose, so that run can still end here. |
+| 3 | `Setup finished: core ready, N items missing` | The reference, ClinVar and the images are in place, but at least one download, check or build failed or was skipped. Under `Missing` the summary lists each item and the command that retries it, such as `./scripts/setup.sh --annotsv-data "$GENOME_DIR"`. The steps that need an item say so when they run. |
+| 1 | an error message, no banner | A core part failed (the reference, ClinVar or an image pull), or the arguments were wrong. Fix the error and run setup again. |
+
+The PGS Catalog scores, pgsc_calc and its Nextflow plugin are not on the list: step 25 fetches what is missing when it runs.
+
+## Install the requirements
+
+Pick your platform and run its steps in order. Each section ends with the same check: four commands that each print a version. When all four do, go on to [Get the code](#get-the-code). The [platform notes](#platform-notes) below say how each platform runs the images.
+
+### Linux
+
+Run these in a terminal. The package names are Debian's and Ubuntu's; other distributions have the same packages under their own names. Debian 13 has no Java 17 package; there, install `openjdk-21-jre-headless` instead. bash 4.4 or later comes with every current distribution.
+
+```bash
+# 1. Java 17, git and curl
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jre-headless git curl
+# 2. Docker Engine, and the right to run it without sudo
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+# 3. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mv nextflow /usr/local/bin/
+```
+
+Log out and back in, so that your user is in the `docker` group. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it. Next: [Get the code](#get-the-code).
+
+### Intel Mac
+
+Run these in Terminal. Homebrew installs the rest, so it comes first; its installer asks for your password.
+
+```bash
+# 1. Homebrew (https://brew.sh)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# 2. bash 4.4 or later (macOS ships 3.2), Java 17 and Docker Desktop
+brew install bash
+brew install --cask temurin@17 docker-desktop
+open -a Docker
+# 3. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mkdir -p /usr/local/bin
+sudo mv nextflow /usr/local/bin/
+```
+
+Docker Desktop asks you to accept its terms the first time it opens. Set its memory as the [Intel Mac notes](#macos-intel) say. Open a new Terminal window, so that the new bash comes first on your `PATH`. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. Next: [Get the code](#get-the-code).
+
+### Apple Silicon Mac
+
+Run these in Terminal. Homebrew installs the rest, so it comes first; its installer asks for your password. On Apple Silicon it installs to `/opt/homebrew`, which is not on your `PATH` until step 2 puts it there.
+
+```bash
+# 1. Homebrew (https://brew.sh)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# 2. Put Homebrew on your PATH, now and in every new Terminal window
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+# 3. Rosetta 2, which runs the amd64 images
+softwareupdate --install-rosetta --agree-to-license
+# 4. bash 4.4 or later (macOS ships 3.2), Java 17 and Docker Desktop
+brew install bash
+brew install --cask temurin@17 docker-desktop
+open -a Docker
+# 5. Nextflow, the release versions.env pins
+curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+sudo mkdir -p /usr/local/bin
+sudo mv nextflow /usr/local/bin/
+```
+
+Docker Desktop asks you to accept its terms the first time it opens. Turn on its Rosetta setting as the [Apple Silicon notes](#macos-apple-silicon-m1-m4) say. Open a new Terminal window, so that the new bash comes first on your `PATH`. Then check:
+
+```bash
+docker info
+bash --version
+java -version
+nextflow -version
+```
+
+`docker info` must show a `Server:` part with no error under it, and `bash --version` must print 4.4 or later. If `java -version` crashes with `SIGBUS` in `CodeHeap::allocate`, run `csrutil status`: Java on Apple Silicon can crash at start this way when System Integrity Protection is turned off ([OpenJDK bug JDK-8326663](https://bugs.openjdk.org/browse/JDK-8326663)), and turning it back on is the fix. Next: [Get the code](#get-the-code).
+
+### Windows with WSL2
+
+The pipeline runs inside Linux on WSL2, and Docker Desktop gives that Linux its Docker.
+
+1. Open PowerShell as Administrator and install WSL2 with Ubuntu. Restart Windows when it asks.
+
+    ```powershell
+    wsl --install -d Ubuntu-24.04
+    ```
+
+2. Open **Ubuntu** from the Start menu and create your Linux user.
+3. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/) with the WSL 2 backend. In its Settings, under Resources > WSL integration, turn on Ubuntu-24.04.
+4. Give WSL2 its memory: write `%UserProfile%\.wslconfig` as the [WSL2 notes](#windows-wsl2) say, then run `wsl --shutdown` in PowerShell and open Ubuntu again.
+5. In the Ubuntu terminal, install Java 17, git and curl, then Nextflow, the release versions.env pins:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y openjdk-17-jre-headless git curl
+    curl -s https://get.nextflow.io | NXF_VER=26.10.5 bash
+    sudo mv nextflow /usr/local/bin/
+    ```
+
+6. Check, in the same Ubuntu terminal:
+
+    ```bash
+    docker info
+    bash --version
+    java -version
+    nextflow -version
+    ```
+
+`docker info` must show a `Server:` part with no error under it. Run every later command in the Ubuntu terminal, and keep the code and your data in your Linux home (`cd ~`), not under `/mnt/c`. Next: [Get the code](#get-the-code).
+
 ## Platform Notes
 
 ### Linux (Recommended)
@@ -65,7 +200,7 @@ Best performance. Docker runs natively. All pipeline images are linux/amd64. No 
 ### macOS (Intel)
 Works fine. Docker Desktop runs a Linux VM, so there's a ~10-20% I/O overhead on file operations. Set Docker Desktop memory to at least 16 GB (Preferences > Resources).
 
-### macOS (Apple Silicon / M1-M4)
+### macOS (Apple Silicon M1-M4)
 Works but **slower**. All bioinformatics Docker images are amd64 and run under Rosetta 2 emulation (2-5x performance penalty). DeepVariant and BWA-MEM2 are the most affected. In Docker Desktop, turn on "Use Rosetta for x86_64/amd64 emulation on Apple Silicon" if your version offers it; it needs the Apple Virtualization framework as the virtual machine manager, not Docker VMM. Without it, Docker falls back to QEMU emulation, which is slower still.
 
 ### Windows (WSL2)
@@ -86,10 +221,10 @@ Works for long-running analyses. Each step has a hard memory limit. On the `run-
 ```bash
 git clone https://github.com/GeiserX/OwnGenome.git
 cd OwnGenome
-git tag --sort=-v:refname | head -n 1   # the newest release; `git checkout <tag>` stays on it, main moves on
+git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"   # the newest release
 ```
 
-Every command on these pages runs from this folder, the repository root.
+On a release tag, `setup.sh` downloads that release's `og` binaries. On `main` it builds `og` in a container instead, which takes longer; skip the checkout to follow `main`, which moves on. Every command on these pages runs from this folder, the repository root.
 
 ### Step 0: Quick Test (Optional)
 
@@ -142,20 +277,24 @@ Do not pass `-bg` to `run-all.sh`: Nextflow would return at once and `run-all.sh
 
 Without Java or Nextflow, `run-all.sh` stops with exit 2 and prints the install line; the [paths below](#path-a-i-have-fastq-files-raw-reads) run the steps one by one instead. `./scripts/run-all.sh --help` prints the switches.
 
-**Input.** `run-all.sh` uses the first of these that exists under `${GENOME_DIR}/<sample>/`, with its index:
+**Input.** By default (`INPUT=auto`), `run-all.sh` uses the first available input under `${GENOME_DIR}/<sample>/`:
 
-1. `aligned/<sample>_sorted.bam`, with `vcf/<sample>.vcf.gz` when there is one (that VCF is then not called again);
-2. `fastq/<sample>_R1.fastq.gz` and `_R2.fastq.gz`;
-3. `vcf/<sample>.vcf.gz` alone.
+1. `aligned/<sample>_sorted.bam` with its `.bai` and `vcf/<sample>.vcf.gz` with its `.tbi`.
+2. The indexed BAM alone.
+3. `fastq/<sample>_R1.fastq.gz` and `fastq/<sample>_R2.fastq.gz`.
+4. The indexed VCF alone.
 
-It writes the choice to `<sample>/nextflow/samplesheet.csv` and uses that file again on the next run while every file it names exists, its BAM is the one this call names (`ALIGN_DIR` below), and either no input higher in the list above has appeared or the run that wrote it did not end. So a rerun from the same input, or of a run that stopped or failed, finds its tasks in the cache. A run ended when `process_status.tsv` beside the samplesheet shows no failed, ignored or unfinished task. A run from FASTQ that ended has published `aligned/<sample>_sorted.bam` and `vcf/<sample>.vcf.gz`, so the run after it starts from those (with the gVCF beside the VCF) and neither aligns nor calls again, even when the cache no longer holds those tasks. Its steps after the calling run once more, because to Nextflow the published BAM and VCF are new inputs; the run after that finds them in the cache. Delete the samplesheet to choose again.
+In auto mode, `run-all.sh` reuses `<sample>/nextflow/samplesheet.csv` while its inputs still exist, its BAM matches `ALIGN_DIR`, and either no higher-ranked input is available or the previous run is incomplete. A run is complete when `process_status.tsv` beside the samplesheet shows no failed, ignored, or unfinished tasks. After a completed FASTQ run, auto mode uses the BAM and VCF it published. Downstream tasks run once with the published files as inputs, and later runs can reuse those tasks from the cache.
 
-When the run starts from an existing VCF, the pipeline does not read a gVCF beside it: `vcf/<sample>.g.vcf.gz` from an earlier `03-deepvariant.sh` run stays on disk but unused, so PharmCAT and PRS read only the VCF's variant sites. Run `./scripts/07-pharmacogenomics.sh <sample>` and `./scripts/25-prs.sh <sample> <male|female>` by hand to get the calls that read the gVCF. Give `25-prs.sh` the sex: without it, a score's chrX rows are left out and its sum covers the autosomes only ([chrX and the sex](25-prs.md#chrx-and-the-sex)). When the sample also has its indexed BAM, deleting the VCF and its index is the other way: the BAM is called again, with a gVCF the pipeline reads. With the VCF alone (no BAM, no FASTQ) that would leave no input; such a run lists the steps that read a BAM as `skipped (no BAM)`.
+To align new reads when there is already a BAM, set `INPUT=fastq`. To call again from the indexed BAM when there is already a VCF, set `INPUT=bam`. To use the indexed VCF alone, set `INPUT=vcf`. An explicit input skips the previous samplesheet and exits with status 2 if a required file is missing. Nextflow still uses `-resume` to reuse tasks with the same inputs. Both `INPUT=bam` and `INPUT=fastq` overwrite `vcf/<sample>.vcf.gz` and `vcf/<sample>.g.vcf.gz`. `INPUT=fastq` also overwrites `aligned/<sample>_sorted.bam`. Move any file you want to keep before you start.
+
+The launcher adds `vcf/<sample>.g.vcf.gz` to the samplesheet only when the row contains both the BAM and VCF and the gVCF has its `.tbi`. That indexed gVCF gives PharmCAT and PRS the reference sites. A VCF-only row, including `INPUT=vcf`, gives these tools the VCF's variant sites and skips steps that require a BAM. With `INPUT=bam`, DeepVariant calls the BAM and supplies a new VCF and gVCF to the pipeline.
 
 **Switches.** Environment variables, set before the command:
 
 | Switch | What it does | Nextflow parameter |
 |---|---|---|
+| `INPUT=auto`, `fastq`, `bam`, or `vcf` | auto picks the input. Use fastq to align and call, bam to call from the indexed BAM, or vcf to use the indexed VCF alone. | the samplesheet |
 | `SKIP_VALIDATION=true` | does not run `validate-setup.sh` first | |
 | `THREADS=N` | at most N CPUs per task (default: the machine's CPU count) | `--max_cpus N` |
 | `SKIP_TRIM=true` | aligns the raw reads, without fastp | `--skip_trim true` |
@@ -167,11 +306,12 @@ When the run starts from an existing VCF, the pipeline does not read a gVCF besi
 | `MANTA_CALL_REGIONS=file` | a bgzipped BED of the regions Manta calls | `--manta_call_regions` |
 | `ANCESTRY_PANEL=file`, `PGSC_CALC_DIR=dir` | another ancestry panel (step 26 and the percentiles of step 25), another pgsc_calc checkout; both are passed when `setup.sh` installed them, and `ANCESTRY_PANEL=none` scores without the panel | `--ancestry_ref`, `--pgsc_calc` |
 | `ANCESTRY_FINE_DIR=dir` | another fine-grained ancestry panel (step 26b); passed when `setup.sh --ancestry-fine-panel` installed it, and `ANCESTRY_FINE_DIR=none` skips the step | `--ancestry_fine_panel` |
-| `GRIDSS=true`, `IMPUTATION=true`, `SOMATIC=true` | run steps 4b, 14 and 29 as scripts after the pipeline | |
+| `TIDDIT=true`, `GRIDSS=true`, `IMPUTATION=true`, `SOMATIC=true` | run steps 4a, 4b, 14 and 29 as scripts after the pipeline | |
 | `EXTRA_CALLERS=gatk,freebayes,strelka2,octopus` | run the alternative callers 3a to 3d after the pipeline | |
 | `BENCHMARK=true` | runs `benchmark-variants.sh` after them; it needs `EXTRA_CALLERS` or a second caller's VCF from an earlier 3a-3d run, and is skipped without one | |
+| `EVERYTHING=true` | runs every optional step: see [Every optional step](#every-optional-step) | `-profile everything` |
 
-GRIDSS is not part of the SV consensus (step 22): it reports every event as a pair of breakends, which never match the DEL, DUP and INV records of Manta, Delly and CNVpytor.
+GRIDSS is left out of the SV consensus (step 22): it reports every event as a pair of breakends, and nothing in the pipeline turns a pair into one DEL, DUP or INV. Step 4b writes GRIDSS's high-confidence calls to `sv_gridss/<sample>_gridss.high.vcf.gz` beside its raw VCF.
 
 Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count as `--max_cpus`, and without `--max_memory` it passes the machine's RAM in whole GB (31.GB on a 32 GB Linux machine). Nextflow refuses a task that asks for more than the machine has, and the larger steps ask for 8 CPUs and 32 GB; with the caps they run with less. Options after the sex go to `nextflow run` unchanged, for example `./scripts/run-all.sh your_name male --max_memory 24.GB` to cap each task at 24 GB, or `--sex_check warn` to go on when the sex inferred from the BAM differs from the one given. [Nextflow Parameters](parameters.md) lists every parameter. `MAX_JOBS` is no longer read: Nextflow starts a task when its CPUs and memory fit in what is left of the machine's, and `--max_cpus` and `--max_memory` cap each task, not the total; [a shared host](hardware-requirements.md#a-shared-host) shows how to bound the total.
 
@@ -189,7 +329,7 @@ Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count a
 | 5 AnnotSV | `annotsv_annotations/Annotations_Human/` | `--annotsv_annotations` |
 | 32 pypgx | `reference/pypgx-bundle/` | `--pypgx_bundle` |
 | 25 PRS | `prs_scores/*.txt.gz` (`setup.sh` installs the scoring files) | `--pgs_scoring` |
-| 10 TelomereHunter, 19 Delly | `reference/cytoBand.hg38.txt`, `reference/delly_human.hg38.excl.tsv` (optional) | `--cytoband`, `--delly_exclude` |
+| 10 TelomereHunter, 19 Delly | `reference/cytoBand.hg38.txt` (optional: the repository's copy is used without it), `reference/delly_human.hg38.excl.tsv` (optional) | `--cytoband`, `--delly_exclude` |
 
 **Where things land.** Results go to `${GENOME_DIR}/<sample>/`, in the folders of the pipeline's [output structure](nextflow.md#output-structure). Most match the single scripts' folders; the pipeline writes PharmCAT to `pharmcat/`, ROH to `roh/`, depth to `coverage/` and HLA types to `hla/`, where the scripts use `vcf/`, `vcf/`, `mosdepth/` and `hla_t1k/`. The reports read both. At the end `run-all.sh` renders the full HTML report (`<sample>_report.html`, step 24), the text report (`<sample>_report.txt`) and the `summary.json` both are made from.
 
@@ -208,6 +348,20 @@ Without `THREADS` or `--max_cpus`, `run-all.sh` passes the machine's CPU count a
 The `work/` folder holds a copy of every intermediate file (from FASTQ, several hundred GB: [disk](hardware-requirements.md#per-sample-storage)). Once the run succeeded and the results look right, delete `<sample>/nextflow/work` to free the space; the next run then starts from scratch.
 
 **After a failure** run the same command again: `-resume` reuses every task that finished and runs the rest, including from the start the one that was running when the run stopped. **To rerun one step by hand**, run its script, for example `./scripts/06-clinvar-screen.sh your_name` after a ClinVar update, then `./scripts/24-html-report.sh your_name` and `./scripts/generate-report.sh your_name` to refresh the reports. A script reads the folders the scripts write; where the pipeline's folder differs (above), a script that reads another step's output may need that step run by hand first.
+
+### Every optional step
+
+`EVERYTHING=true ./scripts/run-all.sh your_name male` runs every step the pipeline has, the opt-in ones too. The list is [`assets/everything.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv), one row per optional item:
+
+- every `--tools` name goes into `TOOLS`, so Parascopy, Paraphase, the Y steps, the raw-data export, blood groups, Lp(a), VNtyper, CHIP, viral DNA, ancient populations, MEGAnE, MoChA and Locityper run;
+- `KIR`, `HLA_QC`, `TIDDIT`, `GRIDSS`, `IMPUTATION`, `SOMATIC` and `BENCHMARK` are `true`, and `EXTRA_CALLERS` is `gatk,freebayes,strelka2,octopus`;
+- `TOOLS`, or one of these switches set to another value, stops the run with exit 2.
+
+A step whose data is not installed stops the run with exit 2 before Nextflow starts, and the error names the command that installs it, for example `setup.sh --yleaf-data`. So does `ANCESTRY_PANEL`, `ANCESTRY_FINE_DIR` or `ARCHAIC_DIR` set to `none`. The check covers the classic BWA index that GRIDSS (step 4b, after the pipeline) reads beside the reference: `setup.sh` does not build it, and the error names `bwa index` ([4b](04b-gridss.md)). A refused run leaves the last run's `logs/run_status.tsv` as it was. Cyrius counts too: `setup.sh --cyrius` installs it, and you accept its non-commercial licence when you run that command. A skip that comes from the sample stays a skip: no BAM, no gVCF, a female sample for the two Y steps, a BAM that is not PacBio HiFi for Paraphase.
+
+Some things only you can give, so `EVERYTHING=true` leaves them to you: the symptoms for Exomiser (`HPO`), the families file (`FAMILIES`) and the drugs you take (`--medications`). The long-read scripts (2b, 3e, 4c) read ONT or PacBio HiFi reads, so you run them by hand on such data. One step stays out: `cram_archive` writes a CRAM copy of each BAM, which costs disk and adds no result.
+
+On the Nextflow path, `-profile docker,everything` sets the same tools and switches (`conf/everything.config`). Pass the database of each tool; `main.nf` stops before any task and names the option a tool lacks. CI fails when a new opt-in step, switch, setup flag or optional image has no row in the list (`og dev everything-check`).
 
 ### Path A: I Have FASTQ Files (Raw Reads)
 

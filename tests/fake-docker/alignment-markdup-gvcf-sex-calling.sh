@@ -7,6 +7,13 @@
 #              intermediate files in the sample directory, removed after; a
 #              run that leaves no gVCF fails and keeps the earlier VCF.
 #   03e male   Clair3 gets --gender=male and the PAR BED; CLAIR3_MODEL wins.
+#   03e ont    the model comes from the BAM's @RG DS basecall_model= or from
+#              BASECALL_MODEL, through og longread clair3-model run for real
+#              (bin/og) against a fake /opt/models; no basecaller, one Clair3
+#              has no model for, or a model the image lacks stops the step
+#              with the image's models listed, before Clair3 runs.
+#   02b ont    the basecaller model (BASECALL_MODEL, or the unaligned BAM's
+#              own @RG DS) goes into the aligned BAM's @RG as DS.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -42,6 +49,21 @@ case "$args" in
     [ "${FAKE_DV:-ok}" = nogvcf ] || bgzf "$(host_path "$(eq output_gvcf)")" ;;
   *"/opt/bin/run_clair3.sh "*)
     bgzf "$(host_path "$(eq output)")/merge_output.vcf.gz" ;;
+  " /pgp-bin/og longread clair3-model "*)
+    # The real og, with the image's /opt/models played by CASE_WORK/models.
+    run=()
+    for a in "$@"; do
+      case "$a" in
+        /pgp-bin/*) run+=("${REPO_ROOT}/bin/${a#/pgp-bin/}") ;;
+        /genome*) run+=("$(host_path "$a")") ;;
+        /opt/models*) run+=("${CASE_WORK}/models${a#/opt/models}") ;;
+        *) run+=("$a") ;;
+      esac
+    done
+    "${run[@]}" | sed "s#^${CASE_WORK}/models#/opt/models#" ;;
+  *" samtools index "*)
+    for a in "$@"; do last=$a; done
+    : > "$(host_path "$last").bai" ;;
   *" bcftools stats "*)
     printf 'SN\t0\tnumber of records:\t1\n' ;;
   *) exec "${CASE_WORK}/hook-outputs" image "$@" ;;
@@ -125,6 +147,22 @@ expect_rc dv-nogvcf 1
 [ -z "$(leftovers)" ] || fail "files left after the failed run: $(leftovers)"
 
 # --- 03e Clair3 ---------------------------------------------------------------------
+"${REPO_ROOT}/bin/og" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
+for m in r1041_e82_400bps_sup_v500 r1041_e82_400bps_sup_v520 r1041_e82_400bps_hac_v410 r941_prom_sup_g5014 hifi_revio; do
+  mkdir -p "${CASE_WORK}/models/${m}"
+done
+# mkbam FILE HEADER: a BAM that holds only HEADER (gzip reads as BGZF here).
+mkbam() {
+  local n=${#2}
+  { printf 'BAM\001'
+    # shellcheck disable=SC2059  # the format is the four length bytes
+    printf "$(printf '\\x%02x\\x%02x\\x%02x\\x%02x' $((n & 255)) $((n >> 8 & 255)) $((n >> 16 & 255)) $((n >> 24 & 255)))"
+    printf '%s' "$2"
+    printf '\000\000\000\000'; } | gzip -c > "$1"
+}
+LRBAM="${GENOME_DIR}/sample1/aligned_longread/sample1_sorted.bam"
+mkbam "$LRBAM" $'@HD\tVN:1.6\n@RG\tID:sample1\tSM:sample1\tPL:ONT\n'
+clair3_ran() { grep -q 'run_clair3' "$FAKE_DOCKER_LOG"; }
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 clair3-male env PLATFORM=ont CLAIR3_MODEL=/opt/models/r1041_e82_400bps_sup_v520 "${SCRIPTS}/03e-clair3.sh" sample1 male
 docker_log_has 'run_clair3\.sh .*--model_path=/opt/models/r1041_e82_400bps_sup_v520 .*--gender=male --par_regions_bed=/pgp/par_grch38\.bed' \
@@ -136,3 +174,65 @@ if awk '/run_clair3/ && /--gender/ { bad = 1 } END { exit !bad }' "$FAKE_DOCKER_
 fi
 docker_log_has 'run_clair3\.sh .*--model_path=/opt/models/hifi_revio ' "Clair3 HiFi model path changed"
 run_expect 2 clair3-badsex env PLATFORM=ont "${SCRIPTS}/03e-clair3.sh" sample1 M
+
+# --- 03e ONT: the model follows the basecaller -------------------------------------
+mkbam "$LRBAM" $'@HD\tVN:1.6\n@RG\tID:sample1\tSM:sample1\tPL:ONT\tDS:basecall_model=dna_r10.4.1_e8.2_400bps_hac@v4.1.0\n'
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 clair3-from-rg env PLATFORM=ont "${SCRIPTS}/03e-clair3.sh" sample1
+docker_log_has 'run_clair3\.sh .*--model_path=/opt/models/r1041_e82_400bps_hac_v410 ' \
+  "Clair3 did not get the model of the BAM's basecaller (hac v4.1.0)"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 clair3-basecall-env env PLATFORM=ont BASECALL_MODEL=dna_r9.4.1_e8_sup@v3.3 "${SCRIPTS}/03e-clair3.sh" sample1
+docker_log_has 'run_clair3\.sh .*--model_path=/opt/models/r941_prom_sup_g5014 ' \
+  "BASECALL_MODEL did not choose the R9.4.1 SUP model over the BAM's read group"
+
+# No basecaller anywhere, a fast basecaller, a model the image lacks, a
+# CLAIR3_MODEL the image lacks: each stops before Clair3 runs.
+mkbam "$LRBAM" $'@HD\tVN:1.6\n@RG\tID:sample1\tSM:sample1\tPL:ONT\n'
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 clair3-no-basecaller env PLATFORM=ont "${SCRIPTS}/03e-clair3.sh" sample1
+output_has clair3-no-basecaller 'names no basecaller model.*BASECALL_MODEL.*CLAIR3_MODEL'
+output_has clair3-no-basecaller 'models in .*: hifi_revio r1041_e82_400bps_hac_v410 r1041_e82_400bps_sup_v500 r1041_e82_400bps_sup_v520 r941_prom_sup_g5014'
+! clair3_ran || fail "Clair3 ran with no basecaller model known"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 clair3-fast env PLATFORM=ont BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_fast@v5.0.0 "${SCRIPTS}/03e-clair3.sh" sample1
+output_has clair3-fast 'Clair3 has no model for the basecaller model dna_r10\.4\.1_e8\.2_400bps_fast@v5\.0\.0'
+! clair3_ran || fail "Clair3 ran on a fast basecaller"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 clair3-not-in-image env PLATFORM=ont BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v4.3.0 "${SCRIPTS}/03e-clair3.sh" sample1
+output_has clair3-not-in-image 'r1041_e82_400bps_sup_v430 .*is not in the image'
+! clair3_ran || fail "Clair3 ran with a model the image lacks"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 clair3-bad-override env PLATFORM=ont CLAIR3_MODEL=/opt/models/no_such_model "${SCRIPTS}/03e-clair3.sh" sample1
+output_has clair3-bad-override 'no_such_model \(set by CLAIR3_MODEL\) is not in the image'
+! clair3_ran || fail "Clair3 ran with a CLAIR3_MODEL the image lacks"
+
+# --- 02b ONT carries the basecaller model into the aligned BAM ----------------------
+mkdir -p "${GENOME_DIR}/sample1/fastq"
+printf 'placeholder\n' | gzip -c > "${GENOME_DIR}/sample1/fastq/sample1.fastq.gz"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-basecall-env env PLATFORM=ont BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 "${SCRIPTS}/02b-alignment-longread.sh" sample1
+docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2_400bps_sup@v5\.0\.0 ' \
+  "step 02b did not put BASECALL_MODEL into the read group"
+mkbam "${GENOME_DIR}/sample1/fastq/sample1.bam" $'@HD\tVN:1.6\n@RG\tID:run1\tPL:ONT\tDS:runid=r1 basecall_model=dna_r10.4.1_e8.2_400bps_sup@v5.2.0 modbase_models=x\n'
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-ubam env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" "${SCRIPTS}/02b-alignment-longread.sh" sample1
+docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2_400bps_sup@v5\.2\.0 ' \
+  "step 02b did not carry the unaligned BAM's basecaller model into the read group"
+# An INPUT with no .bam in its name that links to the unaligned BAM.
+ln -s sample1.bam "${GENOME_DIR}/sample1/fastq/reads-link"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-ubam-link env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/reads-link" "${SCRIPTS}/02b-alignment-longread.sh" sample1
+docker_log_has 'minimap2 .*LB:sample1[^ ]*tDS:basecall_model=dna_r10\.4\.1_e8\.2_400bps_sup@v5\.2\.0 ' \
+  "step 02b did not read the basecaller model of an unaligned BAM reached through a link"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-hifi env PLATFORM=hifi INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" BASECALL_MODEL=dna_r10.4.1_e8.2_400bps_sup@v5.0.0 "${SCRIPTS}/02b-alignment-longread.sh" sample1
+if grep -q 'DS:basecall_model' "$FAKE_DOCKER_LOG"; then fail "step 02b wrote a basecaller model for HiFi reads"; fi
+run_expect 2 longread-bad-basecaller env PLATFORM=ont BASECALL_MODEL=$'sup\tx' "${SCRIPTS}/02b-alignment-longread.sh" sample1
+# A basecall_model in the uBAM header that holds a backslash: minimap2 would
+# expand it inside -R, so step 02b warns and leaves DS out instead.
+mkbam "${GENOME_DIR}/sample1/fastq/sample1.bam" $'@HD\tVN:1.6\n@RG\tID:run1\tPL:ONT\tDS:basecall_model=sup\\tx@v5.0.0\n'
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 longread-ubam-bad-basecaller env PLATFORM=ont INPUT="${GENOME_DIR}/sample1/fastq/sample1.bam" "${SCRIPTS}/02b-alignment-longread.sh" sample1
+output_has longread-ubam-bad-basecaller 'ignoring a basecall_model in the BAM header'
+if grep -q 'DS:basecall_model' "$FAKE_DOCKER_LOG"; then fail "step 02b put a basecall_model with a backslash into the read group"; fi

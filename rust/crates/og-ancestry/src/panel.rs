@@ -4,8 +4,8 @@
 //! continental and regional group (`-` when in none), whether the person
 //! is a reference (unrelated, in a group, and the regional group has
 //! [`MIN_REFERENCES`] unrelated people), and whether it is one of the
-//! painting references (at most N per continental group, taken in turn from
-//! each population).
+//! painting references (at most N per continental group, `--paint-per-group`,
+//! 200 by default, taken in turn from each population).
 
 use crate::{Args, Fail, Level, MIN_REFERENCES, Pending, Result, Spec, groups_of, label};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -88,9 +88,11 @@ pub fn panel_map(
     paint_per_group: i64,
     min_references: usize,
 ) -> std::result::Result<Vec<SampleRow>, String> {
-    // The painting references of a group are its RFMix reference, so the
-    // cap must not undo the minimum.
-    let least = min_references.max(2);
+    // A group's painting references are the people the painter copies
+    // from for that group, so the cap must not paint it from fewer people
+    // than the minimum that stands for a population. The painter itself
+    // needs at least one.
+    let least = min_references.max(1);
     if paint_per_group < least as i64 {
         return Err(format!(
             "--paint-per-group is {paint_per_group}; each group needs at least {least} painting references"
@@ -181,7 +183,7 @@ pub fn panel_map(
 
 /// What makes a sample table unfit for the model: a regional group with
 /// some but fewer than `min_references` reference people, a continental
-/// group with reference people but fewer than 2 painting references, a
+/// group with reference people but no painting reference, a
 /// painting reference who is no reference, a reference person without both
 /// groups.
 pub fn map_problems(rows: &[SampleRow], min_references: usize) -> Vec<String> {
@@ -212,9 +214,9 @@ pub fn map_problems(rows: &[SampleRow], min_references: usize) -> Vec<String> {
         .collect();
     for g in &conts {
         let n = paint.get(g).copied().unwrap_or(0);
-        if n < 2 {
+        if n == 0 {
             out.push(format!(
-                "continental group {g} has {n} of the 2 painting references RFMix needs"
+                "continental group {g} has no painting reference; the painter needs at least one in each group"
             ));
         }
     }
@@ -331,7 +333,7 @@ pub(crate) fn panel_map_main(a: &Args, out: &mut dyn Write) -> Result<()> {
             unknown.into_iter().collect::<Vec<_>>().join(", ")
         )));
     }
-    let paint_per_group = a.int("--paint-per-group", 100).unwrap_or(100);
+    let paint_per_group = a.int("--paint-per-group", 200).unwrap_or(200);
     let rows = panel_map(&meta, &samples, &exclude, paint_per_group, MIN_REFERENCES)?;
     let mut text = String::new();
     text.push_str(&HEADER.join("\t"));
@@ -517,7 +519,8 @@ mod tests {
             e,
             "--paint-per-group is 9; each group needs at least 10 painting references"
         );
-        assert!(panel_map(&m, &strings(&["y1"]), &HashSet::new(), 1, 1).is_err());
+        assert!(panel_map(&m, &strings(&["y1"]), &HashSet::new(), 0, 1).is_err());
+        assert!(panel_map(&m, &strings(&["y1"]), &HashSet::new(), 1, 1).is_ok());
     }
 
     #[test]
@@ -568,10 +571,7 @@ mod tests {
         }
         assert_eq!(
             map_problems(&one, MIN_REFERENCES),
-            [
-                "regional group OCE has 1 of the 10 reference people it needs",
-                "continental group OCE has 1 of the 2 painting references RFMix needs"
-            ]
+            ["regional group OCE has 1 of the 10 reference people it needs"]
         );
         let nopaint: Vec<SampleRow> = rows
             .iter()
@@ -580,8 +580,21 @@ mod tests {
             .collect();
         assert_eq!(
             map_problems(&nopaint, MIN_REFERENCES),
-            ["continental group AFR has 0 of the 2 painting references RFMix needs"]
+            [
+                "continental group AFR has no painting reference; the painter needs at least one in each group"
+            ]
         );
+        // One painting reference is enough: the painter copies from its two
+        // haplotypes.
+        let single: Vec<SampleRow> = rows
+            .iter()
+            .cloned()
+            .map(|r| SampleRow {
+                paint: r.sample == "y0",
+                ..r
+            })
+            .collect();
+        assert!(map_problems(&single, MIN_REFERENCES).is_empty());
         let stray: Vec<SampleRow> = rows
             .iter()
             .cloned()

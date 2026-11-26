@@ -49,6 +49,7 @@ process VCFANNO {
     task.ext.when == null || task.ext.when
 
     script:
+    // Match step 30. The max op writes TSV scores as Float for numeric filters.
     def toml = ""
     if (cadd_snv) {
         toml += """
@@ -56,7 +57,7 @@ process VCFANNO {
 file="${cadd_snv}"
 columns=[6]
 names=["CADD_PHRED"]
-ops=["self"]
+ops=["max"]
 """
     }
     if (cadd_indel) {
@@ -65,7 +66,7 @@ ops=["self"]
 file="${cadd_indel}"
 columns=[6]
 names=["CADD_PHRED_indel"]
-ops=["self"]
+ops=["max"]
 """
     }
     if (spliceai_snv) {
@@ -92,7 +93,7 @@ ops=["self"]
 file="${revel}"
 columns=[5]
 names=["REVEL"]
-ops=["self"]
+ops=["max"]
 """
     }
     if (alphamissense) {
@@ -101,7 +102,7 @@ ops=["self"]
 file="${alphamissense}"
 columns=[9,10]
 names=["AM_pathogenicity","AM_class"]
-ops=["self","self"]
+ops=["max","self"]
 """
     }
     if (!toml) {

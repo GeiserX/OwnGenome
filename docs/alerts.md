@@ -1,6 +1,6 @@
 # Run Alerts
 
-The live site (`bin/owngenome_live.py`, its guide is `docs/live-site.md`) can warn you before a run goes wrong, and say so to Prometheus. The plugin `bin/owngenome_live_ops.py` adds a **Run health** card to each run's page and a `GET /metrics` endpoint. Both read the same numbers:
+The live site (`og live serve`, its guide is `docs/live-site.md`) can warn you before a run goes wrong, and say so to Prometheus. Its ops part (`rust/crates/og-live/src/ops.rs`) adds a **Run health** card to each run's page and a `GET /metrics` endpoint. Both read the same numbers:
 
 - **Hours left**, as a range, by the rules of `og run eta` ([How long is left](run-state.md#how-long-is-left)).
 - **Memory and disk headroom**, by the rules of `og run headroom` ([Memory and disk headroom](run-state.md#memory-and-disk-headroom)).
@@ -24,7 +24,7 @@ Late and stalled need the step history of this box. The site reads `GENOME_DIR/p
 
 ## Flags
 
-The plugin adds these flags to `bin/owngenome_live.py`. Each also works as a `KEY=VALUE` line in its `--config` file (`disk_warn_percent=85`).
+These are flags of `og live serve`; `scripts/owngenome-live.sh` passes them on. Each also works as a `KEY=VALUE` line in its `--config` file (`disk_warn_percent=85`).
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -42,10 +42,9 @@ The paths it measures are the run's folder, its `nextflow/work` folder, and for 
 Without a password the site listens on loopback only, and `/metrics` is open like every page. With a password, `/metrics` answers a logged-in browser or the bearer token, nothing else. Make a token and keep it out of the repository. The site reads the file at each scrape that needs it, so a new token works without a restart; a file it cannot read makes `/metrics` answer 503.
 
 ```bash
-mkdir -p ~/.config/owngenome
-python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.config/owngenome/metrics.token
-chmod 600 ~/.config/owngenome/metrics.token
-python3 bin/owngenome_live.py --root "${GENOME_DIR:?Set GENOME_DIR to your data directory}" \
+mkdir -p -m 700 ~/.config/owngenome
+(umask 077; openssl rand -hex 32 > ~/.config/owngenome/metrics.token)
+bin/og live serve --root "${GENOME_DIR:?Set GENOME_DIR to your data directory}" \
   --password-file ~/.config/owngenome/live.hash --metrics-token-file ~/.config/owngenome/metrics.token
 ```
 
@@ -97,4 +96,4 @@ The hours left, the late steps and the unknown steps are written only while a ru
 
 ## How it is tested
 
-`tests/test_owngenome_live_ops.py` runs the plugin on the made-up run of `tests/fixtures/live/ops/` with a fake disk and a fake host, then against planted mistakes that must fail it. The `promtool` job in `.github/workflows/lint.yml` runs `pgp-alerts.test.yml`, then changes one threshold and requires the test to fail.
+`rust/crates/og-live/tests/ops.rs` runs og-live's ops module, the Rust port of the plugin, on the made-up run of `tests/fixtures/live/ops/` with a fake disk and a fake host. It also runs the plugin itself on the same inputs: the card must match by meaning and the metrics text byte for byte. `ops_eta.rs` and `ops_headroom.rs` beside it check the hours left and the headroom. Each planted mistake of the `fault-inject` feature must fail its check: Guard's rust job runs them and requires every one to fail. The `promtool` job in `.github/workflows/lint.yml` runs `pgp-alerts.test.yml`, then changes one threshold and requires the test to fail.

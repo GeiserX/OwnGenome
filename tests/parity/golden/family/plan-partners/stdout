@@ -1,0 +1,5 @@
+family_b joint_call       runs     GLnexus joint call, somalier relationship check and the family report of partner_x, partner_y
+family_b trio_phasing     skipped  no child has both parents sequenced; phasing by inheritance needs a trio
+family_b inheritance_map  skipped  no child has a sequenced parent
+family_b shared_segments  skipped  no phasing panel: install it with setup.sh --ancestry-fine-panel
+family_b couple_carrier   waiting  partner_y has no ClinVar hits yet (step 06 writes clinvar/partner_y_clinvar_hits.vcf): run run-all.sh partner_y first

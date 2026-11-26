@@ -1,0 +1,1151 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-19 23:00 UTC",
+ "run": {
+  "status_file": true,
+  "started_utc": "2020-01-01 00:00 UTC",
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "clinvar": {
+   "title": "ClinVar screen",
+   "step": "06",
+   "state": "ok",
+   "source": "clinvar/S_clinvar_hits.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "count": 8,
+    "by_stars": {
+     "4": 0,
+     "3": 2,
+     "2": 3,
+     "1": 1,
+     "0": 2
+    },
+    "hits": [
+     {
+      "stars": 4,
+      "chrom": "chr7",
+      "pos": 117559590,
+      "ref": "ATCT",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "CFTR",
+      "significance": "Pathogenic",
+      "review_status": "practice guideline",
+      "combined_allele": ".",
+      "dp": 30,
+      "gq": 15,
+      "low_confidence": true,
+      "gnomad_exome_af": 0.008,
+      "gnomad_genome_af": 0.007,
+      "rsids": [
+       "rs113993960"
+      ],
+      "af": 0.008,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 3,
+      "chrom": "chr17",
+      "pos": 43057100,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "het",
+      "gene": "BRCA1,NBR2",
+      "significance": "Pathogenic",
+      "review_status": "reviewed by expert panel",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
+      "dp": 35,
+      "gq": 60,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 3,
+      "chrom": "chr6",
+      "pos": 26092913,
+      "ref": "G",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "HFE",
+      "significance": "Pathogenic",
+      "review_status": "reviewed by expert panel",
+      "combined_allele": ".",
+      "dp": 40,
+      "gq": 99,
+      "low_confidence": false,
+      "gnomad_exome_af": 0.06,
+      "gnomad_genome_af": 0.05,
+      "rsids": [
+       "rs99",
+       "rs1800562"
+      ],
+      "af": 0.06,
+      "common": true,
+      "cdna": {
+       "check": "clean",
+       "note": "",
+       "alt_reads": 20,
+       "alt_clipped": 0,
+       "ref_reads": 20,
+       "ref_clipped": 0,
+       "construct": null
+      }
+     },
+     {
+      "stars": 2,
+      "chrom": "chr1",
+      "pos": 45331556,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "het",
+      "gene": "MUTYH",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 30,
+      "gq": 50,
+      "low_confidence": false,
+      "gnomad_exome_af": 0.002,
+      "gnomad_genome_af": 0.0005,
+      "rsids": [
+       "rs36053993"
+      ],
+      "af": 0.002,
+      "common": false,
+      "cdna": {
+       "check": "flagged",
+       "note": "possible cDNA/transgene contamination: check the reads",
+       "alt_reads": 12,
+       "alt_clipped": 6,
+       "ref_reads": 10,
+       "ref_clipped": 0,
+       "construct": "yes"
+      }
+     },
+     {
+      "stars": 2,
+      "chrom": "chr16",
+      "pos": 176700,
+      "ref": "G",
+      "alt": "A",
+      "genotype": "het",
+      "gene": "HBA1",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 31,
+      "gq": 45,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 2,
+      "chrom": "chr5",
+      "pos": 70951946,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "hom",
+      "gene": "SMN1",
+      "significance": "Pathogenic",
+      "review_status": "criteria provided, multiple submitters, no conflicts",
+      "combined_allele": ".",
+      "dp": 31,
+      "gq": 45,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 1,
+      "chrom": "chr13",
+      "pos": 20189473,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "one copy, other copy not called ref (1/.)",
+      "gene": "GJB2",
+      "significance": "Likely pathogenic",
+      "review_status": "criteria provided, single submitter",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A",
+      "dp": 5,
+      "gq": 40,
+      "low_confidence": true,
+      "gnomad_exome_af": 0.03,
+      "gnomad_genome_af": null,
+      "rsids": [
+       "rs80338939"
+      ],
+      "af": 0.03,
+      "common": true,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 1,
+      "chrom": "chr3",
+      "pos": 15645186,
+      "ref": "G",
+      "alt": "C",
+      "genotype": "het",
+      "gene": "BTD",
+      "significance": "Pathogenic/Likely pathogenic",
+      "review_status": "criteria provided, conflicting classifications",
+      "combined_allele": ".",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 0,
+      "chrom": "chr2",
+      "pos": 100,
+      "ref": "A",
+      "alt": "G",
+      "genotype": "het",
+      "gene": ".",
+      "significance": ".",
+      "review_status": ".",
+      "combined_allele": ".",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "stars": 0,
+      "chrom": "chrX",
+      "pos": 101398000,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "1",
+      "gene": "GLA",
+      "significance": "Pathogenic",
+      "review_status": "no assertion criteria provided",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
+      "dp": null,
+      "gq": null,
+      "low_confidence": false,
+      "gnomad_exome_af": null,
+      "gnomad_genome_af": null,
+      "rsids": [],
+      "af": null,
+      "common": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     }
+    ],
+    "low_confidence": 2,
+    "call_floor": {
+     "GQ": 20,
+     "DP": 8
+    },
+    "frequency": {
+     "source": "vep/S_vep.vcf.gz",
+     "note": null,
+     "common_af": 0.01
+    },
+    "cdna_flagged": 1,
+    "construct_sites": 1,
+    "cdna_scan": {
+     "note": "2 genes with spliced reads",
+     "loci": [
+      {
+       "chrom": "chr1",
+       "start": 100,
+       "end": 200,
+       "junctions": 2,
+       "reads": 5,
+       "junction_list": "A:1-2,A:3-4"
+      }
+     ]
+    },
+    "deep_intronic": [
+     {
+      "chrom": "chr7",
+      "pos": 117639961,
+      "ref": "C",
+      "alt": "T",
+      "gene": "CFTR",
+      "hgvs": "c.3718-2477C>T",
+      "clinvar_id": "7129",
+      "call": "no call",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "carrier": {
+   "title": "Carrier list",
+   "step": "06",
+   "state": "ok",
+   "source": "clinvar/S_clinvar_hits.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes_on_list": 3292,
+    "list": "assets/carrier_genes.tsv",
+    "carriers": [
+     {
+      "gene": "MUTYH",
+      "variant": "chr1:45331556 C>T",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "gq": 50,
+      "dp": 30,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "MUTYH-related polyposis"
+     },
+     {
+      "gene": "HFE",
+      "variant": "chr6:26092913 G>A",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic",
+      "stars": 3,
+      "gq": 99,
+      "dp": 40,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "Symptomatic form of HFE-related hemochromatosis"
+     },
+     {
+      "gene": "CFTR",
+      "variant": "chr7:117559590 ATCT>A",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic",
+      "stars": 4,
+      "gq": 15,
+      "dp": 30,
+      "low_confidence": true,
+      "inheritance": "AR",
+      "condition": "Cystic fibrosis"
+     },
+     {
+      "gene": "GJB2",
+      "variant": "chr13:20189473 C>T",
+      "genotype": "one copy, other copy not called ref (1/.)",
+      "zygosity": "het",
+      "significance": "Likely pathogenic",
+      "stars": 1,
+      "gq": 40,
+      "dp": 5,
+      "low_confidence": true,
+      "inheritance": "AR",
+      "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)",
+      "combined_allele": "combined allele of chr13:20189473 C>T + chr13:20189475 G>A"
+     },
+     {
+      "gene": "BRCA1",
+      "variant": "chr17:43057100 C>T",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic",
+      "stars": 3,
+      "gq": 60,
+      "dp": 35,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "Fanconi anemia",
+      "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes"
+     },
+     {
+      "gene": "HBA1",
+      "variant": "chr16:176700 G>A",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "gq": 45,
+      "dp": 31,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "Alpha-thalassemia"
+     }
+    ],
+    "hom_or_hemizygous": [
+     {
+      "gene": "GLA",
+      "variant": "chrX:101398000 C>T",
+      "genotype": "hemizygous",
+      "zygosity": "hemizygous",
+      "significance": "Pathogenic",
+      "stars": 0,
+      "gq": null,
+      "dp": null,
+      "low_confidence": false,
+      "inheritance": "XL",
+      "condition": "Fabry disease",
+      "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record"
+     },
+     {
+      "gene": "SMN1",
+      "variant": "chr5:70951946 C>T",
+      "genotype": "hemizygous",
+      "zygosity": "hemizygous",
+      "significance": "Pathogenic",
+      "stars": 2,
+      "gq": 45,
+      "dp": 31,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "Spinal muscular atrophy",
+      "hemizygous": "called homozygous inside one SMN1 copy (Parascopy, step 35)"
+     }
+    ],
+    "set_aside": [
+     {
+      "gene": "BTD",
+      "variant": "chr3:15645186 G>C",
+      "genotype": "het",
+      "zygosity": "het",
+      "significance": "Pathogenic/Likely pathogenic",
+      "stars": 1,
+      "gq": null,
+      "dp": null,
+      "low_confidence": false,
+      "inheritance": "AR",
+      "condition": "Biotinidase deficiency",
+      "kind": "hypomorph",
+      "name": "p.Asp444His (p.Asp424His on NM_001370658.1), partial biotinidase deficiency"
+     }
+    ],
+    "two_hits": {
+     "genes": [
+      {
+       "gene": "CFTR",
+       "verdict": "possibly biallelic (low-confidence call)",
+       "why": "the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads",
+       "deletion": "CFTR_del deletion, 1 of 2 copies (read depth, step 35)",
+       "variant": "chr7:117559590 ATCT>A",
+       "genotype": "het",
+       "allele": null,
+       "condition": "Cystic fibrosis",
+       "inheritance": "AR"
+      },
+      {
+       "gene": "GJB2",
+       "verdict": "possibly biallelic (low-confidence call)",
+       "why": "the variant's call is below the call floor (low confidence), so confirm it first; a heterozygous call inside a called deletion: one of the two calls may be wrong; check the reads",
+       "deletion": "DEL chr13:20180000-20200000 (AnnotSV class 4, Manta)",
+       "variant": "chr13:20189473 C>T",
+       "genotype": "one copy, other copy not called ref (1/.)",
+       "allele": null,
+       "condition": "Nonsyndromic hearing loss, recessive (DFNB1A)",
+       "inheritance": "AR"
+      },
+      {
+       "gene": "HBA1",
+       "verdict": "possibly biallelic",
+       "why": "phase unknown, possibly in trans (no read-backed phase links the two calls)",
+       "deletion": "3 of 4 alpha-globin genes (read depth, step 35)",
+       "variant": "chr16:176700 G>A",
+       "genotype": "het",
+       "allele": null,
+       "condition": "Alpha-thalassemia",
+       "inheritance": "AR"
+      },
+      {
+       "gene": "MUTYH",
+       "verdict": "biallelic",
+       "why": "in trans: read-backed phase puts them on different copies (phase set 45331000)",
+       "deletion": "DEL chr1:45338000-45340000 (AnnotSV class 5, Manta)",
+       "variant": "chr1:45331556 C>T",
+       "genotype": "het",
+       "allele": null,
+       "condition": "MUTYH-related polyposis",
+       "inheritance": "AR"
+      },
+      {
+       "gene": "SMN1",
+       "verdict": "biallelic",
+       "why": "the variant is called homozygous inside the deletion: hemizygous on the copy the deletion leaves if the deletion is real, homozygous if not; both copies carry it either way",
+       "deletion": "one SMN1 copy (Parascopy, step 35)",
+       "variant": "chr5:70951946 C>T",
+       "genotype": "hemizygous",
+       "allele": null,
+       "condition": "Spinal muscular atrophy",
+       "inheritance": "AR"
+      }
+     ],
+     "deletions_read": [
+      "AnnotSV class 4 and 5 deletions (step 05)",
+      "step 35's interval table (read depth)",
+      "step 35's HBA1/HBA2 count",
+      "Parascopy's SMN1 count (step 35)"
+     ],
+     "deletions_not_read": []
+    }
+   }
+  },
+  "pharmcat": {
+   "title": "PharmCAT",
+   "step": "07",
+   "state": "ok",
+   "source": "pharmcat/S.report.json",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "version": "3.4.0",
+    "html_report": true
+   }
+  },
+  "cpic": {
+   "title": "CPIC drug-gene recommendations",
+   "step": "27",
+   "state": "ok",
+   "source": "cpic/S_phenotypes.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes": [
+     {
+      "gene": "CYP2D6",
+      "diplotype": "*1/*4",
+      "phenotype": "Intermediate Metabolizer",
+      "status": "non-normal"
+     },
+     {
+      "gene": "CYP2C19",
+      "diplotype": "*1/*17",
+      "phenotype": "Rapid",
+      "status": "ambiguous"
+     },
+     {
+      "gene": "CYP2C9",
+      "diplotype": "*1/*1",
+      "phenotype": "Normal",
+      "status": "normal"
+     },
+     {
+      "gene": "DPYD",
+      "diplotype": null,
+      "phenotype": null,
+      "status": null
+     }
+    ],
+    "non_normal": 1,
+    "ambiguous": 1,
+    "not_called": 0,
+    "unclassified": 0,
+    "parse_failed": false,
+    "warnings": [
+     "CYP2C19 has two possible phenotypes",
+     "last"
+    ]
+   }
+  },
+  "pypgx": {
+   "title": "pypgx",
+   "step": "32",
+   "state": "ok",
+   "source": "pypgx/S_pypgx_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes_total": 6,
+    "genes_called": 3,
+    "cyp2d6": "*1/*2",
+    "cnv_call": {
+     "CYP2D6": "Normal",
+     "CYP2A6": "not called: pypgx failed",
+     "CYP2B6": "not called: the CYP2D6 depth check failed",
+     "SLCO1B1": "not called: pypgx gave no copy-number call"
+    },
+    "not_callable": [
+     "CYP2E1"
+    ],
+    "low_gq": [
+     {
+      "gene": "UGT1A1",
+      "diplotype": "Indeterminate",
+      "min_gq": 12,
+      "weakest": "chr2:1:A:G"
+     },
+     {
+      "gene": "SLCO1B1",
+      "diplotype": "*1/*5",
+      "min_gq": null,
+      "weakest": ""
+     }
+    ],
+    "cyp2d6_evidence": {
+     "phenotype": "Normal Metabolizer",
+     "defining_filter": "PASS",
+     "quality": "ok"
+    },
+    "depth_check": {
+     "status": "ok",
+     "gene_mapq1_share": "0.99",
+     "body_mapq20_share": "0.95"
+    },
+    "comparison": {
+     "conflicts": 1,
+     "one_tool_only": 2,
+     "concordant": 1
+    }
+   }
+  },
+  "cyrius": {
+   "title": "Cyrius (CYP2D6)",
+   "step": "21",
+   "state": "ok",
+   "source": "cyrius/S_cyp2d6.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genotype": "*2/*1",
+    "filter": "PASS"
+   }
+  },
+  "cpsr": {
+   "title": "Cancer predisposition (CPSR)",
+   "step": "17",
+   "state": "ok",
+   "source": "cpsr/S.cpsr.grch38.classification.tsv.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "html_report": true,
+    "classification_column": "CLASSIFICATION",
+    "classification": {
+     "Pathogenic": 1,
+     "Likely_Pathogenic": 1,
+     "VUS": 1,
+     "Benign": 1,
+     ".": 1
+    },
+    "plp": [
+     {
+      "variant": "17:43057100 C>T",
+      "gene": "BRCA1",
+      "final": "Pathogenic",
+      "cpsr": "Likely_Benign",
+      "clinvar": "Pathogenic",
+      "authority": "ClinVar",
+      "acmg_codes": "PVS1",
+      "dp": 6,
+      "low_confidence": true,
+      "cdna": {
+       "check": "flagged",
+       "note": "splice",
+       "alt_reads": 5,
+       "alt_clipped": 5,
+       "ref_reads": 9,
+       "ref_clipped": 0,
+       "construct": null
+      }
+     },
+     {
+      "variant": "13:32338000 G>A",
+      "gene": "BRCA2",
+      "final": "Likely_Pathogenic",
+      "cpsr": "VUS",
+      "clinvar": null,
+      "authority": "CPSR",
+      "acmg_codes": null,
+      "dp": 40,
+      "low_confidence": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "variant": "2:47403000 A>G",
+      "gene": "MSH2",
+      "final": "VUS",
+      "cpsr": "LP",
+      "clinvar": "B",
+      "authority": null,
+      "acmg_codes": null,
+      "dp": null,
+      "low_confidence": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     },
+     {
+      "variant": "5:112839000 A>T",
+      "gene": "APC",
+      "final": ".",
+      "cpsr": "Pathogenic",
+      "clinvar": null,
+      "authority": null,
+      "acmg_codes": null,
+      "dp": 30,
+      "low_confidence": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     }
+    ],
+    "disagreements": [
+     {
+      "variant": "17:43057100 C>T",
+      "gene": "BRCA1",
+      "final": "Pathogenic",
+      "cpsr": "Likely_Benign",
+      "clinvar": "Pathogenic",
+      "authority": "ClinVar",
+      "acmg_codes": "PVS1",
+      "dp": 6,
+      "low_confidence": true,
+      "cdna": {
+       "check": "flagged",
+       "note": "splice",
+       "alt_reads": 5,
+       "alt_clipped": 5,
+       "ref_reads": 9,
+       "ref_clipped": 0,
+       "construct": null
+      }
+     },
+     {
+      "variant": "2:47403000 A>G",
+      "gene": "MSH2",
+      "final": "VUS",
+      "cpsr": "LP",
+      "clinvar": "B",
+      "authority": null,
+      "acmg_codes": null,
+      "dp": null,
+      "low_confidence": false,
+      "cdna": {
+       "check": "not_checked",
+       "note": "not in the read-check table",
+       "alt_reads": null,
+       "alt_clipped": null,
+       "ref_reads": null,
+       "ref_clipped": null
+      }
+     }
+    ],
+    "final_plp_own_benign": 1,
+    "own_class_column": "CPSR_CLASSIFICATION",
+    "low_confidence": 1,
+    "call_floor_dp": 8,
+    "cdna_flagged": 1
+   }
+  },
+  "clinical": {
+   "title": "Clinical variant filter",
+   "step": "23",
+   "state": "ok",
+   "source": "clinical/S_clinical_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "variants": 5,
+    "by_impact": {
+     "HIGH": 3,
+     "MODERATE": 1,
+     ".": 1
+    },
+    "genes": 3,
+    "acmg_sf": {
+     "version": "ACMG SF v3.3",
+     "genes_on_list": 84,
+     "rules": "assets/acmg_sf.tsv",
+     "clinvar_hits": [
+      {
+       "gene": "MUTYH",
+       "variant": "chr1:45331556 C>T",
+       "genotype": "het",
+       "significance": "Pathogenic",
+       "stars": 2,
+       "low_confidence": false,
+       "rule": "P and LP (2 variants)",
+       "rule_note": null,
+       "severity": null,
+       "two_hit": "biallelic with DEL chr1:45338000-45340000 (AnnotSV class 5, Manta): in trans: read-backed phase puts them on different copies (phase set 45331000)",
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
+      },
+      {
+       "gene": "BRCA1",
+       "variant": "chr17:43057100 C>T",
+       "genotype": "het",
+       "significance": "Pathogenic",
+       "stars": 3,
+       "low_confidence": false,
+       "combined_allele": "part of a combined allele: chr17:43057100 C>T, chr17:43057102 A>G; unphased, so the parts may sit on different haplotypes",
+       "rule": "All P and LP",
+       "rule_note": null,
+       "severity": null
+      },
+      {
+       "gene": "GLA",
+       "variant": "chrX:101398000 C>T",
+       "genotype": "1",
+       "significance": "Pathogenic",
+       "stars": 0,
+       "low_confidence": false,
+       "combined_allele": "possibly one allele with chrX:101398004 G>A: check ClinVar for a combined record",
+       "rule": "All hemi, het, homozygous P and LP",
+       "rule_note": null,
+       "severity": null
+      }
+     ],
+     "clinvar_checked": true,
+     "high_impact": [
+      {
+       "gene": "MUTYH",
+       "variant": "chr1:45332000 G>A",
+       "genotype": "het",
+       "consequence": "stop_gained",
+       "transcript": "MANE",
+       "frequency": "rare",
+       "frequency_unknown": false,
+       "weak_call": false,
+       "call_note": null,
+       "gq": 40,
+       "dp": 30,
+       "ad": "15,15",
+       "rule": "P and LP (2 variants)",
+       "rule_note": null,
+       "severity": null,
+       "pair": "biallelic",
+       "phase": "in trans: read-backed phase puts them on different copies (phase set 45331000)"
+      },
+      {
+       "gene": "MYBPC3",
+       "variant": "chr11:47332000 G>A",
+       "genotype": "het",
+       "consequence": "splice_donor_variant,intron_variant",
+       "transcript": "ANY",
+       "frequency": "rare",
+       "frequency_unknown": false,
+       "weak_call": false,
+       "call_unverified": true,
+       "call_note": null,
+       "gq": null,
+       "dp": null,
+       "ad": null,
+       "rule": "All P and LP",
+       "rule_note": null,
+       "severity": null
+      },
+      {
+       "gene": "MSH2",
+       "variant": "chr2:47414000 A>AT",
+       "genotype": "het",
+       "consequence": "frameshift_variant",
+       "transcript": "CANONICAL",
+       "frequency": "rare",
+       "frequency_unknown": false,
+       "weak_call": true,
+       "call_note": "alt reads 0.07 of the depth on a heterozygote",
+       "gq": 50,
+       "dp": 30,
+       "ad": "28,2",
+       "rule": "All P and LP",
+       "rule_note": "A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.",
+       "severity": null
+      }
+     ],
+     "high_impact_checked": true,
+     "high_impact_rare": 1,
+     "high_impact_weak": 1,
+     "high_impact_frequency_unknown": 0,
+     "high_impact_unverified": 1,
+     "structural": [
+      {
+       "gene": "MSH2",
+       "variant": "DEL chr2:47386000-47388000",
+       "acmg_class": "4",
+       "caller": "Delly",
+       "support": null,
+       "via": "EPCAM exons 8 and 9, the 3' end (ENST00000263735)",
+       "rule": "All P and LP",
+       "rule_note": "A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.",
+       "severity": null
+      },
+      {
+       "gene": "BRCA1",
+       "variant": "DUP chr17:43000000-43100000",
+       "acmg_class": "4",
+       "caller": "CNVpytor",
+       "support": null,
+       "via": null,
+       "rule": "All P and LP",
+       "rule_note": null,
+       "severity": null
+      }
+     ],
+     "structural_checked": true,
+     "structural_note": null,
+     "not_reported": [
+      {
+       "gene": "HFE",
+       "variant": "chr6:26092913 G>A",
+       "genotype": "het",
+       "source": "ClinVar",
+       "reason": "HFE is reported only for: HFE p.C282Y homozygotes only"
+      },
+      {
+       "gene": "BTD",
+       "variant": "chr3:15645186 G>C",
+       "genotype": "het",
+       "source": "ClinVar",
+       "reason": "one heterozygous variant; BTD is reported with P and LP (2 variants)"
+      },
+      {
+       "gene": "HFE",
+       "variant": "chr6:26093000 C>T",
+       "genotype": "hom",
+       "source": "HIGH impact",
+       "reason": "HFE is reported only for: HFE p.C282Y homozygotes only"
+      }
+     ],
+     "two_hit_note": null
+    },
+    "frequency_unknown": 1,
+    "weak_calls": 2
+   }
+  },
+  "slivar": {
+   "title": "Variant prioritization (slivar)",
+   "step": "31",
+   "state": "ok",
+   "source": "slivar/S_slivar_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "prioritized": 2,
+    "frequency_unknown": 1,
+    "compound_het_variants": 4,
+    "compound_het_genes": 2,
+    "compound_het_pairs": 26,
+    "compound_het_phase": {
+     "trans": 23,
+     "cis": 1,
+     "unknown": 1
+    },
+    "compound_het_trans": [
+     {
+      "gene": "G1",
+      "variants": "chr1:10 A>G + chr1:15 C>T",
+      "reads": "1 of 2"
+     },
+     {
+      "gene": "G2",
+      "variants": "chr1:20 A>G + chr1:25 C>T",
+      "reads": "2 of 3"
+     },
+     {
+      "gene": "G3",
+      "variants": "chr1:30 A>G + chr1:35 C>T",
+      "reads": "3 of 4"
+     },
+     {
+      "gene": "G4",
+      "variants": "chr1:40 A>G + chr1:45 C>T",
+      "reads": "4 of 5"
+     },
+     {
+      "gene": "G5",
+      "variants": "chr1:50 A>G + chr1:55 C>T",
+      "reads": "5 of 6"
+     },
+     {
+      "gene": "G6",
+      "variants": "chr1:60 A>G + chr1:65 C>T",
+      "reads": "6 of 7"
+     },
+     {
+      "gene": "G7",
+      "variants": "chr1:70 A>G + chr1:75 C>T",
+      "reads": "7 of 8"
+     },
+     {
+      "gene": "G8",
+      "variants": "chr1:80 A>G + chr1:85 C>T",
+      "reads": "8 of 9"
+     },
+     {
+      "gene": "G9",
+      "variants": "chr1:90 A>G + chr1:95 C>T",
+      "reads": "9 of 10"
+     },
+     {
+      "gene": "G10",
+      "variants": "chr1:100 A>G + chr1:105 C>T",
+      "reads": "10 of 11"
+     },
+     {
+      "gene": "G11",
+      "variants": "chr1:110 A>G + chr1:115 C>T",
+      "reads": "11 of 12"
+     },
+     {
+      "gene": "G12",
+      "variants": "chr1:120 A>G + chr1:125 C>T",
+      "reads": "12 of 13"
+     },
+     {
+      "gene": "G13",
+      "variants": "chr1:130 A>G + chr1:135 C>T",
+      "reads": "13 of 14"
+     },
+     {
+      "gene": "G14",
+      "variants": "chr1:140 A>G + chr1:145 C>T",
+      "reads": "14 of 15"
+     },
+     {
+      "gene": "G15",
+      "variants": "chr1:150 A>G + chr1:155 C>T",
+      "reads": "15 of 16"
+     },
+     {
+      "gene": "G16",
+      "variants": "chr1:160 A>G + chr1:165 C>T",
+      "reads": "16 of 17"
+     },
+     {
+      "gene": "G17",
+      "variants": "chr1:170 A>G + chr1:175 C>T",
+      "reads": "17 of 18"
+     },
+     {
+      "gene": "G18",
+      "variants": "chr1:180 A>G + chr1:185 C>T",
+      "reads": "18 of 19"
+     },
+     {
+      "gene": "G19",
+      "variants": "chr1:190 A>G + chr1:195 C>T",
+      "reads": "19 of 20"
+     },
+     {
+      "gene": "G20",
+      "variants": "chr1:200 A>G + chr1:205 C>T",
+      "reads": "20 of 21"
+     }
+    ]
+   }
+  }
+ },
+ "cyp2d6": {
+  "calls": {
+   "PharmCAT": "*1/*4",
+   "pypgx": "*1/*2",
+   "Cyrius": "*2/*1"
+  },
+  "agree": true,
+  "consensus": {
+   "result": "*1/*2",
+   "passed_to_pharmcat": true,
+   "reason": "pypgx and Cyrius agree",
+   "source": "pgx_consensus/S_pgx_consensus.tsv"
+  },
+  "probable": null
+ }
+}

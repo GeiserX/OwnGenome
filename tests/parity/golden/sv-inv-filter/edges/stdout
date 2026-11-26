@@ -1,0 +1,25 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr1,length=248956422>
+##contig=<ID=chr20,length=64444167>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1>>
+##INFO=<ID=INV_JUNCTIONS,Number=1,Type=Integer,Description="Junctions Manta found for this inversion: 2 when the reciprocal INV3 and INV5 junctions are both present (POS and END within 1000 bp, or one Manta EVENT), 1 when only one is; a single junction of 1000000 bp or more stays a breakend pair">
+##INFO=<ID=INVDUP_CANDIDATE,Number=0,Type=Flag,Description="Single-junction inversion shorter than 1000 bp: more likely an inverted insertion or duplication than an inversion">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr20	7000000	MantaBND:70:0:1:0:0:0:0	N	N]chr20:9000000]	500	PASS	SVTYPE=BND;MATEID=MantaBND:70:0:1:0:0:0:1;INV_JUNCTIONS=1	GT	0/1
+chr20	7000000	MantaDEL:1:0:0:0:0:0	N	<DEL>	.	PASS	END=7000500;SVTYPE=DEL	GT	0/1
+chr20	9000000	MantaBND:70:0:1:0:0:0:1	N	N]chr20:7000000]	500	PASS	SVTYPE=BND;MATEID=MantaBND:70:0:1:0:0:0:0;INV_JUNCTIONS=1	GT	0/1
+chrUn_x	10	MantaINV:3:0:1:0:0:0	N	<INV>	500	PASS	END=500;SVTYPE=INV;SVLEN=490;INV5;INV_JUNCTIONS=1;INVDUP_CANDIDATE	GT	0/1
+chr1	100	MantaINV:1:0:1:0:0:0	N	<INV>	500	PASS	END=50000;SVTYPE=INV;SVLEN=49900;INV3;INV_JUNCTIONS=2	GT	0/1
+chr1	1100	MantaINV:1:0:2:0:0:0	N	<INV>	500	PASS	END=51000;SVTYPE=INV;SVLEN=49900;INV5;INV_JUNCTIONS=2	GT	0/1
+chr1	5000	MantaINV:4:0:1:0:0:0	N	<INV>	.	PASS	END;SVTYPE=INV;INV3;EVENT;INV_JUNCTIONS=2	GT	0/1
+chr1	5100	MantaINV:4:0:2:0:0:0	N	<INV>	.	PASS	END=9000;SVTYPE=INV;INV5;EVENT;INV_JUNCTIONS=2	GT	0/1
+chr1	6000	MantaINV:5:0:1:0:0:0	N	<INV>	.	PASS	END=x;SVTYPE=INV;INV3	GT	0/1
+chr1	6100	MantaINV:6:0:1:0:0:0	N	<INV>	.	PASS	END=6200;SVTYPE=INV	GT	0/1
+chr1	6200	MantaINV:7:0:1:0:0:0	N	<INV>	.	PASS	.	GT	0/1
+chr1	6300	Other:8	N	<INV>	.	PASS	END=6400;SVTYPE=INV;INV3	GT	0/1
+chr1	6400	MantaINV:9:0:1:0:0:0	N	<INV>	.	PASS	END=6500;SVTYPE=INV;INV5;SVTYPE=DEL
+chr1	200000	MantaINV:2:0:1:0:0:0	N	<INV>	500	PASS	END=300000;SVTYPE=INV;SVLEN=100000;INV3;INV_JUNCTIONS=1	GT	0/1
+chr1	201001	MantaINV:2:0:2:0:0:0	N	<INV>	500	PASS	END=301000;SVTYPE=INV;SVLEN=99999;INV5;INV_JUNCTIONS=1	GT	0/1

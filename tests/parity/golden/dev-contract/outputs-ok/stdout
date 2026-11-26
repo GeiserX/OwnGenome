@@ -1,0 +1,5 @@
+# observed under ./S1 (leg bash): path, format, fields
+outputs (bash): 5 stable files checked under ., 3 problems
+FAIL BREAKING: S1.tsv (contract line 3) has no chrom (it has: comment,line)
+FAIL BREAKING: S1.tsv (contract line 3) has no pos (it has: comment,line)
+FAIL BREAKING: S1.tsv (contract line 3) has no gene (it has: comment,line)

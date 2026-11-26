@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnGenome Report</title>
+<style>
+  :root { --bg: #15171c; --card: #1e2128; --fg: #e3e5ea; --muted: #a3a9b4; --line: #2e333c; --head: #262a32;
+          --accent: #8cbcf0; --hdr: linear-gradient(135deg, #12324d 0%, #1f5f8f 100%); --hdr-fg: #f2f6fa;
+          --green-bg: #1d3b2a; --green-fg: #8ee0ae; --yellow-bg: #3f3618; --yellow-fg: #f2d77c;
+          --red-bg: #4a2424; --red-fg: #f5a9a2; --gray-bg: #2d3139; --gray-fg: #b6bbc4;
+          --state-bg: #1f3550; --state-fg: #a9cdf5; --stale-bg: #3c2e16; --stale-fg: #f4ca8c;
+          --caveat-bg: #232a35; --disc-bg: #3a3214; --disc-line: #a8861c; color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); line-height: 1.6; }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; max-width: 1400px;
+            margin: 0 auto; padding: 20px; }
+  .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 8px 0;
+         font-size: 13px; }
+  .toc .toc-title { font-size: 15px; color: var(--accent); margin-bottom: 8px; }
+  .toc ol { list-style: none; }
+  .toc > ol > li { margin-bottom: 10px; }
+  .toc > ol > li > a { font-weight: 600; }
+  .toc ol ol { margin: 2px 0 0 4px; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot-ok { background: #5b9ee6; } .dot-stale, .dot-incomplete { background: #e0b94a; }
+  .dot-failed, .dot-part { background: #e2685d; } .dot-missing { background: #6b717c; }
+  .header { background: var(--hdr); color: var(--hdr-fg); padding: 26px 30px; border-radius: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 28px; margin-bottom: 8px; }
+  .header .meta { opacity: 0.9; font-size: 14px; }
+  .print-hint { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .chapter { margin-bottom: 32px; }
+  .chapter-title { font-size: 22px; color: var(--accent); }
+  .question { color: var(--muted); margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .sec { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 12px; }
+  .sec:target .card { outline: 2px solid var(--accent); }
+  .card { background: var(--card); border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .card h2 { font-size: 18px; color: var(--accent); margin-bottom: 8px;
+             padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  .card h3 { font-size: 15px; margin: 12px 0 6px; }
+  .sec-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .sec-meta .anchor { color: var(--muted); }
+  .caveat { font-size: 13px; background: var(--caveat-bg); border-left: 3px solid var(--accent);
+            padding: 6px 10px; margin-bottom: 10px; border-radius: 4px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .files { font-size: 13px; color: var(--muted); }
+  .offsite-note { font-size: 12px; color: var(--muted); font-weight: normal; }
+  .stat { display: flex; justify-content: space-between; padding: 8px 0;
+          border-bottom: 1px solid var(--line); gap: 12px; }
+  .stat:last-child { border-bottom: none; }
+  .stat .label { color: var(--muted); }
+  .stat .value { font-weight: 600; text-align: right; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+           font-size: 13px; font-weight: 600; }
+  .badge-green { background: var(--green-bg); color: var(--green-fg); }
+  .badge-yellow { background: var(--yellow-bg); color: var(--yellow-fg); }
+  .badge-red { background: var(--red-bg); color: var(--red-fg); }
+  .badge-gray { background: var(--gray-bg); color: var(--gray-fg); }
+  .badge-state { background: var(--state-bg); color: var(--state-fg); }
+  .stale { background: var(--stale-bg); color: var(--stale-fg); border-radius: 6px; padding: 6px 10px;
+           font-size: 13px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { background: var(--head); font-weight: 600; color: var(--muted); }
+  .full-width { grid-column: 1 / -1; }
+  figure.chart { margin: 4px 0 12px; } figure.chart svg { display: block; max-width: 760px; }
+  figure.chart a:focus, figure.chart a:hover { opacity: 0.8; }
+  ul.plain { margin-left: 18px; }
+  .disclaimer { background: var(--disc-bg); border: 1px solid var(--disc-line); border-radius: 8px;
+                padding: 16px; margin-top: 24px; font-size: 14px; }
+  .footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; padding: 16px; }
+  .footer table { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 900px) { .layout { display: block; } .toc { position: static; max-height: none; } }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  /* Print is light. With a section or a chapter in the address (#id, from
+     the contents), only it prints, with the header, the list of what is not
+     assessed (.always) and the disclaimer. A browser without :has() prints
+     everything. */
+  @media print {
+    :root { --bg: #fff; --card: #fff; --fg: #111; --muted: #444; --line: #ccc; --head: #f0f0f0; --accent: #1a5276;
+            --hdr: #fff; --hdr-fg: #111; --green-bg: #d5f5e3; --green-fg: #196f3d; --yellow-bg: #fef9e7;
+            --yellow-fg: #7d6608; --red-bg: #fadbd8; --red-fg: #922b21; --gray-bg: #eee; --gray-fg: #555;
+            --state-bg: #e3eefa; --state-fg: #1a4a7a; --stale-bg: #fdebd0; --stale-fg: #7e5109;
+            --caveat-bg: #f4f6f8; --disc-bg: #fff3cd; --disc-line: #c9a227; color-scheme: light; }
+    .toc, .print-hint, .sec-meta .anchor { display: none; }
+    .layout { display: block; padding: 0; max-width: none; }
+    .header { border: 1px solid #999; padding: 12px 16px; }
+    .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+    .sec:target .card { outline: none; }
+    .grid { display: block; } .sec { margin-bottom: 16px; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)):not(:has(.always)) { display: none; }
+    body:has(.sec:target) .sec:not(:target):not(.always) { display: none; }
+    body:has(.chapter:target) .chapter:not(:target) .sec:not(.always) { display: none; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
+  }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to results</a>
+<div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
+<nav class="toc" aria-label="Contents">
+  <h2 class="toc-title">Contents</h2>
+  <ol>
+    <li><a href="#ch-quality">Quality</a>
+      <ol>
+        <li><a href="#qc"><span class="dot dot-missing" title="Not run"></span>Quality control</a></li>
+        <li><a href="#variants"><span class="dot dot-missing" title="Not run"></span>Variant calling</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-clinical">Clinical</a>
+      <ol>
+        <li><a href="#clinvar"><span class="dot dot-missing" title="Not run"></span>ClinVar screen and hits</a></li>
+        <li><a href="#clinical-filter"><span class="dot dot-missing" title="Not run"></span>Clinical filter and secondary findings</a></li>
+        <li><a href="#cpsr"><span class="dot dot-missing" title="Not run"></span>Cancer predisposition</a></li>
+        <li><a href="#slivar"><span class="dot dot-missing" title="Not run"></span>Variant prioritization</a></li>
+        <li><a href="#exomiser"><span class="dot dot-ok" title="Complete"></span>Symptom-driven ranking</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-stale" title="Stale"></span>Structural variants</a></li>
+        <li><a href="#mei"><span class="dot dot-ok" title="Complete"></span>Mobile element insertions</a></li>
+        <li><a href="#expansions"><span class="dot dot-ok" title="Complete"></span>Repeat expansions</a></li>
+        <li><a href="#vntyper"><span class="dot dot-ok" title="Complete"></span>MUC1 repeat (ADTKD)</a></li>
+        <li><a href="#mito"><span class="dot dot-ok" title="Complete"></span>Mitochondrial variants</a></li>
+        <li><a href="#lpa"><span class="dot dot-ok" title="Complete"></span>Lp(a)</a></li>
+        <li><a href="#chip"><span class="dot dot-ok" title="Complete"></span>Clonal haematopoiesis</a></li>
+        <li><a href="#mosaic"><span class="dot dot-missing" title="Not run"></span>Mosaic loss of chromosome Y or X</a></li>
+        <li><a href="#mosaic-mca"><span class="dot dot-ok" title="Complete"></span>Mosaic chromosomal alterations</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-carrier">Carrier</a>
+      <ol>
+        <li><a href="#paralogs"><span class="dot dot-ok" title="Complete"></span>Paralog genes and SMN1</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-medicines">Medicines</a>
+      <ol>
+        <li><a href="#pharmcat"><span class="dot dot-missing" title="Not run"></span>PharmCAT</a></li>
+        <li><a href="#cpic"><span class="dot dot-missing" title="Not run"></span>CPIC recommendations</a></li>
+        <li><a href="#cyp2d6"><span class="dot dot-missing" title="Not run"></span>pypgx, Cyrius and CYP2D6</a></li>
+        <li><a href="#hla"><span class="dot dot-ok" title="Complete"></span>HLA typing</a></li>
+        <li><a href="#locityper"><span class="dot dot-stale" title="Stale"></span>Locityper second opinion</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-ancestry">Ancestry</a>
+      <ol>
+        <li><a href="#mt-haplogroup"><span class="dot dot-stale" title="Stale"></span>Mitochondrial haplogroup</a></li>
+        <li><a href="#y-chromosome"><span class="dot dot-incomplete" title="Part not run"></span>Y chromosome</a></li>
+        <li><a href="#roh"><span class="dot dot-ok" title="Complete"></span>Runs of homozygosity</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-traits">Traits and scores</a>
+      <ol>
+        <li><a href="#traits-panel"><span class="dot dot-ok" title="Complete"></span>Traits</a></li>
+        <li><a href="#prs"><span class="dot dot-stale" title="Stale"></span>Polygenic risk scores</a></li>
+        <li><a href="#telomere"><span class="dot dot-ok" title="Complete"></span>Telomere content</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-other">Other and exports</a>
+      <ol>
+        <li><a href="#viral"><span class="dot dot-ok" title="Complete"></span>Viral DNA</a></li>
+        <li><a href="#consumer-export"><span class="dot dot-ok" title="Complete"></span>Raw-data export</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-limits">What this report leaves out</a>
+      <ol>
+        <li><a href="#not-run">Steps not run</a></li>
+        <li><a href="#not-assessed">Not assessed</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
+  </ol>
+</nav>
+</details>
+<main id="main" tabindex="-1">
+<header class="header">
+  <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
+  <div class="meta">
+    Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC &nbsp;|&nbsp; Latest run: 2020-01-01 00:00 UTC
+  </div>
+  <div class="meta">
+    Pipeline commit: unknown &nbsp;|&nbsp; ClinVar file: unknown &nbsp;|&nbsp; ClinVar in CPSR's bundle: unknown &nbsp;|&nbsp; HLA database: unknown
+  </div>
+</header>
+<p class="print-hint">To print one section, open it from the contents (or its "link to this section"), then print: the printout holds that section, this header, the list of what is not assessed and the disclaimer. A chapter prints the same way. In a browser without CSS :has() the whole report prints.</p>
+<section class="chapter" id="ch-quality">
+  <h2 class="chapter-title">Quality</h2>
+  <p class="question">Can I trust this data?</p>
+  <div class="grid">
+  <section class="sec" id="qc">
+  <div class="card">
+    <h2>Quality Control</h2>
+    <p class="sec-meta">Steps 16b, 16, 33, 02 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#qc">link to this section</a></p>
+    <p class="caveat">Mean depth is an average over the genome: some genes get far fewer reads, and the gene callability card lists those. The sex, identity and contamination checks catch a swapped or mixed sample, not every lab error.</p>
+    <div class="stat"><span class="label">Mean depth</span><span class="value">not available</span></div>
+    <div class="stat"><span class="label">Inferred sex (indexcov)</span><span class="value">not available</span></div>
+    <div class="stat"><span class="label">Declared sex</span><span class="value">female</span></div>
+    <div class="stat"><span class="label">Identity and contamination (step 33)</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="variants">
+  <div class="card">
+    <h2>Variant Calling</h2>
+    <p class="sec-meta">Step 03 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#variants">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-clinical">
+  <h2 class="chapter-title">Clinical</h2>
+  <p class="question">Is there anything to take to a doctor?</p>
+  <div class="grid">
+  <section class="sec" id="clinvar">
+  <div class="card">
+    <h2>ClinVar Screening</h2>
+    <p class="sec-meta">Step 06 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinvar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="clinical-filter">
+  <div class="card">
+    <h2>Clinical Variant Filter</h2>
+    <p class="sec-meta">Step 23 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinical-filter">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpsr">
+  <div class="card">
+    <h2>Cancer Predisposition</h2>
+    <p class="sec-meta">Step 17 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpsr">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="slivar">
+  <div class="card">
+    <h2>Variant Prioritization (slivar)</h2>
+    <p class="sec-meta">Step 31 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#slivar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec full-width" id="exomiser">
+  <div class="card full-width">
+    <h2>Symptom-Driven Ranking (Exomiser)</h2>
+    <p class="sec-meta">Step 48 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#exomiser">link to this section</a></p>
+    <p class="caveat">A ranking to bring to a clinical geneticist, not a diagnosis: a high score means a rare, likely damaging variant in a gene linked to symptoms like these, not that it causes them, and an empty or low list does not rule a genetic cause out. Coding and splice variants only (docs/48-exomiser.md).</p>
+    <div class="stat"><span class="label">Symptoms searched</span><span class="value">.</span></div>
+    <div class="stat"><span class="label">Ranked genes</span><span class="value">none passed Exomiser's filters</span></div>
+    <p class="note">Exomiser&#x27;s own report: exomiser/S_exomiser.html</p>
+  </div>
+    <p class="files">Files of this step, beside this report: <a href="exomiser/S_exomiser_top.tsv">Exomiser ranking table</a></p>
+  </section>
+  <section class="sec full-width" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Filtered: e-value below 0.01, under half of the reads with mapping quality 0 (q0) and under half N bases (pN), no overlap with a centromere or heterochromatin band, and no chrY call when the declared sex is female.</p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stale">Copy number (CNVpytor): STALE: from an earlier run (2019-06-01 12:30 UTC); step 18 was skipped (opt-in) in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stale">SV consensus merge: STALE: from an earlier run (2019-06-01 12:30 UTC); step 22 was failed (exit 1) in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">0 / 0</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">2</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">2</span></div>
+    <div class="stat"><span class="label">CNVpytor significant after filters</span><span class="value">1 (left out: 1 on chrY of a declared female)</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">1</span></div>
+  </div>
+  <div class="card full-width">
+    <h2>Structural Variants, Class 4 and 5 (AnnotSV)</h2>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <p class="note">Class 4-5 SVs: 0</p>
+  </div>
+  </section>
+  <section class="sec full-width" id="mei">
+  <div class="card full-width">
+    <h2>Mobile Element Insertions</h2>
+    <p class="sec-meta">Step 50 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#mei">link to this section</a></p>
+    <p class="caveat">Alu, L1 and SVA copies the genome carries and the reference does not, found and genotyped by MEGAnE (Kojima et al. 2023) from short read pairs. Most are common and harmless; the catalog rows are insertions known to cause disease. Not callable: too few reads in that window to tell. Not seen is not proof of absence: short reads find an SVA&#x27;s edges, not its body. Call filtered out: MEGAnE called an insertion there but flagged it (LC is low confidence), so it is not a finding, and not proof of absence either. Every call: mei/&lt;sample&gt;_mei.tsv.</p>
+    <div class="stat"><span class="label">Insertions called</span><span class="value">0 (none)</span></div>
+    <div class="tscroll" role="region" aria-label="Mobile Element Insertions" tabindex="0"><table><tr><th>Gene</th><th>Element</th><th>Condition</th><th>Inheritance</th><th>Status</th><th>Depth</th><th>Call</th></tr><tr><td>FKTN</td><td>SVA</td><td>F</td><td>AR</td><td>callable</td><td>30</td><td>seen</td></tr></table></div>
+  </div>
+  </section>
+  <section class="sec" id="expansions">
+  <div class="card">
+    <h2>Repeat Expansions</h2>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <p class="caveat">Repeat-expansion calls from short reads can be wrong at some loci, and a long expansion cannot be sized. Disease thresholds: docs/results/structural-and-repeats.md.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">Outside the normal range (Stranger)</span><span class="value"><span class="badge badge-yellow">older than ExpansionHunter&#x27;s result: rerun step 9b</span></span></div>
+    <div class="stat"><span class="label">CFTR intron 9 (legacy IVS8) TG and poly-T tract</span><span class="value"><span class="badge badge-yellow">TG12-5T/TG12-5T</span></span></div>
+    <p class="note">5T: 2 copys with the 5T poly-T tract, TG12 on the 5T copies. 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. R117H was not read (no step 42 traits row for rs78655421 was called), so whether it sits on the 5T copy is not known. (Deignan et al. 2020, PMID 32404922)</p>
+    <div class="stat"><span class="label">UGT1A1 promoter TA repeat</span><span class="value"><span class="badge badge-gray">*28/TA9</span></span></div>
+    <p class="note">*28/TA9 (TA7/TA9, 8/10 TA units as ExpansionHunter counts them): a TA length outside TA5 to TA8 is not a named allele here, so its function is not read and it is not compared with PharmCAT (step 7). (Gammal et al. 2016, PMID 26417955)</p>
+    <div class="stat"><span class="label">SLC6A4 5-HTTLPR promoter length polymorphism</span><span class="value"><span class="badge badge-gray">not tested</span></span></div>
+    <p class="note">not tested by any step. CPIC&#x27;s 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation. (Bousman et al. 2023, PMID 37032427)</p>
+    <div class="tscroll" role="region" aria-label="Repeat Expansions" tabindex="0"><table><tr><th>Locus</th><th>Repeat Count</th><th>Stranger</th><th>Notes</th></tr><tr><td>HTT</td><td>not in output</td><td></td><td></td></tr><tr><td>FMR1</td><td>not in output</td><td></td><td></td></tr><tr><td>C9ORF72</td><td>not in output</td><td></td><td></td></tr><tr><td>ATXN1</td><td>not in output</td><td></td><td></td></tr><tr><td>DMPK</td><td>not in output</td><td></td><td></td></tr><tr><td>CFTR_T</td><td>5/5</td><td></td><td></td></tr><tr><td>CFTR_TG</td><td>12/12</td><td></td><td></td></tr><tr><td>UGT1A1</td><td>8/10</td><td></td><td></td></tr></table></div>
+  </div>
+  </section>
+  <section class="sec" id="vntyper">
+  <div class="card">
+    <h2>MUC1 VNTR Frameshifts (VNtyper)</h2>
+    <p class="sec-meta">Step 52 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#vntyper">link to this section</a></p>
+    <p class="caveat">The MUC1 repeat is long and GC-rich, and short reads cover it unevenly. VNtyper looks only for known frameshifts in it: a negative result lowers the chance of those and does not rule out ADTKD-MUC1, and a positive one needs a clinical test (SNaPshot for dupC) to confirm it.</p>
+    <div class="stat"><span class="label">Result</span><span class="value"><span class="badge badge-gray">not assessed</span></span></div>
+    <p>Result: not assessed</p>
+    <p>.</p>
+    <p>VNtyper&#x27;s coverage check: .</p>
+    <p>.</p>
+    <p>.</p>
+  </div>
+  </section>
+  <section class="sec" id="mito">
+  <div class="card">
+    <h2>Mitochondrial Analysis</h2>
+    <p class="sec-meta">Step 20 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#mito">link to this section</a></p>
+    <p class="caveat">ClinVar and gnomAD v3.1 (chrM sites) annotate the calls in step 20. MITOMAP (mitomap.org) has the curated disease status of mtDNA variants; it is a manual lookup, as it refuses scripted requests.</p>
+    <figure class="chart"><svg xmlns="http://www.w3.org/2000/svg" class="chart" data-chart="mito" viewBox="0 0 640 214" width="100%" role="img" aria-label="Heteroplasmic chrM sites"><title>Heteroplasmic chrM sites</title><rect x="44" y="12" width="580" height="158" fill="none" stroke="#4a505b"/><text x="38" y="174" font-size="10" text-anchor="end" fill="currentColor">0</text><text x="38" y="95" font-size="10" text-anchor="end" fill="currentColor">0.5</text><text x="38" y="16" font-size="10" text-anchor="end" fill="currentColor">1</text><text x="44" y="184" font-size="10" text-anchor="start" fill="currentColor">m.1</text><text x="184" y="184" font-size="10" text-anchor="middle" fill="currentColor">m.4000</text><text x="324" y="184" font-size="10" text-anchor="middle" fill="currentColor">m.8000</text><text x="464.1" y="184" font-size="10" text-anchor="middle" fill="currentColor">m.12000</text><text x="624" y="184" font-size="10" text-anchor="end" fill="currentColor">m.16569</text><text x="334" y="198" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.8">position on chrM; height: allele fraction</text><rect x="53.6" y="12" width="2" height="158" fill="#8a909b" opacity="0.25"/><rect x="609.5" y="12" width="2" height="158" fill="#8a909b" opacity="0.25"/><a href="#mito" data-mark="m3243-G"><title>m.3243A&gt;G: allele fraction 0.4</title><circle class="site" cx="157.5" cy="106.8" r="5" fill="#e0b94a"/></a></svg></figure>
+    <div class="stat"><span class="label">chrM variants (PASS)</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">Heteroplasmic (AF 0.05 to 0.95, outside the D-loop poly-C tracts)</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">Length heteroplasmy in the D-loop poly-C tracts</span><span class="value">0</span></div>
+    <p class="note">ClinVar and gnomAD: not annotated (mito/S_chrM_annotated.tsv is older than the chrM calls: rerun step 20)</p>
+    <div class="stat"><span class="label">Confirmed disease variants</span><span class="value"><span class="badge badge-yellow">1</span></span></div>
+    <p class="note">m.3243A&gt;G (MT-TL1)  AF 0.40  filter PASS  MELAS (mitochondrial encephalomyopathy, lactic acidosis and stroke-like episodes); maternally inherited diabetes and deafness; ClinVar 9589; PMID 2102678. Usually heteroplasmic; the level differs between tissues and is often lower in blood than in muscle or urine.</p>
+    <p class="note">Large deletions: not looked for (no deletion table (mito/&lt;id&gt;_chrM_deletions.tsv): step 20 ran before it looked for large deletions, eKLIPse wrote no table (see the step&#x27;s log), or the Nextflow MITO_DELETIONS task failed (see the Nextflow log))</p>
+    <p class="note">mtDNA copy number: not counted (no copy-number table (mito/&lt;id&gt;_mtdna_copies.tsv): step 20 ran before it counted mtDNA copies, or the Nextflow MITO_DELETIONS task failed (see the Nextflow log))</p>
+  </div>
+  </section>
+  <section class="sec" id="lpa">
+  <div class="card">
+    <h2>Lp(a): LPA KIV-2 Repeat Count</h2>
+    <p class="sec-meta">Step 46 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#lpa">link to this section</a></p>
+    <p class="caveat">The KIV-2 repeat count from read depth is a research estimate, not an Lp(a) level: the level is a blood test, and the count explains only part of the difference between people.</p>
+    <p>KIV-2 repeats: too little depth</p>
+    <p>  .</p>
+    <p>KIV-2 4925G&gt;A null allele (rs1484919544): not assessed</p>
+    <p>  LPA KIV-2 4925G&gt;A: not assessed, step 46 wrote no S_lpa_kiv2_4925.tsv (a run from before this reader, or the check did not run).</p>
+    <p>  A null allele lowers the Lp(a) made from the copies it sits on; the Lp(a) blood test is the measure.</p>
+    <p>rs10455872: . (not read)</p>
+    <p>Not determined: neither the KIV-2 count nor the two risk variants could be read. Measure Lp(a) in blood.</p>
+    <p>.</p>
+  </div>
+  </section>
+  <section class="sec full-width" id="chip">
+  <div class="card full-width">
+    <h2>Clonal Haematopoiesis (CHIP)</h2>
+    <p class="sec-meta">Step 49 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#chip">link to this section</a></p>
+    <p class="caveat">Clonal haematopoiesis is common with age and most people with it never get a blood cancer: a call here is not a diagnosis. A call is a change in a CHIP gene&#x27;s published classes, found by Mutect2 without a matched normal; one at a VAF of 35% or more is left out as possibly inherited. docs/49-chip.md says how to read it.</p>
+    <div class="stat"><span class="label">CHIP calls</span><span class="value">0</span></div>
+    <p>No CHIP call.</p>
+    <p>No CHIP gene has the depth to find a clone: no result either way.</p>
+    <p>Too shallow or not on the reference: DNMT3A.</p>
+    <p>0 other protein changes listed, not counted: chip/S_chip.tsv.</p>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec full-width" id="mosaic-mca">
+  <div class="card full-width">
+    <h2>Mosaic Chromosomal Alterations (MoChA)</h2>
+    <p class="sec-meta">Step 51 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#mosaic-mca">link to this section</a></p>
+    <p class="caveat">Large gains, losses and copy-neutral losses of heterozygosity (CN-LOH) carried by a share of the blood cells, from MoChA on the phased heterozygous sites of chr1 to chr22. In a UK Biobank study they became more common with age and went with a higher risk of a later blood cancer (Loh et al. 2018). That is a population-level association, not a diagnosis; an event is confirmed on a new blood sample. Below the floor nothing is reported, and an event above it can still be missed. Every MoChA call, with the reason it was or was not reported: mosaic/&lt;sample&gt;_mocha.tsv.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not assessed</span></span></div>
+    <p class="note">too shallow</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-carrier">
+  <h2 class="chapter-title">Carrier</h2>
+  <p class="question">What could I pass on to a child?</p>
+  <div class="grid">
+  <section class="sec full-width" id="paralogs">
+  <div class="card full-width">
+    <h2>Paralog Genes (Paraphase)</h2>
+    <p class="sec-meta">Steps 35b, 35 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#paralogs">link to this section</a></p>
+    <p class="caveat">Paraphase reads PacBio HiFi reads only. A &#x27;no call&#x27; means it saw one haplotype and the depth did not settle one copy or two. A research estimate, not a diagnostic test: confirm a result (for example an HBA deletion or one SMN1 copy) with a clinical laboratory.</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="tscroll" role="region" aria-label="Paralog Genes (Paraphase)" tabindex="0"><table><tr><th>Gene</th><th>Copy number</th><th>Call</th><th>Detail</th></tr><tr><td>SMN1</td><td>x</td><td>called</td><td>.</td></tr></table></div>
+    <div class="stat"><span class="label">SMN1 by both tools</span><span class="value">Paraphase no call, Parascopy no row covers SMN1 exon 7: no comparison: one of them has no call</span></div>
+    <div class="stat"><span class="label">Variants on phased haplotypes</span><span class="value">0</span></div>
+  </div>
+  <div class="card">
+    <h2>SMN1/SMN2 Copy Number (Parascopy)</h2>
+    <p class="caveat">Parascopy reads short reads at SMN1 and SMN2 and at the other loci of its catalog. A quality under 20 or a filter other than PASS leaves a copy unresolved. HBA1 and HBA2, CYP21A2 and the gene-dosage loci have no Parascopy model: step 35 counts them from read depth against flanking sequence (CYP21A2 also from six sites where it differs from its pseudogene CYP21A1P), which cannot say which chromosome lost or gained a copy. The copy-number intervals (ClinGen&#x27;s recurrent CNV regions, carrier deletion alleles, the AZF regions) are read from depth too. A research estimate, not a diagnostic test: confirm a result with a clinical laboratory (MLPA or qPCR; gap-PCR for alpha-thalassaemia).</p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">SMN1 copies</span><span class="value">no row covers exon 7</span></div>
+    <div class="stat"><span class="label">SMN1 g.27134T&gt;G silent-carrier marker (rs143838139)</span><span class="value">not assessed</span></div>
+    <div class="stat"><span class="label">SMN1 marker reading</span><span class="value">SMN1 g.27134T&gt;G: not assessed, step 35 wrote no S_smn1_marker.tsv (a run from before this reader, or the check did not run).</span></div>
+    <div class="stat"><span class="label">SMN1 marker caveat</span><span class="value">The marker raises the chance that two SMN1 copies sit on one chromosome (2+0, a silent carrier); it does not prove 2+0, and a carrier test in a clinical laboratory confirms it.</span></div>
+    <div class="stat"><span class="label">SMN2 copies</span><span class="value">no row covers exon 7</span></div>
+    <div class="stat"><span class="label">SMN1 and SMN2 together (agCN) at exon 7</span><span class="value">. (quality ., filter .)</span></div>
+    <div class="stat"><span class="label">Reading</span><span class="value">SMN1 and SMN2 not assessed: no model: no carrier reading</span></div>
+    <div class="stat"><span class="label">HBA1 and HBA2 together (alpha-globin genes, from depth)</span><span class="value">not assessed: S_hba_copy_number.tsv has no status row</span></div>
+    <div class="stat"><span class="label">CYP21A2 (RCCX module, from depth and six PSV sites)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cyp21a2_psv.tsv is not in this run&#x27;s output)</span></div>
+    <div class="stat"><span class="label">Gene-dosage loci (HP, LCE3B/LCE3C, CCL3L1)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cn_dosage.tsv is not in this run&#x27;s output)</span></div>
+    <div class="stat"><span class="label">Copy-number intervals (ClinGen recurrent regions, carrier deletions, AZF; from depth)</span><span class="value">not assessed (step 35&#x27;s &lt;id&gt;_cn_intervals.tsv is not in this run&#x27;s output)</span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-medicines">
+  <h2 class="chapter-title">Medicines</h2>
+  <p class="question">How might I respond to medicines?</p>
+  <div class="grid">
+  <section class="sec" id="pharmcat">
+  <div class="card">
+    <h2>Pharmacogenomics</h2>
+    <p class="sec-meta">Step 07 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#pharmcat">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpic">
+  <div class="card">
+    <h2>CPIC Drug Recommendations</h2>
+    <p class="sec-meta">Step 27 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpic">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cyp2d6">
+  <div class="card">
+    <h2>CYP2D6 Across Callers</h2>
+    <p class="sec-meta">Steps 32, 21 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cyp2d6">link to this section</a></p>
+    <p class="caveat">CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means the gene was not read reliably here; a clinical CYP2D6 test settles it.</p>
+    <div class="stat"><span class="label">PharmCAT (step 36&#x27;s call)</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">Cyrius</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx and Cyrius agree</span><span class="value"><span class="badge badge-gray">fewer than two usable calls</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="hla">
+  <div class="card">
+    <h2>HLA Typing</h2>
+    <p class="sec-meta">Step 08 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#hla">link to this section</a></p>
+    <p class="caveat">Information about alleles, not a diagnosis: each line is an association reported in the cited study. Carrying an allele does not mean the condition or reaction will happen, and not carrying it does not rule it out. The genotypes are unphased.</p>
+    <p class="caveat">HLA typing from short-read WGS is approximate. If either HLA-A or HLA-B allele has a T1K quality of 0 or less, that gene is not passed to PharmCAT (step 36).</p>
+    <p class="caveat">KIR genotypes as T1K typed them. No step interprets them: they matter for transplant matching and some immune conditions, not for drug guidance.</p>
+    <div class="stat"><span class="label">HLA-DQA1</span><span class="value">DQA1*03:01 (quality 0) / DQA1*01:01 (quality 30); low confidence (T1K quality 0 or below)</span></div>
+    <div class="stat"><span class="label">HLA-DQB1</span><span class="value">DQB1*02:01 (quality 40)</span></div>
+    <div class="stat"><span class="label">HLA-DRB1</span><span class="value">DRB1*04:01 (quality 40) / DRB1*07:01 (quality 40)</span></div>
+    <p class="note">Coeliac DQ: not determined (HLA-DQA1 low confidence)</p>
+    <p class="note">DQB1*02 copies: 2</p>
+    <p class="note">DRB1*04:01 present: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DQB1*06:02 absent: narcolepsy with cataplexy (Mignot 2001, Am J Hum Genet)</p>
+    <p class="note">DRB1*15:01 absent: multiple sclerosis (Barcellos 2003, Am J Hum Genet)</p>
+    <p class="note">DRB1*01:01 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:04 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:05 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*04:08 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">DRB1*14:02 absent: rheumatoid arthritis, shared epitope allele (Gregersen 1987, Arthritis Rheum)</p>
+    <p class="note">A*31:01 not determined (HLA-A not typed): carbamazepine hypersensitivity reactions in Europeans (McCormack 2011, N Engl J Med)</p>
+    <p class="note">B*15:02 not determined (HLA-B not typed): carbamazepine Stevens-Johnson syndrome in Han Chinese (Chung 2004, Nature)</p>
+    <p class="note">B*57:01 not determined (HLA-B not typed): abacavir hypersensitivity; flucloxacillin liver injury (Mallal 2008, N Engl J Med; Daly 2009, Nat Genet)</p>
+    <p class="note">B*58:01 not determined (HLA-B not typed): allopurinol severe skin reactions (Hung 2005, Proc Natl Acad Sci U S A)</p>
+    <p class="note">B*27 not determined (HLA-B not typed): ankylosing spondylitis (Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med)</p>
+    <p class="note">C*06:02 not determined (HLA-C not typed): psoriasis (Nair 2006, Am J Hum Genet)</p>
+    <div class="stat"><span class="label">HLA database</span><span class="value">unknown</span></div>
+    <div class="stat"><span class="label">OptiType check</span><span class="value">not compared: OptiType did not run: no class I reads</span></div>
+    <p class="note">too few KIR reads</p>
+  </div>
+  </section>
+  <section class="sec full-width" id="locityper">
+  <div class="card full-width">
+    <h2>Locityper Second Opinion at Hard Loci</h2>
+    <p class="sec-meta">Step 53 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#locityper">link to this section</a></p>
+    <p class="caveat">A second opinion beside the primary caller, never the call itself. Locityper (Prodanov et al. 2025, Nat Genet, PMID 41107551) picks the two haplotypes of the HPRC pangenome panel that best explain the reads at each locus; it names haplotypes of panel people (&lt;sample&gt;.1 or .2), not alleles, so the two callers are shown side by side and not compared. Filter: the authors&#x27; HLA and KIR benchmark filter (no warning, weighted distance of 30 or less, fewer than 1000 or 20% unexplained reads). Every column: locityper/&lt;sample&gt;_locityper.tsv.</p>
+    <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 53 was skipped in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">Loci called</span><span class="value">3 of 3 (3 pass the filter)</span></div>
+    <div class="tscroll" role="region" aria-label="Locityper Second Opinion at Hard Loci" tabindex="0"><table><tr><th>Locus</th><th>Locityper</th><th>Filter</th><th>Primary caller</th></tr><tr><td>HLA-DRB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DRB1*04:01/DRB1*07:01</td></tr><tr><td>HLA-DQB1</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>T1K (step 08): DQB1*02:01</td></tr><tr><td>CYP2D6</td><td>h + h (quality 1, 1 of 1 reads unexplained, weighted distance 1; filter pass)</td><td><span class="badge badge-green">pass</span></td><td>pypgx (step 32) and Cyrius (step 21) did not run</td></tr></table></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-ancestry">
+  <h2 class="chapter-title">Ancestry</h2>
+  <p class="question">Where do my ancestors come from?</p>
+  <div class="grid">
+  <section class="sec" id="mt-haplogroup">
+  <div class="card">
+    <h2>Mitochondrial Haplogroup</h2>
+    <p class="sec-meta">Step 12 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#mt-haplogroup">link to this section</a></p>
+    <p class="caveat">Nothing is uploaded by this pipeline. The docs link lists the files each service reads, which steps 12 and 37 write when they run, and what an upload shares.</p>
+    <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 12 was skipped in the run of 2020-01-01 00:00 UTC</div>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-yellow">Stale</span></span></div>
+    <div class="stat"><span class="label">Haplogroup</span><span class="value">U5a</span></div>
+    <div class="stat"><span class="label">Contamination (haplocheck)</span><span class="value">not checked (needs step 20&#x27;s Mutect2 chrM calls)</span></div>
+    <div class="stat"><span class="label">FamilyTreeDNA Discover (free, no upload)</span><span class="value"><span class="offsite"><a href="https://discover.familytreedna.com/mtdna/U5a">https://discover.familytreedna.com/mtdna/U5a</a> <span class="offsite-note">(opens a website; the address carries the haplogroup)</span></span></span></div>
+    <div class="stat"><span class="label">YFull MTree</span><span class="value"><span class="offsite"><a href="https://www.yfull.com/mtree/U5a/">https://www.yfull.com/mtree/U5a/</a> <span class="offsite-note">(opens a website; the address carries the haplogroup)</span></span></span></div>
+    <div class="stat"><span class="label">More routes, and the files to share</span><span class="value"><span class="offsite"><a href="https://github.com/GeiserX/OwnGenome/blob/main/docs/12-mito-haplogroup.md#explore-your-branch-further">https://github.com/GeiserX/OwnGenome/blob/main/docs/12-mito-haplogroup.md#explore-your-branch-further</a> <span class="offsite-note">(opens a website)</span></span></span></div>
+  </div>
+  </section>
+  <section class="sec full-width" id="y-chromosome">
+  <div class="card">
+    <h2>Y-Chromosome Haplogroup</h2>
+    <p class="sec-meta">Steps 37, 45 &middot; <span class="badge badge-yellow">Part not run</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#y-chromosome">link to this section</a></p>
+    <div class="stat"><span class="label">Haplogroup</span><span class="value">insufficient markers</span></div>
+    <div class="stat"><span class="label">Markers</span><span class="value">.</span></div>
+    <div class="stat"><span class="label">QC-score</span><span class="value">.</span></div>
+  </div>
+  <div class="card full-width">
+    <h2>Y Placement on the Current Public Tree</h2>
+    <p class="caveat">A second placement, on a public tree release newer than the one Yleaf carries, walked from the reads by og y tree-place. The two can differ in depth and in name: branches get renamed and split between releases, and the position tables differ. A branch is taken when it has more derived than ancestral SNPs, and an ancestral call above it blocks the branches below unless the SNPs below outvote that one site. Every level is in y_haplogroup/&lt;sample&gt;_y_tree_path.tsv; docs/37-y-haplogroup.md says how the walk works.</p>
+    <div class="stat"><span class="label">Branch</span><span class="value">no branch has a derived call</span></div>
+    <div class="stat"><span class="label">Level</span><span class="value">.</span></div>
+    <div class="stat"><span class="label">Tree</span><span class="value">.</span></div>
+    <p>Path SNPs: . derived, . ancestral, . no call; . SNPs called at depth . or more</p>
+  </div>
+  </section>
+  <section class="sec" id="roh">
+  <div class="card">
+    <h2>Runs of Homozygosity</h2>
+    <p class="sec-meta">Step 11 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#roh">link to this section</a></p>
+    <p class="caveat">F_ROH is the share of the autosomes (outside the bands) in runs of 5 MB or more.</p>
+    <p class="caveat">Autosomes only: chrX and chrY are left out, and so is the part of a segment in a centromere or heterochromatin band (GRCh38 cytoband acen, gvar, stalk), where few markers map. No population allele frequencies were used (bcftools roh --AF-dflt 0.4): read the total and the short segments as rough; the long segments are the signal.</p>
+    <figure class="chart"><svg xmlns="http://www.w3.org/2000/svg" class="chart" data-chart="genome" viewBox="0 0 640 478" width="100%" role="img" aria-label="Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the chromosomes"><title>Runs of homozygosity, ClinVar hits, structural variants and mosaic alterations on the chromosomes</title><text x="40" y="19" font-size="10" text-anchor="end" fill="currentColor">1</text><rect x="46" y="12" width="578" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="37" font-size="10" text-anchor="end" fill="currentColor">2</text><rect x="46" y="30" width="562.3" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="55" font-size="10" text-anchor="end" fill="currentColor">3</text><rect x="46" y="48" width="460.4" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="73" font-size="10" text-anchor="end" fill="currentColor">4</text><rect x="46" y="66" width="441.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="91" font-size="10" text-anchor="end" fill="currentColor">5</text><rect x="46" y="84" width="421.5" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="109" font-size="10" text-anchor="end" fill="currentColor">6</text><rect x="46" y="102" width="396.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="127" font-size="10" text-anchor="end" fill="currentColor">7</text><rect x="46" y="120" width="370" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="145" font-size="10" text-anchor="end" fill="currentColor">8</text><rect x="46" y="138" width="337" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="163" font-size="10" text-anchor="end" fill="currentColor">9</text><rect x="46" y="156" width="321.3" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="181" font-size="10" text-anchor="end" fill="currentColor">10</text><rect x="46" y="174" width="310.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="199" font-size="10" text-anchor="end" fill="currentColor">11</text><rect x="46" y="192" width="313.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="217" font-size="10" text-anchor="end" fill="currentColor">12</text><rect x="46" y="210" width="309.4" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="235" font-size="10" text-anchor="end" fill="currentColor">13</text><rect x="46" y="228" width="265.5" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="253" font-size="10" text-anchor="end" fill="currentColor">14</text><rect x="46" y="246" width="248.5" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="271" font-size="10" text-anchor="end" fill="currentColor">15</text><rect x="46" y="264" width="236.8" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="289" font-size="10" text-anchor="end" fill="currentColor">16</text><rect x="46" y="282" width="209.7" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="307" font-size="10" text-anchor="end" fill="currentColor">17</text><rect x="46" y="300" width="193.3" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="325" font-size="10" text-anchor="end" fill="currentColor">18</text><rect x="46" y="318" width="186.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="343" font-size="10" text-anchor="end" fill="currentColor">19</text><rect x="46" y="336" width="136.1" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="361" font-size="10" text-anchor="end" fill="currentColor">20</text><rect x="46" y="354" width="149.6" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="379" font-size="10" text-anchor="end" fill="currentColor">21</text><rect x="46" y="372" width="108.4" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="397" font-size="10" text-anchor="end" fill="currentColor">22</text><rect x="46" y="390" width="118" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="415" font-size="10" text-anchor="end" fill="currentColor">X</text><rect x="46" y="408" width="362.3" height="8" rx="4" fill="none" stroke="#4a505b"/><text x="40" y="433" font-size="10" text-anchor="end" fill="currentColor">Y</text><rect x="46" y="426" width="132.9" height="8" rx="4" fill="none" stroke="#4a505b"/><a href="#roh" data-mark="roh-0"><title>Run of homozygosity chr2:10000001-17000000: 7.0 MB run of homozygosity at chr2:10000001-17000000</title><rect class="roh" x="69.2" y="30" width="16.3" height="8" fill="#5b9ee6"/></a><rect x="46" y="448" width="14" height="8" fill="#5b9ee6"/><text x="66" y="456" font-size="11" text-anchor="start" fill="currentColor">run of homozygosity, 5 MB or more</text><rect x="296" y="446" width="3" height="12" fill="#e0b94a"/><text x="304" y="456" font-size="11" text-anchor="start" fill="currentColor">ClinVar hit</text><rect x="386" y="446" width="3" height="12" fill="#8a909b"/><text x="394" y="456" font-size="11" text-anchor="start" fill="currentColor">low-confidence ClinVar call</text></svg></figure>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-green">Complete</span></span></div>
+    <div class="stat"><span class="label">ROH total</span><span class="value">7.0 MB</span></div>
+    <div class="stat"><span class="label">ROH largest segment</span><span class="value">7.0 MB</span></div>
+    <div class="stat"><span class="label">Segments</span><span class="value">1</span></div>
+    <div class="stat"><span class="label">Autosomal ROH &gt; 5 MB</span><span class="value">1</span></div>
+    <p class="note">chr2:10000001-17000000  7.0MB</p>
+    <p class="note">F_ROH: 0.0294 (7.0 MB in runs of 5 MB or more); nearest: no band (one chromosome holds most of the runs)</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-traits">
+  <h2 class="chapter-title">Traits and scores</h2>
+  <p class="question">What do studies say about my traits and risk scores?</p>
+  <div class="grid">
+  <section class="sec full-width" id="traits-panel">
+  <div class="card full-width">
+    <h2>Traits</h2>
+    <p class="sec-meta">Step 42 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
+    <p class="caveat">Each reading is what the cited studies found on average in the people they studied, not a diagnosis. A row marked ancestry reads differently in other populations; its note says how.</p>
+    <div class="stat"><span class="label">Read / no genotype / other allele</span><span class="value">0 / 1 / 0</span></div>
+    <div class="tscroll" role="region" aria-label="Traits" tabindex="0"><table>
+      <tr><th>Trait</th><th>Gene</th><th>Genotype</th><th>Reading</th><th>Source</th></tr>
+      <tr><td>Lp(a)</td><td>LPA<br><span style="font-size:12px;color:#666">rs10455872</span></td><td>.</td><td>no reads<br><span style="font-size:12px;color:#666">.</span></td><td>PMID 1</td></tr>
+    </table></div>
+    <p class="note">Every row with its note: traits/S_traits.tsv</p>
+  </div>
+  </section>
+  <section class="sec full-width" id="prs">
+  <div class="card full-width">
+    <h2>Polygenic Risk Scores (raw, not percentiles)</h2>
+    <p class="sec-meta">Step 25 &middot; <span class="badge badge-yellow">Stale</span> &middot; file date 2019-06-01 12:30 UTC &middot; <a class="anchor" href="#prs">link to this section</a></p>
+    <div class="stale">STALE: from an earlier run (2019-06-01 12:30 UTC); step 25 was failed (exit 2) in the run of 2020-01-01 00:00 UTC</div>
+    <div class="tscroll" role="region" aria-label="Polygenic Risk Scores (raw, not percentiles)" tabindex="0"><table>
+      <tr><th>Condition</th><th>PGS</th><th>Score</th><th>Variants matched</th><th>Percentile</th></tr>
+<tr><td>X</td><td>PGS1</td><td></td><td>/</td><td>raw score only</td></tr>
+    </table></div>
+    <p>Raw score only: no ancestry reference panel was installed, so there is no percentile and the sum cannot be compared with anyone (scripts/setup.sh --ancestry-panel adds it). Most PRS scores were developed in European-ancestry populations and predict less well for other ancestries, even with an ancestry-adjusted percentile. See docs/25-prs.md.</p>
+  </div>
+  </section>
+  <section class="sec" id="telomere">
+  <div class="card">
+    <h2>Telomere content (relative)</h2>
+    <p class="sec-meta">Step 10 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#telomere">link to this section</a></p>
+    <p class="caveat">Relative telomere content (intratelomeric reads per million reads with 48-52% GC), not a telomere length: compare it only with samples of a similar age sequenced on the same platform (docs/10-telomere-analysis.md).</p>
+    <div class="stat"><span class="label">Telomere content</span><span class="value">334</span></div>
+    <p class="note">Intratelomeric reads: 61,873; depth unknown (no total_reads or read_lengths in the summary): not checked</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-other">
+  <h2 class="chapter-title">Other and exports</h2>
+  <p class="question">What else did the run find or write?</p>
+  <div class="grid">
+  <section class="sec full-width" id="viral">
+  <div class="card full-width">
+    <h2>Viral DNA in the Unmapped Reads</h2>
+    <p class="sec-meta">Step 47 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#viral">link to this section</a></p>
+    <p class="caveat">From the reads that do not map to the human genome, realigned to a fixed set of human viral genomes. Not a test for an infection: most adults carry herpesviruses that stay in their cells, and reagents carry viral DNA too. HHV-6 integration follows Liu et al. 2020 (depth over the viral genome at 0.30 of the human depth or more). Every genome: viral/&lt;sample&gt;_viral.tsv.</p>
+    <div class="stat"><span class="label">HHV-6</span><span class="value">not assessed (no human depth)</span></div>
+    <p class="note">No read on any viral genome.</p>
+  </div>
+  </section>
+  <section class="sec" id="consumer-export">
+  <div class="card">
+    <h2>Raw-Data Export (23andMe v5 layout)</h2>
+    <p class="sec-meta">Step 40 &middot; <span class="badge badge-state">Complete</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#consumer-export">link to this section</a></p>
+    <p class="caveat">These files stay on this machine. Uploading one to a service shares your genotypes with it, and with the relatives it matches you to: docs/40-export-consumer.md says what to weigh first.</p>
+    <p>Sites with a genotype: 10 of 10 (100.0%); &#x27;--&#x27; at 0</p>
+    <p>Homozygous reference from the gVCF&#x27;s reference blocks: 0</p>
+    <p>Files: consumer_export/. and consumer_export/.</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-limits">
+  <h2 class="chapter-title">What this report leaves out</h2>
+  <p class="question">Which steps did not run, and what does no step look at?</p>
+  <div class="grid">
+  <section class="sec" id="not-run">
+  <div class="card">
+    <h2>Steps Not Run</h2>
+    <ul class="plain">
+      <li>Coverage (mosdepth)</li>
+      <li>Gene callability (mosdepth)</li>
+      <li>Sex check (indexcov)</li>
+      <li>Sample identity and contamination (somalier, VerifyBamID2)</li>
+      <li>Mosaic loss of chromosome Y or X</li>
+      <li>Variant calling</li>
+      <li>ClinVar screen</li>
+      <li>PharmCAT</li>
+      <li>CPIC drug-gene recommendations</li>
+      <li>pypgx</li>
+      <li>Cyrius (CYP2D6)</li>
+      <li>Fine-grained ancestry</li>
+      <li>Structural variants (Delly)</li>
+      <li>Y-STR markers (HipSTR)</li>
+      <li>Blood groups (predicted)</li>
+      <li>Archaic ancestry (IBDmix)</li>
+      <li>Ancient populations (AADR PCA)</li>
+      <li>Cancer predisposition (CPSR)</li>
+      <li>Clinical variant filter</li>
+      <li>Variant prioritization (slivar)</li>
+    </ul>
+  </div>
+  </section>
+  <section class="sec always" id="not-assessed">
+  <div class="card">
+    <h2>Not Assessed by This Pipeline</h2>
+    <ul class="plain">
+      <li>Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)</li>
+      <li>Methylation and imprinting</li>
+      <li>Repeat expansions outside the ExpansionHunter catalog</li>
+      <li>Phase: two variants in one gene are compound-het candidates, not confirmed</li>
+      <li>Variants of uncertain significance (not interpreted)</li>
+      <li>Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums</li>
+      <li>HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35&#x27;s read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call</li>
+      <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
+      <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <ul class="plain terms">
+      <li><strong>ATXN1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>C9ORF72</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR_T</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CFTR_TG</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>CYP2D6</strong>: <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
+      <li><strong>DMPK</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>DNMT3A</strong>: <a href="#chip">Clonal haematopoiesis (CHIP)</a></li>
+      <li><strong>FKTN</strong>: <a href="#mei">Mobile element insertions (MEGAnE)</a></li>
+      <li><strong>FMR1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>HLA-DQA1</strong>: <a href="#hla">HLA typing (T1K)</a></li>
+      <li><strong>HLA-DQB1</strong>: <a href="#hla">HLA typing (T1K)</a>, <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
+      <li><strong>HLA-DRB1</strong>: <a href="#hla">HLA typing (T1K)</a>, <a href="#locityper">Locityper second opinion at hard loci (stale)</a></li>
+      <li><strong>HTT</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>LPA</strong>: <a href="#traits-panel">Traits panel</a></li>
+      <li><strong>MT-TL1</strong>: <a href="#mito">Mitochondrial variants</a></li>
+      <li><strong>SLC6A4</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a></li>
+      <li><strong>SMN1</strong>: <a href="#paralogs">Paralog genes (Paraphase, PacBio HiFi)</a></li>
+      <li><strong>UGT1A1</strong>: <a href="#expansions">Repeat expansions (ExpansionHunter)</a> (2)</li>
+      <li><strong>rs10455872</strong>: <a href="#lpa">Lp(a): LPA KIV-2 repeat count</a>, <a href="#traits-panel">Traits panel</a></li>
+      <li><strong>rs143838139</strong>: <a href="#paralogs">SMN1/SMN2 copy number (Parascopy, short reads)</a></li>
+      <li><strong>rs1484919544</strong>: <a href="#lpa">Lp(a): LPA KIV-2 repeat count</a></li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<div class="disclaimer">
+  <strong>Disclaimer:</strong> This report is for educational and research purposes only.
+  It is not a clinical diagnosis. Always discuss genomic findings with a qualified healthcare
+  professional before making any medical decisions. Variants of Uncertain Significance (VUS)
+  are not clinically actionable.
+</div>
+
+<div class="footer">
+  Generated by <span class="offsite"><a href="https://github.com/GeiserX/OwnGenome">OwnGenome</a> <span class="offsite-note">(opens a website)</span></span>
+  &mdash; 100% local analysis, no data uploaded
+  <p>No run_manifest.tsv in the sample folder.</p>
+</div>
+</main>
+</div>
+</body>
+</html>

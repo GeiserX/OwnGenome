@@ -36,8 +36,22 @@
     <id>_clinvar_deep_intronic.tsv gives the sample's call at every site of
     assets/deep_intronic_sites.tsv (known pathogenic deep intronic alleles),
     carrier or not: a genotype, "ref" with the GQ of the record or of the
-    gVCF block over the site, or why there is no call. gvcf and gvcf_index
-    are [] for a sample without a gVCF.
+    gVCF block over the site ("ref (low confidence)" for a filtered call or
+    one below ext.min_gq or without a GQ, "ref (shallow)" below ext.min_dp),
+    or why there is no call. gvcf and gvcf_index are [] for a sample without
+    a gVCF.
+
+    <id>_clinvar_conflicting.tsv lists, apart from the hits, the sample's
+    records that match a record of the conflicting subset (--clinvar_conflicting,
+    clinvar/clinvar_conflicting_plp_chr.vcf.gz from scripts/setup.sh: ClinVar
+    records labelled conflicting that at least one lab submitted as Pathogenic
+    or Likely_pathogenic), with the submitter split, the stars and the
+    condition, written by og clinvar conflicting-hits. They are never hits.
+    conflicting and conflicting_index are [] without --clinvar_conflicting:
+    the table then starts "# not checked:" and has no row.
+
+    The log counts the sample records whose REF differs from the reference
+    (bcftools norm -c w warns REF_MISMATCH and keeps them as written).
 
     CLINVAR_CDNA_CHECK, below, runs scripts/06's cDNA read check
     (og cdna check) on these hits: <id>_clinvar_cdna_check.tsv says for
@@ -62,6 +76,8 @@ process CLINVAR_SCREEN {
     tuple val(meta), path(vcf), path(vcf_index), path(gvcf, stageAs: 'sample.g.vcf.gz'), path(gvcf_index, stageAs: 'sample.g.vcf.gz.tbi')
     path(clinvar)
     path(clinvar_index)
+    // [] and [] without --clinvar_conflicting: the table then says "not checked".
+    tuple path(conflicting, stageAs: 'clinvar_conflicting_plp.vcf.gz'), path(conflicting_index, stageAs: 'clinvar_conflicting_plp.vcf.gz.tbi')
     path(reference)
     path(reference_fai)
     path(sites, stageAs: 'deep_intronic_sites.tsv')
@@ -74,6 +90,7 @@ process CLINVAR_SCREEN {
     tuple val(meta), path("*_pass.vcf.gz"),      emit: pass_vcf
     tuple val(meta), path("*_pass.vcf.gz.tbi"),  emit: pass_vcf_index
     tuple val(meta), path("${meta.id}_clinvar_deep_intronic.tsv"), emit: deep_intronic
+    tuple val(meta), path("${meta.id}_clinvar_conflicting.tsv"), emit: conflicting
     path "versions.yml",                         emit: versions
 
     when:
@@ -87,6 +104,7 @@ process CLINVAR_SCREEN {
     }
     def floor_line = (min_gq.toString() == '30' && min_dp.toString() == '10') ? '' : "##PGP_CALL_FLOOR=GQ=${min_gq},DP=${min_dp}"
     def has_gvcf = gvcf ? 'yes' : 'no'
+    def has_conflicting = conflicting ? 'yes' : 'no'
     """
     set -euo pipefail
 
@@ -141,8 +159,15 @@ process CLINVAR_SCREEN {
         echo "NOTICE: \${LEFT_OUT} '\${FILTER}' records left out: they lie on \$(grep -c . sample_dropped.txt) contigs that ClinVar or the reference lacks (first ones: \$(awk 'NR <= 5' sample_dropped.txt | paste -sd, -))"
     fi
     # --multi-overlaps .: a 1/2 record splits into 1/. and ./1, not 1/0 and 0/1.
-    bcftools view -f "\${FILTER}" -T sample_targets.tsv -Ou ${vcf} | \\
-        bcftools norm -m -any --multi-overlaps . -c w -f ${reference} -Oz -o ${meta.id}_pass.vcf.gz -
+    # -c w warns REF_MISMATCH for a record whose REF is not the reference's and
+    # keeps it as written; such a record matches no ClinVar allele, so the log counts them.
+    if ! bcftools view -f "\${FILTER}" -T sample_targets.tsv -Ou ${vcf} | \\
+        bcftools norm -m -any --multi-overlaps . -c w -f ${reference} -Oz -o ${meta.id}_pass.vcf.gz - 2> norm.log; then
+        cat norm.log >&2
+        exit 1
+    fi
+    cat norm.log >&2
+    REF_MISMATCH=\$(grep -c '^REF_MISMATCH' norm.log || true)
     bcftools index -t ${meta.id}_pass.vcf.gz
     if [ "\$(bcftools index -n ${meta.id}_pass.vcf.gz)" -eq 0 ]; then
         echo "ERROR: no records left after the '\${FILTER}' filter on the shared contigs" >&2
@@ -202,16 +227,41 @@ process CLINVAR_SCREEN {
     bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t[%GT]\\t%ID\\t%INFO/GENEINFO\\t%INFO/CLNSIG\\t%INFO/CLNREVSTAT\\n' \\
         ${meta.id}_clinvar_hits.vcf >> ${meta.id}_clinvar_hits.tsv
 
+    # Step 3c: the conflicting records some labs call pathogenic, matched as
+    # scripts/06 matches them (the same candidates, the subset split and
+    # left-aligned on the same contigs), in their own table. Nothing above
+    # reads them, so the hits stay exactly what they were.
+    if [ "${has_conflicting}" = yes ]; then
+        conf_cols="ID,INFO/GENEINFO,INFO/CLNSIG,INFO/CLNSIGCONF,INFO/CLNREVSTAT\$(bcftools view -h clinvar_conflicting_plp.vcf.gz | awk '/^##INFO=<ID=CLNDN,/ { a = ",INFO/CLNDN" } /^##INFO=<ID=CLNDISDB,/ { b = ",INFO/CLNDISDB" } END { printf "%s%s", a, b }')"
+        bcftools view -T clinvar_targets.tsv -Ou clinvar_conflicting_plp.vcf.gz \\
+            | bcftools norm --no-version -m -any -c w -f ${reference} -Oz -o conflicting_norm.vcf.gz -
+        bcftools index -t conflicting_norm.vcf.gz
+        bcftools isec --no-version -n=2 -w1 -Oz -o conflicting_shared.vcf.gz candidates.vcf.gz conflicting_norm.vcf.gz
+        bcftools index -t conflicting_shared.vcf.gz
+        bcftools annotate --no-version -a conflicting_norm.vcf.gz --pair-logic exact -c "\${conf_cols}" -Ou conflicting_shared.vcf.gz \\
+            | bcftools view --no-version -i 'GT~"[1-9]"' -Ov \\
+            | og clinvar conflicting-hits --min-gq ${min_gq} --min-dp ${min_dp} > ${meta.id}_clinvar_conflicting.tsv
+    else
+        og clinvar conflicting-hits --skip 'no --clinvar_conflicting; run setup.sh --refresh clinvar and pass clinvar/clinvar_conflicting_plp_chr.vcf.gz' \\
+            > ${meta.id}_clinvar_conflicting.tsv
+    fi
+    if grep -q '^# not checked: ' ${meta.id}_clinvar_conflicting.tsv; then
+        echo "Conflicting records some labs call pathogenic: \$(sed -n '1s/^# //p' ${meta.id}_clinvar_conflicting.tsv)"
+    else
+        echo "Conflicting records some labs call pathogenic (review with a clinician; not hits): \$(awk 'NR > 1' ${meta.id}_clinvar_conflicting.tsv | grep -c . || true) in ${meta.id}_clinvar_conflicting.tsv"
+    fi
+
     # Step 3b: the always-report list, as scripts/06 builds it: each site's
     # record among the split PASS records, else the gVCF record over it (a
-    # reference block gives "ref" with its GQ), else no call, with why.
+    # reference block gives "ref" with its GQ), else no call, with why; the
+    # FILTER, GQ and DP of a reference call are read against the floors.
     # query_format FILE: '.' for a GQ or DP its header does not define.
     query_format() {
         gq=.; dp=.
         bcftools view -h "\$1" > query_header.txt
         if grep -q '^##FORMAT=<ID=GQ,' query_header.txt; then gq='[%GQ]'; fi
         if grep -q '^##FORMAT=<ID=DP,' query_header.txt; then dp='[%DP]'; fi
-        printf '%%CHROM\\\\t%%POS\\\\t%%END\\\\t%%REF\\\\t%%ALT\\\\t[%%GT]\\\\t%s\\\\t%s\\\\n' "\$gq" "\$dp"
+        printf '%%CHROM\\\\t%%POS\\\\t%%END\\\\t%%REF\\\\t%%ALT\\\\t[%%GT]\\\\t%s\\\\t%s\\\\t%%FILTER\\\\n' "\$gq" "\$dp"
     }
     awk -F'\\t' -v OFS='\\t' '!/^#/ && \$1 != "chrom" && NF >= 7 { print \$1, \$2 }' ${sites} | sort -k1,1 -k2,2n -u > sites_pos.tsv
     bcftools query -T sites_pos.tsv -f "\$(query_format ${meta.id}_pass.vcf.gz)" -o sites_vcf.txt ${meta.id}_pass.vcf.gz
@@ -219,7 +269,7 @@ process CLINVAR_SCREEN {
     if [ "${has_gvcf}" = yes ]; then
         bcftools query -R sites_pos.tsv -f "\$(query_format sample.g.vcf.gz)" -o sites_gvcf.txt sample.g.vcf.gz
     fi
-    og clinvar deep-intronic ${has_gvcf == 'yes' ? '' : '--no-gvcf '}--min-gq ${min_gq} ${sites} sites_vcf.txt sites_gvcf.txt \\
+    og clinvar deep-intronic ${has_gvcf == 'yes' ? '' : '--no-gvcf '}--min-gq ${min_gq} --min-dp ${min_dp} ${sites} sites_vcf.txt sites_gvcf.txt \\
         > ${meta.id}_clinvar_deep_intronic.tsv
     echo "Known deep intronic sites, always reported:"
     awk -F'\\t' 'NR > 1 { printf "  %s %s %s:%s %s>%s: %s%s\\n", \$5, \$6, \$1, \$2, \$3, \$4, \$8, (\$9 != "" ? ", " \$9 : "") }' \\
@@ -237,6 +287,10 @@ process CLINVAR_SCREEN {
         LOW=\$(awk -F'\\t' '\$13 == "yes"' hit_rows.tsv | wc -l | tr -d ' ')
         echo "Low-confidence calls among them (GQ below ${min_gq} or DP below ${min_dp}): \${LOW}"
     fi
+    echo "Records whose REF differs from the reference (REF_MISMATCH): \${REF_MISMATCH}"
+    if [ "\${REF_MISMATCH}" -gt 0 ]; then
+        echo "NOTICE: \${REF_MISMATCH} sample records have a REF that is not the reference's (bcftools norm REF_MISMATCH above): they stay as written and cannot match a ClinVar allele there. Check that the VCF was called on this reference."
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -246,7 +300,7 @@ process CLINVAR_SCREEN {
 
     stub:
     """
-    touch ${meta.id}_clinvar_hits.vcf ${meta.id}_clinvar_hits.tsv ${meta.id}_clinvar_deep_intronic.tsv
+    touch ${meta.id}_clinvar_hits.vcf ${meta.id}_clinvar_hits.tsv ${meta.id}_clinvar_deep_intronic.tsv ${meta.id}_clinvar_conflicting.tsv
     touch ${meta.id}_pass.vcf.gz
     touch ${meta.id}_pass.vcf.gz.tbi
 

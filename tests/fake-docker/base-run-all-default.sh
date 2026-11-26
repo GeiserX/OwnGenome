@@ -94,4 +94,7 @@ grep -q $'^step\t21\tskipped (not installed: setup.sh --cyrius (non-commercial l
 for s in 06 07 16 27 28; do grep -q $'^step\t'"${s}"$'\tok$' "$STATUS" || fail "run_status.tsv lacks step ${s} ok: $(cat "$STATUS")"; done
 grep -q $'^run\twritten_by\trun-all.sh' "${G}/sample1/run_manifest.tsv" || fail "no run manifest from run-all.sh"
 for l in 24-html-report generate-report; do [ -s "${G}/sample1/logs/${l}.log" ] || fail "the report ${l} did not run"; done
+# The last step writes the file OwnHealth imports (scripts/ownhealth-facts.sh, docs/ownhealth.md).
+grep -q '^run image=.* :: .* /pgp-bin/og facts --sample sample1 --sample-dir /genome/sample1 --reference /genome/reference/GRCh38_no_alt_analysis_set.fasta --assets /pgp-assets $' "$FAKE_DOCKER_LOG" \
+  || fail "run-all.sh did not run og facts for the OwnHealth file"
 echo "run-all.sh validated the setup, wrote the samplesheet and started nextflow once with the default flags."

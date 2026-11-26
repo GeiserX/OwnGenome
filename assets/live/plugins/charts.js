@@ -4,10 +4,11 @@
 // a mark opens a panel with the mark's detail, the chart's caveat, a link to the reads in the
 // genome viewer (viewer/#<locus>) and a link to the section of the report. On a person's page each
 // chart goes into its card (a [data-chart-slot=<chart id>] person.js draws), else into this plugin's
-// panel. A mark the page keeps closed (a result to act on about a child, person.js's PGP.markClosed) is
-// left out of the drawing, its title and its detail with it, wherever the figure sits; the figure is drawn
-// again with it once the result is opened. No inline script, no style attribute, no eval: the SVG is
-// parsed as XML and holds no script.
+// panel. A mark the page keeps closed (person.js's PGP.markClosed: on a child's page, every mark until the
+// results have answered; a child's report with a result to act on still closed never reaches the page, see
+// the report gate in core.js) is left out of the drawing, its title and its detail with it, wherever the
+// figure sits; the figure is drawn again with it once the page can show it. No inline script, no style
+// attribute, no eval: the SVG is parsed as XML and holds no script.
 (function () {
   'use strict';
   if (!window.PGP) { return; }
@@ -39,7 +40,13 @@
     if (m.detail) { side.appendChild(el('p', {}, m.detail)); }
     side.appendChild(el('p', { 'class': 'caveat' }, m.caveat || sp.caveat));
     var links = el('p', {});
-    if (m.locus) { links.appendChild(el('a', { href: 'viewer/#' + m.locus, 'class': 'viewer' }, 'See the reads at ' + m.locus)); links.appendChild(document.createTextNode(' · ')); }
+    if (m.locus) {
+      // The demo (a replay) has no reads: say so here, not on the page the link would open.
+      links.appendChild(document.documentElement.getAttribute('data-mode') === 'replay'
+        ? el('span', { 'class': 'viewer' }, 'Reads: not in the demo')
+        : el('a', { href: 'viewer/#' + m.locus, 'class': 'viewer' }, 'See the reads at ' + m.locus));
+      links.appendChild(document.createTextNode(' · '));
+    }
     links.appendChild(el('a', { href: 'report.html#' + (m.anchor || ''), 'class': 'report' }, 'Open it in the report'));
     side.appendChild(links);
     var close = el('button', { type: 'button' }, 'Close');

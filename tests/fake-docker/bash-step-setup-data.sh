@@ -41,7 +41,7 @@ run_expect 1 chip-no-dict "${SCRIPTS}/chip-to-vcf.sh" chip1
 output_has chip-no-dict 'Required file not found: .*GRCh38_no_alt_analysis_set\.dict'
 if grep -q '^run ' "$FAKE_DOCKER_LOG"; then fail "chip-to-vcf.sh started a container without the sequence dictionary"; fi
 
-run_expect 0 setup "${SCRIPTS}/setup.sh" "$GENOME_DIR"
+run_expect 3 setup "${SCRIPTS}/setup.sh" "$GENOME_DIR"
 docker_log_has '^run image=[^ ]*gatk.* gatk CreateSequenceDictionary -R /genome/reference/GRCh38_no_alt_analysis_set\.fasta ' \
   "setup.sh did not create the sequence dictionary"
 [ -f "${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.dict" ] || fail "setup.sh left no GRCh38_no_alt_analysis_set.dict"
@@ -60,6 +60,18 @@ run_rc validate "${SCRIPTS}/validate-setup.sh" sample1
 output_has validate 'Delly exclude map \(step 19 runs without it'
 output_has validate 'IPD-IMGT/HLA [0-9.]+ \(step 08 is skipped without it\) not found'
 output_has validate '\[OK\].*GRCh38 chromosome bands: present'
+
+# --- step 10 without the bands: it installs the shipped GRCh38 copy and passes it ---------
+# Before, step 10 warned and ran TelomereHunter with no -b, so the tool used its
+# own hg19 band ends on GRCh38 positions.
+rm -f "${GENOME_DIR}/reference/cytoBand.hg38.txt"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 telomere-no-bands "${SCRIPTS}/10-telomere-hunter.sh" sample1
+output_has telomere-no-bands 'installing the copy in assets/reference'
+cmp -s "${REPO_ROOT}/assets/reference/cytoBand.hg38.txt" "${GENOME_DIR}/reference/cytoBand.hg38.txt" \
+  || fail "step 10 did not install the chromosome bands from assets/reference"
+docker_log_has '^run image=[^ ]*telomerehunter2:.* --ulimit nofile=65536:65536 .* telomerehunter2 -ibt /genome/sample1/aligned/sample1_sorted\.bam .* -b /genome/reference/cytoBand\.hg38\.txt *$' \
+  "step 10 did not give TelomereHunter2 the GRCh38 bands"
 
 # --- setup.sh --vep-cache: the VEP cache before the first run ------------------------
 # The fake download serves a real tarball of the release versions.env pins,

@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "sample": "S",
+ "generated_utc": "2026-01-02 03:04 UTC",
+ "charts": [
+  {
+   "id": "mito",
+   "section": "mito",
+   "kind": "scatter",
+   "title": "Heteroplasmic chrM sites",
+   "caveat_key": "MITO_NOTE",
+   "caveat": "ClinVar and gnomAD v3.1 (chrM sites) annotate the calls in step 20. MITOMAP (mitomap.org) has the curated disease status of mtDNA variants; it is a manual lookup, as it refuses scripted requests.",
+   "axis": {
+    "min": 0,
+    "max": 1,
+    "unit": "allele fraction",
+    "floor": 0.05,
+    "sites_missing": 0
+   },
+   "marks": [],
+   "not_drawn": [],
+   "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"chart\" data-chart=\"mito\" viewBox=\"0 0 640 214\" width=\"100%\" role=\"img\" aria-label=\"Heteroplasmic chrM sites\"><title>Heteroplasmic chrM sites</title><rect x=\"44\" y=\"12\" width=\"580\" height=\"158\" fill=\"none\" stroke=\"#4a505b\"/><text x=\"38\" y=\"174\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">0</text><text x=\"38\" y=\"95\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">0.5</text><text x=\"38\" y=\"16\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">1</text><text x=\"44\" y=\"184\" font-size=\"10\" text-anchor=\"start\" fill=\"currentColor\">m.1</text><text x=\"184\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.4000</text><text x=\"324\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.8000</text><text x=\"464.1\" y=\"184\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\">m.12000</text><text x=\"624\" y=\"184\" font-size=\"10\" text-anchor=\"end\" fill=\"currentColor\">m.16569</text><text x=\"334\" y=\"198\" font-size=\"10\" text-anchor=\"middle\" fill=\"currentColor\" opacity=\"0.8\">position on chrM; height: allele fraction</text><rect x=\"53.6\" y=\"12\" width=\"2\" height=\"158\" fill=\"#8a909b\" opacity=\"0.25\"/><rect x=\"609.5\" y=\"12\" width=\"2\" height=\"158\" fill=\"#8a909b\" opacity=\"0.25\"/><text x=\"334\" y=\"91\" font-size=\"12\" text-anchor=\"middle\" fill=\"currentColor\">No heteroplasmic site between allele fraction 0.05 and 0.95</text></svg>"
+  }
+ ]
+}

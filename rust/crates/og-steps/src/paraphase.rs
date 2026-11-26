@@ -8,7 +8,7 @@
 //!
 //! `check-bam` reads the BAM's header and exits 0 only when every read
 //! group says `PL:PACBIO`. Paraphase is written for PacBio HiFi reads, and
-//! its licence (the PacBio Software License Agreement, from Paraphase 3.3.0
+//! its licence (the PacBio Software License Agreement, from Paraphase 3.3.2
 //! on) allows it only on data from a PacBio instrument. Another BAM stops
 //! here with exit 3 and the reason; an unreadable one with exit 1.
 //!
@@ -891,6 +891,8 @@ const USAGE: &str = "usage: og paraphase check-bam BAM
                           --out-variants OUT_VARIANTS [--genes GENES]
 ";
 
+const LICENCE_NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with data generated on a PacBio instrument or provided by PacBio. See docs/35-paralogs.md.";
+
 /// `og paraphase ARGS`.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let refuse = |err: &mut dyn Write, msg: &str| {
@@ -901,12 +903,14 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     match args.first().map(String::as_str) {
         Some("-h" | "--help") => {
             let _ = out.write_all(USAGE.as_bytes());
+            let _ = writeln!(out, "{LICENCE_NOTICE}");
             0
         }
         Some("check-bam") => {
             let rest = &args[1..];
             if rest.iter().any(|a| a == "-h" || a == "--help") {
                 let _ = out.write_all(USAGE.as_bytes());
+                let _ = writeln!(out, "{LICENCE_NOTICE}");
                 return 0;
             }
             let [bam] = rest else {
@@ -1104,5 +1108,26 @@ mod tests {
             "the copy-number table stands alone"
         );
         let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// The help text of `og paraphase` and of `og paraphase check-bam`.
+    fn help(args: &[&str]) -> String {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(cli(&args, &mut out, &mut err), 0);
+        String::from_utf8(out).unwrap()
+    }
+
+    const NOTICE: &str = "The PacBio Software License Agreement permits Paraphase use only with \
+                          data generated on a PacBio instrument or provided by PacBio.";
+
+    #[test]
+    fn help_names_the_paraphase_licence() {
+        assert!(help(&["--help"]).contains(NOTICE));
+    }
+
+    #[test]
+    fn check_bam_help_names_the_paraphase_licence() {
+        assert!(help(&["check-bam", "--help"]).contains(NOTICE));
     }
 }

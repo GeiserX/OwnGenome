@@ -1,0 +1,14 @@
+Ancient populations nearest to S1 (AADR v66.p1, smartpca with lsqproject)
+Sites used: 61 of 230; axes from 40 present-day West Eurasians; 60 ancient people in 7 groups projected.
+Distance: the first 4 PCs, each weighted by the square root of its eigenvalue.
+
+   1. Turkey_N                                      8010 BCE-300 CE        Country0             n=9    d=0.0096
+   2. <Mixed&Group>                                 5350 BCE-300 CE        Country1             n=9    d=0.0126
+   3. Italy_Imperial_Rome                           8010 BCE-300 CE        Country0             n=9    d=0.0188
+   4. England_BellBeaker                            8010 BCE-300 CE        Country1             n=9    d=0.0203
+   5. Hungary_LBA_with_a_very_long_name_that_runs_past_45 8010 BCE-300 CE        Country0             n=8    d=0.0403
+   6. Germany_CordedWare                            8010 BCE-1 CE          Country0             n=8    d=0.0453
+   7. Türkiye_Neolithic                             8010 BCE-300 CE        Country0             n=8    d=0.0480
+
+Closeness on a PCA is genetic similarity, not descent: a genome near an ancient group shares ancestry with it, it does not descend from those people.
+qpAdm models of ancestry proportions are not part of this step.

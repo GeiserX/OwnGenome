@@ -12,8 +12,11 @@
 //!   (`og clinvar join-adjacent`).
 //! - [`hits`]: one row per hit (`og clinvar hits`).
 //! - [`sites`]: the always-report list (`og clinvar deep-intronic`).
+//! - [`conflicting`]: the conflicting records some labs call pathogenic
+//!   (`og clinvar conflicting-subset`, `og clinvar conflicting-hits`).
 
 pub mod cli;
+pub mod conflicting;
 pub mod hap;
 pub mod hits;
 pub mod join;

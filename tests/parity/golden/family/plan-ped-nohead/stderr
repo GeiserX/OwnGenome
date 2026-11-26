@@ -1,0 +1,1 @@
+ERROR: ped-nohead.tsv: the first line must be a header with a 'sample' column (columns: family, sample, sex, father, mother, partner, tab separated); it is 'kid	male	dad	mum	.'

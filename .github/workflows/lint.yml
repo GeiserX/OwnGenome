@@ -21,13 +21,160 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
+      # scripts/ passes clean at warning level. This step also holds the
+      # ShellCheck version that Renovate bumps; the steps below use it too.
       - name: Run ShellCheck on all scripts
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: scripts
           severity: warning
           version: v0.11.0
+
+      - name: Install the same ShellCheck
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          v=$(sed -n 's/^ *version: v\([0-9][0-9.]*\)$/\1/p' "$GITHUB_WORKSPACE/.github/workflows/lint.yml")
+          if [ -z "$v" ] || [ "$(printf '%s\n' "$v" | wc -l)" -ne 1 ]; then
+            echo "ERROR: expected one 'version: v<x.y.z>' line in lint.yml, got: ${v:-none}"; exit 1
+          fi
+          tarball="shellcheck-v${v}.linux.x86_64.tar.xz"
+          curl -sSfLO "https://github.com/koalaman/shellcheck/releases/download/v${v}/${tarball}"
+          tar xJf "$tarball" --strip-components=1 -C /usr/local/bin "shellcheck-v${v}/shellcheck"
+          shellcheck --version | grep -qx "version: ${v}" || { echo "ERROR: shellcheck on PATH is not ${v}"; exit 1; }
+
+      # Every tracked shell script, at every level. A finding listed in
+      # tests/shellcheck-baseline.txt (the ones on main when this check
+      # started) passes; any other fails. Then two controls: a planted
+      # finding in a new script and on a new line of a listed script must
+      # both fail, or the check could not fail at all.
+      - name: Run ShellCheck on every tracked shell script, against the baseline
+        shell: bash
+        run: |
+          # Each *.sh, and each other tracked file whose first line is a sh
+          # or bash shebang. .beads/ holds the tracker's own hooks.
+          shell_files() {
+            local f first shebang='^#!.*[/ ](ba)?sh( |$)'
+            git ls-files -z | while IFS= read -r -d '' f; do
+              case "$f" in .beads/*) continue ;; esac
+              [ -f "$f" ] || continue
+              case "$f" in
+                *.sh) ;;
+                *) first=$(head -n1 -- "$f" | LC_ALL=C tr -d '\0'); [[ $first =~ $shebang ]] || continue ;;
+              esac
+              printf '%s\0' "$f"
+            done
+          }
+
+          # NUL-separated paths in, one line per finding out: path, code,
+          # the text of the line with its blanks squeezed, then ShellCheck's
+          # own line, by tabs. The text stands in for the line number, so a
+          # finding keeps its baseline line when lines above it move.
+          findings() {
+            local out
+            out=$(mktemp -d)
+            # shellcheck disable=SC2016 # sh -c expands its own "$@"
+            xargs -0 -r -n 4 -P "$(getconf _NPROCESSORS_ONLN)" sh -c '
+              shellcheck -f gcc "$@" > "$(mktemp "$0/sc.XXXXXX")"; rc=$?
+              [ "$rc" -le 1 ] && exit 0
+              echo "ERROR: shellcheck exited $rc on: $*" >&2; exit 255' "$out" || return 1
+            find "$out" -type f -exec cat {} + | awk '
+              !match($0, /\[SC[0-9]+\]$/) { print "ERROR: no SC code in: " $0 > "/dev/stderr"; bad = 1; next }
+              {
+                code = substr($0, RSTART + 1, RLENGTH - 2)
+                split($0, part, ":"); file = part[1]; ln = part[2] + 0
+                if (!(file in seen)) {
+                  seen[file] = 1; n = 0
+                  while ((getline l < file) > 0) src[file, ++n] = l
+                  close(file)
+                }
+                t = src[file, ln]; gsub(/[ \t\r]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t)
+                print file "\t" code "\t" t "\t" $0
+              }
+              END { exit bad }'
+          }
+
+          # check LIST DIR: 0 when every finding in the listed files is in
+          # the baseline, 1 when one is not (listed in DIR/new), 2 when
+          # ShellCheck could not run.
+          check() {
+            findings < "$1" > "$2/found" || return 2
+            grep -v -e '^#' -e '^$' tests/shellcheck-baseline.txt | LC_ALL=C sort > "$2/base"
+            cut -f1-3 "$2/found" | LC_ALL=C sort > "$2/cur"
+            LC_ALL=C comm -23 "$2/cur" "$2/base" > "$2/new"
+            LC_ALL=C comm -13 "$2/cur" "$2/base" > "$2/gone"
+            echo "$(wc -l < "$2/cur") findings, $(wc -l < "$2/base") baseline lines, $(wc -l < "$2/new") new"
+            [ -s "$2/new" ] || return 0
+            echo "New ShellCheck findings. Fix them; never add them to tests/shellcheck-baseline.txt:"
+            # A key can be both in the baseline and new (a second line with
+            # the same text): skip as many matches as the baseline holds.
+            awk -F'\t' 'FILENAME == ARGV[1] { base[$0]++; next }
+              FILENAME == ARGV[2] { want[$0]++; next }
+              { k = $1 FS $2 FS $3; if (base[k]-- > 0) next; if (want[k]-- > 0) print $4 }' \
+              "$2/base" "$2/new" "$2/found"
+            return 1
+          }
+
+          all=$(mktemp -d)
+          shell_files > "$all/files"
+          echo "$(tr -cd '\0' < "$all/files" | wc -c) tracked shell scripts"
+          check "$all/files" "$all" && rc=0 || rc=$?
+          [ "$rc" -eq 0 ] || exit 1
+          if [ -s "$all/gone" ]; then
+            echo "::notice::$(wc -l < "$all/gone") lines of tests/shellcheck-baseline.txt have no finding any more; delete them:"
+            cat "$all/gone"
+          fi
+
+          # The discovery must reach a file found only by its shebang. The
+          # list goes to a file first: grep -q closing a pipe early would
+          # fail the pipeline under pipefail.
+          tr '\0' '\n' < "$all/files" > "$all/lines"
+          if ! grep -qFx 'bin/og' "$all/lines"; then
+            echo "ERROR: bin/og (a bash script without .sh) is not in the list of shell scripts"; exit 1
+          fi
+
+          # Control 1: a new tests/ script with an unquoted variable
+          # (SC2086), found the way a real new file is found: added to git,
+          # then listed by shell_files.
+          ctl=$(mktemp -d)
+          planted=tests/shellcheck-control.sh
+          # shellcheck disable=SC2016 # the planted line keeps its $1
+          printf '#!/usr/bin/env bash\necho $1\n' > "$planted"
+          git add --intent-to-add -- "$planted"
+          shell_files > "$ctl/all"
+          tr '\0' '\n' < "$ctl/all" > "$ctl/lines"
+          listed=0
+          if grep -qFx "$planted" "$ctl/lines"; then listed=1; fi
+          printf '%s\0' "$planted" > "$ctl/files"
+          check "$ctl/files" "$ctl" && rc=0 || rc=$?
+          git rm --cached -q -- "$planted"
+          rm -f "$planted"
+          if [ "$listed" -ne 1 ]; then
+            echo "ERROR: control 1, shell_files did not list the new script ${planted}"; exit 1
+          fi
+          if [ "$rc" -ne 1 ] || ! grep -q "^${planted}"$'\tSC2086\t' "$ctl/new"; then
+            echo "ERROR: control 1, a new script with SC2086 passed (check returned $rc)"; exit 1
+          fi
+          echo "Control 1: the new script was listed and its SC2086 was caught."
+
+          # Control 2: the same finding on a new line of a script the
+          # baseline lists, one that already has an SC2086 line if any.
+          target=$(awk -F'\t' '!/^#/ && $2 == "SC2086" { print $1; exit }' tests/shellcheck-baseline.txt)
+          [ -n "$target" ] || target=$(awk -F'\t' '!/^#/ && NF { print $1; exit }' tests/shellcheck-baseline.txt)
+          [ -n "$target" ] || target=$(sed -n 1p "$all/lines")
+          ctl=$(mktemp -d)
+          # shellcheck disable=SC2016 # the planted line keeps its $1
+          printf '\necho $1 # lint control\n' >> "$target"
+          printf '%s\0' "$target" > "$ctl/files"
+          check "$ctl/files" "$ctl" && rc=0 || rc=$?
+          git checkout -- "$target"
+          if [ "$rc" -ne 1 ] || ! grep -q "^${target}"$'\tSC2086\techo \\$1 # lint control$' "$ctl/new"; then
+            echo "ERROR: control 2, a new SC2086 line in ${target} passed (check returned $rc)"; exit 1
+          fi
+          echo "Control 2: the new SC2086 line in ${target} was caught."
 
   actionlint:
     runs-on: ubuntu-latest
@@ -132,7 +279,7 @@ jobs:
         run: |
           echo "Checking internal markdown links..."
           rm -f /tmp/link_fail
-          for md in docs/*.md README.md; do
+          for md in docs/*.md docs/results/*.md README.md; do
             # Extract markdown links: [text](target)
             grep -oP '\]\([^)]+\)' "$md" 2>/dev/null | \
               grep -oP '\(([^)]+)\)' | tr -d '()' | \
@@ -153,3 +300,65 @@ jobs:
             exit 1
           fi
           echo "OK: All internal links valid"
+
+  # Every data file the repository ships has a recorded source and licence:
+  # assets/SOURCES.tsv has a row for each file under assets/, each file
+  # carries the header phrase its row names, and NOTICE names every
+  # third-party row (og dev licences check, rust/crates/og-dev/src/licences.rs).
+  data-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the toolchain rust/rust-toolchain.toml pins
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      # A debug build without BAM reading: the check needs no htslib and no
+      # optimised code.
+      - name: Build og
+        working-directory: rust
+        run: cargo build --locked -p og --no-default-features
+
+      - name: Check that every bundled data file has a recorded source and licence
+        run: rust/target/debug/og dev licences check
+
+      # A check that cannot fail is no check: a new asset with no row, and an
+      # asset with its source line stripped, must both fail it.
+      - name: Controls, an unregistered asset and a stripped source line must fail
+        run: |
+          og=rust/target/debug/og
+          log=$(mktemp)
+
+          planted=assets/lint-control.tsv
+          printf 'a\tb\n' > "$planted"
+          rc=0; "$og" dev licences check > "$log" 2>&1 || rc=$?
+          rm -f "$planted"
+          cat "$log"
+          if [ "$rc" -ne 1 ] || ! grep -qF "${planted} has no row in assets/SOURCES.tsv" "$log"; then
+            echo "ERROR: control 1, an asset with no row passed (exit ${rc})"; exit 1
+          fi
+          echo "Control 1: the unregistered ${planted} was caught."
+
+          target=assets/sv_rule_regions.tsv
+          sed -i '/^# Sources and terms:/d' "$target"
+          if git diff --quiet -- "$target"; then
+            echo "ERROR: control 2 stripped nothing from ${target}"; exit 1
+          fi
+          rc=0; "$og" dev licences check > "$log" 2>&1 || rc=$?
+          git checkout -- "$target"
+          cat "$log"
+          if [ "$rc" -ne 1 ] || ! grep -qF "${target}: its opening # lines lack \"Sources and terms:" "$log"; then
+            echo "ERROR: control 2, ${target} without its source line passed (exit ${rc})"; exit 1
+          fi
+          echo "Control 2: ${target} without its source line was caught."

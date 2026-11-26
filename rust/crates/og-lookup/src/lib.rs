@@ -14,16 +14,23 @@
 //! place is looked for in the annotated VCF in one pass for every such
 //! rsID of the command line.
 //!
-//! The output is what the Python wrote, byte for byte (`tests/parity`),
-//! with one deliberate change: a gene's "bases have a genotype call" count
-//! is the union of the called records, so overlapping records (a deletion
-//! and the reference block that follows it) no longer count a base twice.
+//! Parity tests in `tests/parity` compare the output with the former Python
+//! lookup. The Rust lookup counts each base in a gene span once, even when
+//! called records overlap. It also reads negative genotype indexes as missing
+//! alleles. A record counts toward gene coverage only when at least one index
+//! names an allele.
 
 mod query;
 mod report;
 mod resolve;
 mod summary;
 mod vcf;
+
+/// The summary names rule the search index shares (`og report index`).
+pub mod names {
+    pub use crate::summary::{flat, is_rsid, names_of};
+}
+pub use query::{Query, parse as parse_query};
 
 use std::io::{self, Write};
 use vcf::{Region, Span};
@@ -178,7 +185,7 @@ impl Args {
 /// `og lookup VERB ARGS`: the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let usage = |err: &mut dyn Write, msg: &str| {
-        let _ = writeln!(err, "{USAGE}og lookup: error: {msg}");
+        err_line(err, &format!("{USAGE}og lookup: error: {msg}"));
         2
     };
     let (verb, rest) = match args.split_first() {
@@ -264,8 +271,16 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
 }
 
 fn fail(err: &mut dyn Write, e: &Error) -> u8 {
-    let _ = writeln!(err, "ERROR: {}", e.msg);
+    err_line(err, &format!("ERROR: {}", e.msg));
     e.code
+}
+
+/// Writes `line` and its newline to stderr in one call. `writeln!` on an
+/// unbuffered stderr makes one write per piece, and `docker run` copies
+/// stdout and stderr on separate threads, so the blank line that ends an
+/// answer on stdout could land inside `ERROR: ` + message.
+fn err_line(err: &mut dyn Write, line: &str) {
+    let _ = err.write_all(format!("{line}\n").as_bytes());
 }
 
 fn run_resolve(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -295,7 +310,7 @@ fn run_report(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let (start, end) = match (position(a, "--start"), position(a, "--end")) {
         (Ok(s), Ok(e)) => (s, e),
         (Err(m), _) | (_, Err(m)) => {
-            let _ = writeln!(err, "{USAGE}og lookup: error: {m}");
+            err_line(err, &format!("{USAGE}og lookup: error: {m}"));
             return 2;
         }
     };

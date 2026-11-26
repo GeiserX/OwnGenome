@@ -5,7 +5,10 @@
 # directory; the mini reference matches no genome they describe, so empty
 # files stand in for them here.
 set -e
-D=$(python -c 'import cnvpytor, os; print(os.path.dirname(cnvpytor.__file__) + "/data")' | tail -n 1)
+# The package's data directory, found as step 18 finds it.
+B=$(command -v cnvpytor)
+D=$(find "${B%/bin/*}/lib" -type d -path '*/site-packages/cnvpytor/data')
+[ -d "$D" ] || { echo "no single cnvpytor data directory: '${D}'" >&2; exit 1; }
 echo "resource directory: ${D}"
 for f in gc_hg19 mask_hg19 gc_hg38 mask_hg38 gc_chm13v2.0 gc_chm13v1.1 gc_kn99; do
   [ -e "${D}/${f}.pytor" ] || touch "${D}/${f}.pytor"

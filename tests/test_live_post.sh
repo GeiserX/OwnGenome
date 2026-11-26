@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
+# og-leg: OG_REQUIRED
 # live_post (scripts/lib/common.sh) sends run-all.sh's step messages to the
-# live site (bin/owngenome_live.py). This test starts the site on loopback and checks
+# live site (og live serve). This test starts the site on loopback and checks
 # that a message reaches events.jsonl, that without OWNGENOME_LIVE_URL nothing is
 # sent, and that with the site down it warns once and returns 0 every time, so
 # a run never stops for it. It first proves the store check can fail: a
-# message to another run must not show up in this run's file.
+# message to another run must not show up in this run's file. The token (in
+# OWNGENOME_LIVE_TOKEN, or as the last part of the URL) reaches the site, and
+# no argument curl is started with holds it: a curl in front on PATH writes
+# its arguments down (main's live_post, which put the token in the URL it
+# gave curl, fails this check).
 # It also checks that scripts/owngenome-live.sh hash-password exits non-zero, with no
 # success line, when it cannot write the hash file; the control is the old
 # one-line `a && b && c` form, under which set -e let the script go on.
 #
-# LIVE_POST_FROM=FILE takes the function from another file.
+# LIVE_POST_FROM=FILE takes the function from another file. The site is og
+# built for this machine (scripts/setup.sh --og), through bin/og or OG; without
+# it the test is skipped with a note, and with OG_REQUIRED set the skip is a
+# failure (the og leg of guard.yml sets it).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,41 +32,91 @@ SRC=$(sed -n '/^live_post() {/,/^}/p' "$FROM")
 [ -n "$SRC" ] || fail "no live_post() in ${FROM}"
 eval "$SRC"
 command -v curl >/dev/null || fail "curl is needed"
+OG=${OG:-${REPO}/bin/og}
+export OG  # scripts/owngenome-live.sh hash-password below runs the same og
+if ! "$OG" version > /dev/null 2>&1; then
+  [ -z "${OG_REQUIRED:-}" ] || fail "og is not built (scripts/setup.sh --og)"
+  echo "skip: og is not built for this machine, and the live site is og live serve (scripts/setup.sh --og)"
+  exit 0
+fi
 
-free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+# free_port: a port on 127.0.0.1 that nothing answers on (bash's /dev/tcp
+# connect is refused), picked at random from 20000 to 52767.
+free_port() {
+  local p
+  for _ in $(seq 100); do
+    p=$((20000 + RANDOM % 32768))
+    if ! (exec 3<> "/dev/tcp/127.0.0.1/${p}") 2> /dev/null; then echo "$p"; return; fi
+  done
+  fail "no free port on 127.0.0.1"
+}
+# og live serve reads assets/ and steps.tsv from the checkout its binary sits in.
+# An OG outside the checkout (unit-tests sets one) runs as a copy in a folder
+# that links to this checkout's assets/.
+SERVE=$OG
+case "$(cd "$(dirname "$OG")" && pwd -P)/" in
+  "$(cd "$REPO" && pwd -P)/"*) ;;
+  *) mkdir -p "${WORK}/checkout/bin"; ln -s "${REPO}/assets" "${WORK}/checkout/assets"
+     cp "$OG" "${WORK}/checkout/bin/og"; SERVE="${WORK}/checkout/bin/og" ;;
+esac
 WEB=$(free_port) ING=$(free_port)
 mkdir -p "${WORK}/genome"
-python3 "${REPO}/bin/owngenome_live.py" --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
+"$SERVE" live serve --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
   --ingest-port "$ING" --quiet 2> "${WORK}/server.err" &
 PID=$!
-for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:${ING}/" && break; sleep 0.1; done
+for _ in $(seq 50); do [ -s "${WORK}/state/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${ING}/" && break; sleep 0.1; done
+# og live serve takes a message only under the token of its state folder, the first part of the path.
+TOK=$(cat "${WORK}/state/ingest-token") || fail "og live serve wrote no ingest token: $(cat "${WORK}/server.err")"
 EV="${WORK}/state/runs/demo1/events.jsonl"
 MSG='{"event":"pgp_step","step":"14","state":"started"}'
 
 # Without OWNGENOME_LIVE_URL nothing is sent
-unset OWNGENOME_LIVE_URL OWNGENOME_LIVE_WARNED
+unset OWNGENOME_LIVE_URL OWNGENOME_LIVE_WARNED OWNGENOME_LIVE_TOKEN
 live_post demo1 "$MSG" || fail "live_post without OWNGENOME_LIVE_URL returned non-zero"
 [ ! -e "$EV" ] || fail "a message was stored without OWNGENOME_LIVE_URL"
 
-# Control: a message to another run is not in this run's file
+# Control: without the token the site stores nothing, and live_post still returns 0
 export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}/"
-live_post other1 "$MSG"
+live_post demo1 "$MSG" 2> /dev/null || fail "live_post returned non-zero when the site refused it"
+[ ! -e "$EV" ] || fail "control: the site stored a message posted without its token"
+unset OWNGENOME_LIVE_WARNED
+
+# A curl in front of the real one writes down the arguments it is started with.
+REAL_CURL=$(command -v curl)
+mkdir -p "${WORK}/spy"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' "${WORK}/argv.log" "$REAL_CURL" > "${WORK}/spy/curl"
+chmod +x "${WORK}/spy/curl"
+: > "${WORK}/argv.log"
+
+# Control: a message to another run is not in this run's file
+export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}/${TOK}/"
+PATH="${WORK}/spy:${PATH}" live_post other1 "$MSG"
 if [ -e "$EV" ] && grep -q '"step":"14"' "$EV"; then fail "control: another run's message is in demo1's file"; fi
 [ -s "${WORK}/state/runs/other1/events.jsonl" ] || fail "control: the other run's message was not stored"
 echo "Control: the store check tells one run's file from another's."
 
-# The site up: the message is stored (a URL ending in '/' works too)
-live_post demo1 "$MSG"
+# The site up: the message is stored, with the token in the URL (ending in '/')
+PATH="${WORK}/spy:${PATH}" live_post demo1 "$MSG"
 grep -q '"event":"pgp_step","step":"14","state":"started"' "$EV" || fail "the message is not in ${EV}: $(cat "$EV" 2>/dev/null)"
-echo "PASS: live_post stores the message"
+# and with the plain URL and the token in OWNGENOME_LIVE_TOKEN, as run-all.sh passes it
+export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}" OWNGENOME_LIVE_TOKEN="$TOK"
+PATH="${WORK}/spy:${PATH}" live_post demo1 '{"event":"pgp_step","step":"14","state":"ok"}'
+grep -q '"event":"pgp_step","step":"14","state":"ok"' "$EV" || fail "the message sent with OWNGENOME_LIVE_TOKEN is not in ${EV}: $(cat "$EV" 2>/dev/null)"
+unset OWNGENOME_LIVE_TOKEN
+echo "PASS: live_post stores the message, with the token in the URL or in OWNGENOME_LIVE_TOKEN"
+[ "$(grep -c "/ingest/" "${WORK}/argv.log")" -eq 3 ] || fail "control: the curl in front saw $(grep -c "/ingest/" "${WORK}/argv.log") posts, not 3"
+if grep -q -- "$TOK" "${WORK}/argv.log"; then fail "curl was started with the ingest token in its arguments"; fi
+echo "PASS: no argument curl was started with holds the token"
 
 # The site down: one warning, exit 0 each time
 kill "$PID"; wait "$PID" 2>/dev/null || true; PID=""
 unset OWNGENOME_LIVE_WARNED
+export OWNGENOME_LIVE_URL="http://127.0.0.1:${ING}/${TOK}/"
 rc=0; { live_post demo1 "$MSG"; live_post demo1 "$MSG"; } 2> "${WORK}/warn.txt" || rc=$?
 [ "$rc" -eq 0 ] || fail "live_post returned ${rc} with the site down"
 [ "$(grep -c 'WARNING: the live site' "${WORK}/warn.txt")" -eq 1 ] || fail "expected one warning: $(cat "${WORK}/warn.txt")"
-echo "PASS: with the site down live_post warns once and returns 0"
+if grep -q -- "$TOK" "${WORK}/warn.txt"; then fail "the warning shows the ingest token: $(cat "${WORK}/warn.txt")"; fi
+echo "PASS: with the site down live_post warns once, without the token, and returns 0"
 
 # Control: a live_post that passes the failure on must be caught by the check above
 eval "$(printf '%s\n' "$SRC" | sed -e 's/^live_post()/live_post_bad()/' -e 's/^  return 0$/  return 1/')"
@@ -88,14 +146,19 @@ else
   mkdir -p "${WORK}/tree/scripts"
   for f in "${REPO}"/* "${REPO}"/.[!.]*; do [ "$(basename "$f")" = scripts ] || ln -s "$f" "${WORK}/tree/"; done
   ln -s "${REPO}/scripts/lib" "${WORK}/tree/scripts/lib"
-  python3 - "${REPO}/scripts/owngenome-live.sh" "${WORK}/tree/scripts/owngenome-live.sh" <<'PY'
-import sys
-s = open(sys.argv[1]).read()
-fixed = ("  (umask 077; printf '%s\\n' \"$h\" > \"${PWF}.tmp\")\n  chmod 600 \"${PWF}.tmp\"\n"
-         "  mv \"${PWF}.tmp\" \"$PWF\"\n")
-old = "  (umask 077 && printf '%s\\n' \"$h\" > \"${PWF}.tmp\") && chmod 600 \"${PWF}.tmp\" && mv \"${PWF}.tmp\" \"$PWF\"\n"
-open(sys.argv[2], "w").write(s.replace(fixed, old) if fixed in s else s)
-PY
+  # The three lines of the fixed write, put back as the one-line chain.
+  # shellcheck disable=SC2016  # the dollar signs are the script's
+  awk '
+    { line[++n] = $0 }
+    END {
+      for (i = 1; i <= n; i++) {
+        if (i + 2 <= n && line[i] == "  (umask 077; printf '\''%s\\n'\'' \"$h\" > \"${PWF}.tmp\")" \
+            && line[i + 1] == "  chmod 600 \"${PWF}.tmp\"" && line[i + 2] == "  mv \"${PWF}.tmp\" \"$PWF\"") {
+          print "  (umask 077 && printf '\''%s\\n'\'' \"$h\" > \"${PWF}.tmp\") && chmod 600 \"${PWF}.tmp\" && mv \"${PWF}.tmp\" \"$PWF\""
+          i += 2
+        } else print line[i]
+      }
+    }' "${REPO}/scripts/owngenome-live.sh" > "${WORK}/tree/scripts/owngenome-live.sh"
   chmod +x "${WORK}/tree/scripts/owngenome-live.sh"
   grep -q 'umask 077 && printf' "${WORK}/tree/scripts/owngenome-live.sh" || fail "control: the planted copy was not made"
   rc=$(hash_into "${WORK}/tree/scripts/owngenome-live.sh" "${WORK}/ro")

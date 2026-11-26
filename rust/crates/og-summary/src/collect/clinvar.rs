@@ -1,7 +1,10 @@
 //! The ClinVar screen (step 06): each P/LP hit with its review stars, its
 //! call quality against step 06's floor, gnomAD AF and rsIDs from step 13's
 //! VEP output, and the cDNA read check, the cDNA scan and the always-report
-//! deep intronic sites when step 06 wrote them.
+//! deep intronic sites when step 06 wrote them. The conflicting records some
+//! labs call pathogenic (step 06's `<s>_clinvar_conflicting.tsv`) go under
+//! `conflicting`, apart from the hits: no count, tier or other section reads
+//! them, and the key is there only when step 06 wrote the table.
 //!
 //! The hits VCF is small and three sections read it (this one, the ACMG
 //! tier of the clinical section and the carrier list), so it is read once
@@ -115,6 +118,93 @@ pub struct Hit {
     pub low_confidence: bool,
     pub frequency: Option<Frequency>,
     pub cdna: Option<Value>,
+    /// The conditions ClinVar names for the allele; `None` when the record
+    /// carries neither `CLNDN` nor `CLNDISDB` (a hits VCF written before
+    /// step 06 kept them, or a hand-built ClinVar file without them).
+    pub conditions: Option<Vec<Condition>>,
+}
+
+/// One condition ClinVar names for an allele: its name (`CLNDN`, `_` read
+/// as a space) and its database ids (`CLNDISDB`, such as `OMIM:171400` or
+/// `MedGen:C0025269`), paired by their place in the `|` lists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Condition {
+    pub name: String,
+    pub ids: Vec<String>,
+}
+
+impl Condition {
+    /// ClinVar's placeholders for a submission that names no condition.
+    pub fn placeholder(&self) -> bool {
+        matches!(
+            self.name.to_ascii_lowercase().as_str(),
+            "" | "not provided" | "not specified"
+        )
+    }
+}
+
+/// The conditions of one INFO field, `None` without `CLNDN` and `CLNDISDB`.
+pub fn conditions(info: &HashMap<&str, &str>) -> Option<Vec<Condition>> {
+    let (names, dbs) = (info.get("CLNDN"), info.get("CLNDISDB"));
+    if names.is_none() && dbs.is_none() {
+        return None;
+    }
+    let split = |v: Option<&&str>| -> Vec<String> {
+        v.filter(|v| !v.is_empty() && **v != ".")
+            .map(|v| v.split('|').map(str::to_owned).collect())
+            .unwrap_or_default()
+    };
+    let (names, dbs) = (split(names), split(dbs));
+    Some(
+        (0..names.len().max(dbs.len()))
+            .map(|i| Condition {
+                name: names
+                    .get(i)
+                    .map(|n| n.replace('_', " ").trim().to_owned())
+                    .filter(|n| n != ".")
+                    .unwrap_or_default(),
+                ids: dbs
+                    .get(i)
+                    .map(|d| {
+                        d.split(',')
+                            .map(str::trim)
+                            .filter(|x| !x.is_empty() && *x != ".")
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+            .collect(),
+    )
+}
+
+/// The two summary fields of a hit's conditions: `clinvar_condition`, the
+/// names ClinVar gives joined by " / " (its placeholders "not provided" and
+/// "not specified" left out; null when no name is left), and
+/// `clinvar_condition_ids`, the database ids of those conditions and of a
+/// condition `CLNDISDB` gives ids for and `CLNDN` no name.
+pub fn condition_fields(c: &[Condition]) -> [(&'static str, Value); 2] {
+    let named: Vec<&Condition> = c.iter().filter(|x| !x.placeholder()).collect();
+    let mut ids: Vec<Value> = Vec::new();
+    let kept = c.iter().filter(|x| x.name.is_empty() || !x.placeholder());
+    for id in kept.flat_map(|x| &x.ids) {
+        let v = Value::Str(id.clone());
+        if !ids.contains(&v) {
+            ids.push(v);
+        }
+    }
+    let names: Vec<&str> = named.iter().map(|x| x.name.as_str()).collect();
+    [
+        (
+            "clinvar_condition",
+            if names.is_empty() {
+                Value::Null
+            } else {
+                Value::Str(names.join(" / "))
+            },
+        ),
+        ("clinvar_condition_ids", Value::Array(ids)),
+    ]
 }
 
 /// gnomAD and rsIDs of one hit from VEP.
@@ -174,6 +264,7 @@ impl Hit {
             low_confidence: gq.is_some_and(|v| v < floor.gq) || dp.is_some_and(|v| v < floor.dp),
             frequency: None,
             cdna: None,
+            conditions: conditions(&info),
         })
     }
 
@@ -224,6 +315,11 @@ impl Hit {
         put(&mut m, "dp", opt_int(self.dp));
         put(&mut m, "gq", opt_int(self.gq));
         put(&mut m, "low_confidence", Value::Bool(self.low_confidence));
+        if let Some(c) = &self.conditions {
+            for (k, v) in condition_fields(c) {
+                put(&mut m, k, v);
+            }
+        }
         if let Some(f) = &self.frequency {
             let af = py_max(f.exome.into_iter().chain(f.genome));
             put(&mut m, "gnomad_exome_af", opt_f(f.exome));
@@ -453,6 +549,147 @@ fn deep_intronic(path: &str) -> Result<Value, String> {
     Ok(Value::Array(out))
 }
 
+/// `<s>_clinvar_conflicting.tsv`: the conflicting records the sample carries
+/// that some labs call pathogenic. A first line `# not checked: ...` (no
+/// subset was installed) gives `checked` false with that note and a null
+/// count, so it never reads as zero records.
+fn conflicting(path: &str) -> Result<Value, String> {
+    let lines = text::lines(path).map_err(|e| e.unreadable(path))?;
+    let note = lines
+        .first()
+        .and_then(|l| l.strip_prefix("# "))
+        .filter(|n| n.starts_with("not checked"))
+        .map(str::to_owned);
+    let body = lines
+        .iter()
+        .filter(|l| !l.starts_with('#'))
+        .map(|l| Ok::<_, std::io::Error>(l.clone()));
+    let mut rows = Vec::new();
+    for r in pycompat::csv::DictReader::new(body, '\t', pycompat::csv::Quoting::Minimal) {
+        let r = r.map_err(|e| format!("{}: {e}", e.exception()))?;
+        let Some(pos) = digits(text::cell(&r, "pos")) else {
+            continue;
+        };
+        let s = |k: &str| Value::Str(text::cell_or(&r, k).to_owned());
+        let n = |k: &str| opt_int(digits(text::cell(&r, k)));
+        let dot = |k: &str| text::cell(&r, k).filter(|v| !v.is_empty() && *v != ".");
+        let ids = dot("condition_ids")
+            .map(|v| v.split(',').map(|x| Value::Str(x.to_owned())).collect())
+            .unwrap_or_default();
+        rows.push(obj([
+            ("chrom", s("chrom")),
+            ("pos", Value::Int(pos)),
+            ("ref", s("ref")),
+            ("alt", s("alt")),
+            ("genotype", s("genotype")),
+            ("gene", s("gene")),
+            ("clinvar_id", s("clinvar_id")),
+            ("stars", n("stars")),
+            ("review_status", s("review_status")),
+            ("submissions", s("submissions")),
+            ("plp_submissions", n("plp_submissions")),
+            ("clinvar_condition", opt_s(dot("condition"))),
+            ("clinvar_condition_ids", Value::Array(ids)),
+            ("dp", n("dp")),
+            ("gq", n("gq")),
+            (
+                "low_confidence",
+                Value::Bool(text::cell(&r, "low_confidence") == Some("yes")),
+            ),
+        ]));
+    }
+    let checked = note.is_none();
+    Ok(obj([
+        ("checked", Value::Bool(checked)),
+        ("note", opt_s(note.as_deref())),
+        (
+            "count",
+            if checked {
+                Value::Int(rows.len() as i128)
+            } else {
+                Value::Null
+            },
+        ),
+        ("hits", Value::Array(rows)),
+    ]))
+}
+
+#[cfg(test)]
+mod conflicting_tests {
+    use super::*;
+
+    fn write(name: &str, body: &str) -> String {
+        let dir =
+            std::env::temp_dir().join(format!("og-summary-conflicting-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, body).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    const HEAD: &str = "chrom\tpos\tref\talt\tgenotype\tgene\tclinvar_id\tstars\treview_status\tsubmissions\tplp_submissions\tcondition\tcondition_ids\tdp\tgq\tlow_confidence\n";
+
+    #[test]
+    fn a_checked_table_lists_its_rows() {
+        let p = write(
+            "checked.tsv",
+            &format!(
+                "{HEAD}chr22\t100\tC\tT\thet\tNF2\t9900101\t1\tcriteria provided, conflicting classifications\tPathogenic(2), Uncertain_significance(1)\t2\tNeurofibromatosis, type 2\tMONDO:MONDO:0007039,OMIM:101000\t30\t20\tyes\n"
+            ),
+        );
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["checked"], Value::Bool(true));
+        assert_eq!(v["note"], Value::Null);
+        assert_eq!(v["count"], Value::Int(1));
+        let Value::Array(h) = &v["hits"] else {
+            panic!("no hits")
+        };
+        let Value::Object(r) = &h[0] else {
+            panic!("no row")
+        };
+        assert_eq!(r["pos"], Value::Int(100));
+        assert_eq!(r["plp_submissions"], Value::Int(2));
+        assert_eq!(r["stars"], Value::Int(1));
+        assert_eq!(
+            r["clinvar_condition"],
+            Value::Str("Neurofibromatosis, type 2".into())
+        );
+        assert_eq!(
+            r["clinvar_condition_ids"],
+            Value::Array(vec![
+                Value::Str("MONDO:MONDO:0007039".into()),
+                Value::Str("OMIM:101000".into())
+            ])
+        );
+        assert_eq!(r["low_confidence"], Value::Bool(true));
+        let p = write("empty.tsv", HEAD);
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["count"], Value::Int(0));
+    }
+
+    #[test]
+    fn a_table_that_was_not_checked_is_never_zero() {
+        let p = write(
+            "skip.tsv",
+            &format!("# not checked: run setup.sh --refresh clinvar\n{HEAD}"),
+        );
+        let Value::Object(v) = conflicting(&p).unwrap() else {
+            panic!("not an object")
+        };
+        assert_eq!(v["checked"], Value::Bool(false));
+        assert_eq!(
+            v["note"],
+            Value::Str("not checked: run setup.sh --refresh clinvar".into())
+        );
+        assert_eq!(v["count"], Value::Null);
+        assert_eq!(v["hits"], Value::Array(vec![]));
+    }
+}
+
 // --- gnomAD AF and rsIDs from step 13's VEP output -----------------------------------
 
 /// Where the frequencies came from, or why there are none.
@@ -609,6 +846,9 @@ pub struct ClinVar {
     pub cdna: bool,
     pub cdna_scan: Option<Value>,
     pub deep_intronic: Option<Value>,
+    /// Step 06's conflicting records some labs call pathogenic, when it
+    /// wrote their table.
+    pub conflicting: Option<Value>,
 }
 
 impl ClinVar {
@@ -656,6 +896,10 @@ impl ClinVar {
             Some((p, _)) => Some(deep_intronic(&p)?),
             None => None,
         };
+        let conflicting = match side(&format!("clinvar/{s}_clinvar_conflicting.tsv")) {
+            Some((p, _)) => Some(conflicting(&p)?),
+            None => None,
+        };
         Ok(ClinVar {
             hits: rows,
             floor,
@@ -663,6 +907,7 @@ impl ClinVar {
             cdna,
             cdna_scan,
             deep_intronic,
+            conflicting,
         })
     }
 
@@ -718,6 +963,9 @@ impl ClinVar {
         }
         if let Some(v) = &self.deep_intronic {
             m.insert("deep_intronic".into(), v.clone());
+        }
+        if let Some(v) = &self.conflicting {
+            m.insert("conflicting".into(), v.clone());
         }
         Value::Object(m)
     }
@@ -788,6 +1036,53 @@ mod tests {
         assert_eq!(allele_copies(""), (0, 0));
         assert_eq!(zygosity_word(1, 1), "hemizygous");
         assert_eq!(zygosity_word(0, 2), "unknown");
+    }
+
+    #[test]
+    fn conditions_pair_names_with_their_ids() {
+        let info = info_map(
+            "GENEINFO=RET:5979;CLNDN=Hirschsprung_disease,_susceptibility_to,_1|not_provided;\
+             CLNDISDB=MONDO:MONDO:0018309,OMIM:142623|MedGen:CN517202",
+        );
+        let c = conditions(&info).unwrap();
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].name, "Hirschsprung disease, susceptibility to, 1");
+        assert_eq!(c[0].ids, ["MONDO:MONDO:0018309", "OMIM:142623"]);
+        assert!(c[1].placeholder());
+        let [(_, name), (_, ids)] = condition_fields(&c);
+        assert_eq!(
+            name,
+            Value::Str("Hirschsprung disease, susceptibility to, 1".into())
+        );
+        assert_eq!(
+            ids,
+            Value::Array(vec![
+                Value::Str("MONDO:MONDO:0018309".into()),
+                Value::Str("OMIM:142623".into())
+            ])
+        );
+        // Only placeholders: the field is there, with no name.
+        let only = conditions(&info_map("CLNDN=not_provided;CLNDISDB=MedGen:CN517202")).unwrap();
+        assert_eq!(condition_fields(&only)[0].1, Value::Null);
+        assert_eq!(condition_fields(&only)[1].1, Value::Array(vec![]));
+        // CLNDISDB without CLNDN: no name is made up, the ids are kept.
+        let ids = conditions(&info_map("CLNDISDB=OMIM:142623")).unwrap();
+        assert_eq!(
+            condition_fields(&ids),
+            [
+                ("clinvar_condition", Value::Null),
+                (
+                    "clinvar_condition_ids",
+                    Value::Array(vec![Value::Str("OMIM:142623".into())])
+                ),
+            ]
+        );
+        // Neither field: no conditions at all, so no new summary field.
+        assert_eq!(conditions(&info_map("GENEINFO=RET:5979")), None);
+        // CLNDN without CLNDISDB, as in a hand-built file.
+        let bare = conditions(&info_map("CLNDN=Medullary_thyroid_carcinoma")).unwrap();
+        assert_eq!(bare[0].name, "Medullary thyroid carcinoma");
+        assert!(bare[0].ids.is_empty());
     }
 
     #[test]

@@ -1,0 +1,11 @@
+metric	value
+status	not assessed
+kiv2_copies	.
+ci95_low	.
+ci95_high	.
+class	.
+kiv2_depth	0.21
+flank_depth	30.00
+mapq0_share	0.904
+message	not assessed: the KIV-2 exons have 0.2x against 30.0x over the single-copy exons, too little for any repeat count (a deletion or a mapping problem)
+advice	A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.

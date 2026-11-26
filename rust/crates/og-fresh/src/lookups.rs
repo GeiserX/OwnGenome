@@ -2,13 +2,14 @@
 //! image and digest sections. Each lookup returns its report row and a
 //! typed answer ([`Found`]); a lookup that cannot answer is an error.
 
-use crate::http::Fetch;
+use crate::http::{Body, Fetch, Request, Want};
 use crate::pins::{Pins, hla_db_release, setting, vep_cache_template};
 use crate::registry::{Registry, split_image};
 use crate::version::{change_kind, max_by, newer_tags, ver};
 use crate::{
     DbRow, Found, Lookup, LookupError, Upstream, array, failed, field, need_str, opt_field, string,
 };
+use indexmap::IndexMap;
 use pycompat::json::Value;
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -731,6 +732,504 @@ pub fn cyrius(c: &Ctx<'_>) -> Lookup<Found> {
     })
 }
 
+// The curated PGx tables. Each row of assets/pgx_contraindications.tsv,
+// assets/pgx_inhibitors.tsv and assets/pgx_genes.tsv was copied by hand from
+// a source that can change under it: a CPIC level moves, a label is
+// withdrawn, the FDA reclassifies an inhibitor, pypgx gains a copy-number
+// model. These lookups compare every row with its source now. A row that no
+// longer agrees is `drift` (a warning in the issue, not an error); a source
+// that does not answer, or answers empty, is an error as everywhere here.
+
+/// The CPIC API's pairs of one gene (the `Pair_source` of a row).
+pub const CPIC_PAIRS: &str = "https://api.cpicpgx.org/v1/pair_view?genesymbol=eq.";
+/// One DailyMed label's version history, by its set id.
+pub const DAILYMED_HISTORY: &str = "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/";
+/// The FDA's table of clinical CYP inhibitors (the `Class_source` of the
+/// inhibitor rows).
+pub const FDA_CYP_TABLE: &str = "https://www.fda.gov/drugs/drug-interactions-labeling/healthcare-professionals-fdas-examples-drugs-interact-cyp-enzymes-and-transporter-systems";
+
+/// The rows of a curated table under `assets/` beside `versions.env`, by
+/// column name. `#` lines are comments; the first other line is the header.
+pub fn curated(c: &Ctx<'_>, name: &str, need: &[&str]) -> Lookup<Vec<IndexMap<String, String>>> {
+    let path = c
+        .versions
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("assets")
+        .join(name);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| LookupError::Failed(format!("cannot read {}: {e}", path.display())))?;
+    let mut lines = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty());
+    let Some(header) = lines.next() else {
+        return failed(format!("{name}: no header"));
+    };
+    let header: Vec<&str> = header.split('\t').collect();
+    if let Some(miss) = need.iter().find(|n| !header.contains(n)) {
+        return Err(LookupError::Shape(format!("{name} has no {miss} column")));
+    }
+    let rows: Vec<IndexMap<String, String>> = lines
+        .map(|l| {
+            header
+                .iter()
+                .zip(l.split('\t'))
+                .map(|(h, v)| ((*h).to_owned(), v.trim().to_owned()))
+                .collect()
+        })
+        .collect();
+    if rows.is_empty() {
+        return failed(format!("{name}: no rows"));
+    }
+    Ok(rows)
+}
+
+fn col<'a>(row: &'a IndexMap<String, String>, name: &str) -> &'a str {
+    row.get(name).map_or("", String::as_str)
+}
+
+/// The report row of a table check: `current` with `agree` when nothing
+/// drifted, else `drift` with each difference. Both name the `source`
+/// compared with.
+fn table_row(
+    item: &str,
+    pinned: String,
+    source: &str,
+    agree: &str,
+    drift: &[String],
+    todo: &str,
+) -> Found {
+    let upstream = if drift.is_empty() {
+        format!("{source}: {agree}")
+    } else {
+        format!(
+            "{source}: {} difference(s): {}",
+            drift.len(),
+            drift.join("; ")
+        )
+    };
+    Found {
+        row: DbRow {
+            item: item.into(),
+            pinned,
+            upstream,
+            state: if drift.is_empty() { "current" } else { "drift" }.into(),
+            todo: if drift.is_empty() {
+                String::new()
+            } else {
+                todo.into()
+            },
+        },
+        upstream: Upstream::ReportOnly,
+    }
+}
+
+/// `assets/pgx_contraindications.tsv` against the CPIC API (the pair, its
+/// level, still provisional) and DailyMed (the label the note paraphrases is
+/// still published).
+pub fn pgx_contraindications(c: &Ctx<'_>) -> Lookup<Found> {
+    let rows = curated(
+        c,
+        "pgx_contraindications.tsv",
+        &["Gene", "Drug", "CPIC_level", "Label_source"],
+    )?;
+    let mut drift = vec![];
+    let mut pairs: IndexMap<String, Vec<Value>> = IndexMap::new();
+    let mut labels: IndexMap<String, bool> = IndexMap::new();
+    static SETID: LazyLock<Regex> = LazyLock::new(|| re(r"setid=([0-9A-Fa-f-]{36})\b"));
+    for row in &rows {
+        let (gene, drug, level) = (col(row, "Gene"), col(row, "Drug"), col(row, "CPIC_level"));
+        if !pairs.contains_key(gene) {
+            let body = c.fetch.json(&format!("{CPIC_PAIRS}{gene}"))?;
+            let list = array(&body, &format!("CPIC pairs of {gene}"))?;
+            // An empty answer cannot tell a dropped gene from an outage.
+            if list.is_empty() {
+                return failed(format!("CPIC pairs of {gene}: empty"));
+            }
+            pairs.insert(gene.to_owned(), list.to_vec());
+        }
+        let found = pairs[gene].iter().find(|p| {
+            matches!(opt_field(p, "drugname"), Ok(Some(Value::Str(d))) if d.eq_ignore_ascii_case(drug))
+        });
+        let Some(pair) = found else {
+            drift.push(format!("{gene} {drug}: CPIC no longer lists the pair"));
+            continue;
+        };
+        let up = need_str(pair, "cpiclevel", &format!("CPIC level of {gene} {drug}"))?;
+        if up != level {
+            drift.push(format!(
+                "{gene} {drug}: CPIC level {up}, the table says {level}"
+            ));
+        }
+        if !matches!(opt_field(pair, "provisional")?, Some(Value::Bool(true))) {
+            drift.push(format!(
+                "{gene} {drug}: no longer provisional in CPIC (a guideline: PharmCAT may call the gene)"
+            ));
+        }
+        let Some(setid) = SETID
+            .captures(col(row, "Label_source"))
+            .map(|m| m[1].to_owned())
+        else {
+            return Err(LookupError::Shape(format!(
+                "{gene} {drug}: Label_source has no DailyMed setid"
+            )));
+        };
+        let live = match labels.get(&setid) {
+            Some(l) => *l,
+            None => {
+                let body = c
+                    .fetch
+                    .json(&format!("{DAILYMED_HISTORY}{setid}/history.json"))?;
+                let history = match opt_field(&body, "data")? {
+                    Some(d) => opt_field(d, "history")?,
+                    None => return failed(format!("DailyMed label {setid}: empty")),
+                };
+                // An empty history is a withdrawn label; no history, or one
+                // that is not a list, is an answer this does not know.
+                let Some(Value::Array(h)) = history else {
+                    return Err(LookupError::Shape(format!(
+                        "DailyMed label {setid}: history is not a list"
+                    )));
+                };
+                let live = !h.is_empty();
+                labels.insert(setid.clone(), live);
+                live
+            }
+        };
+        if !live {
+            drift.push(format!(
+                "{gene} {drug}: DailyMed no longer publishes label {setid}"
+            ));
+        }
+    }
+    Ok(table_row(
+        "Drug warnings for disease genes (assets/pgx_contraindications.tsv, step 27)",
+        format!("{} rows, CPIC levels and FDA labels", rows.len()),
+        &format!("the CPIC API and DailyMed ({} label(s))", labels.len()),
+        "every pair at the same level and provisional, every label published",
+        &drift,
+        "Read the CPIC pair and the label again, then fix, move or drop the row in \
+         assets/pgx_contraindications.tsv (its date and Note too) and rerun step 27.",
+    ))
+}
+
+/// `name` of the FDA table as a medication list names it: lower case, no
+/// footnote marks, no markup.
+fn fda_cell(raw: &str) -> String {
+    static SUP: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<sup>.*?</sup>"));
+    static TAG: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<[^>]*>"));
+    let t = SUP.replace_all(raw, "");
+    let t = TAG.replace_all(&t, " ");
+    let t = t.replace("&nbsp;", " ").replace("&amp;", "&");
+    t.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// The CYP enzymes of an FDA table cell (`2C19; 2D6 strong inhibitor`).
+fn fda_genes(cell: &str) -> Vec<String> {
+    static G: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(1A2|2B6|2C8|2C9|2C19|2D6|3A)\b"));
+    G.captures_iter(cell).map(|m| m[1].to_uppercase()).collect()
+}
+
+/// The FDA table's enzyme name for a table gene: CYP3A4 and CYP3A5 are its
+/// `3A`.
+fn fda_gene(gene: &str) -> String {
+    let g = gene.trim_start_matches("CYP");
+    if g.starts_with("3A") {
+        "3A".into()
+    } else {
+        g.to_owned()
+    }
+}
+
+/// One substance of the FDA table with its strong and moderate CYP
+/// inhibitions as `(enzyme, strength)`.
+pub type FdaRow = (String, Vec<(String, &'static str)>);
+
+/// The FDA table: (its date, each substance with its strong and moderate
+/// CYP inhibitions as `(enzyme, strength)`).
+pub fn fda_inhibitors(html: &str) -> Lookup<(Option<String>, Vec<FdaRow>)> {
+    static TABLE: LazyLock<Regex> = LazyLock::new(|| re(r#"(?s)summary="Table 1\."(.*?)</table>"#));
+    static TD: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<td[^>]*>(.*?)</td>"));
+    static DATE: LazyLock<Regex> =
+        LazyLock::new(|| re(r#"(?s)Content current as of.{0,300}?datetime="(\d{4}-\d{2}-\d{2})"#));
+    let Some(table) = TABLE.captures(html) else {
+        return Err(LookupError::Shape(
+            "the FDA page has no Table 1 of substrates, inhibitors and inducers".into(),
+        ));
+    };
+    let mut out = vec![];
+    for tr in table[1].split("<tr") {
+        let cells: Vec<String> = TD.captures_iter(tr).map(|m| fda_cell(&m[1])).collect();
+        if cells.len() < 3 || cells[0].is_empty() {
+            continue;
+        }
+        let mut inh = vec![];
+        for (cell, strength) in [(&cells[1], "strong"), (&cells[2], "moderate")] {
+            inh.extend(fda_genes(cell).into_iter().map(|g| (g, strength)));
+        }
+        out.push((cells[0].clone(), inh));
+    }
+    if out.is_empty() {
+        return failed("the FDA table of CYP inhibitors: empty");
+    }
+    Ok((DATE.captures(html).map(|m| m[1].to_owned()), out))
+}
+
+/// The parts of a substance of the FDA table: `lopinavir and ritonavir` is
+/// lopinavir and ritonavir.
+fn fda_parts(name: &str) -> Vec<&str> {
+    name.split(" and ")
+        .map(|p| p.trim_matches(|ch: char| !ch.is_alphanumeric()))
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+/// The newest Wayback Machine capture the FDA table may be read from when
+/// fda.gov refuses the host, in days. An older copy is an error: a check on
+/// a stale copy is not a check.
+pub const FDA_CAPTURE_MAX_AGE_DAYS: i64 = 92;
+
+/// The FDA table's page, and where it came from (empty: fda.gov itself).
+/// fda.gov answers HTTP 404 to GitHub's runners, so when it refuses, the
+/// newest Wayback Machine capture of the page is read instead, and the row
+/// says so with the capture's date.
+pub fn fda_page(c: &Ctx<'_>) -> Lookup<(String, String)> {
+    let direct = Request::get(FDA_CYP_TABLE, Want::Text)
+        .header("Accept", "text/html,application/xhtml+xml")
+        .header("Accept-Language", "en-US,en;q=0.9");
+    let refused = match c.fetch.request(&direct) {
+        Ok((Body::Text(t), _)) => return Ok((t, String::new())),
+        Ok(_) => return Err(LookupError::Shape(format!("{FDA_CYP_TABLE}: no text body"))),
+        Err(e) => e,
+    };
+    let fallback = || -> Lookup<(String, String)> {
+        let body = c.fetch.json(&format!(
+            "https://archive.org/wayback/available?url={FDA_CYP_TABLE}"
+        ))?;
+        let closest = match opt_field(&body, "archived_snapshots")? {
+            Some(s) => opt_field(s, "closest")?,
+            None => None,
+        };
+        let Some(closest) = closest else {
+            return failed("no Wayback Machine capture of the FDA table");
+        };
+        if !matches!(opt_field(closest, "available")?, Some(Value::Bool(true)))
+            || need_str(closest, "status", "the capture's status")? != "200"
+        {
+            return failed("the newest Wayback Machine capture of the FDA table is not a page");
+        }
+        let ts = need_str(closest, "timestamp", "the capture's timestamp")?;
+        let when: jiff::civil::Date = ts
+            .get(..8)
+            .and_then(|d| jiff::civil::Date::strptime("%Y%m%d", d).ok())
+            .ok_or_else(|| LookupError::Shape(format!("capture timestamp {ts:?}")))?;
+        let today = c.now.to_zoned(jiff::tz::TimeZone::UTC).date();
+        let age = i64::from((today - when).get_days());
+        if age > FDA_CAPTURE_MAX_AGE_DAYS {
+            return failed(format!(
+                "the newest Wayback Machine capture of the FDA table is {age} days old"
+            ));
+        }
+        let html = c
+            .fetch
+            .text(&format!("https://web.archive.org/web/{ts}/{FDA_CYP_TABLE}"))?;
+        Ok((
+            html,
+            format!(
+                ", read from the Wayback Machine capture of {} (fda.gov refused this host)",
+                when.strftime("%Y-%m-%d")
+            ),
+        ))
+    };
+    // Keep "did not answer" as it is: the pull-request dry run warns on it.
+    fallback().map_err(|e| {
+        let both = format!("{refused}; and {e}");
+        if e.is_unreachable() {
+            LookupError::Unreachable(both)
+        } else {
+            LookupError::Failed(both)
+        }
+    })
+}
+
+/// `assets/pgx_inhibitors.tsv` against the FDA's table of CYP inhibitors:
+/// every row's class, and every strong or moderate inhibitor of a gene the
+/// table covers (strong only for CYP3A) that has no row.
+pub fn pgx_inhibitors(c: &Ctx<'_>) -> Lookup<Found> {
+    let rows = curated(c, "pgx_inhibitors.tsv", &["Drug", "Gene", "Strength"])?;
+    let (html, via) = fda_page(c)?;
+    let (date, fda) = fda_inhibitors(&html)?;
+    let strength_of = |names: &[&FdaRow], g: &str| {
+        let s: Vec<&str> = names
+            .iter()
+            .flat_map(|(_, inh)| inh.iter().filter(|(e, _)| e == g).map(|(_, s)| *s))
+            .collect();
+        if s.contains(&"strong") {
+            Some("strong")
+        } else if s.contains(&"moderate") {
+            Some("moderate")
+        } else {
+            None
+        }
+    };
+    let mut drift = vec![];
+    for row in &rows {
+        let (drug, gene, ours) = (col(row, "Drug"), col(row, "Gene"), col(row, "Strength"));
+        // Its own rows and the ritonavir-boosted combinations it is part
+        // of: a partner row takes the combination's class (indinavir alone
+        // is no strong inhibitor; indinavir and ritonavir is).
+        let named: Vec<_> = fda
+            .iter()
+            .filter(|(n, _)| fda_parts(n).contains(&drug))
+            .collect();
+        if named.is_empty() {
+            drift.push(format!("{drug} {gene}: not in the FDA table"));
+            continue;
+        }
+        match strength_of(&named, &fda_gene(gene)) {
+            Some(s) if s == ours => {}
+            Some(s) => drift.push(format!(
+                "{drug} {gene}: the FDA says {s}, the table says {ours}"
+            )),
+            None => drift.push(format!(
+                "{drug} {gene}: the FDA no longer lists it as a strong or moderate inhibitor"
+            )),
+        }
+    }
+    // What the table covers: strong and moderate inhibitors of CYP2D6,
+    // CYP2C19, CYP2C9 and CYP2B6, strong inhibitors of CYP3A.
+    let has = |drug: &str, g: &str| {
+        rows.iter()
+            .any(|r| col(r, "Drug") == drug && fda_gene(col(r, "Gene")) == g)
+    };
+    for (name, inh) in &fda {
+        let first = fda_parts(name).first().copied().unwrap_or(name.as_str());
+        for (g, s) in inh {
+            let covered = matches!(g.as_str(), "2D6" | "2C19" | "2C9" | "2B6")
+                || (g == "3A" && *s == "strong");
+            if covered && !has(name, g) && !has(first, g) {
+                drift.push(format!(
+                    "{name}: the FDA lists a {s} CYP{g} inhibitor the table has no row for"
+                ));
+            }
+        }
+    }
+    Ok(table_row(
+        "Drug interactions (assets/pgx_inhibitors.tsv, step 27)",
+        format!("{} rows, FDA classes", rows.len()),
+        &format!(
+            "the FDA table{}{via}",
+            date.map(|d| format!(" (current as of {d})"))
+                .unwrap_or_default()
+        ),
+        "every row classed the same, no inhibitor the table lacks",
+        &drift,
+        "Read the FDA table again, then fix, add or drop the rows in assets/pgx_inhibitors.tsv \
+         (and the date in its header) and rerun step 27 with a medication list.",
+    ))
+}
+
+/// The fields of one CSV line; a quoted field may hold commas.
+fn csv_fields(line: &str) -> Vec<String> {
+    let (mut out, mut cur, mut quoted) = (vec![], String::new(), false);
+    for ch in line.chars() {
+        match ch {
+            '"' => quoted = !quoted,
+            ',' if !quoted => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    out.push(cur);
+    out
+}
+
+/// `assets/pgx_genes.tsv` against the gene table of pypgx's newest release:
+/// every row is a pypgx gene, and the bam rows are exactly the genes with a
+/// copy-number model (SV=TRUE). tests/test_pypgx_genes.sh checks the same
+/// at the pinned version; this says when a newer pypgx moves it.
+pub fn pgx_genes(c: &Ctx<'_>) -> Lookup<Found> {
+    let rows = curated(c, "pgx_genes.tsv", &["gene", "mode"])?;
+    let latest = need_str(
+        &c.fetch.github("/repos/sbslee/pypgx/releases/latest")?,
+        "tag_name",
+        "pypgx latest release",
+    )?;
+    let csv = c.fetch.text(&format!(
+        "{RAW}/sbslee/pypgx/{latest}/pypgx/api/data/gene-table.csv"
+    ))?;
+    let mut lines = csv.lines().filter(|l| !l.trim().is_empty());
+    let header = csv_fields(lines.next().unwrap_or(""));
+    let (Some(gi), Some(si)) = (
+        header.iter().position(|h| h == "Gene"),
+        header.iter().position(|h| h == "SV"),
+    ) else {
+        return Err(LookupError::Shape(format!(
+            "pypgx {latest} gene-table.csv has no Gene or SV column"
+        )));
+    };
+    let mut sv: indexmap::IndexMap<String, bool> = indexmap::IndexMap::new();
+    for l in lines {
+        let f = csv_fields(l);
+        let (Some(g), Some(s)) = (f.get(gi), f.get(si)) else {
+            return Err(LookupError::Shape(format!(
+                "pypgx {latest} gene-table.csv: a row without Gene or SV"
+            )));
+        };
+        let model = match s.as_str() {
+            "TRUE" => true,
+            "FALSE" => false,
+            other => {
+                return Err(LookupError::Shape(format!(
+                    "pypgx {latest} gene-table.csv: {g} has SV {other:?}, not TRUE or FALSE"
+                )));
+            }
+        };
+        sv.insert(g.clone(), model);
+    }
+    if sv.is_empty() {
+        return failed(format!("pypgx {latest} gene-table.csv: empty"));
+    }
+    let mut drift = vec![];
+    for row in &rows {
+        let (gene, mode) = (col(row, "gene"), col(row, "mode"));
+        match sv.get(gene) {
+            None => drift.push(format!("{gene}: not in pypgx {latest}'s gene table")),
+            Some(false) if mode == "bam" => drift.push(format!(
+                "{gene}: a bam row, but pypgx {latest} has no copy-number model for it"
+            )),
+            _ => {}
+        }
+    }
+    for (gene, has_sv) in &sv {
+        if *has_sv
+            && !rows
+                .iter()
+                .any(|r| col(r, "gene") == gene && col(r, "mode") == "bam")
+        {
+            drift.push(format!(
+                "{gene}: pypgx {latest} has a copy-number model, but it is not a bam row"
+            ));
+        }
+    }
+    let bam = rows.iter().filter(|r| col(r, "mode") == "bam").count();
+    Ok(table_row(
+        "pypgx genes (assets/pgx_genes.tsv, step 32)",
+        format!(
+            "{} genes, {bam} bam (pypgx {})",
+            rows.len(),
+            c.pins.get("PYPGX_BUNDLE_VERSION").unwrap_or("?")
+        ),
+        &format!("pypgx {latest}'s gene table"),
+        "every row a pypgx gene, the bam rows exactly its copy-number models",
+        &drift,
+        "When PYPGX_IMAGE moves to this pypgx, change the rows of assets/pgx_genes.tsv \
+         with it (tests/test_pypgx_genes.sh checks them at the pin) and rerun step 32.",
+    ))
+}
+
 /// A lookup by its report name.
 pub type LookupFn = fn(&Ctx<'_>) -> Lookup<Found>;
 
@@ -751,6 +1250,9 @@ pub const DATABASES: &[(&str, LookupFn)] = &[
     ("Cyrius", cyrius),
     ("Parascopy data", parascopy_data),
     ("gnomAD constraint", gnomad),
+    ("PGx contraindications table", pgx_contraindications),
+    ("PGx inhibitors table", pgx_inhibitors),
+    ("PGx genes table", pgx_genes),
 ];
 
 /// One image of the images section.
@@ -870,5 +1372,47 @@ mod tests {
         assert_eq!(t.as_second(), 1_791_288_000);
         assert!(http_date("not a date").is_none());
         assert_eq!(line_of("25.10.4"), "25.10");
+    }
+
+    /// fda.gov refuses GitHub's runners, so the pull-request dry run always
+    /// reads the Wayback Machine. When that does not answer either, the error
+    /// must stay "did not answer", or `--unreachable-warns` cannot warn.
+    #[test]
+    fn an_fda_table_nobody_answers_for_is_unreachable() {
+        struct Down(crate::http::GitHub);
+        impl Fetch for Down {
+            fn github_api(&self) -> &crate::http::GitHub {
+                &self.0
+            }
+            fn request(&self, req: &Request<'_>) -> Lookup<(Body, crate::http::Headers)> {
+                Err(LookupError::Unreachable(format!("{}: no answer", req.url)))
+            }
+        }
+        struct NoRegistry;
+        impl Registry for NoRegistry {
+            fn list_tags(&self, _: &str, _: &str) -> Lookup<Vec<String>> {
+                Ok(vec![])
+            }
+            fn manifest_digest(&self, _: &str, _: &str, _: &str) -> Lookup<String> {
+                Ok(String::new())
+            }
+        }
+        let down = Down(crate::http::GitHub {
+            api: "https://api.github.invalid".into(),
+            token: None,
+        });
+        let pins = Pins::parse("");
+        let c = Ctx {
+            fetch: &down,
+            registry: &NoRegistry,
+            pins: &pins,
+            versions: Path::new("/nonexistent"),
+            setup: Path::new("/nonexistent"),
+            common: Path::new("/nonexistent"),
+            now: jiff::Timestamp::now(),
+        };
+        let e = fda_page(&c).unwrap_err();
+        assert!(e.is_unreachable(), "{e}");
+        assert!(e.to_string().contains("archive.org"), "{e}");
     }
 }

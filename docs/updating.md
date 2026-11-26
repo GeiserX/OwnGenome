@@ -13,7 +13,6 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | IPD-IMGT/HLA release (step 8) | `HLA_DB_RELEASE` in `scripts/lib/common.sh` | Renovate, from the `v<x.y.z>-alpha` tags of `ANHIG/IMGTHLA` |
 | pgsc_calc (steps 25 and 26) | `PGSC_CALC_VERSION` in `versions.env`, copied into `conf/containers.config` | Renovate, after approval on the dependency dashboard. `PGSC_CALC_SHA256`, `PGSC_CALC_NF_SCHEMA` and the `PGSC_*_IMAGE` lines move with it by hand ([PRS](25-prs.md#maintenance)) |
 | Python of the docs build | `python-version` in `docs.yml` | Renovate, after approval on the dependency dashboard |
-| Python packages of the screenshot script | the `==` pins in `tests/demo/retake-screenshots.sh` | Renovate |
 | Aldy, the alternative CYP2D6 caller | its version in [Cyrius](21-cyrius.md), in the prose and the `pip install` line | Renovate |
 | GitHub Actions (`uses:` lines) | the workflows | Dependabot, monthly |
 | Zensical, the docs site builder | `docs/requirements-docs.txt` | Dependabot, monthly |
@@ -24,7 +23,16 @@ This page is for maintainers. It says how a pinned version gets bumped, what che
 | IPD-KIR release (step 8 with `KIR=true`) | `KIR_DB_RELEASE` in `versions.env` | nobody: the monthly freshness report says when a newer release exists |
 | Parascopy data (step 35) | `PARASCOPY_DATA_VERSION` in `versions.env`, with the Zenodo record and the md5s in `scripts/setup.sh` | nobody: the monthly freshness report says when the record has a newer version |
 | Cyrius lock (step 21) | `CYRIUS_VERSION` in `versions.env` and every wheel in `scripts/cyrius-constraints.txt` | nobody: resolved again by hand in `PYTHON_IMAGE`, as the lock's header says. The freshness report says when PyPI has a newer Cyrius |
-| The site table of step 40: the 23andMe v5 site list commit, the dbSNP build and the table's hash | `CONSUMER_SITES_COMMIT`, `CONSUMER_DBSNP_BUILD`, their checksums and `CONSUMER_SITES_TABLE_SHA256` in `versions.env` | nobody: dbSNP releases a build every year or two, and the site list has not changed since 2019. A new build, a new commit or a change to `og consumer build-sites` needs one full build (`setup.sh --consumer-sites`, about 30 GB), then `gzip -dc <table> \| sha256sum` into `CONSUMER_SITES_TABLE_SHA256`. CI never builds the full table. The monthly freshness report says when NCBI publishes a newer build |
+| The site table of step 40: the 23andMe v5 site list commit, the dbSNP build and the table's hash | `CONSUMER_SITES_COMMIT`, `CONSUMER_DBSNP_BUILD`, their checksums and `CONSUMER_SITES_TABLE_SHA256` in `versions.env` | nobody: dbSNP releases a build every year or two, and the site list has not changed since 2019. A new build, a new commit or a change to `og consumer build-sites` needs one full build: remove the old table from `reference/consumer/` (`setup.sh` keeps a table it finds), run `setup.sh --consumer-sites` (about 30 GB), then record the sha256 of the unpacked table in `CONSUMER_SITES_TABLE_SHA256` (the command is under this table). CI never builds the full table. The monthly freshness report says when NCBI publishes a newer build |
+
+The hash of the site table of step 40 is the sha256 of its unpacked content, because the gzip wrapper holds the time it was written. Run this from the repository root after the build, with `GENOME_DIR` set to the folder you gave `setup.sh`. `gzip -t` stops it when the table is missing or broken, so it never prints the hash of an empty input:
+
+```bash
+export GENOME_DIR=/path/to/your/data
+. ./versions.env
+table="${GENOME_DIR}/reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
+gzip -t "$table" && gzip -dc "$table" | sha256sum
+```
 
 Three pins are floors, not versions that drift: Node 24 in `renovate-dry-run.yml`, Java 17 in the workflows that run Nextflow, and `manifest.nextflowVersion` in `nextflow.config`. Nothing proposes a bump for them, on purpose.
 
@@ -63,6 +71,7 @@ Each hold is a rule in `renovate.json` with its reason in the rule's `descriptio
 
 | Pin | Rule | Why | When it ends |
 |---|---|---|---|
+| ExpansionHunter 5.0.0 | disabled, including Bioconda rebuilds | [5.0.0 is Apache-2.0](https://github.com/Illumina/ExpansionHunter/blob/v5.0.0/LICENSE.txt). [Upstream's default branch uses PolyForm Strict 1.0.0](https://github.com/Illumina/ExpansionHunter/blob/master/LICENSE.txt) | read the proposed tag's licence and the image's conda-meta licence before changing the hold. A PolyForm Strict version must become opt-in with a notice, like Cyrius |
 | pypgx 0.26.0 | only `0.26.0--` tags | 0.27.0 pulled pandas 3.0 and broke every gene while its smoke test still passed | upstream releases the pandas fix and a pypgx-bundle tag of the same version exists; move `PYPGX_BUNDLE_VERSION` with it |
 | plink2 2.00a5.10 | disabled | the only versioned tag `pgscatalog/plink2` ships, and the build pgsc_calc uses | a newer tag from that publisher |
 | Manta, Strelka2, duphold, Octopus, GRIDSS | disabled | legacy: archived or quiet upstream | bump by hand after a run on the fixture |
@@ -74,8 +83,10 @@ Each hold is a rule in `renovate.json` with its reason in the rule's `descriptio
 
 ## What to check by hand
 
+- **Image licences**: before any image bump, read the upstream licence at the proposed tag. For a Bioconda image, also check the licence fields of every package in its conda-meta files. A version or build number alone does not prove the licence. Keep ExpansionHunter held until that review is complete.
 - **PharmCAT**: diff the diplotype table on the HG002 fixture between the old and the new image, and run the CPIC parser tests on a `report.json` from the new version.
 - **VEP major**: move `VEP_CACHE_RELEASE` to the new major and `GENCODE_RELEASE` (`scripts/lib/common.sh`) to the new major minus 66 in the same PR, download the new cache (about 26 GB) and rerun step 13. CI cannot run the offline cache.
+- **gnomAD-SV** (`GNOMAD_SV_VERSION`, `GNOMAD_SV_SHA256`, [step 05](05-annotsv.md#gnomad-sv-frequencies-and-mane-select-transcripts)): `setup.sh --annotsv-data` merges the new release's common SVs into AnnotSV's `benign_*_SV_GRCh38.sorted.bed` files, but it does not remove the rows of the earlier release. Those old rows stay in the benign set, so `B_*_AFmax`, `Population_AF` and `Benign_match` can still come from them, and `setup.sh` prints a note saying so. For a clean benign set, move `annotsv_annotations/` aside and run `./scripts/setup.sh --annotsv-data <genome_dir>` again: it downloads the AnnotSV bundle (about 5.3 GB) and merges only the pinned release. Rerun step 05 on the samples after that. Only gnomAD-SV 4.1 has been pinned so far, so this matters from the first bump.
 - **PCGR/CPSR**: move `PCGR_DATA_BUNDLE` and `PCGR_VEP_CACHE_RELEASE` with the image. Download the new bundle once, measure its size and sha256, and set `PCGR_DATA_BYTES`, `PCGR_DATA_SHA256` and `PCGR_DATA_MEASURED_FOR` (`<image tag> <bundle date>`) in the same PR: the server publishes no checksum, and `scripts/ci/check-coupled-versions.sh` fails until all of them move together. Then rerun step 17 on a sample with an earlier result. CI does not run CPSR on a sample. The image test checks that `cpsr --help` still lists every flag step 17 passes, that `cpsr --version` names the release line of the image tag and the `pcgrr` R package its full release, and runs the bundled VEP with `--database` on 50 variants.
 - **Python**: resolve `scripts/cyrius-constraints.txt` again in the new image, as its header says, and rerun step 21 on a test BAM.
 - **Nextflow**: the PR runs the stub and E2E jobs on the new version. The prose names `NEXTFLOW_VERSION` rather than a number, and the fake nextflow of the fake-docker suite reads it from `versions.env`, so a patch needs no hand edit. A new release line (26.10 to 27.04, say) also needs the line named in `nextflow.config`, `nextflow.yml` and the prose of [Nextflow Execution](nextflow.md) and [Lessons Learned](lessons-learned.md) moved by hand.
@@ -91,7 +102,7 @@ The [Renovate dry run](https://github.com/GeiserX/OwnGenome/blob/main/.github/wo
 - a package name carries a `:` or `@`;
 - `docs/versions.md` does not hold exactly the images of `versions.env`, or `conf/containers.config` holds one it does not;
 - a tool would get a different update in one file than in another;
-- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, the screenshot script's packages, Aldy, the docs build's Python) is not detected in every place the text pins it;
+- a pin that is not an image (Nextflow, actionlint, gitleaks, ShellCheck, the Renovate CLI, the HLA database, pgsc_calc, Aldy, the docs build's Python) is not detected in every place the text pins it;
 - a lookup failed, or a dependency was skipped for any reason other than a rule that disables it.
 
 The lookup job's summary lists every dependency with the update Renovate would propose, or why it proposes none. The full debug log is the `renovate-dry-run-log` artifact. A second job, `versions-doc`, fails when `docs/versions.md` is not what `scripts/ci/gen-versions-doc.sh` writes from `versions.env`.
@@ -99,5 +110,5 @@ The lookup job's summary lists every dependency with the update Renovate would p
 To run the same lookups on your machine, with Node 24:
 
 ```bash
-LOG_LEVEL=debug npx --yes renovate@44.199.2 --platform=local --dry-run=lookup
+LOG_LEVEL=debug npx --yes renovate@44.247.2 --platform=local --dry-run=lookup
 ```

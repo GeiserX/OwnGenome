@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "sample": "S",
- "generated_utc": "2026-11-13 23:22 UTC",
+ "generated_utc": "2026-11-19 23:58 UTC",
  "run": {
   "status_file": true,
   "started_utc": "2020-01-01 00:00 UTC",
@@ -137,6 +137,15 @@
    "note": null,
    "data": {}
   },
+  "acmg_sf": {
+   "title": "ACMG secondary findings",
+   "step": "06",
+   "state": "missing",
+   "source": null,
+   "file_date": null,
+   "note": null,
+   "data": {}
+  },
   "pharmcat": {
    "title": "PharmCAT",
    "step": "07",
@@ -210,7 +219,7 @@
    "data": {}
   },
   "ancestry_fine": {
-   "title": "Fine-grained ancestry (ADMIXTURE, RFMix)",
+   "title": "Fine-grained ancestry",
    "step": "26b",
    "state": "missing",
    "source": null,
@@ -776,7 +785,7 @@
   "Paralog genes (Paraphase, PacBio HiFi)",
   "HLA typing (T1K)",
   "Polygenic risk scores",
-  "Fine-grained ancestry (ADMIXTURE, RFMix)",
+  "Fine-grained ancestry",
   "Structural variants (Manta)",
   "Structural variants (Delly)",
   "Copy number (CNVpytor)",

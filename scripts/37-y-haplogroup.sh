@@ -2,11 +2,12 @@
 # 37-y-haplogroup.sh — Y-chromosome haplogroup (paternal line) with Yleaf
 # Usage: ./scripts/37-y-haplogroup.sh <sample_name>
 #
-# Opt-in. Yleaf (YLEAF_IMAGE, 4.1.6) reads the BAM's pileup at its
-# Y-chromosome markers and predicts the haplogroup they support on its own
-# tree, YFull v14.01. Its marker tables come from setup.sh --yleaf-data; the
-# pileup is made in the same SAMTOOLS_IMAGE run as the chrY BAM (the current
-# tree's pileup in a second one), and bin/yleaf_run.py runs Yleaf on it. Runs only when step 16 (indexcov) infers male from
+# Opt-in. Yleaf (YLEAF_IMAGE) reads the BAM's pileup at its Y-chromosome
+# markers and predicts the haplogroup they support on its own tree, YFull
+# v14.01. The marker positions come from setup.sh --yleaf-data; the pileup
+# is made in the same SAMTOOLS_IMAGE run as the chrY BAM (the current tree's
+# pileup in a second one), and Yleaf's own command line reads it (-rp, reuse
+# the pileup). Runs only when step 16 (indexcov) infers male from
 # the reads: the sex comes from indexcov/indexcov-indexcov.ped, not from an
 # argument. A female sample, or one with no Y to read, is skipped with one line.
 #
@@ -64,15 +65,27 @@ if [ "$SEX" != male ]; then
   exit 0
 fi
 
+# Yleaf's --ref-fasta takes only these names (a compressed FASTA stops it
+# with a traceback), as the Nextflow pipeline's --reference does.
+case "$REF_FASTA" in
+  *.fa | *.fasta | *.fna) ;;
+  *) echo "ERROR: Yleaf needs a plain reference FASTA ending in .fa, .fasta or .fna (REF_FASTA is ${REF_FASTA})" >&2; exit 1 ;;
+esac
 mkdir -p "$OUTDIR"
 rm -rf "${OUTDIR}/yleaf" "$OUT" "${OUTDIR}/${SAMPLE}_y_tree.txt" "${OUTDIR}/${SAMPLE}_y_tree_path.tsv" \
   "${OUTDIR}/${SAMPLE}_y_private_snps.tsv" "$CHRY" "${CHRY}.bai"
 TREE=false
 [ -s "${YTREE}/version.txt" ] && TREE=true
-# Yleaf downloads the whole hg38 FASTA unless its read-only config names one:
-# og y yleaf-positions writes Yleaf's marker positions, SAMTOOLS_IMAGE makes the
-# pileup Yleaf would make, and Yleaf then runs on it, offline
-# (bin/yleaf_run.py says why and how).
+# og y yleaf-positions writes Yleaf's marker positions and SAMTOOLS_IMAGE
+# makes the pileup Yleaf would make (its flags at its default quality 20), in
+# the run that also writes the chrY BAM. Yleaf then reads that pileup where it
+# keeps its own (-rp), offline: --ref-fasta names the reference so it
+# downloads none (it never reads a BAM's sequence), --no-update-check skips
+# GitHub. It stops on an empty pileup, so with no read at any marker
+# og y yleaf-no-reads writes the table Yleaf gives for too few markers.
+# The current tree's pileup is ours, with its flags written out
+# (-A -Q20 -q20): fused as -AQ20q1, samtools reads "20q1" as the -Q value
+# and keeps reads of mapping quality 0.
 O=$(cpath "$OUTDIR")
 echo "[1/3] Yleaf's Y marker positions..."
 run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
@@ -87,15 +100,33 @@ run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
    samtools view -b -o "$3" "$1" chrY && samtools index "$3"' \
   _ "$(cpath "$BAM")" "$O" "$(cpath "$CHRY")"
 if $TREE; then
+  # shellcheck disable=SC2016  # expanded by the inner bash
   run_in --cpus 1 --memory 2g "$SAMTOOLS_IMAGE" bash -euo pipefail -c \
-    'samtools mpileup -l "$2/tree_positions.txt" -AQ20q1 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
+    'samtools mpileup -l "$2/tree_positions.txt" -A -Q20 -q20 "$1" > "$2/tree_pileup.txt"' _ "$(cpath "$BAM")" "$O"
 fi
 echo "[3/3] Yleaf..."
 echo "Reference: ${REF_FASTA}"
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$YLEAF_IMAGE" \
-  python3 /pgp-bin/yleaf_run.py predict --data "$(cpath "$YDATA")" --bam "$(cpath "$BAM")" --reference "$REF_FASTA_C" \
-    --idxstats "${O}/idxstats.txt" --pileup "${O}/pileup.txt" --out "${O}/yleaf"
+# Yleaf names the sample, and its folder, after the BAM without its extension.
+STEM=$(basename "$BAM"); STEM=${STEM%.*}
+if [ -s "${OUTDIR}/pileup.txt" ]; then
+  mkdir -p "${OUTDIR}/yleaf/${STEM}"
+  mv "${OUTDIR}/pileup.txt" "${OUTDIR}/yleaf/${STEM}/temp_haplogroup_pileup.pu"
+  run_in --cpus 1 --memory 4g "$YLEAF_IMAGE" \
+    Yleaf -bam "$(cpath "$BAM")" -o "${O}/yleaf" -rg hg38 --ref-fasta "$REF_FASTA_C" -tree yfull \
+      -q 20 -t 1 -rp -force --no-update-check
+  rm -f "${OUTDIR}/yleaf/${STEM}/temp_haplogroup_pileup.pu"
+else
+  mkdir -p "${OUTDIR}/yleaf"
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$YLEAF_IMAGE" \
+    /pgp-bin/og y yleaf-no-reads --bam "$(cpath "$BAM")" --idxstats "${O}/idxstats.txt" "${O}/yleaf/hg_prediction.hg"
+fi
 rm -f "${OUTDIR}/idxstats.txt" "${OUTDIR}/pileup.txt"
+PRED="${OUTDIR}/yleaf/hg_prediction.hg"
+if [ ! -s "$PRED" ] || [ "$(grep -c . "$PRED")" -lt 2 ]; then
+  # Yleaf logs a failed sample as "Skipping" and goes on: its log says why.
+  echo "ERROR: Yleaf wrote no prediction (${PRED}); its log is ${OUTDIR}/yleaf/run.log" >&2
+  exit 1
+fi
 TREE_LINE="Current tree: not installed (${YTREE}); run scripts/setup.sh --yleaf-data ${GENOME_DIR} to add it"
 if $TREE; then
   TREE_LINE=$(run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 4g "$YLEAF_IMAGE" \
@@ -121,11 +152,6 @@ if $TREE; then
   fi
 fi
 
-PRED="${OUTDIR}/yleaf/hg_prediction.hg"
-if [ ! -s "$PRED" ] || [ "$(grep -c . "$PRED")" -lt 2 ]; then
-  echo "ERROR: Yleaf wrote no prediction (${PRED})." >&2
-  exit 1
-fi
 cp "$PRED" "$OUT"
 read -r HG MARKERS QC < <(awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next }
   NR == 2 { print $c["Hg"], $c["Valid_markers"], $c["QC-score"] }' "$OUT")

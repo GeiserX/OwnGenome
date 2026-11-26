@@ -4,7 +4,7 @@
 # allele: an allele group at a field boundary: B*27 matches B*27:05:02, B*57:01 matches B*57:01:01.
 # kind: drug (a drug reaction) or disease (a condition). association: what the study in pmids reports.
 # pmids: the primary papers, comma-separated PubMed ids. citation: first author, year, journal.
-# tests/test_hla_report.py checks the schema.
+# rust/crates/og-render/tests/port_report_pgx.rs checks the schema.
 allele	kind	association	pmids	citation
 A*31:01	drug	carbamazepine hypersensitivity reactions in Europeans	21428769	McCormack 2011, N Engl J Med
 B*15:02	drug	carbamazepine Stevens-Johnson syndrome in Han Chinese	15057820	Chung 2004, Nature

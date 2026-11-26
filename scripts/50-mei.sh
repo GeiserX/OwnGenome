@@ -9,8 +9,9 @@
 # the insertions it calls and reads a short catalog of insertions known to
 # cause disease (assets/mei_sites.tsv: the FKTN SVA of Fukuyama muscular
 # dystrophy, the TAF1 SVA of X-linked dystonia-parkinsonism, the BBS1 SVA of
-# Bardet-Biedl syndrome) as seen, not seen, or not callable (too few reads
-# there to tell). With AnnotSV's data in GENOME_DIR (annotsv_annotations/, as
+# Bardet-Biedl syndrome) as seen (a call that passed MEGAnE's filters), call
+# filtered out (only calls MEGAnE flagged), not seen, or not callable (too few
+# reads there to tell). With AnnotSV's data in GENOME_DIR (annotsv_annotations/, as
 # step 05 reads it), AnnotSV annotates the insertions the table lists: the
 # genes each falls in, where in them, the frequency of a benign insertion at
 # that place, and AnnotSV's class (NA for every insertion: AnnotSV 3.5 scores
@@ -27,7 +28,7 @@
 #                                        with at least one copy, and AnnotSV's genes, location,
 #                                        benign frequency and class ("." without AnnotSV's data)
 #         mei/<sample>_mei_annotsv.tsv   AnnotSV's table of those insertions (with its data only)
-#         mei/<sample>_mei_sites.tsv     the catalog with seen / not seen / not callable
+#         mei/<sample>_mei_sites.tsv     the catalog with seen / call filtered out / not seen / not callable
 #         mei/<sample>_mei_depth.tsv     samtools bedcov over the catalog windows
 #         mei/<sample>_megane.log        MEGAnE's log
 # MEGAnE reads the whole BAM; about an hour for a 30x genome on 4 threads, in
@@ -41,7 +42,7 @@ GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image MEGANE_IMAGE SAMTOOLS_IMAGE PYTHON_IMAGE
+require_image MEGANE_IMAGE SAMTOOLS_IMAGE OG_IMAGE
 case "$SEX" in
   male|female) ;;
   "") SEX=unknown ;;
@@ -147,7 +148,7 @@ cp "$VCF" "${P}_megane.vcf"
 ANNOTSV_ARGS=()
 if $ANNOTSV; then
   echo "[3/4] AnnotSV on the insertions..."
-  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+  run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
     /pgp-bin/og mei annotsv-input --sample "$SAMPLE" --vcf "${O}_megane.vcf" --out "${O}_mei_annotsv_input.vcf"
   AC=$(cpath "$ANNOTATIONS_DIR")
   run_in --rw "$ANNOTATIONS_DIR" --cpus 4 --memory 8g "$ANNOTSV_IMAGE" \
@@ -161,7 +162,7 @@ else
 fi
 
 echo "[4/4] Calls and the catalog (og mei report)..."
-run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SITES}:/pgp-sites.tsv:ro" --cpus 1 --memory 2g "$PYTHON_IMAGE" \
+run_in -v "${PGP_ROOT}/bin:/pgp-bin:ro" -v "${SITES}:/pgp-sites.tsv:ro" --cpus 1 --memory 2g "$OG_IMAGE" \
   /pgp-bin/og mei report --sample "$SAMPLE" --vcf "${O}_megane.vcf" --sites /pgp-sites.tsv \
     --depth "${O}_mei_depth.tsv" ${ANNOTSV_ARGS[@]+"${ANNOTSV_ARGS[@]}"} --out-calls "${O}_mei.tsv" --out-sites "${O}_mei_sites.tsv"
 rm -rf "$WORK" "${P}_mei_mainchr.txt"

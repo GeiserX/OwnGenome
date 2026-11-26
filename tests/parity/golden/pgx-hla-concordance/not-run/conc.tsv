@@ -1,0 +1,4 @@
+Gene	T1K	OptiType	Agree	Note
+HLA-A	*01:01/*26:01	no call	not compared	a caller made no call; step 36 does not pass it to PharmCAT
+HLA-B	*57:01/*38:01	no call	not compared	a caller made no call; step 36 does not pass it to PharmCAT
+HLA-C	*06:02/*06:02	no call	not compared	a caller made no call

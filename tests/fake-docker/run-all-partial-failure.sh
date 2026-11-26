@@ -22,7 +22,8 @@
 #      modules/local, which is how a row finds its step.
 # A fake nextflow stands in; a wrapper in front of it writes the two files the
 # completion handler would. The reports are the real ones: the hook runs
-# bin/render_report.py with the host's python3.
+# og report render with the host's bin/og (the Guard fake-docker job builds
+# it into bin/.og).
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -55,7 +56,7 @@ cat > "${CASE_WORK}/render-hook" <<'HOOK'
 set -euo pipefail
 . "${CASE_WORK:?}/host-path.sh"
 case "${*:2}" in
-  "python3 /pgp-bin/render_report.py"*)
+  "/pgp-bin/og report render"*)
     shift
     mapped=()
     for a in "$@"; do

@@ -1,0 +1,41 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: PHENO_MODERATE
+Date: 2026-11-25
+Source: PharmCAT 3.4.0 report (pheno-moderate.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       *1/*2                          Normal Metabolizer
+CYP2C19      *1/*1                          Normal Metabolizer
+
+Medications and Phenoconversion (CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5):
+------------------------------------------------------------------------
+
+  Medication list: pheno-moderate.txt (1 line).
+  WARNING: CYP2D6 genotype phenotype Normal Metabolizer; phenoconverted phenotype Intermediate Metabolizer (phenoconverted by duloxetine), activity score 2 x 0.5 = 1.
+    CPIC: for patients who are on moderate CYP2D6 inhibitors, the activity score is multiplied by 0.5 and then converted to the predicted phenotype.
+    Drugs affected by CYP2D6: codeine, tramadol, hydrocodone, oxycodone, amitriptyline, clomipramine, desipramine, doxepin, imipramine, nortriptyline, trimipramine, fluvoxamine, paroxetine, atomoxetine, ondansetron, tropisetron, tamoxifen, eliglustat.
+  The genotype phenotype in the table above is unchanged. A phenoconverted phenotype
+  holds while the inhibitor is taken. This is an aid for your clinician, not advice.
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

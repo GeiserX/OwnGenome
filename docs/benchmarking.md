@@ -19,25 +19,28 @@ For background on caller performance differences, see:
 
 ## Available Alternative Caller Scripts
 
-The pipeline ships with four variant callers. Each writes output to a separate directory so they can run in parallel without conflicts.
+The pipeline calls with DeepVariant by default and ships five alternative caller scripts: four for short reads and Clair3 for long reads. Each writes output to a separate directory so they can run in parallel without conflicts.
 
 The image each script runs is on [Image versions](versions.md).
 
 | Script | Caller | Output Directory | Description |
 |---|---|---|---|
 | `scripts/03-deepvariant.sh` | DeepVariant (`DEEPVARIANT_IMAGE`) | `vcf/` | Default caller. Deep learning model, highest precision and F1. |
-| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Gold standard in clinical labs. Good precision/recall balance, GVCF support. |
+| `scripts/03a-gatk-haplotypecaller.sh` | GATK HaplotypeCaller (`GATK_IMAGE`) | `vcf_gatk/` | Widely used in clinical labs, but this script is not their full GATK Best Practices workflow: it calls the duplicate-marked step-02 BAM without base quality score recalibration (BQSR) and writes variants only (`-ERC NONE`), not a GVCF; the pipeline's gVCF is DeepVariant's, from step 03. Good precision/recall balance. |
 | `scripts/03b-freebayes.sh` | FreeBayes (image set in the script) | `vcf_freebayes/` | Bayesian caller. Highest sensitivity, most false positives, single-threaded. |
 | `scripts/03c-strelka2-germline.sh` | Strelka2 (image set in the script) | `vcf_strelka2/` | Fast heuristic caller (SNVs + indels). Best with BWA-MEM2 alignments. |
+| `scripts/03d-octopus.sh` | Octopus (`OCTOPUS_IMAGE`) | `vcf_octopus/` | Haplotype-based caller. |
+| `scripts/03e-clair3.sh` | Clair3 (`CLAIR3_IMAGE`) | `vcf_clair3/` | Long-read caller (ONT, PacBio HiFi) for a BAM from `scripts/02b-alignment-longread.sh`. |
 
-All four scripts accept the same arguments:
+DeepVariant, GATK, FreeBayes, Strelka2 and Octopus take the same arguments: the sample, then `male` or `female`. With `male`, each calls chrX and chrY with ploidy 1 outside the pseudoautosomal regions, so a male sample gets no heterozygous call there; see [Sex chromosomes](03-variant-calling.md#sex-chromosomes) for how each caller does it. Without the sex, the alternative callers take the one `run-all.sh` recorded for the sample.
 
 ```bash
 export GENOME_DIR=/path/to/your/data
-./scripts/03-deepvariant.sh your_sample
-./scripts/03a-gatk-haplotypecaller.sh your_sample
-./scripts/03b-freebayes.sh your_sample
-./scripts/03c-strelka2-germline.sh your_sample
+./scripts/03-deepvariant.sh your_sample male
+./scripts/03a-gatk-haplotypecaller.sh your_sample male
+./scripts/03b-freebayes.sh your_sample male
+./scripts/03c-strelka2-germline.sh your_sample male
+./scripts/03d-octopus.sh your_sample male
 ```
 
 GATK and FreeBayes also accept an `INTERVALS` environment variable to restrict calling to a specific region (see the chr22 example below). Strelka2 and TIDDIT always process the full genome.
@@ -58,6 +61,19 @@ There are two ways to evaluate caller performance:
 ### Mode 1: Pairwise Concordance (No Truth Set Required)
 
 Compare two or more caller VCFs against each other to measure agreement. This tells you how much the callers agree, but not which one is "right."
+
+`./scripts/benchmark-variants.sh <sample>` does this for every caller VCF it finds: `vcf/` (DeepVariant), `vcf_strelka2/results/variants/variants.vcf.gz`, and `<sample>.vcf.gz` in every `vcf_*/` directory (`vcf_gatk/`, `vcf_freebayes/`, `vcf_octopus/`, `vcf_clair3/`, or a directory of your own, named in the results by what follows `vcf_`). That is the same set that makes `run-all.sh` with `BENCHMARK=true` queue the step. It normalises each VCF once (`bcftools norm -m-both`), runs `bcftools isec` on PASS and unfiltered records for each pair, and writes `benchmark/comparison.tsv`:
+
+| Column | Meaning |
+|---|---|
+| `Shared`, `A_Unique`, `B_Unique` | sites both callers have, and sites only one has. A site is shared when both have the same allele at the same position, whatever the genotype |
+| `Jaccard` | `Shared / (Shared + A_Unique + B_Unique)`: agreement on which alleles are present |
+| `GT_Concordant` | shared sites where the two genotypes are also the same |
+| `GT_Concordance` | `GT_Concordant / Shared`; `N/A` when nothing is shared |
+
+A site one caller calls 0/1 and the other 1/1 counts in `Shared` and in the Jaccard index, but not in `GT_Concordant`. Genotypes are compared without phase and with their alleles sorted (`1|0` equals `0/1`), and a homozygous call equals its haploid form (`1/1` equals `1`), so a caller that writes male chrX haploid still agrees with one that writes it diploid. A site with no genotype on either side (`./.`, `.`, or a record with no `GT` field) does not count as concordant.
+
+The commands below do the allele part by hand:
 
 Use `bcftools isec` to compute the intersection and unique calls:
 
@@ -252,7 +268,8 @@ Each hap.py run produces several output files:
 | **Precision** | How many called variants are real (low = too many false positives) | TP / (TP + FP) |
 | **Recall** | How many real variants were found (low = missing real variants) | TP / (TP + FN) |
 | **F1** | Harmonic mean of precision and recall (balanced accuracy) | 2 * (Precision * Recall) / (Precision + Recall) |
-| **Jaccard** | Overlap between two call sets (pairwise mode) | Shared / (Shared + Unique_A + Unique_B) |
+| **Jaccard** | Overlap between two call sets (pairwise mode): the same allele at the same position, whatever the genotype | Shared / (Shared + Unique_A + Unique_B) |
+| **GT concordance** | Shared sites where the two callers also give the same genotype (pairwise mode) | GT_Concordant / Shared |
 
 Where:
 - **TP** (True Positive) = variant called correctly
@@ -267,6 +284,7 @@ Where:
 - **Jaccard > 0.95**: Two callers agree on the vast majority of calls.
 - **Jaccard 0.85-0.95**: Moderate agreement. Differences are mostly in low-confidence regions or indels.
 - **Jaccard < 0.85**: Significant disagreement. Worth investigating the unique calls from each caller.
+- **GT concordance well below 1 with a high Jaccard**: the callers find the same variants but disagree on zygosity. Look at the depth and allele balance at those sites.
 
 ### Typical Results (30X WGS, GRCh38)
 
@@ -296,7 +314,7 @@ Key observations:
 
 ## Practical Example: chr22-Only Benchmark
 
-Each caller takes hours on the full genome: DeepVariant 8 h 50 min to 13 h 30 min in the end test, and in one historical run FreeBayes 9.3 h single-threaded, GATK 8.6 h and Strelka2 72 min ([Runtime](#runtime-full-genome-30x-wgs)). For a quick script validation, you can restrict GATK and FreeBayes to chromosome 22 only (~1-2% of the genome; the time per caller has not been measured here), but **full-genome runs are strongly recommended for meaningful benchmarking**.
+Each caller takes hours on the full genome: DeepVariant 8 h 50 min to 13 h 30 min in the end test ([runtime](hardware-requirements.md#runtime-per-step)), and in one historical run FreeBayes 9.3 h single-threaded, GATK 8.6 h and Strelka2 72 min. For a quick script validation, you can restrict GATK and FreeBayes to chromosome 22 only (~1-2% of the genome; the time per caller has not been measured here), but **full-genome runs are strongly recommended for meaningful benchmarking**.
 
 ### Step 1: Run Callers on chr22 (GATK + FreeBayes)
 
@@ -449,50 +467,4 @@ benchmark/
 - **chr22 is representative but not definitive.** It is a good proxy for genome-wide performance on autosomes, but does not test difficult regions (centromeres, segmental duplications, sex chromosomes).
 - **Runtime scales with region size.** hap.py on chr22 alone is far quicker than on the full genome; neither has been timed here.
 
----
-
-## Real-World Full-Genome Benchmark Results
-
-These are actual results from a 30X WGS sample (Intel i5-14500, 64GB RAM). They are a historical measurement: the run used DeepVariant 1.6.0 and GATK 4.6.1, the pins of that time, not the versions pinned today, and has not been repeated since.
-
-### Variant Counts (Full Genome)
-
-| Caller | Total | SNPs | Indels | MNPs/Other |
-|---|---|---|---|---|
-| DeepVariant 1.6.0 | 5,558,877 | — | — | — |
-| GATK HC 4.6.1 | 4,662,941 | 3,829,614 | 836,747 | 0 |
-| FreeBayes 1.3.6 | 20,059,293 | 18,825,881 | 867,375 | 625,201 |
-| Strelka2 2.9.10 | 5,565,634 | — | — | — |
-| TIDDIT 3.9.5 | 5,346 SVs | 2,299 DEL | 639 DUP | 204 INV |
-
-FreeBayes calls **4x more variants** than DeepVariant. The ~16M FreeBayes-unique calls are overwhelmingly false positives. GATK is the most conservative. Strelka2 and DeepVariant are very close in total count.
-
-### Pairwise Concordance (Full Genome, All Variants, Pre-Normalization)
-
-**Note:** These numbers were computed on raw (unfiltered, unnormalized) VCFs. The `benchmark-variants.sh` script now applies PASS filtering and `bcftools norm -m-both` normalization before comparison, which will produce higher Jaccard values (especially for DV vs GATK, expected >0.95 for PASS SNPs).
-
-| Caller A | Caller B | Shared | A Unique | B Unique | Jaccard |
-|---|---|---|---|---|---|
-| DeepVariant | GATK | 4,492,079 | 1,072,475 | 170,862 | **0.783** |
-| DeepVariant | FreeBayes | 3,772,065 | 1,792,489 | 16,287,228 | 0.173 |
-| GATK | FreeBayes | 3,495,334 | 1,167,607 | 16,563,959 | 0.165 |
-
-Key observations:
-- **DeepVariant vs GATK** share 4.5M variants (Jaccard 0.783). GATK has very few unique calls (171K) while DeepVariant has 1.07M unique. Without truth set labeling, these unique counts reflect disagreement, not necessarily true/false positives — some DeepVariant-unique calls may be real variants GATK missed, and some may be DeepVariant-specific artifacts.
-- **FreeBayes vs everything** has low concordance (~17%) because it calls 16.3M extra variants. These need aggressive quality filtering before use.
-- **GATK is the most conservative** — nearly all GATK calls (96%) are also found by DeepVariant, making it a high-confidence subset.
-- Filtering to **PASS SNPs only** would significantly increase concordance (expected Jaccard >0.95 for DV vs GATK).
-
-### Runtime (Full Genome, 30X WGS)
-
-| Caller | Runtime | Threads | Peak Memory |
-|---|---|---|---|
-| DeepVariant 1.6.0 | not recorded (no log in the repo) | 8 | 32 GB container limit, peak not recorded |
-| GATK HC 4.6.1 | 8.6 hours (518 min) | 8 | 4.3 GB |
-| FreeBayes 1.3.6 | 9.3 hours | 1 (single-threaded) | 12.8 GB |
-| Strelka2 2.9.10 | 72 min | 8 | 1 GB |
-| TIDDIT 3.9.5 | 7 min | 4 | <1 GB |
-
-For the pinned DeepVariant 1.10: 8 h 50 min to 13 h 30 min with 8 shards in three measured 30-40x runs, and 1 h 9 min on 96 vCPUs upstream ([runtime](hardware-requirements.md#runtime-per-step)).
-
-FreeBayes is the bottleneck — single-threaded with no parallelism flag. It also requires **32 GB memory** for full-genome runs (peaked at 12.8 GB but grows unpredictably through complex regions). Plan accordingly when running all callers.
+Whole-genome accuracy on the public HG002 sample is published with 1.0.0.

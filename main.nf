@@ -49,6 +49,7 @@ include { EXOMISER_PREPARE; EXOMISER; EXOMISER_REPORT } from './modules/local/ex
 include { CHIP_PREPARE; CHIP_MUTECT2; CHIP_ANNOTATE; CHIP_REPORT } from './modules/local/chip/main'
 include { MEI_DEPTH; MEI; MEI_REPORT } from './modules/local/mei/main'
 include { MOCHA_PREP; MOCHA_PHASE; MOCHA_CALL; MOCHA_REPORT } from './modules/local/mocha/main'
+include { exome_dropped } from './workflows/exome'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -94,6 +95,10 @@ workflow {
     // A bare --prs_keep_ambiguous can reach here as the string 'true'.
     if (!(params.prs_keep_ambiguous.toString() in ['true', 'false'])) {
         error "--prs_keep_ambiguous takes no value (or true / false), got '${params.prs_keep_ambiguous}'."
+    }
+    // PRS_PREPARE reads it: true passes --academic to og prs format.
+    if (!(params.pgs_academic.toString() in ['true', 'false'])) {
+        error "--pgs_academic takes no value (or true / false), got '${params.pgs_academic}'."
     }
     if (params.reference.endsWith('.gz')) {
         error "--reference ${params.reference} is compressed. The tools here need a plain FASTA with a .fai index: " +
@@ -164,6 +169,67 @@ workflow {
         if (!(params.exomiser_assembly in ['hg38', 'hg19'])) {
             error "--exomiser_assembly must be hg38 or hg19, got '${params.exomiser_assembly}'."
         }
+    }
+
+    // ─── Exome (--model_type WES) ───────────────────────────────────────
+    // As scripts/03's MODEL_TYPE=WES and scripts/16b's CAPTURE_BED:
+    // DeepVariant's exome model on the capture regions, and mosdepth's
+    // coverage over them; Manta runs with --exome. The steps that read
+    // whole-genome depth, or variants spread over the genome, are not run
+    // (workflows/exome.nf). The sex check is somalier's (sample_qc): indexcov
+    // reads depth along the whole genome from the BAM index, and an exome has
+    // none outside its capture.
+    if (!(params.model_type in ['WGS', 'WES'])) {
+        error "--model_type must be WGS (a whole genome) or WES (an exome), got '${params.model_type}'. " +
+              "It picks DeepVariant's model; the pipeline takes paired short reads."
+    }
+    if (params.model_type == 'WES') {
+        if (!params.capture_bed) {
+            error "--model_type WES needs --capture_bed, the BED of the capture kit's target regions " +
+                  "(docs/wes-guide.md): DeepVariant calls those regions and mosdepth measures them."
+        }
+        if (params.intervals) {
+            error "--intervals and --capture_bed both set DeepVariant's regions. Give one BED: the capture " +
+                  "regions cut to the regions you want (bedtools intersect), as --capture_bed."
+        }
+        if (!tools_list.contains('sample_qc')) {
+            error "--model_type WES takes the sex check from somalier: add sample_qc to --tools, with " +
+                  "--somalier_sites and --verifybamid2_panel (scripts/setup.sh --sample-qc-data). indexcov, " +
+                  "the whole-genome check, reads depth an exome does not have."
+        }
+        // A kit BED named for another build ('1', not 'chr1') matches no
+        // contig of the reference: mosdepth would measure nothing, and
+        // DeepVariant would stop hours later with its own message. One
+        // contig in common is enough (a kit BED may list alt contigs the
+        // reference leaves out). A bgzipped BED is read as it is.
+        def capture = file(params.capture_bed, checkIfExists: true)
+        def ref_fai = file("${params.reference}.fai")
+        if (ref_fai.exists()) {
+            def ref_contigs = ref_fai.readLines().collect { l -> l.split('\t')[0] }.toSet()
+            def bed_text = capture.name.endsWith('.gz')
+                ? new java.util.zip.GZIPInputStream(capture.newInputStream()).getText('UTF-8')
+                : capture.text
+            def bed_contigs = bed_text.readLines()
+                .findAll { l -> l.trim() && !l.startsWith('#') && !l.startsWith('track') && !l.startsWith('browser') }
+                .collect { l -> l.split('\t')[0] }
+                .unique()
+            if (bed_contigs && !bed_contigs.any { c -> ref_contigs.contains(c) }) {
+                error "--capture_bed ${params.capture_bed}: none of its contigs (${bed_contigs.take(3).join(', ')}" +
+                      "${bed_contigs.size() > 3 ? ', ...' : ''}) is in the reference (${ref_fai.name}: " +
+                      "${ref_contigs.take(3).join(', ')}, ...). The pipeline's reference is GRCh38 with chr names: " +
+                      "use the kit's GRCh38 BED, or add chr to a BED named like '1' (sed 's/^/chr/'; chrMT is chrM)."
+            }
+        }
+        def dropped = exome_dropped(tools_list)
+        if (dropped) {
+            log.warn "--model_type WES: not run: exome: ${dropped.join(', ')}. These steps read depth along " +
+                     "the whole genome, weigh a locus against a background across it, or read variants spread " +
+                     "over it, which an exome does not have (docs/wes-guide.md)."
+            tools_list = tools_list - dropped
+        }
+    } else if (params.capture_bed) {
+        error "--capture_bed holds the capture regions of an exome: add --model_type WES, or leave it out " +
+              "for a whole genome."
     }
 
     // Fail-fast: stop when enabled tools lack required databases
@@ -559,6 +625,7 @@ workflow {
         )
 
     // Every BAM, given or aligned here, once INDEXCOV has checked its sex
+    // (an exome's: SAMPLE_QC's somalier check, in BAM_ANALYSIS)
     ch_bam = UPSTREAM.out.bam
 
     // ─── Sequence dictionary ────────────────────────────────────────────
@@ -581,6 +648,11 @@ workflow {
     // ClinVar
     ch_clinvar       = params.clinvar       ? Channel.value(file(params.clinvar, checkIfExists: true))       : Channel.value([])
     ch_clinvar_index = params.clinvar_index  ? Channel.value(file(params.clinvar_index, checkIfExists: true)) : Channel.value([])
+    // The conflicting subset step 06 lists apart from the hits (setup.sh's
+    // clinvar/clinvar_conflicting_plp_chr.vcf.gz), its .tbi beside it.
+    ch_clinvar_conflicting = params.clinvar_conflicting
+        ? Channel.value([file(params.clinvar_conflicting, checkIfExists: true), file("${params.clinvar_conflicting}.tbi", checkIfExists: true)])
+        : Channel.value([[], []])
 
     // VEP caches
     ch_vep_cache      = Channel.value(params.vep_cache      ? file(params.vep_cache, checkIfExists: true)      : [])
@@ -694,6 +766,12 @@ workflow {
     ch_mito_clinvar       = Channel.value(params.mito_clinvar ? file(params.mito_clinvar, checkIfExists: true) : [])
     ch_mito_clinvar_index = Channel.value(params.mito_clinvar ? file("${params.mito_clinvar}.tbi", checkIfExists: true) : [])
     ch_gnomad_mito        = Channel.value(params.gnomad_mito ? file(params.gnomad_mito, checkIfExists: true) : [])
+    // Step 11's allele-frequency panel (ROH): the file setup.sh installs under
+    // roh_af/ with its .tbi beside it. Without it bcftools roh uses 0.4 at
+    // every site.
+    ch_roh_af_panel = Channel.value(params.roh_af_panel
+        ? [file(params.roh_af_panel, checkIfExists: true), file("${params.roh_af_panel}.tbi", checkIfExists: true)]
+        : [[], []])
 
     // ═══════════════════════════════════════════════════════════════════
     // WORKFLOW 1: BAM_ANALYSIS — HLA (and KIR), STR, telomere, coverage,
@@ -740,6 +818,7 @@ workflow {
         ch_reference_fai,
         ch_clinvar,
         ch_clinvar_index,
+        ch_clinvar_conflicting,
         ch_bam,
         ch_pypgx_bundle,
         ch_gvcf,
@@ -798,7 +877,8 @@ workflow {
         ch_ancestry_fine_panel,
         ch_bam,
         ch_gencode_exons,
-        ch_prs_score_sets
+        ch_prs_score_sets,
+        ch_roh_af_panel
     )
 
     // ─── Traits panel (traits, step 42) ─────────────────────────────────
@@ -933,7 +1013,8 @@ workflow {
     }
 
     // ─── Blood groups (opt-in: bloodtype) ───────────────────────────────
-    // The antigens of assets/bloodtype_markers.tsv from the VCF, and RhD from
+    // The antigens of assets/bloodtype_markers.tsv from the VCF, its records
+    // near the markers left-aligned against the reference first, and RhD from
     // the BAM's read depth. A sample without a BAM gets [] for the depth: its
     // RhD is not determined. Equivalent to scripts/41-bloodtype.sh.
     ch_bloodtype          = Channel.empty()
@@ -948,7 +1029,9 @@ workflow {
                 .join(BLOODTYPE_DEPTH.out.depth.map { meta, f -> [meta.id, f] }, remainder: true)
                 .filter { row -> row[1] != null }
                 .map { row -> [row[1], row[2], row[3], row[4] ?: []] },
-            ch_bloodtype_markers
+            ch_bloodtype_markers,
+            ch_reference,
+            ch_reference_fai
         )
         ch_bloodtype          = BLOODTYPE.out.table
         ch_bloodtype_versions = BLOODTYPE_REGIONS.out.versions.mix(BLOODTYPE_DEPTH.out.versions, BLOODTYPE.out.versions)
@@ -1078,6 +1161,11 @@ workflow {
         def chip_germline_index = germ ? file("${germ}.tbi", checkIfExists: true) : []
         def chip_pon            = pon ? file(pon, checkIfExists: true) : []
         def chip_pon_index      = pon ? file("${pon}.tbi", checkIfExists: true) : []
+        def common = params.chip_common_sites   // the contamination estimate FilterMutectCalls reads
+        def chip_common       = common ? file(common, checkIfExists: true) : []
+        def chip_common_index = common ? file("${common}.tbi", checkIfExists: true) : []
+        if (!common) log.warn "chip: no --chip_common_sites, so FilterMutectCalls runs without a contamination estimate and another person's DNA in the sample can pass as a small clone (docs/49-chip.md)."
+        else if (!germ) log.warn "chip: --chip_common_sites without --chip_germline_resource: FilterMutectCalls has no population frequency to weigh the contamination estimate by, so it changes few calls (docs/49-chip.md)."
         ch_vcf
             .map { meta, _vcf, _idx -> [meta.id, meta] }
             .join(ch_bam.map { meta, _bam, _bai -> [meta.id, true] }, remainder: true)
@@ -1087,7 +1175,7 @@ workflow {
             }
         CHIP_PREPARE(Channel.value(file(params.chip_gff, checkIfExists: true)), ch_chip_genes, ch_reference_fai)
         CHIP_MUTECT2(ch_bam, CHIP_PREPARE.out.bed, ch_reference, ch_reference_fai, ch_reference_dict,
-                     chip_germline, chip_germline_index, chip_pon, chip_pon_index)
+                     chip_germline, chip_germline_index, chip_pon, chip_pon_index, chip_common, chip_common_index)
         CHIP_ANNOTATE(
             CHIP_MUTECT2.out.vcf.map { meta, vcf -> [meta.id, meta, vcf] }
                 .join(ch_bam.map { meta, bam, bai -> [meta.id, bam, bai] })
@@ -1170,16 +1258,19 @@ workflow {
     // for every selected step it shows, the SV consensus merge included.
     // The ACMG SF rules, the carrier list, the gene callability table, the
     // confirmed mtDNA variants and the two paralog catalogs (step 35's loci,
-    // step 35b's regions) the report applies (bin/ is the only repository
-    // folder a task sees).
+    // step 35b's regions) the report applies, the step catalogue, which
+    // maps each --tools name to its sections, and the PGS score list, whose
+    // licence column names the academic-only scores a run left out (bin/ is
+    // the only repository folder a task sees).
     def report_assets = ["acmg_sf.tsv", "carrier_genes.tsv", "callability_genes.tsv", "mito_confirmed.tsv",
-                         "paralog_loci.tsv", "paraphase_genes.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
+                         "paralog_loci.tsv", "paraphase_genes.tsv", "steps.tsv", "pgs_scores.tsv"].collect { n -> file("${projectDir}/assets/${n}", checkIfExists: true) }
     ch_report_inputs = ch_vcf
         .map { meta, vcf, idx -> [meta.id, meta, vcf] }
         .join(PGX.out.clinvar_dir.map             { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_cdna.map            { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_cdna_scan.map       { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.clinvar_deep_intronic.map   { meta, f -> [meta.id, f] }, remainder: true)
+        .join(PGX.out.clinvar_conflicting.map     { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_json.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.pharmcat_html.map           { meta, f -> [meta.id, f] }, remainder: true)
         .join(PGX.out.cpic_phenotypes.map         { meta, f -> [meta.id, f] }, remainder: true)
@@ -1272,11 +1363,17 @@ workflow {
         // gvcf columns) go in the list too, with their names in meta.gvcf:
         // HTML_REPORT links them as vcf/<id>.g.vcf.gz, where the bash report
         // finds step 03's gVCF. A sample without a gVCF gets no meta.gvcf.
+        // meta.tools is the run's tool list (--tools, with exomiser when
+        // --hpo added it): HTML_REPORT records it, so a selected step that
+        // wrote nothing reads "selected, no result" instead of not run.
+        // meta.model_type is --model_type: HTML_REPORT records an exome, so
+        // the report's mean depth is mosdepth's on-target one.
         .map { meta, vcf, files -> [meta.id, meta, vcf, files] }
         .join(ch_gvcf.map { meta, gvcf, idx -> [meta.id, [gvcf, idx]] }, remainder: true)
         .filter { items -> items[1] != null }
         .map { id, meta, vcf, files, gvcf ->
-            gvcf ? [meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [meta, vcf, files]
+            def report_meta = meta + [tools: tools_list, model_type: params.model_type]
+            gvcf ? [report_meta + [gvcf: gvcf.collect { f -> f.name }], vcf, files + gvcf] : [report_meta, vcf, files]
         }
 
     // QC files for MultiQC (mosdepth summaries)

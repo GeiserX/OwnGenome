@@ -3,7 +3,7 @@
   "description": [
     "Renovate proposes container image, Nextflow, data release, CI tool and pinned Python package updates; Dependabot keeps the GitHub Actions and the docs pip file (.github/dependabot.yml).",
     "One PR per tool: no group rules. How a PR is checked and what to revalidate by hand: docs/updating.md.",
-    "ignorePaths is config:recommended's list without **/tests/**, so the pins of tests/demo/retake-screenshots.sh are read; no other file under tests/ matches a manager.",
+    "ignorePaths is config:recommended's list without **/tests/**, so a pin added under tests/ is read; no file there matches a manager today.",
     "The images live in versions.env. conf/containers.config and docs/versions.md are generated from it and hold the same strings, so the same dependency is matched in all of them and one PR updates every copy. If a PR touches only versions.env, the generated-file checks fail and name the command to run."
   ],
   "extends": ["config:recommended", ":semanticCommitTypeAll(deps)"],
@@ -151,13 +151,6 @@
     },
     {
       "customType": "regex",
-      "description": "The Python packages the screenshot script installs (playwright, pillow and, on macOS, pyobjc-framework-Vision), pinned with == in tests/demo/retake-screenshots.sh.",
-      "managerFilePatterns": ["/^tests/demo/retake-screenshots\\.sh$/"],
-      "matchStrings": ["[(\\s](?<depName>[A-Za-z][A-Za-z0-9._-]*)==(?<currentValue>\\d+(?:\\.\\d+)*)"],
-      "datasourceTemplate": "pypi"
-    },
-    {
-      "customType": "regex",
       "description": "Aldy, the CYP2D6 caller docs/21-cyrius.md recommends: the version in its prose and in its pip install line, in one PR.",
       "managerFilePatterns": ["/^docs/21-cyrius\\.md$/"],
       "matchStrings": [
@@ -170,6 +163,12 @@
   ],
 
   "packageRules": [
+    {
+      "description": "Hold: ExpansionHunter 5.0.0 is the last Apache-2.0 release. Upstream's default branch uses PolyForm Strict 1.0.0. All updates, including Bioconda rebuilds, need a licence review by hand before this hold is changed (docs/updating.md).",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["quay.io/biocontainers/expansionhunter"],
+      "enabled": false
+    },
     {
       "description": [
         "Biocontainer tags are <version>--<conda build hash>_<build number>. Docker versioning reads the part after '--' as a suffix that must stay the same, and the hash changes between versions, so most of these pins would never see a newer tag.",

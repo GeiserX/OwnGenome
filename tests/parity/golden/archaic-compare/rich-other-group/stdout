@@ -1,0 +1,10 @@
+| chromosome | Chen P04 (bp) | Chen AFR median | Chen AFR max | a (bp) |
+|---|---|---|---|---|
+| 1 | 497087 | 0 | 402951 | 467722 |
+| 2 | 288024 | 301682 | 509834 | 311434 |
+| 10 | 102390 | 172722 | 449805 | 615943 |
+| X | 0 | 333902 | 517064 | 392087 |
+| all | 887501 | 940416 | 1411635 | 1787186 |
+
+Chen et al., 10 AFR people, these 4 chromosomes: lowest 534709, median 940416, highest 1411635 bp; P04 887501 bp.
+a: 1787186 bp, 2.01 times the released P04 figure; 384767 bp under the released calls, 1402419 bp only here, 502734 bp only released.

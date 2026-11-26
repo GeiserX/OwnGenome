@@ -1,0 +1,1963 @@
+{
+ "schema_version": 2,
+ "sample": "S",
+ "generated_utc": "2026-11-15 13:21 UTC",
+ "run": {
+  "status_file": false,
+  "started_utc": null,
+  "declared_sex": null
+ },
+ "databases": {
+  "clinvar_release": null,
+  "cpsr_clinvar_release": null,
+  "hla_database": null
+ },
+ "manifest": [],
+ "sections": {
+  "couple": {
+   "title": "Couple carrier screen",
+   "step": "39",
+   "state": "ok",
+   "source": "couple/S_couple_carrier.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "partner": "P2",
+    "shared": [
+     {
+      "gene": "CFTR",
+      "condition": "Cystic fibrosis",
+      "risk": "1 in 4",
+      "own": "c.1521_1523del (P)",
+      "partner_findings": "c.350G>A (LP)",
+      "explanation": "Both carry a change."
+     }
+    ],
+    "x_linked": [
+     {
+      "gene": "DMD",
+      "condition": "Duchenne",
+      "risk": "1 in 4 sons",
+      "own": "c.10G>T (P)",
+      "partner_findings": ".",
+      "explanation": "On X."
+     }
+    ],
+    "one_partner": 2
+   }
+  },
+  "parascopy": {
+   "title": "SMN1/SMN2 copy number (Parascopy, short reads)",
+   "step": "35",
+   "state": "ok",
+   "source": "paralogs/S_smn_copy_number.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "smn1": {
+     "cn": null,
+     "text": "1 (quality nan, filter PASS), not resolved",
+     "agcn": "4",
+     "agcn_qual": "nan",
+     "agcn_filter": "PASS"
+    },
+    "smn2": {
+     "cn": null,
+     "text": "3 (quality *, filter PASS), not resolved"
+    },
+    "agcn": "4",
+    "agcn_qual": "nan",
+    "agcn_filter": "PASS",
+    "smn1_marker": {
+     "marker": "SMN1 g.27134T>G",
+     "rsid": "rs143838139",
+     "status": "not seen",
+     "alt_reads": "0",
+     "depth": "31",
+     "fraction": "0.000",
+     "copies": "0",
+     "message": "no read carries the G"
+    },
+    "rows": 2,
+    "hba": {
+     "status": "called",
+     "copies": "4",
+     "reading": "two copies of each gene"
+    },
+    "cn_intervals": {
+     "rows": 4,
+     "by_status": {
+      "called": 3,
+      "not assessed": 1
+     },
+     "changes": [
+      {
+       "locus": "AZFc",
+       "name": "AZFc",
+       "chrom": "chrY",
+       "start": "23000000",
+       "end": "26000000",
+       "copies": "0",
+       "expected": "1",
+       "change": "deletion"
+      },
+      {
+       "locus": "X1",
+       "name": "dup",
+       "chrom": "chr1",
+       "start": "1",
+       "end": "2",
+       "copies": "3",
+       "expected": "2",
+       "change": "duplication"
+      }
+     ]
+    },
+    "cyp21a2": {
+     "status": "called",
+     "copies": "2",
+     "module_total": "4",
+     "finding": "none"
+    },
+    "dosage": [
+     {
+      "locus": "HP",
+      "status": "called",
+      "copies": "2",
+      "estimate": "2.1",
+      "reason": ".",
+      "reading": "usual"
+     },
+     {
+      "locus": "LCE3BC",
+      "status": "called",
+      "copies": "1",
+      "estimate": "1.0",
+      "reason": ".",
+      "reading": "one deleted"
+     },
+     {
+      "locus": "CCL3L1",
+      "status": "not assessed",
+      "copies": ".",
+      "estimate": ".",
+      "reason": "low depth",
+      "reading": "."
+     }
+    ],
+    "reading": "SMN1 not resolved (quality under 20 or filter not PASS): no carrier reading",
+    "loci": [
+     {
+      "table": "gba1",
+      "genes": "GBA1,GBAP1",
+      "tag": "carrier",
+      "reading": "agCN of GBA1 and its pseudogene GBAP1 together, usually 4; under 4 means a copy is missing, as a recombinant GBA1-GBAP1 allele (Gaucher disease) can leave; over 4, an extra copy",
+      "status": "called",
+      "cn": 4,
+      "text": "4 (2 region(s), quality 35.25 or more, filter PASS)"
+     },
+     {
+      "table": "strc",
+      "genes": "STRC,STRCP1",
+      "tag": "carrier",
+      "reading": "agCN of STRC and STRCP1 together, usually 4; under 4 means a deletion, and an STRC deletion is a common cause of recessive hearing loss (DFNB16): 3 can be a carrier, 2 can be affected or a pseudogene loss",
+      "status": "unreadable",
+      "cn": null,
+      "text": "unreadable: S_strc_copy_number.tsv lacks the copy-number columns"
+     },
+     {
+      "table": "mytable",
+      "genes": "mytable",
+      "tag": ".",
+      "reading": ".",
+      "status": "not assessed",
+      "cn": null,
+      "text": "not assessed: no read over the locus"
+     },
+     {
+      "table": "pms2",
+      "genes": "pms2",
+      "tag": ".",
+      "reading": ".",
+      "status": "not resolved",
+      "cn": null,
+      "text": "chr7:5970001-5980000 4 (quality nan, filter PASS); chr7:5980001-5990000 3 (quality nan, filter LowQual): no region with a whole copy number, filter PASS and quality 20 or more"
+     }
+    ]
+   }
+  },
+  "paralogs": {
+   "title": "Paralog genes (Paraphase, PacBio HiFi)",
+   "step": "35b",
+   "state": "ok",
+   "source": "paralogs/S_paraphase_copy_number.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "genes": [
+     {
+      "region": "smn1",
+      "gene": "SMN1",
+      "copy_number": "2",
+      "status": "called",
+      "detail": "ok"
+     },
+     {
+      "region": "smn1",
+      "gene": "SMN2",
+      "copy_number": "2",
+      "status": "called",
+      "detail": "."
+     },
+     {
+      "region": "hba",
+      "gene": "HBA1",
+      "copy_number": "1",
+      "status": "called",
+      "detail": "."
+     },
+     {
+      "region": "hba",
+      "gene": "HBA2",
+      "copy_number": "2",
+      "status": "called",
+      "detail": "."
+     },
+     {
+      "region": "pms2",
+      "gene": "PMS2",
+      "copy_number": "2",
+      "status": "called",
+      "detail": "."
+     }
+    ],
+    "other_regions": 2,
+    "other_regions_called": 1,
+    "variants": {
+     "smn1": 2,
+     "pms2": 1
+    },
+    "smn1": {
+     "paraphase": 2,
+     "parascopy": {
+      "cn": null,
+      "text": "1 (quality nan, filter PASS), not resolved"
+     },
+     "agree": null
+    }
+   }
+  },
+  "hla": {
+   "title": "HLA typing (T1K)",
+   "step": "08",
+   "state": "ok",
+   "source": "hla_t1k/S_hla_genotype.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "loci": [
+     {
+      "gene": "HLA-A",
+      "alleles": [
+       "A*02:01",
+       "A*01:01"
+      ],
+      "quality": [
+       "nan",
+       "nan"
+      ],
+      "low_confidence": false,
+      "withheld_from_pharmcat": false,
+      "candidates": [
+       1,
+       1
+      ],
+      "one_allele_type": false
+     }
+    ],
+    "derived": {
+     "coeliac": {
+      "status": "not_determined",
+      "reason": "HLA-DQA1 not typed; HLA-DQB1 not typed",
+      "dq2_5": null,
+      "dq2_5_phase": null,
+      "dq2_2": null,
+      "dq8": null,
+      "dqb1_02_dose": null
+     },
+     "alleles": [
+      {
+       "allele": "A*31:01",
+       "kind": "drug",
+       "association": "carbamazepine hypersensitivity reactions in Europeans",
+       "pmids": "21428769",
+       "citation": "McCormack 2011, N Engl J Med",
+       "state": "absent",
+       "reason": ""
+      },
+      {
+       "allele": "B*15:02",
+       "kind": "drug",
+       "association": "carbamazepine Stevens-Johnson syndrome in Han Chinese",
+       "pmids": "15057820",
+       "citation": "Chung 2004, Nature",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*57:01",
+       "kind": "drug",
+       "association": "abacavir hypersensitivity; flucloxacillin liver injury",
+       "pmids": "18256392,19483685",
+       "citation": "Mallal 2008, N Engl J Med; Daly 2009, Nat Genet",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*58:01",
+       "kind": "drug",
+       "association": "allopurinol severe skin reactions",
+       "pmids": "15743917",
+       "citation": "Hung 2005, Proc Natl Acad Sci U S A",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "B*27",
+       "kind": "disease",
+       "association": "ankylosing spondylitis",
+       "pmids": "4123836,4688372",
+       "citation": "Brewerton 1973, Lancet; Schlosstein 1973, N Engl J Med",
+       "state": "not_determined",
+       "reason": "HLA-B not typed"
+      },
+      {
+       "allele": "C*06:02",
+       "kind": "disease",
+       "association": "psoriasis",
+       "pmids": "16642438",
+       "citation": "Nair 2006, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-C not typed"
+      },
+      {
+       "allele": "DQB1*06:02",
+       "kind": "disease",
+       "association": "narcolepsy with cataplexy",
+       "pmids": "11179016",
+       "citation": "Mignot 2001, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-DQB1 not typed"
+      },
+      {
+       "allele": "DRB1*15:01",
+       "kind": "disease",
+       "association": "multiple sclerosis",
+       "pmids": "12557126",
+       "citation": "Barcellos 2003, Am J Hum Genet",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*01:01",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:01",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:04",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:05",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*04:08",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      },
+      {
+       "allele": "DRB1*14:02",
+       "kind": "disease",
+       "association": "rheumatoid arthritis, shared epitope allele",
+       "pmids": "2446635",
+       "citation": "Gregersen 1987, Arthritis Rheum",
+       "state": "not_determined",
+       "reason": "HLA-DRB1 not typed"
+      }
+     ]
+    },
+    "optitype": {
+     "genes": [
+      {
+       "gene": "HLA-A",
+       "t1k": "A*02:01",
+       "optitype": "A*02:01",
+       "agree": "yes",
+       "note": ""
+      },
+      {
+       "gene": "HLA-B",
+       "t1k": "B*57:01",
+       "optitype": "B*57:01",
+       "agree": "yes",
+       "note": "ok"
+      }
+     ],
+     "reason": ""
+    },
+    "kir": {
+     "typed": [
+      {
+       "gene": "KIR2DL1",
+       "alleles": [
+        "KIR2DL1*001",
+        "KIR2DL1*002"
+       ],
+       "quality": [
+        "30",
+        "20"
+       ]
+      }
+     ],
+     "not_called": [
+      "KIR3DL3"
+     ],
+     "reason": ""
+    }
+   }
+  },
+  "prs": {
+   "title": "Polygenic risk scores",
+   "step": "25",
+   "state": "ok",
+   "source": "prs/S_prs_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "scores": [
+     {
+      "condition": "CAD",
+      "pgs_id": "PGS000018",
+      "score": "0.5",
+      "matched": "100",
+      "total": "120",
+      "chrx": "0",
+      "ambiguous": "12 dropped",
+      "applies_to": "all",
+      "sex_check": "ok",
+      "percentile": "75",
+      "group": "EUR",
+      "evaluated_in": [
+       "EUR",
+       "AFR"
+      ],
+      "effect": "HR 1.5 (EUR)",
+      "percentile_note": ""
+     },
+     {
+      "condition": "T2D",
+      "pgs_id": "PGS000014",
+      "score": "0.1",
+      "matched": "10",
+      "total": "20",
+      "chrx": "0",
+      "ambiguous": "0",
+      "applies_to": "all",
+      "sex_check": "ok",
+      "percentile": "",
+      "group": "",
+      "evaluated_in": [],
+      "effect": "",
+      "percentile_note": "percentile withheld: the input lists variants only"
+     },
+     {
+      "condition": "Short",
+      "pgs_id": "PGS1",
+      "score": null,
+      "matched": null,
+      "total": null,
+      "chrx": null,
+      "ambiguous": null,
+      "applies_to": null,
+      "sex_check": null,
+      "percentile": "",
+      "group": null,
+      "evaluated_in": null,
+      "effect": "",
+      "percentile_note": ""
+     }
+    ],
+    "adjusted": true,
+    "ancestry": {
+     "population": "EUR",
+     "panel": "HGDP+1kGP",
+     "low_confidence": "True",
+     "mixed": "True",
+     "second_population": "AFR"
+    }
+   }
+  },
+  "ancestry_fine": {
+   "title": "Fine-grained ancestry",
+   "step": "26b",
+   "state": "ok",
+   "source": "ancestry_fine/S_ancestry_fine.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "continent": [
+     {
+      "code": "WEA",
+      "group": "West Eurasia",
+      "fraction": null,
+      "low": null,
+      "high": null
+     },
+     {
+      "code": "AFR",
+      "group": "Africa",
+      "fraction": null,
+      "low": null,
+      "high": null
+     }
+    ],
+    "region": [
+     {
+      "code": "IBE",
+      "group": "Iberia",
+      "fraction": null,
+      "low": null,
+      "high": null
+     }
+    ],
+    "painting": [],
+    "left_out": [
+     {
+      "code": "OCE",
+      "group": "Oceania",
+      "fraction": null,
+      "low": null,
+      "high": null
+     }
+    ],
+    "not_painted": [
+     {
+      "code": "chr21",
+      "group": ".",
+      "fraction": null,
+      "low": null,
+      "high": null
+     }
+    ],
+    "min_references": 10,
+    "painting_png": "iVBORw0KGgpub3QgYSByZWFsIHBpY3R1cmUA/w==",
+    "legend": [
+     {
+      "code": "AFR",
+      "group": "Africa",
+      "colour": "#e69f00"
+     },
+     {
+      "code": "WEA",
+      "group": "West Eurasia (Europe, Middle East, North Africa)",
+      "colour": "#0072b2"
+     },
+     {
+      "code": "CSA",
+      "group": "Central and South Asia",
+      "colour": "#009e73"
+     },
+     {
+      "code": "EAS",
+      "group": "East Asia",
+      "colour": "#cc79a7"
+     },
+     {
+      "code": "AMR",
+      "group": "Americas (Native American)",
+      "colour": "#d55e00"
+     },
+     {
+      "code": "OCE",
+      "group": "Oceania",
+      "colour": "#56b4e9"
+     }
+    ]
+   }
+  },
+  "manta": {
+   "title": "Structural variants (Manta)",
+   "step": "04",
+   "state": "ok",
+   "source": "manta/results/variants/diploidSV.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "total": 3,
+    "pass": 1
+   }
+  },
+  "delly": {
+   "title": "Structural variants (Delly)",
+   "step": "19",
+   "state": "ok",
+   "source": "delly/S_sv.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "total": 1,
+    "pass": 1
+   }
+  },
+  "cnvpytor": {
+   "title": "Copy number (CNVpytor)",
+   "step": "18",
+   "state": "ok",
+   "source": "cnvpytor/S_cnvs.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "total": 1,
+    "deletions": 1,
+    "duplications": 0,
+    "significant": 1,
+    "significant_filtered": 1,
+    "filtered_chry": 0,
+    "dropped": {
+     "q0": 0,
+     "gap": 0,
+     "band": 0
+    },
+    "declared_sex": null
+   }
+  },
+  "sv_consensus": {
+   "title": "SV consensus merge",
+   "step": "22",
+   "state": "ok",
+   "source": "sv_merged/S_sv_consensus.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "consensus": 3
+   }
+  },
+  "annotsv": {
+   "title": "Structural variants, class 4 and 5 (AnnotSV)",
+   "step": "05",
+   "state": "ok",
+   "source": "annotsv/S_sv_class4_5_checked.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "count": 3,
+    "rows": [
+     {
+      "sv": "1:1100-5100",
+      "type": "DEL",
+      "gt": "0/1",
+      "ps": "77",
+      "length": "-4000",
+      "acmg_class": "5",
+      "genes": [
+       "GENE1",
+       "GENE2"
+      ],
+      "caller": "manta",
+      "support": null,
+      "support_callers": [],
+      "exon_edge": "yes",
+      "exon_edge_detail": "exon 2",
+      "population_af": 0.001,
+      "population_source": "gnomAD",
+      "common": false,
+      "annotsv_class": "5",
+      "rule": "",
+      "rule_detail": ""
+     },
+     {
+      "sv": "2:150-880",
+      "type": "DUP",
+      "gt": "1/1",
+      "ps": null,
+      "length": "730",
+      "acmg_class": "4",
+      "genes": [
+       "GENE3"
+      ],
+      "caller": "delly",
+      "support": null,
+      "support_callers": [],
+      "exon_edge": "no",
+      "exon_edge_detail": "",
+      "population_af": null,
+      "population_source": "",
+      "common": false,
+      "annotsv_class": "4",
+      "rule": "",
+      "rule_detail": ""
+     },
+     {
+      "sv": "9:1-100",
+      "type": "DEL",
+      "gt": null,
+      "ps": null,
+      "length": "99",
+      "acmg_class": "4",
+      "genes": [
+       "G9"
+      ],
+      "caller": "tiddit",
+      "support": null,
+      "support_callers": [],
+      "exon_edge": "no",
+      "exon_edge_detail": "",
+      "population_af": 0.2,
+      "population_source": "gnomAD",
+      "common": true,
+      "annotsv_class": "4",
+      "rule": "",
+      "rule_detail": ""
+     }
+    ],
+    "downgraded": [
+     {
+      "sv": "7:1-100",
+      "type": "INV",
+      "gt": "0/1",
+      "ps": null,
+      "length": "99",
+      "acmg_class": "3",
+      "genes": [],
+      "caller": "manta",
+      "support": null,
+      "support_callers": [],
+      "exon_edge": "not checked",
+      "exon_edge_detail": "",
+      "population_af": null,
+      "population_source": "gnomAD",
+      "common": true,
+      "annotsv_class": "4",
+      "rule": "mhc",
+      "rule_detail": "the MHC"
+     }
+    ],
+    "consensus": "sv_merged/S_sv_consensus.vcf.gz",
+    "consensus_note": null,
+    "single_caller": 0,
+    "exon_edge": 1,
+    "exon_edge_checked": true,
+    "common": 1
+   }
+  },
+  "expansions": {
+   "title": "Repeat expansions (ExpansionHunter)",
+   "step": "09",
+   "state": "ok",
+   "source": "expansion_hunter/S_eh_stranger.vcf",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "records": 9,
+    "key_loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "17/20"
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "58"
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": "."
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "30/37"
+     },
+     {
+      "locus": "DMPK",
+      "repeat_count": "not in output"
+     }
+    ],
+    "loci": [
+     {
+      "locus": "HTT",
+      "repeat_count": "17/20",
+      "status": "normal,normal",
+      "normal_max": "26",
+      "pathologic_min": "40",
+      "support": "SPANNING/SPANNING",
+      "adsp": "10/12",
+      "ci": "17-17/20-20",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "FMR1",
+      "repeat_count": "58",
+      "status": "premutation",
+      "normal_max": "44",
+      "pathologic_min": "200",
+      "support": "SPANNING",
+      "adsp": "1",
+      "ci": "55-60",
+      "sizing": "low_confidence",
+      "allele_sizing": "low_confidence",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "motif": {
+       "verdict": "interrupted",
+       "note": "AGG",
+       "dominant_motif": "CGG",
+       "dominant_class": ".",
+       "dominant_share": ".",
+       "motif_shares": ".",
+       "repeat_reads": "."
+      }
+     },
+     {
+      "locus": "C9ORF72",
+      "repeat_count": ".",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": ".",
+      "adsp": ".",
+      "ci": ".",
+      "sizing": "no_call",
+      "allele_sizing": "no_call",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "ATXN1",
+      "repeat_count": "30/37",
+      "status": "normal",
+      "normal_max": "35",
+      "pathologic_min": "39",
+      "support": "SPANNING/FLANKING",
+      "adsp": "4/0",
+      "ci": "30-30/35-40",
+      "sizing": "flanking_only",
+      "allele_sizing": "sized/flanking_only",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "CFTR_T",
+      "repeat_count": "5/7",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "8/9",
+      "ci": "5-5/7-7",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "CFTR_TG",
+      "repeat_count": "11/12",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "8/9",
+      "ci": "11-11/12-12",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     },
+     {
+      "locus": "EXTRA1",
+      "repeat_count": "8/9",
+      "status": "",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING",
+      "adsp": "1",
+      "ci": "8-8/9-9",
+      "sizing": "low_confidence",
+      "allele_sizing": "low_confidence/low_confidence",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "not_graded": "no published range"
+     },
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "normal_max": "",
+      "pathologic_min": "400",
+      "support": "INREPEAT/INREPEAT",
+      "adsp": "0/0",
+      "ci": "400-700/500-800",
+      "sizing": "in_repeat",
+      "allele_sizing": "in_repeat/in_repeat",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": "",
+      "rfc1_motif": {
+       "verdict": "pathogenic",
+       "note": "AAGGG dominant",
+       "dominant_motif": "AAGGG",
+       "dominant_class": "pathogenic",
+       "dominant_share": "0.9",
+       "motif_shares": "AAGGG:0.9",
+       "repeat_reads": "40"
+      }
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat_count": "7/8",
+      "status": "normal",
+      "normal_max": "",
+      "pathologic_min": "",
+      "support": "SPANNING/SPANNING",
+      "adsp": "5/6",
+      "ci": "7-7/8-8",
+      "sizing": "sized",
+      "allele_sizing": "sized/sized",
+      "zone": "",
+      "zone_label": "",
+      "zone_citation": ""
+     }
+    ],
+    "stranger": true,
+    "stranger_outdated": false,
+    "unsized": [
+     "FMR1",
+     "C9ORF72",
+     "ATXN1",
+     "EXTRA1",
+     "RFC1"
+    ],
+    "intermediate": [],
+    "readings": [
+     {
+      "locus": "CFTR",
+      "repeat": "intron 9 (legacy IVS8) TG and poly-T tract",
+      "source": "Deignan et al. 2020, PMID 32404922",
+      "status": "read",
+      "genotype": "TG11/TG12 5T/7T",
+      "pairings": [
+       "TG11-5T/TG12-7T",
+       "TG12-5T/TG11-7T"
+      ],
+      "tg": [
+       11,
+       12
+      ],
+      "poly_t": [
+       5,
+       7
+      ],
+      "five_t": true,
+      "phase": "unknown",
+      "r117h": "G/A",
+      "reading": "5T: 1 copy with the 5T poly-T tract, TG11 or TG12 on the 5T copy, not told by the counts (TG11-5T/TG12-7T or TG12-5T/TG11-7T). 5T lowers the splicing of exon 10 and is a variable-penetrance allele: with TG12 or TG13 on the same copy it more often causes CBAVD or another CFTR-related disorder when the other copy carries a CF-causing variant. One R117H copy and one 5T copy: phase unknown. R117H lies 17.6 kb from the tract, farther than a read pair spans, so whether they share a copy (in cis, a CF-causing allele of variable penetrance) or not (in trans) is not read; testing a parent tells them apart."
+     },
+     {
+      "locus": "UGT1A1",
+      "repeat": "promoter TA repeat",
+      "source": "Gammal et al. 2016, PMID 26417955",
+      "status": "read",
+      "genotype": "*1/*28",
+      "ta_units": [
+       7,
+       8
+      ],
+      "pharmcat": "*1/*28",
+      "agreement": "agrees",
+      "reading": "*1/*28 (TA6/TA7, 7/8 TA units as ExpansionHunter counts them): 1 decreased-function allele (*28 and *37 are decreased function). PharmCAT (step 7) called *1/*28: the same number of *28 and *37 copies."
+     },
+     {
+      "locus": "SLC6A4",
+      "repeat": "5-HTTLPR promoter length polymorphism",
+      "status": "not_tested",
+      "genotype": ".",
+      "reading": "not tested by any step. CPIC's 2023 SSRI guideline (Bousman et al. 2023, PMID 37032427) found that the data on SLC6A4 do not support its use in antidepressant prescribing, so a result would carry no recommendation.",
+      "source": "Bousman et al. 2023, PMID 37032427"
+     }
+    ],
+    "flagged": [
+     {
+      "locus": "FMR1",
+      "repeat_count": "58",
+      "status": "premutation",
+      "sizing": "low_confidence",
+      "motif": {
+       "verdict": "interrupted",
+       "note": "AGG",
+       "dominant_motif": "CGG",
+       "dominant_class": ".",
+       "dominant_share": ".",
+       "motif_shares": ".",
+       "repeat_reads": "."
+      }
+     },
+     {
+      "locus": "RFC1",
+      "repeat_count": "500/600",
+      "status": "full_mutation",
+      "sizing": "in_repeat",
+      "rfc1_motif": {
+       "verdict": "pathogenic",
+       "note": "AAGGG dominant",
+       "dominant_motif": "AAGGG",
+       "dominant_class": "pathogenic",
+       "dominant_share": "0.9",
+       "motif_shares": "AAGGG:0.9",
+       "repeat_reads": "40"
+      }
+     }
+    ],
+    "no_status": 3,
+    "not_graded": {
+     "EXTRA1": "no published range"
+    }
+   }
+  },
+  "telomere": {
+   "title": "Telomere content (TelomereHunter)",
+   "step": "10",
+   "state": "ok",
+   "source": "telomere/S/S/S_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "tel_content": "1.5",
+    "intratelomeric_reads": 40,
+    "read_check": "depth unknown (no total_reads or read_lengths in the summary): not checked"
+   }
+  },
+  "roh": {
+   "title": "Runs of homozygosity",
+   "step": "11",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "S_roh.txt has a run of length nan",
+   "data": {}
+  },
+  "haplogroup": {
+   "title": "Mitochondrial haplogroup",
+   "step": "12",
+   "state": "ok",
+   "source": "mito/S_haplogroup.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "haplogroup": "H5a1",
+    "explore": [
+     {
+      "name": "FamilyTreeDNA Discover (free, no upload)",
+      "url": "https://discover.familytreedna.com/mtdna/H5a1"
+     },
+     {
+      "name": "YFull MTree",
+      "url": "https://www.yfull.com/mtree/H5a1/"
+     },
+     {
+      "name": "More routes, and the files to share",
+      "url": "https://github.com/GeiserX/OwnGenome/blob/main/docs/12-mito-haplogroup.md#explore-your-branch-further"
+     }
+    ],
+    "contamination_status": "NO",
+    "contamination_level": "."
+   }
+  },
+  "y_haplogroup": {
+   "title": "Y-chromosome haplogroup (Yleaf)",
+   "step": "37",
+   "state": "ok",
+   "source": "y_haplogroup/S_y_haplogroup.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "haplogroup": "R1b1a1b1a1a2*(xR-L21)",
+    "valid_markers": "40",
+    "qc_score": "0.98",
+    "explore": [
+     {
+      "name": "FamilyTreeDNA Discover (free, no upload)",
+      "url": "https://discover.familytreedna.com/y-dna/R1b1a1b1a1a2"
+     },
+     {
+      "name": "YFull YTree",
+      "url": "https://www.yfull.com/tree/R1b1a1b1a1a2/"
+     },
+     {
+      "name": "More routes, and the files to share",
+      "url": "https://github.com/GeiserX/OwnGenome/blob/main/docs/37-y-haplogroup.md#explore-your-branch-further"
+     }
+    ]
+   }
+  },
+  "y_tree": {
+   "title": "Y placement on the current public tree",
+   "step": "37",
+   "state": "ok",
+   "source": "y_haplogroup/S_y_tree.txt",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "haplogroup": "R-Z2105",
+    "level": "12",
+    "tree": "ISOGG 2026",
+    "path_derived": "30",
+    "path_ancestral": ".",
+    "path_no_call": ".",
+    "ancestral_in_terminal": ".",
+    "outvoted_ancestral": ".",
+    "snps_called": "400",
+    "min_depth": ".",
+    "explore": [
+     {
+      "name": "FamilyTreeDNA Discover (free, no upload)",
+      "url": "https://discover.familytreedna.com/y-dna/R-Z2105"
+     },
+     {
+      "name": "YFull YTree",
+      "url": "https://www.yfull.com/tree/R-Z2105/"
+     },
+     {
+      "name": "More routes, and the files to share",
+      "url": "https://github.com/GeiserX/OwnGenome/blob/main/docs/37-y-haplogroup.md#explore-your-branch-further"
+     }
+    ],
+    "path": [
+     {
+      "Level": "1",
+      "Branch": "A0-T",
+      "SNPs": "M42",
+      "On_tables": "",
+      "Derived": "1",
+      "Ancestral": "",
+      "No_call": "",
+      "Ancestral_SNPs": ""
+     },
+     {
+      "Level": "2",
+      "Branch": "R",
+      "SNPs": "",
+      "On_tables": "",
+      "Derived": "",
+      "Ancestral": "",
+      "No_call": "",
+      "Ancestral_SNPs": ""
+     }
+    ]
+   }
+  },
+  "y_str": {
+   "title": "Y-STR markers (HipSTR)",
+   "step": "45",
+   "state": "ok",
+   "source": "y_str/S_y_str.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "markers": [
+     {
+      "order": "1",
+      "panel": "Y-12",
+      "marker": "DYS393",
+      "count": "13",
+      "confidence": "high"
+     },
+     {
+      "order": "2",
+      "panel": "Y-12",
+      "marker": "DYS390",
+      "count": "24",
+      "confidence": "low"
+     },
+     {
+      "order": "3",
+      "panel": "Y-12",
+      "marker": "DYS19",
+      "count": "",
+      "confidence": "no call"
+     },
+     {
+      "order": "4",
+      "panel": "Y-25",
+      "marker": "DYS464",
+      "count": ".",
+      "confidence": "not callable"
+     }
+    ],
+    "high": 1,
+    "low": 1,
+    "no_call": 1,
+    "not_callable": 1
+   }
+  },
+  "consumer_export": {
+   "title": "Raw-data export (23andMe v5 layout)",
+   "step": "40",
+   "state": "ok",
+   "source": "consumer_export/S_consumer_export.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "sites": 600000,
+    "called": 590000,
+    "no_call": 10000,
+    "from_reference_blocks": 0,
+    "template_sites": "631000",
+    "file_23andme": "S_23andme.txt",
+    "file_ancestrydna": ".",
+    "no_call_reasons": {
+     "low depth": 9000,
+     "filtered": 1000
+    }
+   }
+  },
+  "bloodtype": {
+   "title": "Blood groups (predicted)",
+   "step": "41",
+   "state": "ok",
+   "source": "bloodtype/S_bloodtype.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "systems": [
+     {
+      "system": "ABO",
+      "phenotype": "A",
+      "genotype": "A1/O1",
+      "confidence": "high"
+     },
+     {
+      "system": "RhD",
+      "phenotype": "RhD positive",
+      "genotype": ".",
+      "confidence": "medium"
+     },
+     {
+      "system": "Kell",
+      "phenotype": ".",
+      "genotype": "K-/k+",
+      "confidence": "."
+     }
+    ],
+    "abo": "A",
+    "rhd": "RhD positive"
+   }
+  },
+  "lpa": {
+   "title": "Lp(a): LPA KIV-2 repeat count",
+   "step": "46",
+   "state": "ok",
+   "source": "lpa/S_lpa_kiv2.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "status": "estimated",
+    "kiv2_copies": "35",
+    "ci95_low": "30",
+    "ci95_high": "40",
+    "class": "low",
+    "kiv2_depth": ".",
+    "flank_depth": ".",
+    "mapq0_share": ".",
+    "message": "ok",
+    "advice": ".",
+    "null_allele": {
+     "marker": "LPA KIV-2 4925G>A",
+     "rsid": "rs1484919544",
+     "status": "present",
+     "alt_reads": "4",
+     "depth": "200",
+     "fraction": ".",
+     "copies": ".",
+     "message": "."
+    },
+    "variants": [
+     {
+      "rsid": "rs10455872",
+      "genotype": "A/G",
+      "status": "called",
+      "risk_alleles": 1
+     },
+     {
+      "rsid": "rs3798220",
+      "genotype": "T|C",
+      "status": "called",
+      "risk_alleles": 1
+     }
+    ],
+    "risk_alleles": 2,
+    "flag": "high",
+    "flag_text": "Genetic signs of a high Lp(a): 2 risk alleles at rs10455872 and rs3798220 and a low KIV-2 repeat count. Measure Lp(a) in blood."
+   }
+  },
+  "vntyper": {
+   "title": "MUC1 VNTR frameshifts (VNtyper)",
+   "step": "52",
+   "state": "ok",
+   "source": "vntyper/S_vntyper.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "status": "negative",
+    "confidence": ".",
+    "variant": ".",
+    "flag": "none",
+    "alt_depth": ".",
+    "vntr_mean_depth": ".",
+    "coverage_qc": ".",
+    "sensitivity": ".",
+    "message": ".",
+    "advice": "none"
+   }
+  },
+  "locityper": {
+   "title": "Locityper second opinion at hard loci",
+   "step": "53",
+   "state": "ok",
+   "source": "locityper/S_locityper.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "loci": [
+     {
+      "locus": "HLA-DRB1",
+      "region": "chr6:1-2",
+      "status": "called",
+      "genotype": "h1,h2",
+      "haplotype_1": "h1",
+      "haplotype_2": "h2",
+      "quality": "30",
+      "total_reads": "100",
+      "unexplained_reads": "1",
+      "weighted_distance": "0.1",
+      "warnings": ".",
+      "filter": "pass",
+      "reason": ".",
+      "primary": "T1K (step 08) did not run"
+     },
+     {
+      "locus": "KIR",
+      "region": "chr19:1-2",
+      "status": "called",
+      "genotype": "k1,k2",
+      "haplotype_1": "k1",
+      "haplotype_2": "k2",
+      "quality": "20",
+      "total_reads": "100",
+      "unexplained_reads": "1",
+      "weighted_distance": "0.1",
+      "warnings": ".",
+      "filter": "pass",
+      "reason": ".",
+      "primary": "T1K KIR pass (step 08): 1 genes typed"
+     },
+     {
+      "locus": "CYP2D6",
+      "region": "chr22:1-2",
+      "status": "no call",
+      "genotype": ".",
+      "haplotype_1": ".",
+      "haplotype_2": ".",
+      "quality": ".",
+      "total_reads": ".",
+      "unexplained_reads": ".",
+      "weighted_distance": ".",
+      "warnings": "low",
+      "filter": "fail",
+      "reason": "low depth",
+      "primary": "pypgx (step 32) and Cyrius (step 21) did not run"
+     },
+     {
+      "locus": "FCGR",
+      "region": "chr1:1-2",
+      "status": "called",
+      "genotype": "f",
+      "haplotype_1": "f",
+      "haplotype_2": "f",
+      "quality": "9",
+      "total_reads": "1",
+      "unexplained_reads": "1",
+      "weighted_distance": "1",
+      "warnings": ".",
+      "filter": "fail",
+      "reason": "q",
+      "primary": "no other step calls FCGR"
+     },
+     {
+      "locus": "ZZZ",
+      "region": "chr1:1-2",
+      "status": "called",
+      "genotype": "z",
+      "haplotype_1": "z",
+      "haplotype_2": "z",
+      "quality": "9",
+      "total_reads": "1",
+      "unexplained_reads": "1",
+      "weighted_distance": "1",
+      "warnings": ".",
+      "filter": "pass",
+      "reason": ".",
+      "primary": "no other step calls this locus"
+     }
+    ],
+    "called": 4,
+    "passed": 3
+   }
+  },
+  "mito": {
+   "title": "Mitochondrial variants",
+   "step": "20",
+   "state": "ok",
+   "source": "mito/S_chrM_filtered.vcf.gz",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "confirmed": [
+     {
+      "hgvs": "m.3243A>G",
+      "gene": "MT-TL1",
+      "disease": "MELAS (mitochondrial encephalomyopathy, lactic acidosis and stroke-like episodes); maternally inherited diabetes and deafness",
+      "clinvar_id": "9589",
+      "pmids": "2102678",
+      "note": "Usually heteroplasmic; the level differs between tissues and is often lower in blood than in muscle or urine.",
+      "pos": 3243,
+      "filter": "PASS",
+      "af": "nan"
+     }
+    ],
+    "deletions": {
+     "source": "mito/S_chrM_deletions.tsv",
+     "total": 3,
+     "listed": [
+      {
+       "bkp5": 8469,
+       "bkp3": 13447,
+       "length": 4977,
+       "level_pct": NaN,
+       "known": {
+        "hgvs": "m.8483_13459del",
+        "gene": "MT-ATP6,MT-ATP8,MT-CO3,MT-ND3,MT-ND4,MT-ND4L,MT-ND5,MT-TG,MT-TH,MT-TL2",
+        "disease": "The common 4977 bp deletion, between two 13 bp direct repeats: Kearns-Sayre syndrome, chronic progressive external ophthalmoplegia (CPEO), Pearson syndrome",
+        "clinvar_id": "430680",
+        "pmids": "2711184;2541333;20301382",
+        "note": "A single large deletion is heteroplasmic and usually arises new rather than inherited; in Kearns-Sayre syndrome and CPEO it is often found in muscle and not in blood, in Pearson syndrome in blood."
+       }
+      }
+     ],
+     "list_floor_pct": 1.0
+    },
+    "copies": {
+     "status": "estimated",
+     "reason": null,
+     "chrm_reads": "100000",
+     "chrm_length": null,
+     "autosomal_reads": null,
+     "autosomal_length": null,
+     "depth_ratio": null,
+     "mtdna_copies": "250"
+    },
+    "pass": 1,
+    "heteroplasmic": 0,
+    "heteroplasmic_sites": [],
+    "heteroplasmy_floor": 0.05,
+    "polyc_heteroplasmic": [],
+    "polyc_tracts": [
+     "m.303-315",
+     "m.16184-16193"
+    ],
+    "annotation": {
+     "source": "mito/S_chrM_annotated.tsv",
+     "clinvar": "2026-10-01",
+     "gnomad": "not annotated: no file",
+     "variants": [
+      {
+       "pos": "3243",
+       "ref": "A",
+       "alt": "G",
+       "af": "0.40",
+       "clinvar_id": "9589",
+       "clinvar_significance": "Pathogenic",
+       "clinvar_review": "criteria",
+       "clinvar_condition": "MELAS",
+       "gnomad_af_hom": "0",
+       "gnomad_af_het": "0",
+       "gnomad_max_hl": "0",
+       "polyc": false,
+       "origin_edge": false,
+       "low_af": false
+      },
+      {
+       "pos": "302",
+       "ref": "A",
+       "alt": "AC",
+       "af": "0.3",
+       "clinvar_id": ".",
+       "clinvar_significance": ".",
+       "clinvar_review": ".",
+       "clinvar_condition": ".",
+       "gnomad_af_hom": ".",
+       "gnomad_af_het": ".",
+       "gnomad_max_hl": ".",
+       "polyc": true,
+       "origin_edge": true,
+       "low_af": false
+      },
+      {
+       "pos": "500",
+       "ref": "C",
+       "alt": "T",
+       "af": "0.99",
+       "clinvar_id": "2",
+       "clinvar_significance": "Uncertain_significance",
+       "clinvar_review": ".",
+       "clinvar_condition": ".",
+       "gnomad_af_hom": ".",
+       "gnomad_af_het": ".",
+       "gnomad_max_hl": ".",
+       "polyc": false,
+       "origin_edge": true,
+       "low_af": false
+      }
+     ],
+     "clinvar_plp": 1
+    },
+    "heteroplasmic_origin_edge": 0,
+    "heteroplasmic_low_af": 0,
+    "origin_edge_regions": [
+     "m.1-500",
+     "m.16000-16569"
+    ],
+    "low_af_ceiling": 0.1
+   }
+  },
+  "traits": {
+   "title": "Traits panel",
+   "step": "42",
+   "state": "ok",
+   "source": "traits/S_traits.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "rows": [
+     {
+      "rsid": "rs10455872",
+      "gene": "LPA",
+      "trait": "Lp(a)",
+      "genotype": "A/G",
+      "status": "called",
+      "reading": "one copy",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rsid": "rs3798220",
+      "gene": "LPA",
+      "trait": "Lp(a)",
+      "genotype": "T|C",
+      "status": "called",
+      "reading": "one copy",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rsid": "rs78655421",
+      "gene": "CFTR",
+      "trait": "R117H",
+      "genotype": "G/A",
+      "status": "called",
+      "reading": "one copy",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rsid": "rs1",
+      "gene": "X",
+      "trait": "x",
+      "genotype": ".",
+      "status": "not_covered",
+      "reading": "no reads",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rsid": "rs2",
+      "gene": "X",
+      "trait": "x",
+      "genotype": "C/C",
+      "status": "other_allele",
+      "reading": "other",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rsid": "rs3",
+      "gene": "X",
+      "trait": "x",
+      "genotype": "C/T",
+      "status": "low_gq",
+      "reading": "A low-quality call at this position (genotype quality 5, below 20): not read; check the reads.",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     }
+    ],
+    "apoe": [
+     {
+      "rsid": "rs429358",
+      "gene": "APOE",
+      "trait": "APOE",
+      "genotype": "T/C",
+      "status": "called",
+      "reading": "e3/e4",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     }
+    ],
+    "called": 3,
+    "not_covered": 1,
+    "other_allele": 1,
+    "low_gq": 1,
+    "rules": [
+     {
+      "rule": "TAS2R38",
+      "gene": "TAS2R38",
+      "trait": "bitter",
+      "rsids": "rs1",
+      "chrom": "chr7",
+      "pos": "1",
+      "genotypes": "C/G",
+      "gq": "40",
+      "phase": "unphased",
+      "result": "PAV/AVI",
+      "status": "called",
+      "reading": "taster",
+      "ancestry": "all",
+      "note": ".",
+      "pmids": "1"
+     },
+     {
+      "rule": "APOL1",
+      "gene": "APOL1",
+      "trait": "kidney",
+      "rsids": "rs73885319,rs60910145",
+      "chrom": "chr22",
+      "pos": "1,2",
+      "genotypes": "A/G,T/T",
+      "gq": "40",
+      "phase": ".",
+      "result": "G0/G1",
+      "status": "called",
+      "reading": "one G1",
+      "ancestry": "African",
+      "note": ".",
+      "pmids": "20647424",
+      "g2": {
+       "status": "called",
+       "copies": 1,
+       "gq": "42",
+       "text": "G2 (rs71785313): 1 copy of the deletion called.",
+       "source": "vcf/S.vcf.gz",
+       "result": "G1/G2",
+       "reading": "Two APOL1 risk copies (G1/G2): the high-risk genotype of Genovese 2010, which went with focal segmental glomerulosclerosis and hypertension-attributed kidney failure in African Americans. A risk factor, not a diagnosis."
+      }
+     }
+    ]
+   }
+  },
+  "archaic": {
+   "title": "Archaic ancestry (IBDmix)",
+   "step": "43",
+   "state": "ok",
+   "source": "archaic/S_archaic.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "population": "CEU",
+    "longest": [
+     "a",
+     "b",
+     "j"
+    ],
+    "neanderthal_segments": 120,
+    "neanderthal_bp": 50000000,
+    "denisovan_segments": 3,
+    "denisovan_bp": 200000,
+    "analysed_bp": 2500000000,
+    "neanderthal_percent": "2.00",
+    "denisovan_percent": "0.01"
+   }
+  },
+  "ancient": {
+   "title": "Ancient populations (AADR PCA)",
+   "step": "44",
+   "state": "ok",
+   "source": "ancient/S_ancient.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "nearest": [
+     {
+      "rank": "1",
+      "group": "Spain_BA",
+      "n": "10",
+      "distance": "0.01",
+      "dates": "2000 BCE",
+      "country": "Spain",
+      "locality": "x"
+     },
+     {
+      "rank": "2",
+      "group": "France_N",
+      "n": "5",
+      "distance": "0.02",
+      "dates": "",
+      "country": "France",
+      "locality": ""
+     }
+    ],
+    "release": "v62",
+    "sites_used": "500000",
+    "panel_sites": ".",
+    "ancient_people": ".",
+    "ancient_groups": ".",
+    "present_day_people": ".",
+    "plot_svg": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPgo="
+   }
+  },
+  "viral": {
+   "title": "Viral DNA in the unmapped reads",
+   "step": "47",
+   "state": "ok",
+   "source": "viral/S_viral.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "hhv6": "inherited integrated HHV-6B likely",
+    "human_depth": "30",
+    "found": [
+     {
+      "virus": "phiX",
+      "accession": "NC_001422",
+      "reads": "500",
+      "breadth": "1.0",
+      "relative_depth": ".",
+      "copies_per_cell": ".",
+      "call": "spike-in",
+      "human_depth": "30",
+      "note": "."
+     },
+     {
+      "virus": "HHV-6B",
+      "accession": "NC_000898",
+      "reads": "2000",
+      "breadth": "0.99",
+      "relative_depth": "1.0",
+      "copies_per_cell": "1.0",
+      "call": "inherited integrated HHV-6 likely",
+      "human_depth": "30",
+      "note": "."
+     }
+    ],
+    "genomes": 3
+   }
+  },
+  "exomiser": {
+   "title": "Symptom-driven ranking (Exomiser)",
+   "step": "48",
+   "state": "ok",
+   "source": "exomiser/S_exomiser_top.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "terms": [
+     {
+      "id": "HP:0001250",
+      "label": "Seizure"
+     },
+     {
+      "id": "HP:0000001",
+      "label": null
+     }
+    ],
+    "genes": [
+     {
+      "rank": "1",
+      "gene": "GENE1",
+      "moi": "AD",
+      "exomiser_score": "0.9",
+      "phenotype_score": "0.8",
+      "variants": [
+       {
+        "variant": "chr1-1-A-G",
+        "genotype": "0/1",
+        "consequence": "missense",
+        "hgvs": "p.X",
+        "acmg": "LP",
+        "disease": "D1"
+       },
+       {
+        "variant": "chr1-2-A-G",
+        "genotype": "0/1",
+        "consequence": "stop",
+        "hgvs": "p.Y",
+        "acmg": "P",
+        "disease": "D1"
+       }
+      ]
+     },
+     {
+      "rank": "2",
+      "gene": "GENE2",
+      "moi": "AR",
+      "exomiser_score": "0.5",
+      "phenotype_score": "0.4",
+      "variants": [
+       {
+        "variant": "chr2-1-A-G",
+        "genotype": "1/1",
+        "consequence": "splice",
+        "hgvs": "c.1",
+        "acmg": "VUS",
+        "disease": "D2"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "chip": {
+   "title": "Clonal haematopoiesis (CHIP)",
+   "step": "49",
+   "state": "unreadable",
+   "source": null,
+   "file_date": null,
+   "note": "ValueError: cannot convert float NaN to integer",
+   "data": {}
+  },
+  "mei": {
+   "title": "Mobile element insertions (MEGAnE)",
+   "step": "50",
+   "state": "ok",
+   "source": "mei/S_mei_sites.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "calls": 3,
+    "by_element": {
+     "ALU": 2,
+     "L1": 1
+    },
+    "sites": [
+     {
+      "gene": "FKTN",
+      "element": "SVA",
+      "condition": "Fukuyama",
+      "inheritance": "AR",
+      "status": "callable",
+      "mean_depth": "30",
+      "call": "not seen"
+     },
+     {
+      "gene": "TAF1",
+      "element": "SVA",
+      "condition": "XDP",
+      "inheritance": "XL",
+      "status": "not callable",
+      "mean_depth": "2",
+      "call": "."
+     }
+    ]
+   }
+  },
+  "mosaic": {
+   "title": "Mosaic chromosomal alterations (MoChA)",
+   "step": "51",
+   "state": "ok",
+   "source": "mosaic/S_mocha_summary.tsv",
+   "file_date": "2021-03-04 05:06 UTC",
+   "note": null,
+   "data": {
+    "status": "assessed",
+    "message": ".",
+    "depth": "30",
+    "het_sites": ".",
+    "het_per_10mb": ".",
+    "chromosomes": ".",
+    "floor_read": ".",
+    "floor_min": ".",
+    "floor": "0.05",
+    "calls_mocha": ".",
+    "calls_reported": "1",
+    "phasing": ".",
+    "calls": [
+     {
+      "chrom": "chr20",
+      "start": "1",
+      "end": "2",
+      "length_mb": "10",
+      "arms": "q",
+      "type": "Loss",
+      "cell_fraction": "0.1",
+      "n_hets": "50",
+      "lod_baf_phase": "20",
+      "reported": "yes",
+      "reason": "."
+     }
+    ],
+    "not_reported": 1
+   }
+  }
+ }
+}

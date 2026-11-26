@@ -127,6 +127,7 @@ pub enum Rerun {
 /// `LD_PRELOAD` or `DYLD_*` to the `bash` it starts.
 pub const SWITCHES: &[&str] = &[
     "GENOME_DIR",
+    "INPUT",
     "SKIP_VALIDATION",
     "THREADS",
     "SKIP_TRIM",
@@ -136,7 +137,9 @@ pub const SWITCHES: &[&str] = &[
     "TOOLS",
     "KIR",
     "HLA_QC",
+    "PRS_ACADEMIC",
     "HPO",
+    "CPSR_SECONDARY_FINDINGS",
     "REF_FASTA",
     "EH_CATALOG",
     "MANTA_CALL_REGIONS",
@@ -152,14 +155,17 @@ pub const SWITCHES: &[&str] = &[
     "MEGANE_KMERS",
     "MOCHA_DATA",
     "GRIDSS",
+    "TIDDIT",
     "IMPUTATION",
     "SOMATIC",
     "EXTRA_CALLERS",
     "BENCHMARK",
     "FAMILIES",
     "OWNGENOME_LIVE_URL",
+    "OWNGENOME_LIVE_STATE_DIR",
     "LOCITYPER_DATA",
     "LOCITYPER_BG_REGION",
+    "EVERYTHING",
     "NXF_VER",
     "NXF_WORK",
     "NXF_HOME",
@@ -445,6 +451,8 @@ pub fn rerun(
     append_log(log, &[[&started, "rerun-start", "", "", &cmd]])?;
     let mut c = Command::new("bash");
     c.arg(&call.script).args(&call.args).current_dir(&call.dir);
+    // Run logs older than this switch use automatic input selection.
+    c.env_remove("INPUT");
     for name in known(&switches) {
         c.env_remove(name);
     }

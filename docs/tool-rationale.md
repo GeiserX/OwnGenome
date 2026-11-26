@@ -66,7 +66,7 @@ The alignment is the second longest step from FASTQ, after DeepVariant. How much
 Strelka2 (`scripts/03c-strelka2-germline.sh`, output to `vcf_strelka2/`) is a fourth option for SNV and indel calling. Despite sometimes being grouped with SV tools because it ships alongside Manta, Strelka2's germline mode is a **small variant caller** — it calls SNVs and indels up to ~49 bp, not structural variants. See [Kim et al. 2018](https://doi.org/10.1038/s41592-018-0051-x).
 
 Key characteristics:
-- **Fast:** 72 min on 30X WGS with 8 threads in one historical run ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)), the fastest of the four callers
+- **Fast:** 72 min on 30X WGS with 8 threads in one historical run, the fastest of the four callers
 - **Good accuracy:** Comparable to GATK for SNPs and indels
 - **BWA-MEM2 recommended:** Strelka2's scoring model relies on XS (suboptimal alignment score) tags. minimap2 does not produce these, causing reduced SNP precision. Use BWA-MEM2 alignments for best results.
 - **Complements Manta:** In Illumina's intended workflow, Manta detects SVs and Strelka2 detects small variants — they are complementary, not alternatives to each other
@@ -79,12 +79,12 @@ DeepVariant is the default because:
 2. **Low false positive rate.** Its deep learning model was trained on real sequencing data and recognizes systematic artifacts (strand bias, mapping artifacts) that rule-based callers miss.
 3. **No extra reference files.** Only needs the FASTA and FAI -- no sequence dictionary (.dict) required.
 
-The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min in three measured 30-40x runs, most of a default run ([runtime](hardware-requirements.md#runtime-per-step)). The GATK and FreeBayes figures in the table come from one historical run on other versions and hardware ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)), so they do not compare directly.
+The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min in three measured 30-40x runs, most of a default run ([runtime](hardware-requirements.md#runtime-per-step)). The GATK and FreeBayes figures in the table come from one historical run on other versions and hardware, so they do not compare directly.
 
 ### GATK HaplotypeCaller: when to use it
 
-- **Clinical reproducibility.** GATK HaplotypeCaller is the gold standard in clinical genetics labs and CLIA-certified pipelines. If you need to compare your calls with a clinical lab report, running GATK alongside DeepVariant helps identify discrepancies.
-- **Cohort calling.** GATK's GVCF mode (`-ERC GVCF`) produces per-sample genomic VCFs that can be joint-genotyped across a cohort with `GenomicsDBImport` + `GenotypeGVCFs`. This is the standard workflow for family studies and population-scale projects.
+- **Closer to a clinical lab's calls.** Many clinical genetics labs and CLIA-certified pipelines call with GATK HaplotypeCaller. If you need to compare your calls with a clinical lab report, running GATK alongside DeepVariant helps identify discrepancies. `scripts/03a-gatk-haplotypecaller.sh` is not the full GATK Best Practices germline workflow, though: it calls the duplicate-marked step-02 BAM directly, without base quality score recalibration (BQSR), and writes a plain VCF (`-ERC NONE`). Its calls can differ from a lab's GATK calls for that reason alone.
+- **Cohort calling.** GATK's GVCF mode (`-ERC GVCF`) produces per-sample genomic VCFs that can be joint-genotyped across a cohort with `GenomicsDBImport` + `GenotypeGVCFs`. This is the standard workflow for family studies and population-scale projects. Step 03a writes a plain VCF (`-ERC NONE`), so change that argument to `-ERC GVCF` before you use it this way.
 - **Balanced performance.** GATK sits between DeepVariant (highest precision) and FreeBayes (highest sensitivity), offering a different precision/recall tradeoff that can complement either tool.
 
 ### FreeBayes: when to use it
@@ -104,10 +104,10 @@ The cost is time. With 8 shards DeepVariant 1.10 took 8 h 50 min to 13 h 30 min 
 | Priority | Recommended Caller |
 |---|---|
 | Highest accuracy (single sample) | DeepVariant |
-| Clinical lab compatibility | GATK HaplotypeCaller |
+| Closest to a clinical lab's calls | GATK HaplotypeCaller (without BQSR here, so not identical to a lab's GATK Best Practices calls) |
 | Maximum sensitivity (research) | FreeBayes (with quality filtering) |
 | Fastest runtime | Strelka2 (72 min on 8 threads in one historical run; align with BWA-MEM2 for it) |
-| Cohort / family joint calling | GATK HaplotypeCaller (GVCF mode) |
+| Cohort / family joint calling | GATK HaplotypeCaller (GVCF mode; step 03a needs `-ERC GVCF` for it) |
 | Consensus approach (2+ callers agree) | DeepVariant + GATK (or all three) |
 
 **References:**
@@ -144,7 +144,7 @@ Manta is the primary SV caller because:
 
 - **Best for inversions and balanced translocations.** Delly combines all three signal types (paired-end, split-read, read-depth) and is the most accurate caller for inversions (INV) and breakend events (BND).
 - **Higher sensitivity overall.** Delly calls more SVs than Manta (5,000-15,000 vs 3,000-5,000), catching events that Manta's more conservative filters miss.
-- **Higher false positive rate.** The extra sensitivity comes with more false calls. This is why the pipeline uses multi-caller consensus (step 22) rather than trusting any single caller.
+- **Higher false positive rate.** The extra sensitivity comes with more false calls. Step 22 marks the calls that two or more callers agree on, and the reports show that support. Agreement with Manta is not independent proof: both callers read split and paired reads.
 
 ### CNVpytor: strengths and role
 
@@ -170,7 +170,7 @@ Manta is the primary SV caller because:
 | Large CNV focus | CNVpytor alone or CNVpytor + Manta |
 | Inversions / translocations | Delly (strongest for these SV types) |
 
-The consensus merge (step 22) keeps only SVs called by two or more callers, reducing false positives at the cost of losing some real single-caller-only events. For more thorough SV analysis, consider also running AnnotSV (step 5) on the consensus set.
+The consensus merge (step 22) keeps only SVs called by two or more callers, which removes many single-caller artefacts at the cost of losing some real single-caller-only events. It reports caller agreement, not validation. AnnotSV (step 5) annotates the callers' own calls, and the reports join the consensus support onto them; never run AnnotSV on the consensus VCF, whose sample columns are the callers.
 
 ---
 
@@ -185,7 +185,7 @@ Run all available callers and compare. This gives you the broadest view of your 
 - SNP/indel: DeepVariant + GATK HaplotypeCaller + FreeBayes
 - SV: Manta + Delly + CNVpytor with consensus merge (step 22)
 
-**Time estimate:** longer than a default run, which took about 20-21 hours from FASTQ on a 16-thread server (measured) and more on 8 CPUs; each extra caller adds its own time ([benchmarking](benchmarking.md#runtime-full-genome-30x-wgs)).
+**Time estimate:** longer than a default run, which took about 20-21 hours from FASTQ on a 16-thread server (measured) and more on 8 CPUs; each extra caller adds its own time ([runtime](hardware-requirements.md#runtime-per-step)).
 
 ### High-confidence analysis
 
@@ -213,11 +213,11 @@ Stick with the defaults. The default tools were chosen for the best single-tool 
 
 | Question | Answer | Action |
 |---|---|---|
-| Do I need to match a clinical lab? | Yes | Use BWA-MEM2 + GATK HC |
+| Do I need to match a clinical lab? | Yes | Use BWA-MEM2 + GATK HC; it still runs without BQSR, so expect some differences |
 | Do I want maximum accuracy for a specific variant? | Yes | Run DeepVariant + GATK, keep shared calls |
 | Am I exploring broadly and can tolerate false positives? | Yes | Run all three SNP callers |
 | Do I plan to use Strelka2? | Yes | Align with BWA-MEM2 (XS tag required) |
 | Do I have a GPU? | Yes | Neither entry point uses it; only `call_variants` could ([DeepVariant and a GPU](troubleshooting.md#step-3-deepvariant-and-a-gpu)) |
-| Am I analyzing a family/cohort? | Yes | Use GATK HC in GVCF mode for joint genotyping |
+| Am I analyzing a family/cohort? | Yes | Use GATK HC in GVCF mode for joint genotyping (step 03a writes `-ERC NONE`; switch it to `-ERC GVCF`) |
 | Am I only looking at structural variants? | Yes | Manta + Delly + CNVpytor with consensus merge |
 | Do I want results as fast as possible? | Yes | minimap2 + DeepVariant + Manta (defaults) |

@@ -8,13 +8,19 @@
     Four steps:
     1. Extract chrM reads from the BAM (GATK PrintReads; step 20 uses
        samtools view for the same reads)
-    2. Run Mutect2 --mitochondria-mode
+    2. Run Mutect2 --mitochondria-mode, then the shifted-reference pass:
+       the control region (m.16025-16569 and m.1-575) again on chrM rotated
+       by 8000 bp (og setup chrm-shift; GATK's BwaSpark realigns the reads,
+       as the image has no bwa binary), mapped back and merged with the
+       linear calls outside it (og vcf shift-back). Reads across the origin
+       align in full there. A failure leaves the linear calls alone.
     3. Filter variants with FilterMutectCalls --mitochondria-mode
     4. Mark possible NuMTs (nuclear copies of chrM) with NuMTFilterTool at
        the median autosomal depth, read from MOSDEPTH's summary and
        global distribution with the awk of scripts/20-mtoolbox.sh. Without
        mosdepth in --tools the depth is 0 and the filter marks nothing, as
-       step 20 does without step 16b's output.
+       step 20 does without step 16b's output: the task warns, and
+       MITO_VARIANTS_ANNOTATE writes the '# numt' line that says so.
 
     MITO_VARIANTS_ANNOTATE, after it, annotates each call with its ClinVar
     record and gnomAD v3.1's chrM sites (og mito annotate), as step 20's
@@ -27,6 +33,24 @@
 process MITO_VARIANTS {
     tag "$meta.id"
     label 'process_medium'
+    // Root under Docker: the shifted-reference pass's BwaSpark starts
+    // Hadoop's login, which needs a passwd entry for the task's uid, and the
+    // GATK image has none for the -u of docker.runOptions (a LoginException,
+    // "invalid null input: name"; HADOOP_USER_NAME and SPARK_USER do not
+    // help). Step 20 runs that container as root too. A later --user wins.
+    // docker.fixOwnership gives the work directory back only after a task
+    // that succeeds, so the script gives it back itself on any exit (below).
+    // A process's containerOptions replaces the run's process.containerOptions
+    // (the docker profile's '--network none', or any extra option of yours),
+    // so '--network none' is repeated here unless the run's docker.runOptions
+    // already sets a network (Docker refuses the flag twice). These are
+    // Docker's options, for Docker only: Singularity and Apptainer run as you
+    // with your passwd entry and need none, and their exec has no --user.
+    containerOptions {
+        def run_options = ((nextflow.Global.session?.config?.docker as Map)?.runOptions ?: '').toString()
+        workflow.containerEngine != 'docker' ? '' :
+            '--user 0:0 -e HOME=/root' + (run_options.contains('--net') ? '' : ' --network none')
+    }
 
     publishDir { "${params.outdir}/${meta.id}/mito" }, mode: params.publish_dir_mode
 
@@ -54,6 +78,10 @@ process MITO_VARIANTS {
     }
     def depth_files = mosdepth_summary ? "${mosdepth_summary} ${mosdepth_dist}" : ''
     """
+    # Root under Docker (above): give every file back on any exit, also when
+    # the task fails. NXF_OWNER is set under docker.fixOwnership.
+    trap '[ -z "\${NXF_OWNER:-}" ] || chown -R "\${NXF_OWNER}" . 2>/dev/null || true' EXIT
+
     # Step 1: Extract chrM reads
     gatk PrintReads \\
         -I ${bam} \\
@@ -69,10 +97,73 @@ process MITO_VARIANTS {
         --max-mnp-distance 0 \\
         -O ${prefix}_chrM_mutect2.vcf.gz
 
-    # Step 3: Filter variants
+    # Step 2b: The shifted-reference pass (scripts/20-mtoolbox.sh): the control
+    # region again on chrM rotated by 8000 bp, its calls mapped back and merged
+    # with the linear ones outside it. A failure leaves the linear calls alone.
+    shifted_pass() {
+        rm -rf shifted && mkdir shifted || return 1
+        # Under Docker the task runs as root (above), and NXF_OWNER names
+        # you: shifted/ is yours from the start and the large files go to the
+        # container's own /tmp, so a task killed outright (no EXIT trap)
+        # leaves in shifted/ only plain files, which you can remove.
+        # Elsewhere the task runs as you, and they stay in shifted/.
+        if [ -n "\${NXF_OWNER:-}" ]; then
+            chown "\${NXF_OWNER}" shifted || return 1
+            T=\$(mktemp -d) || return 1
+        else
+            T=shifted/tmp && mkdir "\$T" || return 1
+        fi
+        og setup chrm-shift --fasta ${reference} \\
+            --out shifted/chrM_shifted.fasta --intervals shifted/control.intervals || return 1
+        export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
+        gatk CreateSequenceDictionary -R shifted/chrM_shifted.fasta -O shifted/chrM_shifted.dict || return 1
+        gatk BwaMemIndexImageCreator -I shifted/chrM_shifted.fasta -O shifted/chrM_shifted.img || return 1
+        gatk PrintReads -I ${prefix}_chrM.bam -L chrM -O "\$T/reads.bam" \\
+            --read-filter NotDuplicateReadFilter --read-filter NotSecondaryAlignmentReadFilter \\
+            --read-filter NotSupplementaryAlignmentReadFilter \\
+            --read-filter MateOnSameContigOrNoMappedMateReadFilter || return 1
+        # Not --SANITIZE: it re-encodes qualities that are all Q31 or more as
+        # if they were phred+64. BwaSpark aligns records two by two as pairs,
+        # so awk keeps both mates of a name or neither.
+        gatk RevertSam -I "\$T/reads.bam" -O "\$T/unaligned.sam" \\
+            --SORT_ORDER queryname --OUTPUT_BY_READGROUP false --RESTORE_ORIGINAL_QUALITIES false \\
+            --VALIDATION_STRINGENCY LENIENT --ATTRIBUTE_TO_CLEAR FT --ATTRIBUTE_TO_CLEAR CO || return 1
+        awk -F'\\t' '/^@/ { print; next } \$1 == name { print prev; print; name = ""; next } { name = \$1; prev = \$0 }' \\
+            "\$T/unaligned.sam" > "\$T/paired.sam" || return 1
+        # Unpaired reads (single-end, HiFi or ONT) leave no pair, and the
+        # control region would lose its calls: under 90% kept fails the pass.
+        n=\$(grep -vc '^@' "\$T/unaligned.sam" || true)
+        k=\$(grep -vc '^@' "\$T/paired.sam" || true)
+        echo "shifted-reference pass: \${k} of \${n} chrM reads kept as complete pairs" >&2
+        if [ "\$k" -eq 0 ] || [ \$((k * 10)) -lt \$((n * 9)) ]; then
+            echo "the chrM reads are not paired (under 90% kept): the rotated pass needs read pairs" >&2
+            return 1
+        fi
+        gatk --java-options -Xmx4g BwaSpark -I "\$T/paired.sam" -R shifted/chrM_shifted.fasta \\
+            --bwa-mem-index-image shifted/chrM_shifted.img --spark-master "local[${task.cpus}]" \\
+            -O "\$T/aligned.bam" || return 1
+        gatk SortSam -I "\$T/aligned.bam" -O "\$T/sorted.bam" --SORT_ORDER coordinate \\
+            --CREATE_INDEX true || return 1
+        gatk Mutect2 -R shifted/chrM_shifted.fasta -I "\$T/sorted.bam" -L shifted/control.intervals \\
+            --mitochondria-mode --max-mnp-distance 0 -O shifted/shifted_mutect2.vcf.gz || return 1
+        og vcf shift-back --linear ${prefix}_chrM_mutect2.vcf.gz \\
+            --shifted shifted/shifted_mutect2.vcf.gz --out shifted/merged_mutect2.vcf.gz || return 1
+    }
+    T=
+    FILTER_IN=${prefix}_chrM_mutect2.vcf.gz
+    if shifted_pass; then
+        FILTER_IN=shifted/merged_mutect2.vcf.gz
+    else
+        echo "WARNING: the shifted-reference pass failed: the control region keeps the linear calls alone" >&2
+    fi
+    [ -z "\$T" ] || rm -rf "\$T"
+    rm -f shifted/*.img
+
+    # Step 3: Filter variants (the stats are the linear pass's, over all of chrM)
     gatk FilterMutectCalls \\
         -R ${reference} \\
-        -V ${prefix}_chrM_mutect2.vcf.gz \\
+        -V \${FILTER_IN} \\
+        --stats ${prefix}_chrM_mutect2.vcf.gz.stats \\
         --mitochondria-mode \\
         -O ${prefix}_chrM_mutect2_filtered.vcf.gz
 
@@ -93,7 +184,7 @@ process MITO_VARIANTS {
         echo "Median autosomal coverage: \${AUTOSOMAL_COVERAGE} (from \${DEPTH_FILES})"
     else
         AUTOSOMAL_COVERAGE=0
-        echo "mosdepth is not in --tools: NuMTFilterTool runs at depth 0 and marks nothing"
+        echo "WARNING: mosdepth is not in --tools: NuMTFilterTool runs at the default depth 0 and marks nothing" >&2
     fi
     gatk NuMTFilterTool \\
         -R ${reference} \\
@@ -133,7 +224,9 @@ process MITO_VARIANTS {
     it) and gnomAD v3.1's chrM sites (AF_hom, AF_het, max_hl, from
     --gnomad_mito, the file GNOMAD_MITO_URL in versions.env names), into
     <id>_chrM_annotated.tsv. A file not given is named in the table's header
-    and its columns are '.', as step 20 does without it.
+    and its columns are '.', as step 20 does without it. Without mosdepth in
+    --tools MITO_VARIANTS had no autosomal depth for the NuMT filter, so the
+    table gets the '# numt' line (--numt-default), as step 20 writes it.
 
     Equivalent to: stage 6 of scripts/20-mtoolbox.sh
 */
@@ -159,10 +252,13 @@ process MITO_VARIANTS_ANNOTATE {
     script:
     def cv = clinvar ? "--clinvar ${clinvar}" : ''
     def gn = gnomad ? "--gnomad ${gnomad}" : ''
+    // MITO_VARIANTS gets mosdepth's output exactly when mosdepth is in --tools.
+    def numt = (params.tools ?: '').toString().split(',').collect { it.trim() }.contains('mosdepth') ? '' : '--numt-default'
     """
-    og mito annotate --vcf ${vcf} ${cv} ${gn} --out ${meta.id}_chrM_annotated.tsv
+    og mito annotate --vcf ${vcf} ${cv} ${gn} ${numt} --out ${meta.id}_chrM_annotated.tsv
 
-    printf '"%s":\\n    python: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" > versions.yml
+    og_tree=\$(og --tree-hash)
+    printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
@@ -171,7 +267,8 @@ process MITO_VARIANTS_ANNOTATE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        ubuntu: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
+        owngenome: stub
     END_VERSIONS
     """
 }

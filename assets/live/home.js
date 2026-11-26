@@ -192,7 +192,8 @@
     });
     items.sort(function (a, b) { return order[a.f.level] - order[b.f.level]; });
     items.slice(0, 6).forEach(function (x) {
-      var a = el('a', { href: x.r.url + 'finding/' + encodeURIComponent(x.f.id) + '/' });
+      // A child whose report the gate keeps closed (core.js) links to the run's page, never to a finding's own page.
+      var a = el('a', { href: x.r.url + (x.r.gated ? '' : 'finding/' + encodeURIComponent(x.f.id) + '/') });
       var who = el('span', { 'class': 'who' });
       var pc = el('span', { 'class': 'pc' }, x.r.name);
       if (colourOf[x.r.name]) { pc.style.setProperty('--pcol', colourOf[x.r.name]); }
@@ -301,14 +302,30 @@
     root.setAttribute('data-pgp-status', 'ready');
   }
 
-  // While a run goes, the page asks again every 30 seconds, as the family page does.
+  // While a run goes, the page asks again every 30 seconds, as the family page does. A failed read (an error
+  // answer, no answer at all) is asked again in 30 seconds too; while nothing is drawn the page says so, with a
+  // retry, above the server's plain list of runs. A drawn page stays as it is.
+  var drawn = false, timer = null;
+  function again() { clearTimeout(timer); timer = setTimeout(start, 30000); }
+  function failed() {
+    root.setAttribute('data-pgp-status', 'offline');
+    again();
+    if (drawn || document.getElementById('home-failed')) { return; }
+    var main = document.getElementById('home');
+    var b = el('button', { type: 'button', 'class': 'more' }, 'Try again');
+    var box = add(el('div', { 'class': 'load-failed', id: 'home-failed' }), el('p', {}, 'The list of people could not be loaded.'), b);
+    b.addEventListener('click', function () { box.parentNode.removeChild(box); start(); });
+    main.insertBefore(box, main.firstChild);
+  }
   function start() {
+    clearTimeout(timer);
     U.getJSON(root.getAttribute('data-data') || '/runs.json').then(function (d) {
-      if (!d) { return; }
+      if (!d) { failed(); return; }
       draw(d);
+      drawn = true;
       // A stopped run reads running again once it writes, so keep looking at it too.
-      if ((d.runs || []).some(function (r) { return r.state === 'running' || r.state === 'stopped'; })) { setTimeout(start, 30000); }
-    }).catch(function () { root.setAttribute('data-pgp-status', 'offline'); setTimeout(start, 30000); });
+      if ((d.runs || []).some(function (r) { return r.state === 'running' || r.state === 'stopped'; })) { again(); }
+    }).catch(failed);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); } else { start(); }
 }());

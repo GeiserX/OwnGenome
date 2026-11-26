@@ -68,9 +68,22 @@
                     "description": "Disable DeepVariant's Small Model with --disable_small_model=true. Default false preserves the caller default. Applies only to rows called here, not supplied VCFs; DEEPVARIANT_DISABLE_SMALL_MODEL in the scripts.",
                     "fa_icon": "fas fa-dna"
                 },
+                "model_type": {
+                    "type": "string",
+                    "description": "WGS for a whole genome, WES for an exome (MODEL_TYPE in scripts/03-deepvariant.sh). WES runs DeepVariant's exome model on the regions of --capture_bed, mosdepth over them (the report's mean depth is then the on-target one) and Manta with --exome; it takes the sex check from somalier, so it needs sample_qc in --tools, and it does not run cnvpytor, roh, telomere_hunter, archaic, mocha, viral, cyrius, parascopy, locityper or mei, nor the mtDNA copy number of mito_variants (MITO_DELETIONS): an exome has no depth outside its capture, and Cyrius, Parascopy, Locityper and MEGAnE weigh a locus against depth across the genome. mito_variants' NuMT filter still runs, on the exome's median autosomal depth, 0 or close to it, so it marks little or nothing (docs/wes-guide.md).",
+                    "default": "WGS",
+                    "enum": ["WGS", "WES"],
+                    "fa_icon": "fas fa-dna"
+                },
+                "capture_bed": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "BED of the exome capture kit's target regions, on GRCh38 (CAPTURE_BED in scripts/16b-mosdepth.sh). Required with --model_type WES, refused without it: DeepVariant calls these regions and mosdepth reports the depth over them. Its contigs must be named as the reference names them (chr1, not 1), or the run stops before it starts.",
+                    "fa_icon": "fas fa-crosshairs"
+                },
                 "sex_check": {
                     "type": "string",
-                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM, before any BAM step) or by somalier (with sample_qc): fail stops the run; warn logs it and goes on with the declared sex.",
+                    "description": "What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM of a whole genome, before any BAM step) or by somalier (with sample_qc; an exome's only check): fail stops the run; warn logs it and goes on with the declared sex.",
                     "default": "fail",
                     "enum": ["fail", "warn"],
                     "fa_icon": "fas fa-venus-mars"
@@ -99,6 +112,12 @@
                     "type": "string",
                     "format": "file-path",
                     "description": "Path to ClinVar pathogenic VCF tabix index (.tbi).",
+                    "fa_icon": "fas fa-database"
+                },
+                "clinvar_conflicting": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "The conflicting ClinVar subset, its .tbi beside it, which scripts/setup.sh installs as clinvar/clinvar_conflicting_plp_chr.vcf.gz: the records ClinVar labels Conflicting classifications of pathogenicity where at least one lab submitted Pathogenic or Likely_pathogenic. With clinvar, CLINVAR_SCREEN lists the ones the sample carries in <id>_clinvar_conflicting.tsv, apart from the hits: they never enter the hit counts, the ACMG card, the carrier list or the couple screen. Without it that table says not checked.",
                     "fa_icon": "fas fa-database"
                 }
             }
@@ -245,7 +264,7 @@
                 "ancestry_fine_panel": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Step 26b's reference: the folder setup.sh --ancestry-fine-panel writes (reference/ancestry_fine/hgdp1kgp_v2, gnomAD's phased HGDP + 1000 Genomes panel with ADMIXTURE's group frequencies). With ancestry_fine in --tools, ADMIXTURE projects the sample on the panel's groups and RFMix paints its chromosomes. With --pedigree, the family workflow also phases the joint call against it with Beagle and lists the DNA segments each pair of members shares (hap-ibd). ADMIXTURE is free for academic use and RFMix for academic research use only.",
+                    "description": "Step 26b's reference: the folder setup.sh --ancestry-fine-panel writes (reference/ancestry_fine/hgdp1kgp_v2, gnomAD's phased HGDP + 1000 Genomes panel with each reference group's allele frequencies). With ancestry_fine in --tools, og projects the sample on the panel's groups and paints its chromosomes. With --pedigree, the family workflow also phases the joint call against it with Beagle and lists the DNA segments each pair of members shares (hap-ibd).",
                     "fa_icon": "fas fa-globe"
                 },
                 "ancient_panel": {
@@ -265,6 +284,12 @@
                     "default": false,
                     "description": "prs: keep each score's strand-ambiguous rows (A/T and C/G pairs) when its other rows agree with the reference on the forward strand, and pass --keep_ambiguous to pgsc_calc; a score that fails that check keeps dropping them. Rows with a gVCF (WGS) only: a row with a VCF alone stops the PRS task. Off by default: pgsc_calc drops every ambiguous row. The summary's Ambiguous column says what happened to them per score.",
                     "fa_icon": "fas fa-exchange-alt"
+                },
+                "pgs_academic": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "prs: also score the scores assets/pgs_scores.tsv marks academic-research: PGS000014 (type 2 diabetes), PGS000016 (atrial fibrillation), PGS000017 (inflammatory bowel disease) and PGS000027 (BMI), which the PGS Catalog publishes as freely available to the academic community for research use. Off by default: PRS_PREPARE leaves them out even when --pgs_scoring holds their files, and summary.json lists them under the PRS section skipped. scripts/setup.sh --prs-academic installs them.",
+                    "fa_icon": "fas fa-graduation-cap"
                 },
                 "expansion_catalog": {
                     "type": "string",
@@ -302,6 +327,12 @@
                     "description": "gnomAD v3.1's chrM sites VCF (GNOMAD_MITO_URL in versions.env), which scripts/setup.sh installs under gnomad_mito/. With mito_variants, MITO_VARIANTS_ANNOTATE gives each chrM call its gnomAD frequencies, as step 20 does; without it those columns are '.'.",
                     "fa_icon": "fas fa-database"
                 },
+                "roh_af_panel": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Step 11's allele-frequency panel (ROH_AF_PANEL_URL in versions.env), which scripts/setup.sh installs under roh_af/ with its .tbi beside it. With roh, bcftools roh reads each site's gnomAD frequency from it (--AF-file) and uses the panel's sites only: the global AF, or one continental group's when the run's step 26 ancestry table gives that group 0.8 or more. Without it every site gets 0.4 (--AF-dflt 0.4).",
+                    "fa_icon": "fas fa-database"
+                },
                 "kir": {
                     "type": "boolean",
                     "default": false,
@@ -319,6 +350,12 @@
                     "default": false,
                     "description": "With hla_typing: also type HLA-A, HLA-B and HLA-C with OptiType (OPTITYPE_IMAGE), a second caller, and write its two-field concordance with T1K. HLA-A and HLA-B then reach PharmCAT only when the two callers agree.",
                     "fa_icon": "fas fa-dna"
+                },
+                "cpsr_secondary_findings": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "cpsr: also report pathogenic and likely pathogenic variants in the genes of the ACMG SF list of secondary findings (CPSR --secondary_findings), beside the cancer genes. false: CPSR reports the cancer genes only. run-all.sh passes false with CPSR_SECONDARY_FINDINGS=false, as scripts/17-cpsr.sh reads it. The ACMG card of step 23 is not CPSR's and does not follow this switch.",
+                    "fa_icon": "fas fa-eye-slash"
                 },
                 "cyrius_install": {
                     "type": "string",
@@ -447,6 +484,12 @@
                     "description": "chip: a Mutect2 panel of normals (somatic/1000g_pon.hg38.vcf.gz, .tbi beside it; optional).",
                     "fa_icon": "fas fa-file"
                 },
+                "chip_common_sites": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "chip: common biallelic sites for the contamination estimate, step 29's somatic/small_exac_common_3.hg38.vcf.gz (.tbi beside it; optional). GetPileupSummaries and CalculateContamination estimate how much of the sample is another person's DNA, and FilterMutectCalls reads that estimate. Without it a contaminant's alleles can pass as a small clone.",
+                    "fa_icon": "fas fa-file"
+                },
                 "parascopy_population": {
                     "type": "string",
                     "default": "EUR",
@@ -499,7 +542,7 @@
                 "cytoband": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Optional UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y; scripts/setup.sh installs it), passed as `telomerehunter -b`. Without it TelomereHunter uses its own hg19 bands.",
+                    "description": "UCSC GRCh38 chromosome bands (cytoBand.hg38.txt, chr1-22, X and Y), passed as `telomerehunter2 -b`. Without it the run passes the copy the repository ships, assets/reference/cytoBand.hg38.txt (the file scripts/setup.sh installs).",
                     "fa_icon": "fas fa-file"
                 },
                 "somalier_sites": {

@@ -1,0 +1,40 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: PHENO_NOT_CALLED
+Date: 2026-11-25
+Source: PharmCAT  report (pheno-not-called.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2D6       Unknown/Unknown                No Result
+
+Medications and Phenoconversion (CYP2D6, CYP2C19, CYP2C9, CYP3A4, CYP3A5):
+------------------------------------------------------------------------
+
+  Medication list: pheno-not-called.txt (2 lines).
+  CYP2D6 -- on paroxetine (strong CYP2D6 inhibitor): not converted, the gene is not called here, so there is no genotype phenotype to convert.
+  CYP2C19 -- on fluconazole (strong CYP2C19 inhibitor): not converted, the report has no result for the gene, so there is no genotype phenotype to convert.
+  CYP2C9 -- on fluconazole (moderate CYP2C9 inhibitor): not converted, the report has no result for the gene, so there is no genotype phenotype to convert.
+  The genotype phenotype in the table above is unchanged. A phenoconverted phenotype
+  holds while the inhibitor is taken. This is an aid for your clinician, not advice.
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  CYP2D6 -- No Result (not callable from available data)
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

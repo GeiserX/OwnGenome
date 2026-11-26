@@ -54,6 +54,7 @@ at the planted deletion), `vcf_field`, `tsv_cell`, `tsv_count`, `csv_cell`,
 | longreads, longbam | Synthetic HiFi reads from both truth haplotypes, and their alignment. |
 | fullref | The whole fixture reference, `ref.fa`. |
 | slice | The fixture's GIAB BAM, `HG002_slice.bam`, with a read group for sample HG002 added. |
+| telobam | `telo.bam`: `slice` plus 1,100 unmapped telomeric reads (`PLANTED=0` plants none), and `cytoBand.hg38.txt`, the repository's GRCh38 bands. |
 | vcf, vcf50 | The fixture's VEP-annotated VCF, and its first 50 records without CSQ. |
 | pgxvcf | Every site of chr10:94.7-95.0 Mb (CYP2C19, CYP2C9) called from `slice` with bcftools, reference sites included: PharmCAT counts a missing position as missing, not as reference. |
 | revel, sv, cyrius | Fixture files: synthetic REVEL scores, the ten-record SV VCF, the Cyrius BAM. |

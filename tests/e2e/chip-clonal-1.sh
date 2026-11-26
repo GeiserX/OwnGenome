@@ -8,10 +8,13 @@
 # GIAB's S3 mirror. Then:
 #   - the reads as they are: no call at DNMT3A R882, a depth row for every gene
 #     of the table (the genes on contigs the fixture lacks not_on_reference),
-#     and a detection limit under 10% at about 60x;
+#     and a read-support limit from each base's depth under 10% at about 60x,
+#     with nearly every coding base of DNMT3A at 10 reads or more;
 #   - the same reads with DNMT3A R882H (chr2:25234373 C>T) planted in every
-#     fifth read over it: a chip row R882H at a VAF near 20%. The reads as they
-#     are are the negative control of that check;
+#     fifth read over it: a chip row R882H at a VAF near 20%, whose note says it
+#     is a possible finding, not a diagnosis, and whose reads (a fifth of about
+#     60) do not fit an inherited variant. The reads as they are are the
+#     negative control of that check;
 #   - planted in every second read: likely_germline, not chip;
 #   - both reports show the section and the planted call;
 #   - the Nextflow CHIP_* processes on the planted reads merged into step 02's BAM
@@ -51,44 +54,7 @@ check_ge "reads fetched" "$(wc -l < "${T}/win.sam" 2>/dev/null || echo 0)" 20000
 # Nth read whose aligned base there is C (0: none). A mate on another contig loses its
 # position, so samtools accepts the record under the shorter header.
 plant() {
-  python3 - "$1" "${REF}.fai" "${T}/win.sam" "$R882" <<'EOF'
-import sys
-n, fai, sam, pos = int(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4])
-contigs = [ln.split("\t")[:2] for ln in open(fai)]
-names = {c for c, _ in contigs}
-print("@HD\tVN:1.6\tSO:unsorted")
-for c, l in contigs:
-    print(f"@SQ\tSN:{c}\tLN:{l}")
-print("@RG\tID:giab\tSM:HG002\tPL:ILLUMINA")
-k = 0
-for ln in open(sam):
-    f = ln.rstrip("\n").split("\t")
-    if f[2] not in names:
-        continue
-    f = [x for x in f if not x.startswith("RG:Z:")] + ["RG:Z:giab"]
-    if f[6] not in ("=", "*") and f[6] not in names:
-        f[6], f[7] = "*", "0"
-    if n and f[2] == "chr2" and f[5] != "*":
-        ref, q, num, hit = int(f[3]), 0, "", None
-        for ch in f[5]:
-            if ch.isdigit():
-                num += ch
-                continue
-            ln_ = int(num); num = ""
-            if ch in "M=X":
-                if ref <= pos < ref + ln_:
-                    hit = q + pos - ref
-                ref += ln_; q += ln_
-            elif ch in "IS":
-                q += ln_
-            elif ch in "DN":
-                ref += ln_
-        if hit is not None and f[9][hit] == "C":
-            if k % n == 0:
-                f[9] = f[9][:hit] + "T" + f[9][hit + 1:]
-            k += 1
-    print("\t".join(f))
-EOF
+  "${REPO}/bin/og" dev fixture plant-snv "$1" "${REF}.fai" "${T}/win.sam" "$R882"
 }
 # sample NAME N: a sample folder with the reads, planted every Nth read.
 sample() {
@@ -99,6 +65,8 @@ sample() {
 }
 # row NAME POS: the chip table's row at POS, as status,protein_change,vaf
 row() { awk -F'\t' -v p="$2" '$3 == p {print $13 "," $7 "," $9}' "${G}/$1/chip/$1_chip.tsv" 2>/dev/null; }
+# note NAME POS: the note of that row
+note() { awk -F'\t' -v p="$2" '$3 == p {print $15}' "${G}/$1/chip/$1_chip.tsv" 2>/dev/null; }
 # depth NAME GENE COLUMN
 depth() {
   awk -F'\t' -v g="$2" -v k="$3" 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $1 == g {print $c[k]}' \
@@ -109,21 +77,9 @@ U="${SAMPLE}chu" P="${SAMPLE}chp" H="${SAMPLE}chh"
 check "the reads as they are" sample "$U" 0
 check "R882H in every fifth read" sample "$P" 5
 check "R882H in every second read" sample "$H" 2
-alt_at() { dk "$SAMTOOLS_IMAGE" samtools view "${G}/$1/aligned/$1_sorted.bam" "chr2:${R882}-${R882}" | python3 -c '
-import sys
-pos = int(sys.argv[1]); a = n = 0
-for ln in sys.stdin:
-    f = ln.split("\t"); ref, q, num = int(f[3]), 0, ""
-    for ch in f[5]:
-        if ch.isdigit(): num += ch; continue
-        k = int(num); num = ""
-        if ch in "M=X":
-            if ref <= pos < ref + k:
-                n += 1; a += f[9][q + pos - ref] == "T"
-            ref += k; q += k
-        elif ch in "IS": q += k
-        elif ch in "DN": ref += k
-print(a, n)' "$R882"; }
+# alt_at NAME: "T reads" over R882 in the sample's BAM.
+alt_at() { dk "$SAMTOOLS_IMAGE" samtools view "${G}/$1/aligned/$1_sorted.bam" "chr2:${R882}-${R882}" \
+  | "${REPO}/bin/og" dev fixture base-count "$R882" T; }
 read -r A0 N0 < <(alt_at "$U"); read -r A5 N5 < <(alt_at "$P")
 check_ge "reads over R882" "${N0:-0}" 30
 check_eq "no T at R882 in HG002's own reads" "${A0:-x}" 0
@@ -138,24 +94,34 @@ check_eq "DNMT3A is covered" "$(depth "$U" DNMT3A status)" covered
 check_eq "JAK2 (chr9, not in the fixture) is not_on_reference" "$(depth "$U" JAK2 status)" not_on_reference
 check "DNMT3A's mean depth is about 60x ($(depth "$U" DNMT3A mean_depth))" \
   awk -v d="$(depth "$U" DNMT3A mean_depth)" 'BEGIN {exit !(d >= 35 && d <= 90)}'
-check "DNMT3A's detection limit is under 10% ($(depth "$U" DNMT3A detection_limit_vaf))" \
+check "DNMT3A's read-support limit is under 10% ($(depth "$U" DNMT3A detection_limit_vaf))" \
   awk -v d="$(depth "$U" DNMT3A detection_limit_vaf)" 'BEGIN {exit !(d > 0.02 && d < 0.10)}'
-check "the step prints the detection limit and that it is not a diagnosis" \
-  has 'Detection limit at this depth.*does not rule one out\. Not a diagnosis\.' "$(cat "$STEP_LOG")"
+check "DNMT3A has 10 reads or more on 95% of its coding bases ($(depth "$U" DNMT3A callable_fraction))" \
+  awk -v d="$(depth "$U" DNMT3A callable_fraction)" 'BEGIN {exit !(d >= 0.95 && d <= 1)}'
+check "DNMT3A has a share of bases at the stated limit ($(depth "$U" DNMT3A assessable_fraction))" \
+  awk -v d="$(depth "$U" DNMT3A assessable_fraction)" 'BEGIN {exit !(d ~ /^[01]\.[0-9][0-9][0-9]$/ && d > 0)}'
+check "the step prints the read-support limit and that it is not a diagnosis" \
+  has 'Read-support limit \(median [0-9]+x.*does not rule one out\. Not a diagnosis\.' "$(cat "$STEP_LOG")"
+check "the step's count says possible clonal haematopoiesis, not a diagnosis" \
+  has ': [0-9]+ CHIP calls? in [0-9]+ genes \(possible clonal haematopoiesis, not a diagnosis; ' "$(cat "$STEP_LOG")"
 IFS=, read -r st pc vaf <<< "$(row "$P" "$R882")"
 check_eq "planted at a fifth: a chip row" "${st:-none}" chip
 check_eq "named R882H on DNMT3A's MANE transcript" "${pc:-none}" R882H
 check "its VAF is near 20% (${vaf:-none})" awk -v v="${vaf:-0}" 'BEGIN {exit !(v >= 0.10 && v <= 0.30)}'
+check "its note says a possible finding, not a diagnosis ($(note "$P" "$R882"))" \
+  has '^possible clonal haematopoiesis \(not a diagnosis\): hotspot R882' "$(note "$P" "$R882")"
+check "a fifth of about 60 reads does not fit an inherited variant" lacks 'fit an inherited' "$(note "$P" "$R882")"
 check_eq "planted at a half: likely_germline, not chip" "$(row "$H" "$R882" | cut -d, -f1)" likely_germline
 check_eq "and the germline-looking call is not counted" \
   "$(awk -F'\t' '$13 == "chip" && $3 == p' p="$R882" "${G}/${H}/chip/${H}_chip.tsv" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 # --- the reports ----------------------------------------------------------------------
-python3 "${REPO}/bin/render_report.py" --sample "$P" --sample-dir "${G}/${P}" -o "${T}/P.txt" -o "${T}/P.html" >/dev/null
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$P" --sample-dir "${G}/${P}" -o "${T}/P.txt" -o "${T}/P.html" >/dev/null
 check "the text report has the CHIP section with R882H" has 'DNMT3A R882H: VAF 0\.[0-9]+' "$(cat "${T}/P.txt" 2>/dev/null)"
-check "and the detection limit" has 'Detection limit: a clone of VAF about [0-9]+% or more' "$(cat "${T}/P.txt" 2>/dev/null)"
+check "and the read-support limit" has 'Read-support limit: at a VAF of about [0-9]+%' "$(cat "${T}/P.txt" 2>/dev/null)"
+check "and the assessable share" has "Share of each gene's coding bases assessable at the stated VAF: .*DNMT3A [0-9]+%" "$(cat "${T}/P.txt" 2>/dev/null)"
 check "the HTML report has the CHIP card" has 'Clonal Haematopoiesis \(CHIP\)</h2>' "$(cat "${T}/P.html" 2>/dev/null)"
-python3 "${REPO}/bin/render_report.py" --sample "$U" --sample-dir "${G}/${U}" -o "${T}/U.txt" >/dev/null
+"${REPO}/bin/og" report render --assets "${REPO}/assets" --sample "$U" --sample-dir "${G}/${U}" -o "${T}/U.txt" >/dev/null
 check "control: the unplanted report says no CHIP call" has 'No CHIP call\.' "$(cat "${T}/U.txt" 2>/dev/null)"
 
 # --- Nextflow against the bash step ----------------------------------------------------

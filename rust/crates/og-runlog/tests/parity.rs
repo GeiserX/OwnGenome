@@ -3,11 +3,17 @@
 //! `bin/run_delta.py` are gone from the checkout, so their oracle is the
 //! last commit that had them ([`ORACLE`]), materialised once per test run
 //! with `git show` (fetched when a shallow checkout lacks it, as
-//! `scripts/ci/oracle-diff.sh` does). The module functions the live server
-//! and the summary still import stay in `bin/`, and `py_code` calls those.
+//! `scripts/ci/oracle-diff.sh` does). `og run eta` is held to the answers of
+//! `run_eta.estimate`, the module function the Python live server called,
+//! frozen in `tests/vectors/run_eta` from the last `bin/run_eta.py` before
+//! the module went with that server: the estimate and the step history it
+//! wrote, on the catalogue of that day (`steps.tsv` there), with the box's
+//! CPU count, which the history records, as `BOX_CPUS`.
 //! Outputs must agree byte for byte, except `generated_utc` (the clock), the
 //! disk numbers of `headroom` (free space moves between two calls) and the
 //! host memory line where Python can read the RAM and og cannot (not Linux).
+//! `og run state` says its one sentence on stderr where the Python said it on
+//! stdout.
 //!
 //! The Python is `OG_PYTHON`, else `python3`; it must be 3.9 or newer. A
 //! missing Python, or an oracle that cannot be materialised, fails the test:
@@ -137,27 +143,6 @@ fn py(tool: &str, args: &[&str]) -> Out {
     }
 }
 
-/// Python code run with `bin/` importable, in the zone [`TZ`].
-fn py_code(code: &str, args: &[&str]) -> Out {
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let o = Command::new(&exe)
-        .arg("-c")
-        .arg(format!(
-            "import sys; sys.path.insert(0, {:?})\n{code}",
-            repo().join("bin").to_string_lossy()
-        ))
-        .args(args)
-        .env("TZ", TZ)
-        .env_remove("PGP_BOX")
-        .output()
-        .unwrap();
-    Out {
-        code: o.status.code().unwrap_or(-1),
-        stdout: String::from_utf8(o.stdout).unwrap(),
-        stderr: String::from_utf8(o.stderr).unwrap(),
-    }
-}
-
 /// `og run <args>` in the zone [`TZ`] at [`NOW`].
 fn og(args: &[&str]) -> Out {
     let env = Env {
@@ -273,10 +258,14 @@ fn state_parity(sample: &str, dir: &Path, extra: &[&str]) {
     oa.extend(["--out", &oo]);
     let (p, o) = (py("run_state", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
+    // og writes the file and says so on stderr; the Python said it on
+    // stdout. Same sentence, and nothing on og's stdout (docs/rust.md,
+    // "Command lines").
+    assert_eq!(o.stdout, "", "og run state --out printed on stdout");
     same(
-        "stdout",
+        "Run state written",
         &p.stdout.replace(&po, "OUT"),
-        &o.stdout.replace(&oo, "OUT"),
+        &o.stderr.replace(&oo, "OUT"),
     );
     same(
         "run_state.json",
@@ -347,30 +336,33 @@ fn state_not_started_and_the_live_fixture() {
 
 // ---- og run eta --------------------------------------------------------
 
-/// The Python estimate at [`NOW`], printed as `run_eta.py` prints it.
-fn py_eta(outdir: &Path, sample: Option<&str>, cores: usize, box_: &str) -> Out {
-    py_code(
-        "import json, run_eta\n\
-         a = sys.argv[1:]\n\
-         est = run_eta.estimate(a[0], a[1] or None, now=float(a[2]), cores=int(a[3]), box=a[4])\n\
-         sys.stdout.write(json.dumps(est, indent=1) + '\\n')",
-        &[
-            &outdir.to_string_lossy(),
-            sample.unwrap_or(""),
-            &NOW.to_string(),
-            &cores.to_string(),
-            box_,
-        ],
+/// A file of the frozen `run_eta.estimate` answers, `BOX_CPUS` filled in
+/// with this box's CPU count (what og writes into a history row).
+fn frozen(name: &str) -> String {
+    fs::read_to_string(
+        repo()
+            .join("rust/crates/og-runlog/tests/vectors/run_eta")
+            .join(name),
     )
+    .unwrap()
+    .replace("BOX_CPUS", &og_runlog::host::cpu_count().to_string())
+}
+
+/// The catalogue the frozen answers were made on.
+fn frozen_steps() -> String {
+    repo()
+        .join("rust/crates/og-runlog/tests/vectors/run_eta/steps.tsv")
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn og_eta(outdir: &Path, sample: Option<&str>, cores: usize, box_: &str) -> Out {
-    let (o, c, st) = (
-        outdir.to_string_lossy().into_owned(),
-        cores.to_string(),
-        steps(),
-    );
-    let mut a = vec!["eta", &o, "--cores", &c, "--box", box_, "--steps", &st];
+    og_eta_on(outdir, sample, cores, box_, &steps())
+}
+
+fn og_eta_on(outdir: &Path, sample: Option<&str>, cores: usize, box_: &str, st: &str) -> Out {
+    let (o, c) = (outdir.to_string_lossy().into_owned(), cores.to_string());
+    let mut a = vec!["eta", &o, "--cores", &c, "--box", box_, "--steps", st];
     if let Some(s) = sample {
         a.extend(["--sample", s]);
     }
@@ -400,25 +392,30 @@ fn history(d: &Path, box_: &str) -> PathBuf {
 
 #[test]
 fn eta_history_and_ranges() {
+    let st = frozen_steps();
     for cores in [8, 32] {
-        let (a, b) = (eta_outdir("eta-py"), eta_outdir("eta-og"));
-        let (p, o) = (
-            py_eta(&a, None, cores, "parity"),
-            og_eta(&b, None, cores, "parity"),
+        let b = eta_outdir("eta-og");
+        let o = og_eta_on(&b, None, cores, "parity", &st);
+        assert_eq!(o.code, 0, "{}", o.stderr);
+        same(
+            "eta JSON",
+            &frozen(&format!("history-cores{cores}.json")),
+            &o.stdout,
         );
-        assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
-        same("eta JSON", &p.stdout, &o.stdout);
         same(
             "step history",
-            &fs::read_to_string(history(&a, "parity")).unwrap(),
+            &frozen("history.tsv"),
             &fs::read_to_string(history(&b, "parity")).unwrap(),
         );
-        // A second call on the same traces leaves the history as it is, so
-        // og on a history Python wrote does not rewrite it.
+        // A call on the same traces leaves the history as it is, so og on a
+        // history the Python wrote does not rewrite it.
+        let a = eta_outdir("eta-py");
         let h = history(&a, "parity");
+        fs::create_dir_all(h.parent().unwrap()).unwrap();
+        fs::write(&h, frozen("history.tsv")).unwrap();
         let before = fs::metadata(&h).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        let again = og_eta(&a, None, cores, "parity");
+        let again = og_eta_on(&a, None, cores, "parity", &st);
         assert_eq!(again.code, 0);
         let after = fs::metadata(&h).unwrap();
         use std::os::unix::fs::MetadataExt;
@@ -456,17 +453,19 @@ fn eta_hours_left_of_a_run_going() {
         .unwrap();
         d
     };
+    let st = frozen_steps();
     for cores in [4, 16] {
-        let (a, b) = (mk("eta-run-py"), mk("eta-run-og"));
-        let (p, o) = (
-            py_eta(&a, Some("demo1"), cores, "opsbox"),
-            og_eta(&b, Some("demo1"), cores, "opsbox"),
+        let b = mk("eta-run-og");
+        let o = og_eta_on(&b, Some("demo1"), cores, "opsbox", &st);
+        assert_eq!(o.code, 0, "{}", o.stderr);
+        same(
+            "eta JSON with hours left",
+            &frozen(&format!("run-cores{cores}.json")),
+            &o.stdout,
         );
-        assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
-        same("eta JSON with hours left", &p.stdout, &o.stdout);
         same(
             "step history",
-            &fs::read_to_string(history(&a, "opsbox")).unwrap(),
+            &frozen("run.tsv"),
             &fs::read_to_string(history(&b, "opsbox")).unwrap(),
         );
     }
@@ -734,12 +733,15 @@ fn delta_parity(d: &Path, args: &[&str]) {
     oa.extend(["--out", &oo]);
     let (p, o) = (py("run_delta", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
-    same("delta stdout", &p.stdout, &o.stdout);
+    // og words a reason that names inputs as a guess; the oracle states
+    // it as a fact. Map og's wording back so the rest stays byte for byte.
+    let old = |s: &str| s.replace("likely from changed inputs: ", "changed inputs: ");
+    same("delta stdout", &p.stdout, &old(&o.stdout));
     for ext in ["txt", "html", "json"] {
         same(
             &format!("delta .{ext}"),
             &fs::read_to_string(format!("{po}.{ext}")).unwrap(),
-            &fs::read_to_string(format!("{oo}.{ext}")).unwrap(),
+            &old(&fs::read_to_string(format!("{oo}.{ext}")).unwrap()),
         );
     }
 }

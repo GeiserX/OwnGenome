@@ -42,23 +42,38 @@ This pipeline takes raw sequencing data (FASTQ/BAM/VCF) from any vendor and runs
 
 ## Quick start
 
+### Before you begin
+
+The machine needs these before the first command:
+
+- **Docker** 20.10 or later, running. On a Mac or on Windows that is Docker Desktop.
+- **bash** 4.4 or later. Linux has it. A Mac ships bash 3.2, so install a newer one with Homebrew.
+- **Java** 17 or later and **Nextflow**, the release that `NEXTFLOW_VERSION` in `versions.env` pins. `run-all.sh` starts the Nextflow pipeline, so a full run needs both.
+- **RAM:** 16 GB at least, 32 GB recommended. A 16 GB machine needs swap for step 25 ([step 25, Memory](https://geiserx.github.io/OwnGenome/25-prs/#memory)).
+- **Disk:** 500 GB free per sample from a BAM, about 700 GB from FASTQ, on the disk that holds `GENOME_DIR` ([disk](https://geiserx.github.io/OwnGenome/hardware-requirements/#disk-space-breakdown)).
+
+[Install the requirements](https://geiserx.github.io/OwnGenome/getting-started/#install-the-requirements) has the commands in order for Linux, an Intel Mac, an Apple Silicon Mac and Windows with WSL2, and one check that all four are in place.
+
+### Run
+
 Put the reads at `$GENOME_DIR/<sample>/fastq/<sample>_R1.fastq.gz` and `_R2.fastq.gz` (a BAM or a VCF works too), then:
 
 ```bash
-git clone https://github.com/GeiserX/OwnGenome.git && cd OwnGenome   # main; `git checkout <tag>` for a release
+git clone https://github.com/GeiserX/OwnGenome.git && cd OwnGenome
+git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"   # the newest release
 export GENOME_DIR=/path/to/your/data SAMPLE=your_name
 ./scripts/setup.sh $GENOME_DIR          # the GRCh38 reference, ClinVar, the images and og, once
 ./scripts/validate-setup.sh $SAMPLE
 ./scripts/run-all.sh $SAMPLE male       # or female
 ```
 
-`run-all.sh` starts the Nextflow pipeline, so it needs Java 17 or later and the Nextflow release `versions.env` pins (`NEXTFLOW_VERSION`) beside Docker and bash 4.4; a rerun reuses every finished step. [Full run](https://geiserx.github.io/OwnGenome/getting-started/#full-run) has the install line and the switches, and each step also runs on its own as a script. Optional databases are in [reference setup](https://geiserx.github.io/OwnGenome/00-reference-setup/). Try a small public dataset with the [quick test](https://geiserx.github.io/OwnGenome/quick-test/).
+On a release tag, `setup.sh` downloads that release's `og` binaries. On `main` it builds `og` in a container instead, which takes longer. A rerun of `run-all.sh` reuses every finished step. [Full run](https://geiserx.github.io/OwnGenome/getting-started/#full-run) has the switches, and each step also runs on its own as a script. Optional databases are in [reference setup](https://geiserx.github.io/OwnGenome/00-reference-setup/). Try a small public dataset with the [quick test](https://geiserx.github.io/OwnGenome/quick-test/).
 
 ## Documentation
 
 The full documentation is at **https://geiserx.github.io/OwnGenome/**, one page per pipeline step included.
 
-- [Getting started](https://geiserx.github.io/OwnGenome/getting-started/): prerequisites, platform notes (macOS, WSL2, Unraid), the full run with `run-all.sh` and its switches, the FASTQ, BAM, VCF and ORA entry paths step by step, directory layout
+- [Getting started](https://geiserx.github.io/OwnGenome/getting-started/): prerequisites, the install steps for each platform, platform notes (macOS, WSL2, Unraid), the full run with `run-all.sh` and its switches, the FASTQ, BAM, VCF and ORA entry paths step by step, directory layout
 - [Quick test](https://geiserx.github.io/OwnGenome/quick-test/): verify the setup on public data before your own
 - [Hardware and storage requirements](https://geiserx.github.io/OwnGenome/hardware-requirements/): download sizes, per-step runtime, memory and disk figures
 - [Reference data setup](https://geiserx.github.io/OwnGenome/00-reference-setup/): the GRCh38 reference (the no-ALT analysis set) and every database
@@ -87,3 +102,5 @@ Your genome data is sensitive personal information. This pipeline runs locally a
 ## License
 
 [GPL-3.0-or-later](LICENSE). OwnGenome is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. Contributions come in under the same terms ([CONTRIBUTING.md](CONTRIBUTING.md#license)).
+
+Some data files the repository ships come from third parties, under their own terms. [NOTICE](NOTICE) lists them, and [assets/SOURCES.tsv](assets/SOURCES.tsv) records the source, version and licence of every data file under `assets/`. The Lint check fails on a data file with no row there.

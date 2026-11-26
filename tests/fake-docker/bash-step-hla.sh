@@ -110,9 +110,10 @@ THREADS=2 ALIGN_DIR=aligned_bwamem2 run_expect 0 telomere-no-bands "${SCRIPTS}/1
 output_has telomere-no-bands 'GRCh38 chromosome bands are not installed'
 docker_log_has '^run image=[^ ]*telomerehunter.* --cpus 2 .* -ibt /genome/sample1/aligned_bwamem2/sample1_sorted\.bam ' \
   "step 10 did not use THREADS=2 and ALIGN_DIR=aligned_bwamem2"
-if awk '/^run / && /telomerehunter/ && / -b / { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG"; then
-  fail "step 10 passed -b without an installed band file"
-fi
+# Missing bands are installed from assets/reference, never left to the tool's
+# hg19 fallback (bash-step-setup-data checks the copy).
+docker_log_has '^run image=[^ ]*telomerehunter.* -b /genome/reference/cytoBand\.hg38\.txt' \
+  "step 10 did not install and pass the GRCh38 bands when they were missing"
 printf 'chr1\t0\t2300000\tp36.33\tgneg\n' > "${GENOME_DIR}/reference/cytoBand.hg38.txt"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 telomere "${SCRIPTS}/10-telomere-hunter.sh" sample1

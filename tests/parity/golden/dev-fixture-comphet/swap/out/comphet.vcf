@@ -1,0 +1,15 @@
+##fileformat=VCFv4.2
+##contig=<ID=chrP,length=80000>
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=slivar_comphet,Number=.,Type=String,Description="compound hets called by slivar">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	CHPH
+chrP	1000	.	A	T	50	PASS	slivar_comphet=CHPH/GENEC/1/chrP/1003/TGT/T	GT:GQ:DP:AD	0/1:50:30:15,15
+chrP	1003	.	TGT	T	50	PASS	slivar_comphet=CHPH/GENEC/1/chrP/1000/A/T	GT:GQ:DP:AD	0/1:50:30:15,15
+chrP	5000	.	T	G	50	PASS	slivar_comphet=CHPH/GENET/2/chrP/5400/T/G	GT:GQ:DP:AD	0/1:50:30:15,15
+chrP	5400	.	T	G	50	PASS	slivar_comphet=CHPH/GENET/2/chrP/5000/T/G	GT:GQ:DP:AD	0/1:50:30:15,15
+chrP	20000	.	C	A	50	PASS	slivar_comphet=CHPH/GENEF/3/chrP/70000/A/T	GT:GQ:DP:AD	0/1:50:30:15,15
+chrP	70000	.	A	T	50	PASS	slivar_comphet=CHPH/GENEF/3/chrP/20000/C/A	GT:GQ:DP:AD	0/1:50:30:15,15

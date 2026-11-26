@@ -1,0 +1,16 @@
+== chr7:250: chr7:250 (GRCh38; from position)
+  genotype: C/T (heterozygous; REF C, ALT T)
+  evidence: depth 33, genotype quality 40, QUAL 42.5
+  variant: chr7:250 C>T C/T (heterozygous)
+    gene: GENEA
+    consequence: missense_variant, splice_region_variant
+    impact: MODERATE
+    HGVSc: ENST1:c.10C>T
+    HGVSp: ENSP1:p.Arg4Cys
+    known as: rs1001, COSV1
+    ClinVar (pipeline's ClinVar file): Pathogenic
+    ClinVar review status: criteria provided, multiple submitters
+    clinical significance (VEP cache): pathogenic, likely pathogenic
+    gnomAD genomes AF: 0.0003
+  in the reports:
+  no summary.json for this sample: run scripts/generate-report.sh <sample> (on Nextflow output, GENOME_DIR=<outdir>) to add what the reports say

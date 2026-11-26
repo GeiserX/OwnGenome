@@ -1,0 +1,8 @@
+  PGS900001: 859 GRCh38 rows, 76 off the autosomes dropped, 61 strand-ambiguous dropped, strand check failed (strand check: 406 rows agree with the reference, 9 flipped) (Strand passes)
+  PGS900002: 320583 GRCh38 rows, 31984 off the autosomes dropped, 47031 strand-ambiguous dropped, strand check failed (strand check: 54943 rows agree with the reference, 54880 flipped), female only (For women)
+  PGS900003: 240736 GRCh38 rows, 23888 off the autosomes dropped, 35027 strand-ambiguous dropped, strand check failed (strand check: 41372 rows agree with the reference, 41478 flipped), male only (label from the file)
+  PGS900004: 160621 GRCh38 rows, 15746 off the autosomes dropped, 23400 strand-ambiguous dropped, strand check failed (strand check: 27519 rows agree with the reference, 27466 flipped) (label from the file)
+  PGS900005: 80316 GRCh38 rows, 7842 off the autosomes dropped, 11739 strand-ambiguous dropped, strand check failed (strand check: 13954 rows agree with the reference, 13731 flipped) (label from the file)
+  PGS900006: 40127 GRCh38 rows, 3937 off the autosomes dropped, 5875 strand-ambiguous dropped, strand check failed (strand check: 6840 rows agree with the reference, 6915 flipped) (label from the file)
+  PGS900007: 8041 GRCh38 rows, 807 off the autosomes dropped, 1144 strand-ambiguous dropped, strand check failed (strand check: 1417 rows agree with the reference, 1413 flipped) (label from the file)
+  PGS900008: 320288 GRCh38 rows, 32294 off the autosomes dropped, 46994 strand-ambiguous dropped, strand check failed (strand check: 54792 rows agree with the reference, 55124 flipped) (label from the file)

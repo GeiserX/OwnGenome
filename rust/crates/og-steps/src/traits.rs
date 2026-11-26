@@ -67,11 +67,18 @@ struct Rule {
     haps: Vec<Hap>,
     combos: Vec<Combo>,
 }
+/// A call whose GQ is below this is not read (decision D10, the floor of
+/// `og pgx refblock-fill` and the Y private SNPs). A missing GQ stays readable.
+const MIN_GQ: u32 = 20;
+/// The FILTER values that keep a call readable: a pass, no filter (a
+/// reference block), and DeepVariant's RefCall (a candidate it called 0/0).
+const READABLE_FILTERS: &[&str] = &["", ".", "PASS", "RefCall"];
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Status {
     Called,
     NotCovered,
     OtherAllele,
+    LowGq,
     Unphased,
     OtherHaplotype,
 }
@@ -81,8 +88,34 @@ impl Status {
             Self::Called => "called",
             Self::NotCovered => "not_covered",
             Self::OtherAllele => "other_allele",
+            Self::LowGq => "low_gq",
             Self::Unphased => "unphased",
             Self::OtherHaplotype => "other_haplotype",
+        }
+    }
+}
+/// Why a call is too weak to read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Weak {
+    /// Its GQ, below [`MIN_GQ`].
+    Gq(String),
+    /// The caller's FILTER value.
+    Filtered(String),
+}
+impl Weak {
+    /// The record's GQ and FILTER columns: `None` when the call is readable.
+    fn of(gq: &str, filter: &str) -> Option<Self> {
+        if !READABLE_FILTERS.contains(&filter) {
+            return Some(Self::Filtered(filter.to_owned()));
+        }
+        gq.parse::<f64>()
+            .is_ok_and(|q| q.is_finite() && q < f64::from(MIN_GQ))
+            .then(|| Self::Gq(gq.to_owned()))
+    }
+    fn why(&self) -> String {
+        match self {
+            Self::Gq(q) => format!("genotype quality {q}, below {MIN_GQ}"),
+            Self::Filtered(f) => format!("the caller filtered the call: {f}"),
         }
     }
 }
@@ -91,6 +124,8 @@ struct SiteGt {
     alleles: Vec<String>,
     status: Status,
     gq: String,
+    /// Set when the call is too weak to read: the status is then LowGq.
+    weak: Option<Weak>,
     snv: bool,
 }
 impl Default for SiteGt {
@@ -99,6 +134,7 @@ impl Default for SiteGt {
             alleles: vec![],
             status: Status::NotCovered,
             gq: ".".into(),
+            weak: None,
             snv: false,
         }
     }
@@ -552,7 +588,9 @@ fn genotype(site: &Site, records: &Genotypes) -> SiteGt {
             a.clone(),
         )
     });
-    gt.status = if gt.alleles.len() == 2
+    gt.status = if gt.weak.is_some() {
+        Status::LowGq
+    } else if gt.alleles.len() == 2
         && gt
             .alleles
             .iter()
@@ -586,7 +624,7 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         let c: Vec<_> = line.split('\t').collect();
         if c.len() < 5 {
             return Err(format!(
-                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ]",
+                "{path}:{n}: {} columns, expected CHROM POS REF ALT GENOTYPE [GQ [FILTER]]",
                 c.len()
             ));
         }
@@ -620,7 +658,15 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
                 a.clone(),
             )
         });
-        let status = if al.len() == 2
+        let gq = c
+            .get(5)
+            .filter(|g| !g.is_empty())
+            .unwrap_or(&".")
+            .to_string();
+        let weak = Weak::of(&gq, c.get(6).copied().unwrap_or("."));
+        let status = if weak.is_some() {
+            Status::LowGq
+        } else if al.len() == 2
             && al
                 .iter()
                 .all(|a| a == &site.row["ref"] || a == &site.row["alt"])
@@ -629,17 +675,13 @@ fn read_genotypes(path: &str, sites: &[&Site]) -> Result<Genotypes> {
         } else {
             Status::OtherAllele
         };
-        let gq = c
-            .get(5)
-            .filter(|g| !g.is_empty())
-            .unwrap_or(&".")
-            .to_string();
         result.insert(
             key,
             SiteGt {
                 alleles: al,
                 status,
                 gq,
+                weak,
                 snv,
             },
         );
@@ -672,17 +714,17 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
         if ps.is_empty() || *ps == "." || !gt.contains('|') {
             continue;
         }
-        let bases: Vec<_> = std::iter::once(c[3]).chain(c[4].split(',')).collect();
+        let mut bases = vec![c[3]];
+        if c[4] != "." {
+            bases.extend(c[4].split(','));
+        }
         let idx: Option<Vec<_>> = gt
             .split('|')
             .map(|i| {
                 pycompat::num::parse_int(i)
                     .ok()
-                    .and_then(|i| i.to_string().parse::<isize>().ok())
-                    .and_then(|i| {
-                        let n = if i < 0 { bases.len() as isize + i } else { i };
-                        usize::try_from(n).ok().and_then(|n| bases.get(n).copied())
-                    })
+                    .and_then(|i| usize::try_from(i).ok())
+                    .and_then(|i| bases.get(i).copied())
             })
             .collect();
         if let Some(al) = idx
@@ -692,6 +734,82 @@ fn read_phased(path: &str, wanted: &HashSet<Key>) -> Result<Phased> {
         }
     }
     Ok(out)
+}
+/// The two haplotypes of a key that is one diplotype (`a/b`). An empty key
+/// or several diplotypes (`a/b|c/d`, whose reading already says what phase
+/// would decide) give `None`.
+fn assumed_copies<'a>(r: &'a Rule, key: &str) -> Option<(&'a Hap, &'a Hap)> {
+    if key.is_empty() || key.contains('|') {
+        return None;
+    }
+    let (a, b) = key.split_once('/')?;
+    let hap = |n: &str| r.haps.iter().find(|h| h.name == n);
+    Some((hap(a)?, hap(b)?))
+}
+/// "x and y", or "x, y and z".
+fn join_and(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+/// Where the changed alleles (the alt of each heterozygous site) sit, given
+/// the alleles of one copy: the other copy carries the rest.
+fn placement(r: &Rule, het: &[usize], copy: &[String]) -> String {
+    let alt = |i: &usize| format!("{} {}", r.sites[*i].row["rsid"], r.sites[*i].row["alt"]);
+    let (on, off): (Vec<usize>, Vec<usize>) = het
+        .iter()
+        .partition(|i| copy[**i] == r.sites[**i].row["alt"]);
+    let all = join_and(&het.iter().map(alt).collect::<Vec<_>>());
+    if on.is_empty() || off.is_empty() {
+        format!("{all} sit on one copy")
+    } else if het.len() == 2 {
+        format!("{all} sit on different copies")
+    } else {
+        format!(
+            "{} sit on one copy and {} on the other",
+            join_and(&on.iter().map(alt).collect::<Vec<_>>()),
+            join_and(&off.iter().map(alt).collect::<Vec<_>>())
+        )
+    }
+}
+/// The reading when read-backed phase puts the alleles on copies the rule
+/// does not describe, where the genotypes alone read `label`.
+fn phased_apart(
+    r: &Rule,
+    het: &[usize],
+    copies: [(&Vec<String>, Option<usize>); 2],
+    label: &str,
+) -> String {
+    let rs: Vec<_> = r.sites.iter().map(|s| s.row["rsid"].as_str()).collect();
+    let name = |(h, n): (&Vec<String>, Option<usize>)| {
+        n.map_or_else(
+            || format!("{} at {}", h.join(","), rs.join(", ")),
+            |n| r.haps[n].name.clone(),
+        )
+    };
+    let changed = copies
+        .iter()
+        .filter(|(h, _)| h.iter().zip(&r.sites).any(|(a, s)| a == &s.row["alt"]))
+        .count();
+    let unknown = copies.iter().filter(|(_, n)| n.is_none()).count();
+    format!(
+        "Read-backed phase shows that {}: the copies are {} and {}{}. This rule does not describe {}, so the pair is not read; without phase these genotypes would read {label}.",
+        placement(r, het, copies[0].0),
+        name(copies[0]),
+        name(copies[1]),
+        if changed == 1 {
+            ", so one copy is changed and the other is not"
+        } else {
+            ""
+        },
+        if unknown == 1 {
+            "that copy"
+        } else {
+            "those copies"
+        }
+    )
 }
 fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
     let g: Vec<_> = r.sites.iter().map(|s| genotype(s, gt)).collect();
@@ -753,52 +871,121 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
                 rs[rs.len() - 1]
             )
         };
-        let status = if g.iter().any(|g| g.status == Status::NotCovered) {
-            Status::NotCovered
+        let weak: Vec<_> = r
+            .sites
+            .iter()
+            .zip(&g)
+            .filter_map(|(s, g)| g.weak.as_ref().map(|w| (s, w)))
+            .collect();
+        let (status, reading) = if g.iter().any(|g| g.status == Status::NotCovered) {
+            (
+                Status::NotCovered,
+                format!("Not read: needs a genotype at {need}."),
+            )
+        } else if !weak.is_empty() {
+            (
+                Status::LowGq,
+                format!(
+                    "A low-quality call at {}: not read; check the reads.",
+                    weak.iter()
+                        .map(|(s, w)| format!("{} ({})", s.row["rsid"], w.why()))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+            )
         } else {
-            Status::OtherAllele
+            (
+                Status::OtherAllele,
+                format!("Not read: needs a genotype at {need}."),
+            )
         };
-        return finish(
-            out,
-            ".",
-            ".",
-            status,
-            format!("Not read: needs a genotype at {need}."),
-        );
+        return finish(out, ".", ".", status, reading);
     }
     let mut phase = if r.meta["needs_phase"] == "no" {
         "not_used"
     } else {
         "not_needed"
     };
-    let key = if r.meta["needs_phase"] == "no" {
-        allowed(r, &g.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|")
-    } else {
-        let het: Vec<_> = g
+    let het: Vec<_> = g
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| g.alleles[0] != g.alleles[1])
+        .map(|(i, _)| i)
+        .collect();
+    // The two copies read-backed phase gives, when one phase block holds
+    // every heterozygous site; the homozygous sites are on both copies.
+    let from_reads = || -> Option<(Vec<String>, Vec<String>)> {
+        let calls: Vec<_> = het
             .iter()
-            .enumerate()
-            .filter(|(_, g)| g.alleles[0] != g.alleles[1])
-            .map(|(i, _)| i)
-            .collect();
+            .map(|i| phased.and_then(|p| p.get(&r.sites[*i].key())))
+            .collect::<Option<_>>()?;
+        if !calls.iter().all(|v| v.2 == calls[0].2) {
+            return None;
+        }
+        let mut h1: Vec<_> = g.iter().map(|g| g.alleles[0].clone()).collect();
+        let mut h2: Vec<_> = g.iter().map(|g| g.alleles[1].clone()).collect();
+        for (i, c) in het.iter().zip(calls) {
+            h1[*i] = c.0.clone();
+            h2[*i] = c.1.clone();
+        }
+        Some((h1, h2))
+    };
+    let why = if phased.is_some() {
+        "no read or read pair covered them together"
+    } else {
+        "no phasing ran (no BAM, or phasing failed)"
+    };
+    let mut caveat = String::new();
+    let key = if r.meta["needs_phase"] == "no" {
+        let key = allowed(r, &g.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|");
+        // One diplotype read without phase from two or more heterozygous
+        // sites assumes which alleles share a copy: read-backed phase checks
+        // it, and without it the reading says what it assumes.
+        let assumed = assumed_copies(r, &key);
+        match (het.len() >= 2, assumed) {
+            (true, Some((a, b))) => match from_reads() {
+                Some((h1, h2)) => {
+                    phase = "read_backed";
+                    let n1 = r.haps.iter().position(|h| h.alleles == h1);
+                    let n2 = r.haps.iter().position(|h| h.alleles == h2);
+                    if let (Some(x), Some(y)) = (n1, n2) {
+                        format!("{}/{}", r.haps[x.min(y)].name, r.haps[x.max(y)].name)
+                    } else {
+                        let label = r
+                            .combos
+                            .iter()
+                            .rev()
+                            .find(|c| c.key == key)
+                            .map_or(key.as_str(), |c| c.label.as_str());
+                        return finish(
+                            out,
+                            phase,
+                            ".",
+                            Status::OtherHaplotype,
+                            phased_apart(r, &het, [(&h1, n1), (&h2, n2)], label),
+                        );
+                    }
+                }
+                None => {
+                    caveat = format!(
+                        " Phase unknown: this reading assumes {} (the copies {} and {}); {why}, so that is not checked.",
+                        placement(r, &het, &a.alleles),
+                        a.name,
+                        b.name
+                    );
+                    key
+                }
+            },
+            _ => key,
+        }
+    } else {
         let mut h1: Vec<_> = g.iter().map(|g| g.alleles[0].clone()).collect();
         let mut h2: Vec<_> = g.iter().map(|g| g.alleles[1].clone()).collect();
         if het.len() >= 2 {
-            let calls: Option<Vec<_>> = het
-                .iter()
-                .map(|i| phased.and_then(|p| p.get(&r.sites[*i].key())))
-                .collect();
-            if let Some(calls) = calls.filter(|c| c.iter().all(|v| v.2 == c[0].2)) {
-                for (i, c) in het.iter().zip(calls) {
-                    h1[*i] = c.0.clone();
-                    h2[*i] = c.1.clone();
-                }
+            if let Some((p1, p2)) = from_reads() {
+                (h1, h2) = (p1, p2);
                 phase = "read_backed";
             } else {
-                let why = if phased.is_some() {
-                    "no read or read pair covered them together"
-                } else {
-                    "no phasing ran (no BAM, or phasing failed)"
-                };
                 return finish(
                     out,
                     "unphased",
@@ -841,7 +1028,13 @@ fn rule_line(r: &Rule, gt: &Genotypes, phased: Option<&Phased>) -> Row {
         .rev()
         .find(|c| !key.is_empty() && c.key == key)
     {
-        Some(c) => finish(out, phase, &c.label, Status::Called, c.reading.clone()),
+        Some(c) => finish(
+            out,
+            phase,
+            &c.label,
+            Status::Called,
+            format!("{}{caveat}", c.reading),
+        ),
         None => finish(
             out,
             phase,
@@ -864,7 +1057,7 @@ fn stage_tsv(path: &str, columns: &[&str], rows: &[Row]) -> Result<AtomicFile> {
 }
 fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result<usize> {
     let mut sites = BTreeMap::new();
-    for r in rules.iter().filter(|r| r.meta["needs_phase"] == "yes") {
+    for r in rules {
         let calls: Option<Vec<_>> = r
             .sites
             .iter()
@@ -873,6 +1066,17 @@ fn phase_vcf(path: &str, sample: &str, rules: &[Rule], gt: &Genotypes) -> Result
                 (g.status == Status::Called).then_some(g)
             })
             .collect();
+        // A rule that reads without phase sends its sites only when the
+        // genotypes read one diplotype that assumes which alleles share a
+        // copy: read-backed phase then checks that assumption.
+        let calls = calls.filter(|c| {
+            r.meta["needs_phase"] == "yes"
+                || assumed_copies(
+                    r,
+                    &allowed(r, &c.iter().map(|g| g.alleles.clone()).collect::<Vec<_>>()).join("|"),
+                )
+                .is_some()
+        });
         if let Some(calls) = calls {
             let het: Vec<_> = r
                 .sites
@@ -1017,6 +1221,10 @@ fn run(verb: &str, opts: &HashMap<String, String>) -> Result<u8> {
                 "No genotype at this position in the gVCF (no reads, or a no-call): not read."
                     .into()
             }
+            Status::LowGq => format!(
+                "A low-quality call at this position ({}): not read; check the reads.",
+                g.weak.as_ref().map(Weak::why).unwrap_or_default()
+            ),
             Status::Called => s.row[["hom_ref", "het", "hom_alt"]
                 [g.alleles.iter().filter(|a| *a == &s.row["alt"]).count()]]
             .clone(),
@@ -1198,6 +1406,7 @@ mod tests {
                         alleles: al,
                         status: Status::Called,
                         gq: "40".into(),
+                        weak: None,
                         snv: true,
                     },
                 )
@@ -1356,6 +1565,25 @@ mod tests {
     }
 
     #[test]
+    fn phase_skips_records_with_indexes_that_name_no_allele() {
+        let scratch = Scratch::new();
+        let path = scratch.put(
+            "phased.vcf",
+            "chr20\t100\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|-1:7\n\
+             chr20\t200\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|3:7\n\
+             chr20\t300\t.\tA\t.\t.\tPASS\t.\tGT:PS\t0|1:7\n\
+             chr20\t400\t.\tA\tC,G\t.\tPASS\t.\tGT:PS\t0|2:7\n",
+        );
+        let key = |pos: u64| ("chr20".to_owned(), pos.to_string());
+        let wanted = [100, 200, 300, 400].into_iter().map(key).collect();
+
+        assert_eq!(
+            read_phased(&path, &wanted).unwrap(),
+            HashMap::from([(key(400), ("A".into(), "G".into(), "7".into()))])
+        );
+    }
+
+    #[test]
     fn phase_requires_one_block_and_only_multiple_hets_are_exported() {
         let (_, rules) = assets();
         let r = rules.iter().find(|r| r.id == "TAS2R38").unwrap();
@@ -1393,6 +1621,286 @@ mod tests {
         let gt = genotypes(r, &[0, 0, 0]);
         assert_eq!(rule_line(r, &gt, None)["phase"], "not_needed");
     }
+    /// A rule read without phase (HFE, SERPINA1, GC, CAD9p21, MAPT) that
+    /// gets one diplotype from two heterozygous sites assumes which alleles
+    /// share a copy. Unphased, the reading says so; read-backed phase in one
+    /// block confirms it, or puts the alleles on copies the rule does not
+    /// describe and the pair is not read.
+    #[test]
+    fn a_double_heterozygote_read_without_phase_says_what_it_assumes() {
+        let (_, rules) = assets();
+        let rule = |id: &str| rules.iter().find(|r| r.id == id).unwrap();
+        // Phase of each site: 0|1 puts the alt on the second copy.
+        let phased = |r: &Rule, gts: &[&str], ps: [&str; 2]| -> Phased {
+            r.sites
+                .iter()
+                .zip(gts)
+                .zip(ps)
+                .map(|((s, gt), ps)| {
+                    let (a, b) = gt.split_once('|').unwrap();
+                    let base = |i: &str| s.row[if i == "1" { "alt" } else { "ref" }].clone();
+                    (s.key(), (base(a), base(b), ps.to_owned()))
+                })
+                .collect()
+        };
+        for (id, label, place) in [
+            (
+                "HFE",
+                "C282Y/H63D",
+                "sit on different copies (the copies C282Y and H63D)",
+            ),
+            (
+                "SERPINA1",
+                "PiSZ",
+                "sit on different copies (the copies S and Z)",
+            ),
+            (
+                "GC",
+                "Gc1S/Gc2",
+                "sit on different copies (the copies Gc1S and Gc2)",
+            ),
+            (
+                "CAD9p21",
+                "one risk copy",
+                "sit on one copy (the copies nonrisk and risk)",
+            ),
+            ("MAPT", "H1/H2", "sit on one copy (the copies H1 and H2)"),
+        ] {
+            let r = rule(id);
+            let gt = genotypes(r, &[1, 1]);
+            let plain = r.combos.iter().find(|c| c.label == label).unwrap();
+            let line = rule_line(r, &gt, None);
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("called", label, "not_used"),
+                "{id}"
+            );
+            assert!(line["reading"].starts_with(&plain.reading), "{id}");
+            assert!(
+                line["reading"].contains("Phase unknown"),
+                "{id}: {}",
+                line["reading"]
+            );
+            assert!(line["reading"].contains(place), "{id}: {}", line["reading"]);
+            assert!(line["reading"].contains("no phasing ran"), "{id}");
+            let rs = &r.sites;
+            assert!(
+                line["reading"].contains(&format!(
+                    "{} {} and {} {}",
+                    rs[0].row["rsid"], rs[0].row["alt"], rs[1].row["rsid"], rs[1].row["alt"]
+                )),
+                "{id}: {}",
+                line["reading"]
+            );
+            // Phased as the reading assumes: the plain reading, no caveat.
+            let same = if place.contains("different") {
+                ["1|0", "0|1"]
+            } else {
+                ["1|0", "1|0"]
+            };
+            let other = if place.contains("different") {
+                ["1|0", "1|0"]
+            } else {
+                ["1|0", "0|1"]
+            };
+            let line = rule_line(r, &gt, Some(&phased(r, &same, ["5", "5"])));
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("called", label, "read_backed"),
+                "{id}"
+            );
+            assert_eq!(line["reading"], plain.reading, "{id}");
+            // Two phase blocks are no phase: the caveat stays.
+            let line = rule_line(r, &gt, Some(&phased(r, &same, ["5", "6"])));
+            assert_eq!(line["phase"], "not_used", "{id}");
+            assert!(line["reading"].contains("no read or read pair"), "{id}");
+            // Phased the other way: not the assumed pair, not read.
+            let line = rule_line(r, &gt, Some(&phased(r, &other, ["5", "5"])));
+            assert_eq!(
+                (&line["status"][..], &line["result"][..], &line["phase"][..]),
+                ("other_haplotype", ".", "read_backed"),
+                "{id}"
+            );
+            assert!(line["reading"].contains("not read"), "{id}");
+            assert!(
+                line["reading"].contains(&format!("would read {label}.")),
+                "{id}: {}",
+                line["reading"]
+            );
+            // One heterozygous site assumes nothing.
+            for choices in [[1, 0], [0, 1], [2, 1], [1, 2]] {
+                let line = rule_line(r, &genotypes(r, &choices), None);
+                assert!(
+                    !line["reading"].contains("Phase unknown"),
+                    "{id} {choices:?}"
+                );
+            }
+        }
+        // HFE with C282Y and H63D on one copy: one copy changed, the other wt.
+        let r = rule("HFE");
+        let line = rule_line(
+            r,
+            &genotypes(r, &[1, 1]),
+            Some(&phased(r, &["0|1", "0|1"], ["5", "5"])),
+        );
+        assert_eq!(
+            line["reading"],
+            "Read-backed phase shows that rs1800562 A and rs1799945 G sit on one copy: the copies \
+             are wt and A,G at rs1800562, rs1799945, so one copy is changed and the other is not. \
+             This rule does not describe that copy, so the pair is not read; without phase these \
+             genotypes would read C282Y/H63D."
+        );
+        // APOE's double heterozygote line already names the other pair.
+        let apoe = rule("APOE");
+        let line = rule_line(apoe, &genotypes(apoe, &[1, 1]), None);
+        assert_eq!(line["result"], "e2/e4");
+        assert!(!line["reading"].contains("Phase unknown"));
+        // WhatsHap gets the two HFE sites, not APOE's.
+        let scratch = Scratch::new();
+        let path = scratch.put("phase", "");
+        let mut gt = genotypes(r, &[1, 1]);
+        gt.extend(genotypes(apoe, &[1, 1]));
+        assert_eq!(phase_vcf(&path, "S", &rules, &gt).unwrap(), 2);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("rs1800562") && text.contains("rs1799945"));
+        assert!(!text.contains("rs429358"));
+        assert_eq!(
+            phase_vcf(&path, "S", &rules, &genotypes(r, &[1, 2])).unwrap(),
+            0
+        );
+    }
+    /// The call floor (decision D10): a site whose GQ is below 20, or whose
+    /// record the caller filtered, is not read. GQ 20, a missing GQ and
+    /// DeepVariant's RefCall stay readable.
+    #[test]
+    fn low_quality_calls_at_rule_sites_are_not_read() {
+        let (rows, rules) = assets();
+        let rule = |id: &str| rules.iter().find(|r| r.id == id).unwrap();
+        let sites: Vec<&Site> = rows
+            .iter()
+            .chain(rules.iter().flat_map(|r| &r.sites))
+            .collect();
+        let scratch = Scratch::new();
+        let read = |text: &str, id: &str| {
+            let path = scratch.put("g", text);
+            rule_line(rule(id), &read_genotypes(&path, &sites).unwrap(), None)
+        };
+        // APOE e2/e4: heterozygous at both sites.
+        let apoe = |tail: &str| {
+            format!("chr19\t44908684\tT\tC\tT/C{tail}\nchr19\t44908822\tC\tT\tC/T{tail}\n")
+        };
+        for (tail, status, result) in [
+            ("\t0", "low_gq", "."),
+            ("\t1", "low_gq", "."),
+            ("\t19", "low_gq", "."),
+            ("\t20", "called", "e2/e4"),
+            ("\t99", "called", "e2/e4"),
+            ("\t.", "called", "e2/e4"),
+            ("", "called", "e2/e4"),
+            ("\t50\tPASS", "called", "e2/e4"),
+            ("\t50\t.", "called", "e2/e4"),
+            ("\t50\tLowQual", "low_gq", "."),
+        ] {
+            let line = read(&apoe(tail), "APOE");
+            assert_eq!(line["status"], status, "APOE with '{tail}'");
+            assert_eq!(line["result"], result, "APOE with '{tail}'");
+            assert_eq!(line["genotypes"], "T/C,C/T", "APOE with '{tail}'");
+            if status == "low_gq" {
+                assert!(line["reading"].contains("not read"), "{}", line["reading"]);
+                assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+            }
+        }
+        // One weak site is enough to stop the rule, and the reading names it.
+        let line = read(
+            "chr19\t44908684\tT\tC\tC/C\t1\nchr19\t44908822\tC\tT\tC/C\t50\n",
+            "APOE",
+        );
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("rs429358"), "{}", line["reading"]);
+        assert!(!line["reading"].contains("rs7412"), "{}", line["reading"]);
+        // A site with no call at all still reads not_covered.
+        let line = read("chr19\t44908684\tT\tC\tT/C\t1\n", "APOE");
+        assert_eq!(line["status"], "not_covered");
+        // HFE C282Y/H63D: a LowQual call at C282Y is not read; RefCall and
+        // a pass are.
+        let hfe = |filter: &str| {
+            format!(
+                "chr6\t26092913\tG\tA\tG/A\t50\t{filter}\nchr6\t26090951\tC\tG\tC/G\t50\tRefCall\n"
+            )
+        };
+        let line = read(&hfe("LowQual"), "HFE");
+        assert_eq!((&line["status"][..], &line["result"][..]), ("low_gq", "."));
+        assert!(line["reading"].contains("LowQual"), "{}", line["reading"]);
+        assert_eq!(read(&hfe("PASS"), "HFE")["status"], "called");
+        // SERPINA1 PiMZ at GQ 0 is not read; at GQ 30 it is.
+        let serpina1 = |gq: u32| {
+            format!("chr14\t94380925\tT\tA\tT/T\t{gq}\nchr14\t94378610\tC\tT\tC/T\t{gq}\n")
+        };
+        assert_eq!(read(&serpina1(0), "SERPINA1")["status"], "low_gq");
+        assert_eq!(read(&serpina1(30), "SERPINA1")["status"], "called");
+        // A low-quality heterozygous site is not sent to WhatsHap.
+        let tas2r38 = |gq: u32| {
+            format!(
+                "chr7\t141973545\tC\tG\tC/G\t{gq}\nchr7\t141972905\tG\tA\tG/A\t{gq}\nchr7\t141972804\tT\tC\tT/C\t{gq}\n"
+            )
+        };
+        for (gq, n) in [(5, 0), (40, 3)] {
+            let path = scratch.put("g", &tas2r38(gq));
+            let gt = read_genotypes(&path, &sites).unwrap();
+            let out = scratch.put("phase.vcf", "");
+            assert_eq!(phase_vcf(&out, "S", &rules, &gt).unwrap(), n, "GQ {gq}");
+        }
+    }
+
+    /// The traits table: a weak table row and the APOE line built from weak
+    /// sites read low_gq with a "not read" reading.
+    #[test]
+    fn low_quality_calls_in_the_traits_table_are_not_read() {
+        let scratch = Scratch::new();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+        let gt = scratch.put(
+            "g",
+            "chr2\t135851076\tG\tA\tG/G\t3\n\
+             chr19\t40848628\tA\tT\tA/T\t40\tLowQual\n\
+             chr2\t135859184\tC\tT\tC/T\t20\n\
+             chr19\t44908684\tT\tC\tC/C\t0\nchr19\t44908822\tC\tT\tC/C\t0\n",
+        );
+        let out = scratch.0.join("traits.tsv").to_string_lossy().into_owned();
+        let rules_out = scratch.0.join("rules.tsv").to_string_lossy().into_owned();
+        let opts = [
+            ("table", root.join("traits.tsv")),
+            ("rules", root.join("genotype_rules.tsv")),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string_lossy().into_owned()))
+        .chain([
+            ("genotypes".into(), gt),
+            ("sample".into(), "S".into()),
+            ("out".into(), out.clone()),
+            ("rules-out".into(), rules_out),
+        ])
+        .collect();
+        assert_eq!(run("table", &opts).unwrap(), 0);
+        let text = std::fs::read_to_string(&out).unwrap();
+        let row = |rsid: &str| -> Vec<String> {
+            text.lines()
+                .map(|l| l.split('\t').map(str::to_owned).collect::<Vec<_>>())
+                .find(|c| c[0] == rsid)
+                .unwrap_or_else(|| panic!("no row {rsid}"))
+        };
+        // rsid gene chrom pos trait genotype status reading ...
+        for rsid in ["rs4988235", "rs1801272", "rs429358", "rs7412"] {
+            let r = row(rsid);
+            assert_eq!(r[6], "low_gq", "{rsid}: {r:?}");
+            assert!(r[7].contains("not read"), "{rsid}: {r:?}");
+        }
+        assert_eq!(row("rs4988235")[5], "G/G");
+        assert!(row("rs1801272")[7].contains("LowQual"));
+        assert_eq!(row("rs182549")[6], "called");
+        let apoe = row("rs429358+rs7412");
+        assert_eq!((&apoe[5][..], &apoe[6][..]), (".", "low_gq"));
+    }
+
     #[test]
     fn unwritable_rules_output_keeps_existing_traits_table() {
         let scratch = Scratch::new();

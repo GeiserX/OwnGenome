@@ -2,8 +2,8 @@
 # PharmCAT's MT-RNR1 call from step 20's chrM calls, and no logback noise.
 #
 # PharmCAT 3.4.0 reads MT-RNR1 only as an outside call. Step 07 runs
-# bin/pgx_mito_merge.py on mito/<sample>_chrM_filtered.vcf.gz when it exists
-# and adds the MT-RNR1 line to the outside calls. Four samples, each HG002's
+# og pgx mito-merge on mito/<sample>_chrM_filtered.vcf.gz when it exists
+# and adds the MT-RNR1 line to the outside calls. Five samples, each HG002's
 # variants-only VCF (case 21) with an invented Mutect2-style chrM call set,
 # in a GENOME_DIR of their own (the fixture reference hard-linked into it),
 # so no later case sees them:
@@ -12,8 +12,12 @@
 #   MTREF  PASS chrM records, none at an MT-RNR1 allele, and HG002's BAM
 #          (case 20; about 500x on chrM) to show the positions are covered:
 #          MT-RNR1 Reference;
-#   MTHET  m.1555A>G at AF 0.40: nothing passed, the log says heteroplasmic,
-#          MT-RNR1 stays No Result;
+#   MTHET  m.1555A>G at AF 0.40: passed all the same (CPIC sets no safe
+#          heteroplasmy level), the log says heteroplasmic with the AF, and
+#          PharmCAT gives the aminoglycoside recommendation (before issue
+#          #411's fix it was held back and MT-RNR1 stayed No Result);
+#   MTLOW  m.1555A>G at AF 0.03, below the detection floor of 0.05: nothing
+#          passed, the log says below the floor, MT-RNR1 stays No Result;
 #   MTNONE no chrM call set (the control, the state before the fix for every
 #          sample): the log says so and MT-RNR1 stays No Result.
 # The jar ran in /pharmcat, which the calling user cannot write, and logback
@@ -65,26 +69,19 @@ sample() {
 # mt REPORT: PharmCAT's callSource and diplotype label for MT-RNR1, then the
 # drugs with a recommendation for that label, one per line.
 mt() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception as e:
-    print(f"unreadable report.json: {e}")
-    sys.exit(0)
-g = (d.get("genes") or {}).get("MT-RNR1") or {}
-dips = g.get("sourceDiplotypes") or g.get("recommendationDiplotypes") or [{}]
-label = dips[0].get("label") or (dips[0].get("allele1") or {}).get("name") or "?"
-print(f"{g.get('callSource', 'absent')}\t{label}")
-for src, by_drug in (d.get("drugs") or {}).items():
-    for name, rep in (by_drug or {}).items():
-        for gl in rep.get("guidelines") or []:
-            for ann in gl.get("annotations") or []:
-                labels = {dp.get("label") for gt in ann.get("genotypes") or []
-                          for dp in gt.get("diplotypes") or [] if dp.get("gene") == "MT-RNR1"}
-                if label in labels and " ".join(str(ann.get("drugRecommendation") or "").split()):
-                    print(f"drug\t{rep.get('name') or name}\t{src}")
-PY
+  # alt(f): the value, or f when it is empty (null, false, 0, "", [] or {}).
+  jq -r 'def alt(f): if . == null or . == false or . == 0 or . == "" or . == [] or . == {} then f else . end;
+    def p: if . == null then "None" else tostring end;
+    ((.genes | alt({}))["MT-RNR1"] | alt({})) as $g
+    | ($g.sourceDiplotypes | alt($g.recommendationDiplotypes | alt([{}])))[0] as $d
+    | ($d.label | alt(($d.allele1 | alt({})).name | alt("?"))) as $label
+    | "\($g | if has("callSource") then .callSource | p else "absent" end)\t\($label | p)",
+      ((.drugs | alt({})) | to_entries[] | .key as $src | (.value | alt({})) | to_entries[] | .key as $name | .value
+        | . as $rep | (.guidelines | alt([]))[] | (.annotations | alt([]))[]
+        | select(any((.genotypes | alt([]))[] | (.diplotypes | alt([]))[] | select(.gene == "MT-RNR1"); .label == $label))
+        | select(.drugRecommendation | alt("") | tostring | test("\\S"))
+        | "drug\t\($rep.name | alt($name))\t\($src)")' "$1" 2>/dev/null \
+    || echo "unreadable report.json: $1"
 }
 denied() { grep -c 'pharmcat\.log (Permission denied)' <<< "$1" || true; }
 
@@ -99,10 +96,12 @@ for e in "" .bai; do
 done
 sample MTHET "${BACKGROUND}
 $(row 1555 A G PASS 0.400)"
+sample MTLOW "${BACKGROUND}
+$(row 1555 A G PASS 0.030)"
 sample MTNONE
 
 declare -A LOGS=()
-for p in MTHOM MTREF MTHET MTNONE; do
+for p in MTHOM MTREF MTHET MTLOW MTNONE; do
   GENOME_DIR="$G" run_step 07-pharmacogenomics.sh "$p"
   check_step_exit "07-pharmacogenomics.sh (${p})"
   LOGS[$p]=$(cat "$STEP_LOG")
@@ -132,11 +131,20 @@ check_eq "MTREF: PharmCAT reports MT-RNR1 Reference as an outside call" "$(head 
 
 R=$(mt "${G}/MTHET/vcf/MTHET.report.json")
 echo "MTHET MT-RNR1: ${R}"
-check "MTHET: the merge holds m.1555A>G back as heteroplasmic" \
-  has '^pgx_mito_merge: held back: m\.1555A>G \(chrM:1555 A>G AF 0\.400\) is heteroplasmic' "${LOGS[MTHET]}"
-check "MTHET: and says MT-RNR1 stays No Result" has '^pgx_mito_merge: no MT-RNR1 call passed to PharmCAT: it stays No Result' "${LOGS[MTHET]}"
-check "MTHET: PharmCAT got no outside call" has '^No outside calls ' "${LOGS[MTHET]}"
-check "MTHET: PharmCAT has no MT-RNR1 call" has '^NONE' "$(head -n 1 <<< "$R")"
+check "MTHET: the merge passed m.1555A>G, heteroplasmic, with its AF" \
+  has '^pgx_mito_merge: MT-RNR1 m\.1555A>G passed to PharmCAT as an outside call \(heteroplasmic, chrM:1555 A>G AF 0\.400; .*homoplasmic guidance applies$' "${LOGS[MTHET]}"
+check "MTHET: PharmCAT got the outside calls" has '^Outside calls \(step 36, and MT-RNR1 from step 20\): ' "${LOGS[MTHET]}"
+check_eq "MTHET: PharmCAT reports MT-RNR1 m.1555A>G as an outside call" "$(head -n 1 <<< "$R")" $'OUTSIDE\tm.1555A>G'
+check_ge "MTHET: drugs with a recommendation for MT-RNR1 m.1555A>G" "$(grep -c '^drug' <<< "$R" || true)" 1
+check "MTHET: amikacin is one of them" has $'^drug\tamikacin\t' "$R"
+
+R=$(mt "${G}/MTLOW/vcf/MTLOW.report.json")
+echo "MTLOW MT-RNR1: ${R}"
+check "MTLOW: the merge holds m.1555A>G back as below the detection floor" \
+  has '^pgx_mito_merge: held back: m\.1555A>G \(chrM:1555 A>G AF 0\.030\) is below the detection floor \(AF below 0\.05\)' "${LOGS[MTLOW]}"
+check "MTLOW: and says MT-RNR1 stays No Result" has '^pgx_mito_merge: no MT-RNR1 call passed to PharmCAT: it stays No Result' "${LOGS[MTLOW]}"
+check "MTLOW: PharmCAT got no outside call" has '^No outside calls ' "${LOGS[MTLOW]}"
+check "MTLOW: PharmCAT has no MT-RNR1 call" has '^NONE' "$(head -n 1 <<< "$R")"
 
 R=$(mt "${G}/MTNONE/vcf/MTNONE.report.json")
 echo "MTNONE MT-RNR1 (control): ${R}"
