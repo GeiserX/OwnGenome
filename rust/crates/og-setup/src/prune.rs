@@ -14,6 +14,27 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
+/// The rows prune works on: every download of the table, or the IDS named,
+/// each of which must be a download (a row stored where a step reads it is
+/// refused).
+pub fn rows<'a>(s: &'a Sources, ids: &[String]) -> Result<Vec<&'a Source>, String> {
+    if ids.is_empty() {
+        return Ok(s.rows.values().filter(|r| r.is_download()).collect());
+    }
+    let mut v = vec![];
+    for id in ids {
+        let r = s.get(id)?;
+        if !r.is_download() {
+            return Err(format!(
+                "ERROR: {id} is stored at {}, where a step reads it; prune removes only the downloads folder",
+                r.path
+            ));
+        }
+        v.push(r);
+    }
+    Ok(v)
+}
+
 /// The files prune would remove for ROWS: each existing download and
 /// `.part`, with its size.
 pub fn targets(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<(PathBuf, u64)>, String> {
@@ -73,22 +94,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let res = (|| -> Result<(), String> {
         let ctx = Ctx::from_env(&root_of(root.as_deref()))?;
         let s = Sources::read(&ctx.root)?;
-        let rows: Vec<&Source> = if a.is_empty() {
-            s.rows.values().filter(|r| r.is_download()).collect()
-        } else {
-            let mut v = vec![];
-            for id in &a {
-                let r = s.get(id)?;
-                if !r.is_download() {
-                    return Err(format!(
-                        "ERROR: {id} is stored at {}, where a step reads it; prune removes only the downloads folder",
-                        r.path
-                    ));
-                }
-                v.push(r);
-            }
-            v
-        };
+        let rows = rows(&s, &a)?;
         let t = targets(&ctx, &rows)?;
         let mut freed = 0u64;
         for (p, n) in &t {

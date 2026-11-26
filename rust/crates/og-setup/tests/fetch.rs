@@ -765,7 +765,7 @@ fn prune_removes_only_downloads() {
     }
     let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
     let s = Sources::read(&root).unwrap();
-    let rows: Vec<_> = s.rows.values().filter(|r| r.is_download()).collect();
+    let rows = og_setup::prune::rows(&s, &[]).unwrap();
     let t = og_setup::prune::targets(&c, &rows).unwrap();
     let names: Vec<String> = t
         .iter()
@@ -779,7 +779,11 @@ fn prune_removes_only_downloads() {
             "downloads/f/2.gz"
         ]
     );
-    assert!(!s.get("inst").unwrap().is_download());
+    let named = og_setup::prune::rows(&s, &["inst".to_owned()]).unwrap_err();
+    assert!(
+        named.contains("prune removes only the downloads folder"),
+        "{named}"
+    );
 }
 
 // --- the repository ---------------------------------------------------------
