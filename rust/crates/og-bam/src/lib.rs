@@ -156,7 +156,8 @@ fn none_or<T: std::fmt::Display>(v: Option<T>) -> String {
 
 /// `og bam-fetch-probe BAM REGIONS`: for each `contig<TAB>start<TAB>stop`
 /// line of REGIONS (`#` lines skipped), one line per fetched read in the
-/// format of `tests/pysam_fetch.py`, so the two can be compared byte for byte.
+/// format of `tests/data/fetch.pysam.tsv` (what pysam's fetch returned), so
+/// the two can be compared byte for byte.
 pub fn fetch_probe(bam: &Path, regions: impl BufRead, mut out: impl Write) -> io::Result<()> {
     let mut bam = Bam::open(bam).map_err(io::Error::other)?;
     for line in regions.lines() {

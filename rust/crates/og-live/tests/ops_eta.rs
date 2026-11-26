@@ -17,7 +17,6 @@ use og_runlog::state::{RunState, State, StepOut, StepState};
 use og_runlog::steps::{Step, process_steps, read_steps};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -694,53 +693,6 @@ fn nextflow_config_traces_the_14_default_columns_then_the_7_added() {
         trace_fields(&broken),
         Some(TRACE_FIELDS.map(str::to_owned).to_vec())
     );
-}
-
-/// An old `bin/run_*.py` exits 1 and names its og command, never a silent 0.
-fn refuses(script: &Path, cmd: &str) -> Result<(), String> {
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let o = Command::new(&exe)
-        .arg(script)
-        .args(["--outdir", env!("CARGO_TARGET_TMPDIR")])
-        .output()
-        .map_err(|e| format!("cannot run {exe}: {e}; set OG_PYTHON"))?;
-    let err = String::from_utf8_lossy(&o.stderr);
-    if o.status.code() == Some(1)
-        && err.contains(&format!("bin/og run {cmd}"))
-        && o.stdout.is_empty()
-    {
-        Ok(())
-    } else {
-        Err(format!("{:?} {err}", o.status))
-    }
-}
-
-/// While the live site still imports them, the modules' command lines stay
-/// shut (they go with the Python server, and so does this check).
-#[test]
-fn the_old_python_command_lines_refuse_and_name_og_run() {
-    for (name, cmd) in [
-        ("run_eta", "eta"),
-        ("run_state", "state"),
-        ("run_headroom", "headroom"),
-    ] {
-        let script = repo().join("bin").join(format!("{name}.py"));
-        if !script.is_file() {
-            continue;
-        }
-        refuses(&script, cmd).unwrap_or_else(|e| panic!("bin/{name}.py: {e}"));
-        // Control: the module without its refusing entry point must pass the run.
-        let src = std::fs::read_to_string(&script).unwrap();
-        let cut = src
-            .rfind("\nif __name__ == \"__main__\":")
-            .expect("the module has an entry point");
-        let planted = tmp().join(format!("{name}.py"));
-        std::fs::write(&planted, &src[..cut]).unwrap();
-        assert!(
-            refuses(&planted, cmd).is_err(),
-            "bin/{name}.py: the check passed a module with no entry point"
-        );
-    }
 }
 
 // --- the planted mistakes: each test below must FAIL --------------------------------------

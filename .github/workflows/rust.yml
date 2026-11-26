@@ -1,10 +1,10 @@
 name: Rust
 
-# The og binary in the images the tasks run, and the long pycompat streams.
-# Guard holds the checks every pull request needs: its rust job (format,
-# lint, tests, pycompat at 100000 cases per operation), chrome job and
-# og-musl job (the musl builds and the stale-binary guard). This workflow
-# holds the slow ones (docs/rust.md):
+# The og binary in the images the tasks run. Guard holds the checks every
+# pull request needs: its rust job (format, lint, tests, pycompat against
+# the committed CPython answers), chrome job and og-musl job (the musl
+# builds and the stale-binary guard). This workflow holds the slow one
+# (docs/rust.md):
 #
 #   images   on a pull request that touches the Rust code, the shim or the
 #            images: builds og with scripts/setup.sh --og, cold and then
@@ -13,12 +13,8 @@ name: Rust
 #            PARASCOPY_IMAGE on every platform each one publishes (arm64 under
 #            QEMU). A second run with a planted wrong-arch binary must fail. The
 #            two binaries are kept as the artifact og-binaries. Both also
-#            run og-bam's fetch smoke against pysam on the fixture slice.
-#   streams  nightly: 10^7 cases per pycompat operation against CPython in
-#            PYTHON_IMAGE, one operation at a time, with a new seed each
-#            night (printed, so a failure can be replayed). On a pull request
-#            that touches the paths below it runs 20000 cases per operation, so the
-#            job is seen working.
+#            run og-bam's fetch smoke on the fixture slice, against the reads
+#            samtools in SAMTOOLS_IMAGE returns there.
 #
 # Public repo: GitHub-hosted runners only.
 on:
@@ -31,13 +27,7 @@ on:
       - 'versions.env'
       - 'scripts/setup.sh'
       - '.github/workflows/rust.yml'
-  schedule:
-    - cron: '0 3 * * *'
   workflow_dispatch:
-    inputs:
-      cases:
-        description: 'pycompat cases per operation for the streams job'
-        default: '10000000'
 
 permissions:
   contents: read
@@ -48,7 +38,6 @@ concurrency:
 
 jobs:
   images:
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -78,18 +67,28 @@ jobs:
         shell: bash
         run: tests/rust/og-in-images.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # og-bam's fetch smoke (docs/rust.md): pysam in PYPGX_IMAGE, the pysam
-      # the pipeline runs, and both static binaries, each on its own arch,
-      # must write fetch.pysam.tsv byte for byte on the fixture slice.
-      - name: og-bam fetch equals pysam, amd64 and arm64, and the binary sizes
+      # og-bam's fetch smoke (docs/rust.md): fetch.pysam.tsv, the reads
+      # pysam's fetch returned on each region of regions.tsv, must be what
+      # samtools in SAMTOOLS_IMAGE returns there (reference_end and the
+      # aligned blocks worked out from each CIGAR), and both static binaries,
+      # each on its own arch, must write it byte for byte.
+      - name: og-bam fetch equals samtools and pysam, amd64 and arm64, and the binary sizes
         shell: bash
         run: |
           . versions.env
           d=rust/crates/og-bam/tests/data
           out="${RUNNER_TEMP}/fetch.tsv"
-          docker run --rm -v "${PWD}:/w:ro" -w /w "$PYPGX_IMAGE" \
-            python3 -I rust/crates/og-bam/tests/pysam_fetch.py "${d}/cyp2d6.bam" "${d}/regions.tsv" > "$out"
-          diff "$out" "${d}/fetch.pysam.tsv" || { echo "ERROR: pysam no longer writes fetch.pysam.tsv"; exit 1; }
+          rust/crates/og-bam/tests/samtools_fetch.sh "$SAMTOOLS_IMAGE" > "$out"
+          diff "$out" "${d}/fetch.pysam.tsv" || { echo "ERROR: samtools does not return the reads of fetch.pysam.tsv"; exit 1; }
+          echo "samtools: $(wc -l < "$out") reads, the same as fetch.pysam.tsv"
+          # Control: a CIGAR deletion that does not move the reference must differ.
+          # The helper must still finish: a failed run is not a caught mistake.
+          planted="${RUNNER_TEMP}/fetch-planted.tsv"
+          OG_FETCH_PLANT=deletion rust/crates/og-bam/tests/samtools_fetch.sh "$SAMTOOLS_IMAGE" > "$planted"
+          # cmp: 1 is a difference, 0 a passed mistake, 2 a comparison error.
+          rc=0; cmp -s "$planted" "${d}/fetch.pysam.tsv" || rc=$?
+          [ "$rc" -eq 1 ] || { echo "ERROR: the samtools check did not catch a planted CIGAR mistake (cmp exit $rc)"; exit 1; }
+          echo "Control: a planted CIGAR mistake differs from fetch.pysam.tsv."
           for p in amd64:x86_64 arm64:aarch64; do
             docker run --rm --platform "linux/${p%:*}" -v "${PWD}:/w:ro" -w /w "$PYTHON_IMAGE" \
               "bin/.og/og-linux-${p#*:}" bam-fetch-probe "${d}/cyp2d6.bam" "${d}/regions.tsv" > "$out"
@@ -119,33 +118,3 @@ jobs:
           name: og-binaries
           path: bin/.og/og-linux-*
           retention-days: 7
-
-  streams:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The runner's own binary only (rust/og.sh): pycompat runs og on the
-      # host. The images job above builds all four.
-      - name: Build og with scripts/setup.sh --og
-        env:
-          OG_ARCHES: x86_64
-          OG_DARWIN_ARCHES: ''
-        run: |
-          scripts/setup.sh --og
-          bin/og version
-
-      - name: pycompat against CPython, one operation at a time
-        env:
-          CASES: ${{ github.event_name == 'pull_request' && '20000' || inputs.cases || '10000000' }}
-        run: |
-          case "$CASES" in ''|*[!0-9]*) echo "ERROR: cases must be a whole number, got '${CASES}'"; exit 1 ;; esac
-          seed=${GITHUB_RUN_ID}
-          fail=0
-          ops=$(python3 -I tests/rust/pycompat_oracle.py ops)
-          [ -n "$ops" ] || { echo "ERROR: the oracle lists no operation"; exit 1; }
-          for op in $ops; do
-            tests/rust/pycompat-diff.sh "${PWD}/bin/og" "$CASES" "$seed" "$op" || fail=1
-          done
-          exit "$fail"

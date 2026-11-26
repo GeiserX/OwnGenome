@@ -1,4 +1,4 @@
-# case<TAB>tool<TAB>arguments...: made by ../../make_parity.py; {d} tests/data, {r} the repository, {o} the output directory
+# case<TAB>tool<TAB>arguments...: made by make_parity.py (commit 182811a7, see ../README.md); {d} tests/data, {r} the repository, {o} the output directory
 cyp2d6-bed	cyp2d6-bed
 cyp2d6-bed-stray	cyp2d6-bed	stray
 measure-cyp2d6	cyp2d6-measure	--bam	{d}/cyp2d6.bam	--out	{o}/shares.tsv
