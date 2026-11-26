@@ -163,10 +163,13 @@ build_annotations "$ANN"
 cp -R "$ANN" "${WORK}/ann-plain"   # the set without the two files, for the red controls
 mkdir -p "${G}/s1/sv"
 sv_vcf > "${G}/s1/sv/fixture_sv.vcf"
-# The two downloads, already in place: setup.sh keeps a download only once its
-# checksum matches, so it takes a file it finds as whole.
-gnomad_sites | gzip -c > "${ANN}/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz"
-mane_summary | gzip -c > "${ANN}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz"
+# The two downloads, already in the downloads folder: setup.sh keeps a
+# download only once its checksum matches, so it takes a file it finds there
+# as whole.
+DL="${G}/downloads"
+mkdir -p "$DL"
+gnomad_sites | gzip -c > "${DL}/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz"
+mane_summary | gzip -c > "${DL}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz"
 
 rc=0
 GENOME_DIR="$G" "${REPO}/scripts/setup.sh" --annotsv-data "$G" > "${WORK}/setup1.log" 2>&1 || rc=$?
@@ -188,7 +191,9 @@ expect "setup.sh leaves no merge run behind" "$(find "$ANN" -maxdepth 1 -name '.
 expect "the MANE Select list" "$(tr '\n' ' ' < "${ANN}/mane_select_refseq.txt" 2>/dev/null)" '^NM_900001\.3 $'
 expect "the gnomAD-SV stamp" "$(cat "${H}/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed" 2>/dev/null)" \
   "^gnomAD-SV ${GNOMAD_SV_VERSION} sha256 ${GNOMAD_SV_SHA256}\$"
-expect "the downloads are removed once used" \
+expect "the downloads are kept in the downloads folder" \
+  "$(find "$DL" -maxdepth 1 \( -name 'gnomad.v*.sv.sites.vcf.gz' -o -name 'MANE.*.summary.txt.gz' \) | wc -l | tr -d ' ')" '^2$'
+expect "no download is left in AnnotSV's folder" \
   "$(find "$ANN" -maxdepth 1 \( -name 'gnomad.v*.sv.sites.vcf.gz' -o -name 'MANE.*.summary.txt.gz' \) | wc -l | tr -d ' ')" '^0$'
 
 # --- 2. step 05 -------------------------------------------------------------------------
