@@ -1025,20 +1025,22 @@ jobs:
           echo "$out"
           if grep -q '^skip: bin/og is not built' <<<"$out"; then echo "ERROR: the case was skipped, with og built"; exit 1; fi
 
-      # No owned Python: every *.py file, Python heredoc, python call in
-      # shell, Nextflow, workflows and command tables, python shebang, and
-      # Command::new("python3") in Rust fails unless tests/python-allow.tsv
-      # names its file as third-party Python, run in its own pinned image.
+      # No owned Python: every *.py file, python shebang, Python heredoc,
+      # python, pip or uv call and setup-python step in shell, Makefiles,
+      # Nextflow, workflows, JavaScript and command tables, and Python run
+      # from a Rust string fails unless tests/python-allow.tsv names its file
+      # (third-party Python in its own pinned image, or a line that runs none).
       # The matching rules have their planted cases in og-dev's cargo tests;
-      # the three controls here prove the gate reads this checkout: a new
-      # untracked .py file, a new python3 call in a script, and the list
-      # without one of its rows each turn it red.
+      # the four controls here prove the gate reads this checkout: a new
+      # untracked .py file, a new python3 call in a script, the list without
+      # one of its rows, and a setup-python step back in docs.yml (the site
+      # is built in PYTHON_IMAGE) each turn it red.
       - name: og dev python-gate
         working-directory: .
         run: |
           bin/og dev python-gate
           ctl=$(mktemp -d)
-          trap 'rm -rf "$ctl" bin/planted_gate_probe.py scripts/planted-gate-probe.sh' EXIT
+          trap 'if [ -f "$ctl/docs.yml" ]; then cp "$ctl/docs.yml" .github/workflows/docs.yml; fi; rm -rf "$ctl" bin/planted_gate_probe.py scripts/planted-gate-probe.sh' EXIT
           expect_red() {  # expect_red WHAT PATTERN [ARGS...]: the gate fails and names PATTERN
             local what=$1 pat=$2 out rc=0
             shift 2
@@ -1062,6 +1064,10 @@ jobs:
           else
             echo "The allow list has no row, so there is no row to remove."
           fi
+          cp .github/workflows/docs.yml "${ctl}/docs.yml"
+          printf '      - uses: actions/setup-python@v7\n' >> .github/workflows/docs.yml
+          expect_red 'setup-python back in docs.yml' '- uses: actions/setup-python@v7'
+          cp "${ctl}/docs.yml" .github/workflows/docs.yml
           bin/og dev python-gate
 
       # EVERYTHING=true and -profile everything run every optional step from

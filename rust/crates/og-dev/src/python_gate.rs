@@ -4,36 +4,54 @@
 //! Every file `git ls-files` lists (tracked, plus new files that are not
 //! ignored) is read, and these are the findings:
 //!
-//! - `file`: a `*.py`, `*.pyw` or `*.pyi` file;
+//! - `file`: a `*.py`, `*.pyw`, `*.pyi` or `*.ipynb` file;
 //! - `shebang`: a `#!` line whose program is python, python3 or
 //!   pythonX.Y, directly or through `env`: the first line of any file, or
 //!   any line of a shell, Nextflow or workflow file (a script a heredoc or a
 //!   Nextflow `script:` block writes);
-//! - `call`: the word python, python3 or pythonX.Y outside a comment in a
-//!   shell script (by its suffix, or by a shell `#!` line whatever the
-//!   suffix), a Nextflow file or config, a GitHub workflow or action (not
-//!   its `name:` and `description:` labels), or the `command` field of a
-//!   TSV command table (`tests/smoke/commands.tsv`): a `python3 -c`, a
-//!   `python3 - <<EOF`, a `python3 tool` run in an image;
+//! - `call`: a Python program word outside a comment in a shell script (by
+//!   its suffix, by a shell `#!` line whatever the suffix, a Makefile, a
+//!   `*.mk`, a justfile or a Dockerfile), a Nextflow file or config, a
+//!   GitHub workflow or action (not its `name:` and `description:`
+//!   labels), JavaScript or TypeScript, or the `command` field of a TSV
+//!   command table (`tests/smoke/commands.tsv`): a `python3 -c`, a
+//!   `python3 - <<EOF`, a `python3 tool` run in an image, a `PY=python3`
+//!   or `${PYTHON:-python3}` that picks the interpreter. The program words
+//!   are python, python3, pythonX.Y and the package runners pip, pip3,
+//!   pipx, uv and uvx. A workflow step that `uses:` a `setup-python` or
+//!   `setup-uv` action is a call too;
 //! - `heredoc`: a heredoc whose delimiter says it holds Python (`<<'PY'`,
 //!   `<<PYTHON`, `<<EOF_PYTHON`), not a `<<PY` inside quotes;
-//! - `rust`: a `Command::new("python3")` (any python program, any path, an
-//!   ordinary or raw string) or the variable that named a Python oracle, in
-//!   Rust code outside comments.
+//! - `rust`: in Rust code outside comments, a `Command::new("python3")`
+//!   (any python program, any path, an ordinary or raw string), the
+//!   variable that named a Python oracle, or a string literal that the
+//!   shell rules above find a call, heredoc or shebang in
+//!   (`.arg("python3")`, `"sh -c 'python3 x'"`, `const PY = "python3"`).
 //!
 //! A comment, a doc sentence and a Markdown, text, JSON or image file are
 //! prose: they never count. `python:3.15` (an image), `python=...` (a
-//! stamp), `PYTHON_IMAGE`, `setup-python` and a `site-packages/python3.12/`
-//! path are not calls.
+//! stamp), `PYTHON_IMAGE`, `setup-python` outside a `uses:` line and a
+//! `site-packages/python3.12/` path are not calls.
+//!
+//! Known limits: a Python program name built at run time
+//! (`format!("python{}", 3)`, `["py", "thon"].concat()`) is not seen, and
+//! YAML outside `.github/workflows/` and `.github/actions/` is data (a
+//! `.pre-commit-config.yaml` `entry: python3`, a compose `command:`).
+//! Review catches those.
 //!
 //! `tests/python-allow.tsv` names, one row per file, the files whose
 //! findings are third-party Python: a tool run inside its own pinned image
-//! (PharmCAT's preprocessor, eKLIPse, Cyrius in `PYTHON_IMAGE`), or the
-//! docs builder. Each row is `file<TAB>uses<TAB>reason`, where `uses` is the
-//! number of lines with a finding, and the gate fails when
+//! (PharmCAT's preprocessor, eKLIPse, Cyrius and the docs builder Zensical
+//! in `PYTHON_IMAGE`). Each row is `file<TAB>uses<TAB>reason[<TAB>marks]`,
+//! where `uses` is the number of lines with a finding and `marks`, if
+//! given, is a `|`-separated list of texts one of which every such line
+//! must hold (`/pharmcat/pharmcat_vcf_preprocessor`), so a use swapped for
+//! another at the same count fails too. The gate fails when
 //!
 //! - a finding is in a file no row names;
 //! - a row names a missing file, a directory or a glob, or has no reason;
+//! - a line with a finding holds none of its row's marks, or a mark is
+//!   empty;
 //! - a reason names an `*_IMAGE` variable that `versions.env` does not set,
 //!   or sets to "";
 //! - a row covers nothing (the Python left that file: delete the row);
@@ -70,6 +88,11 @@ fn oracle_var() -> String {
     ["OG_", "PYTHON"].concat()
 }
 
+/// The program words, each in two halves for the same reason.
+const PYTHON: &str = concat!("pyt", "hon");
+const PIP: &str = concat!("pi", "p");
+const RUNNERS: [&str; 3] = [concat!("pi", "px"), concat!("u", "v"), concat!("u", "vx")];
+
 /// One thing the gate found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
@@ -81,6 +104,8 @@ pub struct Finding {
     pub kind: &'static str,
     /// The line, trimmed and cut to 120 characters.
     pub text: String,
+    /// The whole line, trimmed: what a row's marks are looked for in.
+    pub code: String,
 }
 
 /// How the gate reads a file's lines.
@@ -96,6 +121,8 @@ enum Lang {
     Nextflow,
     /// A TSV command table: `#` lines are comments, the rest is shell.
     CommandTable,
+    /// JavaScript and TypeScript: `//` and `/* */` comments.
+    Script,
     /// Rust.
     Rust,
     /// Anything else: only the file name and the first line count.
@@ -107,14 +134,25 @@ fn lang(rel: &str, text: &str) -> Lang {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
     match ext {
-        "sh" | "bash" | "ksh" | "zsh" => return Lang::Shell,
+        "sh" | "bash" | "ksh" | "zsh" | "mk" => return Lang::Shell,
         "nf" | "config" | "groovy" => return Lang::Nextflow,
         "rs" => return Lang::Rust,
-        "yml" | "yaml" if rel.starts_with(".github/") => return Lang::Workflow,
+        "js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx" => return Lang::Script,
+        // Workflows and actions run code; the rest of .github (Dependabot,
+        // issue forms) is data.
+        "yml" | "yaml"
+            if rel.starts_with(".github/workflows/") || rel.starts_with(".github/actions/") =>
+        {
+            return Lang::Workflow;
+        }
         "tsv" if is_command_table(text) => return Lang::CommandTable,
         _ => {}
     }
-    if name.starts_with("Dockerfile") || name.starts_with("Containerfile") || name == "Makefile" {
+    let make_or_just = matches!(
+        name,
+        "Makefile" | "makefile" | "GNUmakefile" | "justfile" | "Justfile" | ".justfile"
+    );
+    if name.starts_with("Dockerfile") || name.starts_with("Containerfile") || make_or_just {
         return Lang::Shell;
     }
     // A shell shebang makes a shell script, whatever the name's suffix
@@ -187,10 +225,17 @@ fn shebang_program(line: &str) -> Option<String> {
 /// python, python3, python3.12: not python3.12/ (a path part) and not
 /// python. (a sentence).
 fn is_python_program(word: &str) -> bool {
-    let Some(rest) = word.strip_prefix("python") else {
-        return false;
-    };
+    word.strip_prefix(PYTHON).is_some_and(version_suffix)
+}
+
+/// "", "3" or "3.12": not "3." (a sentence).
+fn version_suffix(rest: &str) -> bool {
     rest.bytes().all(|b| b.is_ascii_digit() || b == b'.') && !rest.ends_with('.')
+}
+
+/// A package runner that runs Python: pip, pip3, pip3.12, pipx, uv, uvx.
+fn is_runner_program(word: &str) -> bool {
+    RUNNERS.contains(&word) || word.strip_prefix(PIP).is_some_and(version_suffix)
 }
 
 fn shebang_is_python(line: &str) -> bool {
@@ -226,9 +271,9 @@ fn strip_line_comment(line: &str) -> &str {
 
 /// A Nextflow line without its comments, read in order: `/* */` (`open`
 /// carries a block that spans lines), `//` at the start or after a blank,
-/// and a `#` shell comment in a `script:` block. Only a marker outside
-/// quotes counts, and a `/*` after `//` is part of the line comment.
-fn strip_nf_comments(line: &str, open: &mut bool) -> String {
+/// and, with `hash`, a `#` shell comment in a `script:` block (JavaScript
+/// has none). Only a marker outside quotes counts, and a `/*` after `//` is part of the line comment.
+fn strip_nf_comments(line: &str, open: &mut bool, hash: bool) -> String {
     let b = line.as_bytes();
     let mut out = String::new();
     let (mut single, mut double) = (false, false);
@@ -263,7 +308,7 @@ fn strip_nf_comments(line: &str, open: &mut bool) -> String {
                 out.push_str(&line[seg..i]);
                 return out;
             }
-            b'#' if !quoted && comment_start(b, i) => {
+            b'#' if hash && !quoted && comment_start(b, i) => {
                 out.push_str(&line[seg..i]);
                 return out;
             }
@@ -277,35 +322,72 @@ fn strip_nf_comments(line: &str, open: &mut bool) -> String {
     out
 }
 
-/// The python program words of a code line, as calls.
+/// Can a program word start at `s`? At the line start, after a blank, a
+/// quote, a bracket, a shell operator, a path `/`, a list `,` or an
+/// assignment `=` (`PY=python3`), and after the `-` or `+` of
+/// `${NAME-…}`, `${NAME:-…}`, `${NAME+…}` and `${NAME:+…}`.
+fn word_start(b: &[u8], s: usize) -> bool {
+    if s == 0 {
+        return true;
+    }
+    let p = b[s - 1];
+    if p.is_ascii_whitespace() || b"\"'`(;|&{/[,=".contains(&p) {
+        return true;
+    }
+    (p == b'-' || p == b'+') && {
+        let head = &b[..s - 1];
+        let head = head.strip_suffix(b":").unwrap_or(head);
+        let name = head
+            .iter()
+            .rev()
+            .take_while(|c| c.is_ascii_alphanumeric() || **c == b'_')
+            .count();
+        name > 0 && head[..head.len() - name].ends_with(b"${")
+    }
+}
+
+/// The Python program words of a code line (python, python3, pythonX.Y,
+/// pip, pip3, pipx, uv, uvx), as calls.
 fn python_words(code: &str) -> bool {
     let b = code.as_bytes();
-    let mut from = 0;
-    while let Some(k) = code[from..].find("python") {
-        let s = from + k;
-        from = s + 6;
-        let before_ok = s == 0 || {
-            let p = b[s - 1];
-            p.is_ascii_whitespace() || b"\"'`(;|&{/".contains(&p)
-        };
-        if !before_ok {
+    for s in 0..b.len() {
+        if !matches!(b[s], b'p' | b'u') || !word_start(b, s) {
             continue;
         }
-        let mut e = s + 6;
-        while e < b.len() && (b[e].is_ascii_digit() || b[e] == b'.') {
+        let mut e = s;
+        while e < b.len() && (b[e].is_ascii_lowercase() || b[e].is_ascii_digit() || b[e] == b'.') {
             e += 1;
         }
         // A redirection may follow at once (`python3</dev/null`); a `/`
-        // may not (`site-packages/python3.12/`).
+        // may not (`site-packages/python3.12/`). A `\` ends a word only
+        // before an escaped quote (`"sh -c \"python3\""`), not in `\n` or `\.`.
         let after_ok = e == b.len() || {
             let n = b[e];
-            n.is_ascii_whitespace() || b"\"'`;|&)}<>".contains(&n)
+            n.is_ascii_whitespace()
+                || b"\"'`;|&)}<>,".contains(&n)
+                || (n == b'\\' && matches!(b.get(e + 1), Some(b'"' | b'\'')))
         };
-        if after_ok && is_python_program(&code[s..e]) {
+        // `{python}`, `${python}`: a variable or a format placeholder.
+        let braced = s > 0 && b[s - 1] == b'{' && b.get(e) == Some(&b'}');
+        let word = &code[s..e];
+        if after_ok && !braced && (is_python_program(word) || is_runner_program(word)) {
             return true;
         }
     }
     false
+}
+
+/// A workflow step that installs a Python: `uses:` a `setup-python` or
+/// `setup-uv` action, at any owner and ref.
+fn setup_python(code: &str) -> bool {
+    let t = code.trim_start();
+    let t = t.strip_prefix("- ").unwrap_or(t).trim_start();
+    t.strip_prefix("uses:").is_some_and(|r| {
+        let action = r.trim().trim_matches(['"', '\'']);
+        let action = action.split('@').next().unwrap_or("");
+        let name = action.rsplit('/').next().unwrap_or("");
+        name == ["setup-", PYTHON].concat() || name == ["setup-", RUNNERS[1]].concat()
+    })
 }
 
 /// Does this code line open a heredoc whose delimiter says Python? Only a
@@ -364,18 +446,24 @@ fn excerpt(line: &str) -> String {
     }
 }
 
+/// A finding on line `line` (1-based, 0 for the file) of `rel`.
+fn finding(rel: &str, line: usize, kind: &'static str, text: &str) -> Finding {
+    Finding {
+        file: rel.to_owned(),
+        line,
+        kind,
+        text: excerpt(text),
+        code: text.trim().to_owned(),
+    }
+}
+
 /// The `file` finding of a path whose name is a Python file's.
 fn python_name(rel: &str) -> Option<Finding> {
     let name = rel.rsplit('/').next().unwrap_or(rel);
-    [".py", ".pyw", ".pyi"]
+    [".py", ".pyw", ".pyi", ".ipynb"]
         .iter()
         .any(|e| name.ends_with(e))
-        .then(|| Finding {
-            file: rel.to_owned(),
-            line: 0,
-            kind: "file",
-            text: "a Python file".into(),
-        })
+        .then(|| finding(rel, 0, "file", "a Python file"))
 }
 
 /// The findings in one file's text.
@@ -383,26 +471,18 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
     let mut out: Vec<Finding> = python_name(rel).into_iter().collect();
     let first = text.lines().next().unwrap_or("");
     if shebang_is_python(first) {
-        out.push(Finding {
-            file: rel.to_owned(),
-            line: 1,
-            kind: "shebang",
-            text: excerpt(first),
-        });
+        out.push(finding(rel, 1, "shebang", first));
     }
     let push = |out: &mut Vec<Finding>, n: usize, kind, line: &str| {
-        out.push(Finding {
-            file: rel.to_owned(),
-            line: n,
-            kind,
-            text: excerpt(line),
-        });
+        out.push(finding(rel, n, kind, line));
     };
     match lang(rel, text) {
         Lang::Other => {}
         Lang::Rust => scan_rust(rel, text, &mut out),
-        l @ (Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable) => {
-            let nf = l == Lang::Nextflow;
+        l @ (Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable | Lang::Script) => {
+            // `//` and `/* */` comments; Nextflow's script blocks also have
+            // shell `#` comments, JavaScript has none.
+            let slashes = matches!(l, Lang::Nextflow | Lang::Script);
             // A command table: only its `command` field is shell.
             let column = if l == Lang::CommandTable {
                 command_column(text)
@@ -428,15 +508,15 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                     continue;
                 }
                 let stripped;
-                let code = if nf {
-                    stripped = strip_nf_comments(field, &mut block);
+                let code = if slashes {
+                    stripped = strip_nf_comments(field, &mut block, l == Lang::Nextflow);
                     stripped.as_str()
                 } else {
                     strip_line_comment(field)
                 };
                 if python_heredoc(code) {
                     push(&mut out, n, "heredoc", line);
-                } else if python_words(code) {
+                } else if python_words(code) || (l == Lang::Workflow && setup_python(code)) {
                     push(&mut out, n, "call", line);
                 }
             }
@@ -564,18 +644,13 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
     let line_text = |pos: usize| {
         let s = src[..pos].rfind('\n').map_or(0, |k| k + 1);
         let e = src[pos..].find('\n').map_or(src.len(), |k| pos + k);
-        excerpt(&src[s..e])
+        &src[s..e]
     };
     let mut seen = BTreeSet::new();
     let mut hit = |pos: usize, out: &mut Vec<Finding>| {
         let n = line_of(pos);
         if seen.insert(n) {
-            out.push(Finding {
-                file: rel.to_owned(),
-                line: n,
-                kind: "rust",
-                text: line_text(pos),
-            });
+            out.push(finding(rel, n, "rust", line_text(pos)));
         }
     };
     // Command::new("…python3") with the call in code and the program a
@@ -629,6 +704,33 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
             hit(s, out);
         }
     }
+    // Every string literal, read with the shell rules on each of its lines
+    // (a real line break or a `\n` escape): a program word (`.arg("python3")`,
+    // `"sh -c 'python3 x'"`), a Python heredoc or a python `#!` line.
+    let mut i = 0;
+    while i < b.len() {
+        if part[i] != Part::Str {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && part[i] == Part::Str {
+            i += 1;
+        }
+        let mut at = start;
+        for real in src[start..i].split('\n') {
+            let mut piece_at = at;
+            for piece in real.split("\\n") {
+                let code = strip_line_comment(piece);
+                if shebang_is_python(piece) || python_heredoc(code) || python_words(code) {
+                    hit(piece_at, out);
+                }
+                piece_at += piece.len() + 2;
+            }
+            at += real.len() + 1;
+        }
+    }
+    out.sort_by_key(|f| f.line);
 }
 
 /// One row of the allow list.
@@ -638,6 +740,8 @@ struct Row {
     /// How many Python uses (lines with a finding) the file holds.
     uses: usize,
     reason: String,
+    /// Texts one of which every line with a finding must hold; empty: any.
+    marks: Vec<String>,
     line: usize,
 }
 
@@ -651,9 +755,9 @@ fn read_allow(path: &Path, label: &str) -> Result<(Vec<Row>, Vec<String>), Strin
             continue;
         }
         let cols: Vec<&str> = line.split('\t').collect();
-        if cols.len() != 3 {
+        if !(3..=4).contains(&cols.len()) {
             bad.push(format!(
-                "{label}:{}: a row is file<TAB>uses<TAB>reason, this one has {} columns",
+                "{label}:{}: a row is file<TAB>uses<TAB>reason[<TAB>marks], this one has {} columns",
                 i + 1,
                 cols.len()
             ));
@@ -672,6 +776,10 @@ fn read_allow(path: &Path, label: &str) -> Result<(Vec<Row>, Vec<String>), Strin
             file: cols[0].trim().to_owned(),
             uses,
             reason: cols[2].trim().to_owned(),
+            marks: cols
+                .get(3)
+                .map(|m| m.split('|').map(|s| s.trim().to_owned()).collect())
+                .unwrap_or_default(),
             line: i + 1,
         });
     }
@@ -760,14 +868,16 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
         scanned += 1;
         match lang(rel, &text) {
             Lang::Rust => rust_files += 1,
-            Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable => code_files += 1,
+            Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable | Lang::Script => {
+                code_files += 1
+            }
             Lang::Other => {}
         }
         findings.extend(scan_text(rel, &text));
     }
     if code_files == 0 || rust_files == 0 {
         return Err(format!(
-            "{} holds {code_files} shell, Nextflow or workflow files and {rust_files} Rust files: \
+            "{} holds {code_files} shell, Nextflow, workflow or JavaScript files and {rust_files} Rust files: \
              the gate read nothing it could check",
             root.display()
         ));
@@ -831,6 +941,25 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
                 fs_here.len(),
                 r.uses
             ));
+        }
+        if r.marks.iter().any(String::is_empty) {
+            failures.push(format!(
+                "{at}: {} has an empty mark: marks are texts separated by |",
+                r.file
+            ));
+        } else if !r.marks.is_empty() {
+            // A use swapped for another at the same count still fails.
+            for f in &fs_here {
+                if !r.marks.iter().any(|m| f.code.contains(m.as_str())) {
+                    failures.push(format!(
+                        "{at}: {}:{} holds none of the row's marks ({}): {}",
+                        f.file,
+                        f.line,
+                        r.marks.join("|"),
+                        f.text
+                    ));
+                }
+            }
         }
         if fs_here
             .iter()
@@ -927,7 +1056,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     if r.failures.is_empty() {
         let _ = writeln!(
             out,
-            "OK: {} files read ({} shell, Nextflow or workflow, {} Rust); {} Python uses in {} files, \
+            "OK: {} files read ({} shell, Nextflow, workflow or JavaScript, {} Rust); {} Python uses in {} files, \
              each third-party and named in {} ({} rows)",
             r.scanned,
             r.code_files,
@@ -962,51 +1091,45 @@ mod tests {
 
     #[test]
     fn python_files_and_shebangs() {
-        assert_eq!(kinds("bin/x.py", "print(1)\n"), [(0, "file")]);
-        assert_eq!(kinds("tests/y.pyi", ""), [(0, "file")]);
+        assert_eq!(k("bin/x.py", "print(1)\n"), [(0, "file")]);
+        assert_eq!(k("tests/y.pyi", ""), [(0, "file")]);
         assert_eq!(
-            kinds("bin/tool", "#!/usr/bin/env python3\nprint(1)\n"),
+            k("bin/tool", "#!/usr/bin/env @p3\nprint(1)\n"),
+            [(1, "shebang")]
+        );
+        assert_eq!(k("bin/tool", "#!/usr/bin/@p3.12 -u\n"), [(1, "shebang")]);
+        assert_eq!(
+            k("bin/tool", "#!/usr/bin/env -S @p3 -I\n"),
             [(1, "shebang")]
         );
         assert_eq!(
-            kinds("bin/tool", "#!/usr/bin/python3.12 -u\n"),
-            [(1, "shebang")]
-        );
-        assert_eq!(
-            kinds("bin/tool", "#!/usr/bin/env -S python3 -I\n"),
-            [(1, "shebang")]
-        );
-        assert_eq!(
-            kinds("bin/tool", "#!/usr/bin/env PYTHONPATH=x python\n"),
+            k("bin/tool", "#!/usr/bin/env @PTHONPATH=x @p\n"),
             [(1, "shebang")]
         );
         // The word counts anywhere in shell code, not only first on a line:
         // that is how `docker run IMG python3 x` is caught.
-        assert_eq!(
-            kinds("bin/tool", "#!/bin/sh\necho python3\n"),
-            [(2, "call")]
-        );
-        assert!(kinds("bin/og", "#!/bin/sh\nexec og \"$@\"\n").is_empty());
+        assert_eq!(k("bin/tool", "#!/bin/sh\necho @p3\n"), [(2, "call")]);
+        assert!(k("bin/og", "#!/bin/sh\nexec og \"$@\"\n").is_empty());
         // A Nextflow script block that is a Python script.
-        let nf = "process P {\n    script:\n    \"\"\"\n    #!/usr/bin/env python3\n    print(1)\n    \"\"\"\n}\n";
-        assert_eq!(kinds("modules/local/p/main.nf", nf), [(4, "shebang")]);
+        let nf = "process P {\n    script:\n    \"\"\"\n    #!/usr/bin/env @p3\n    print(1)\n    \"\"\"\n}\n";
+        assert_eq!(k("modules/local/p/main.nf", nf), [(4, "shebang")]);
     }
 
     #[test]
     fn shell_calls_count_and_prose_does_not() {
         let sh = "#!/usr/bin/env bash\n\
-                  # No python3 is needed.\n\
-                  echo hi  # python3 here is a comment\n\
-                  python3 -c 'print(1)'\n\
-                  out=$(python3 - <<'EOF'\nprint(2)\nEOF\n)\n\
-                  PYTHONPATH=\"$1\" python3 -m cyrius\n\
-                  docker run --rm \"$IMG\" /usr/bin/python3 x\n\
-                  stamp=\"python=${PYTHON_IMAGE}\"\n\
-                  image=python:3.15\n\
-                  ls /usr/local/lib/python3.12/site-packages\n\
-                  echo \"${#arr[@]}\" | python\n";
+                  # No @p3 is needed.\n\
+                  echo hi  # @p3 here is a comment\n\
+                  @p3 -c 'print(1)'\n\
+                  out=$(@p3 - <<'EOF'\nprint(2)\nEOF\n)\n\
+                  @PTHONPATH=\"$1\" @p3 -m cyrius\n\
+                  docker run --rm \"$IMG\" /usr/bin/@p3 x\n\
+                  stamp=\"@p=${@PTHON_IMAGE}\"\n\
+                  image=@p:3.15\n\
+                  ls /usr/local/lib/@p3.12/site-packages\n\
+                  echo \"${#arr[@]}\" | @p\n";
         assert_eq!(
-            kinds("scripts/x.sh", sh),
+            k("scripts/x.sh", sh),
             [
                 (4, "call"),
                 (5, "call"),
@@ -1020,63 +1143,68 @@ mod tests {
     #[test]
     fn heredocs_with_a_python_delimiter() {
         assert_eq!(
-            kinds("s.sh", "cat > x <<'PY'\nprint(1)\nPY\n"),
+            k("s.sh", "cat > x <<'@P'\nprint(1)\n@P\n"),
             [(1, "heredoc")]
         );
-        assert_eq!(kinds("s.sh", "run <<-EOF_PYTHON\n"), [(1, "heredoc")]);
-        assert!(kinds("s.sh", "cat <<'EOF'\nhello\nEOF\n").is_empty());
-        assert!(kinds("s.sh", "cat <<COPY\nx\nCOPY\n").is_empty());
+        assert_eq!(k("s.sh", "run <<-EOF_@PTHON\n"), [(1, "heredoc")]);
+        assert!(k("s.sh", "cat <<'EOF'\nhello\nEOF\n").is_empty());
+        assert!(k("s.sh", "cat <<CO@P\nx\nCO@P\n").is_empty());
     }
 
     #[test]
     fn nextflow_comments_are_prose() {
-        let nf = "/*\n  CNVPYTOR (python3 successor)\n*/\nprocess P {\n    // python3 in a comment\n    \
-                  container 'python:3.15'\n    script:\n    \"\"\"\n    # python3 in a shell comment\n    \
-                  python3 /pharmcat/pre \\\\\n    \"\"\"\n}\n";
-        assert_eq!(kinds("modules/local/p/main.nf", nf), [(10, "call")]);
+        let nf = "/*\n  CNV@PTOR (@p3 successor)\n*/\nprocess P {\n    // @p3 in a comment\n    \
+                  container '@p:3.15'\n    script:\n    \"\"\"\n    # @p3 in a shell comment\n    \
+                  @p3 /pharmcat/pre \\\\\n    \"\"\"\n}\n";
+        assert_eq!(k("modules/local/p/main.nf", nf), [(10, "call")]);
     }
 
     #[test]
     fn workflows_and_command_tables() {
-        let yml = "jobs:\n  a:\n    steps:\n      - uses: actions/setup-python@abc # v7\n        with:\n          \
-                   python-version: '3.15'\n      # python -m x in a comment\n      - run: python -m zensical build\n";
-        assert_eq!(kinds(".github/workflows/docs.yml", yml), [(8, "call")]);
-        // A YAML file outside .github is data.
-        assert!(kinds("zensical.yml", "run: python -m x\n").is_empty());
-        let tsv = "# Rows, tab separated:\n#var\topts\tneeds\tcommand\texpect\n# python3 in a comment\nX_IMAGE\t-\t-\tpython -c 'import x'\tok\n";
-        assert_eq!(kinds("tests/smoke/commands.tsv", tsv), [(4, "call")]);
-        // A TSV without a command column is data.
-        assert!(
-            kinds(
-                "scripts/ci/renovate-pins.tsv",
-                "#dep\tfile\npython\tdocs.yml\n"
-            )
-            .is_empty()
+        let yml = "jobs:\n  a:\n    steps:\n      - uses: actions/setup-@p@abc # v7\n        with:\n          \
+                   @p-version: '3.15'\n      # @p -m x in a comment\n      - run: @p -m zensical build\n";
+        assert_eq!(
+            k(".github/workflows/docs.yml", yml),
+            [(4, "call"), (8, "call")]
         );
+        // A YAML file outside .github is data.
+        assert!(k("zensical.yml", "run: @p -m x\n").is_empty());
+        let tsv = "# Rows, tab separated:\n#var\topts\tneeds\tcommand\texpect\n# @p3 in a comment\nX_IMAGE\t-\t-\t@p -c 'import x'\tok\n";
+        assert_eq!(k("tests/smoke/commands.tsv", tsv), [(4, "call")]);
+        // A TSV without a command column is data.
+        assert!(k("scripts/ci/renovate-pins.tsv", "#dep\tfile\n@p\tdocs.yml\n").is_empty());
     }
 
     #[test]
     fn markdown_and_text_are_prose() {
-        assert!(kinds("docs/x.md", "Run `python3 -c 'x'` first.\n").is_empty());
-        assert!(kinds("notes.txt", "python3 x.py\n").is_empty());
+        assert!(k("docs/x.md", "Run `@p3 -c 'x'` first.\n").is_empty());
+        assert!(k("notes.txt", "@p3 x.py\n").is_empty());
     }
 
     #[test]
     fn rust_commands_and_the_oracle_variable() {
         let var = oracle_var();
         let rs = format!(
-            "// Command::new(\"python3\") in a comment\n\
+            "// Command::new(\"@p3\") in a comment\n\
              /* {var} in a block */\n\
-             fn a() {{ let _ = std::process::Command::new(\"python3\"); }}\n\
-             fn b() {{ let _ = Command::new( \"/usr/bin/python3.12\" ); }}\n\
+             fn a() {{ let _ = std::process::Command::new(\"@p3\"); }}\n\
+             fn b() {{ let _ = Command::new( \"/usr/bin/@p3.12\" ); }}\n\
              fn c() {{ let _ = std::env::var(\"{var}\"); }}\n\
-             fn d() {{ let _ = Command::new(\"og\"); let s = \"Command::new(\\\"python3\\\")\"; }}\n\
+             fn d() {{ let _ = Command::new(\"og\"); let s = \"Command::new(\\\"@p3\\\")\"; }}\n\
              fn e<'a>(x: &'a str) -> char {{ let _ = x; 'p' }}\n\
-             fn f() {{ let _ = \"{var}S\"; let _ = r#\"Command::new(\"python3\")\"#; }}\n"
+             fn f() {{ let _ = \"{var}S\"; let _ = r#\"Command::new(\"@p3\")\"#; }}\n"
         );
+        // A string that holds a python word counts too (lines 6 and 8),
+        // even when it is Rust source in a string.
         assert_eq!(
-            kinds("rust/crates/x/src/a.rs", &rs),
-            [(3, "rust"), (4, "rust"), (5, "rust")]
+            k("rust/crates/x/src/a.rs", &rs),
+            [
+                (3, "rust"),
+                (4, "rust"),
+                (5, "rust"),
+                (6, "rust"),
+                (8, "rust")
+            ]
         );
     }
 
@@ -1092,65 +1220,66 @@ mod tests {
     #[test]
     fn shell_shebangs_comments_heredocs_and_redirections() {
         // A shell #! line makes a shell script, whatever the suffix.
-        assert_eq!(
-            kinds("bin/report.local", "#!/bin/sh\npython3 x\n"),
-            [(2, "call")]
-        );
+        assert_eq!(k("bin/report.local", "#!/bin/sh\n@p3 x\n"), [(2, "call")]);
         // `#` after `;`, `&` or `|` starts a comment.
-        assert!(kinds("s.sh", ":;# python3 is not needed\n").is_empty());
-        assert!(kinds("s.sh", "true &# python3 later\n").is_empty());
-        assert!(kinds("s.sh", "echo \"${#arr[@]}\"\n").is_empty());
+        assert!(k("s.sh", ":;# @p3 is not needed\n").is_empty());
+        assert!(k("s.sh", "true &# @p3 later\n").is_empty());
+        assert!(k("s.sh", "echo \"${#arr[@]}\"\n").is_empty());
         // A <<PY inside quotes is text; a quoted delimiter after a real
         // operator is a heredoc, also in a Groovy """ line.
-        assert!(kinds("s.sh", "printf '%s\\n' 'expected <<PY'\n").is_empty());
-        assert!(kinds("s.sh", "echo \"a <<PYTHON b\"\n").is_empty());
-        assert_eq!(kinds("s.sh", "cat <<\"PY\"\n"), [(1, "heredoc")]);
-        assert_eq!(
-            kinds("m.nf", "    \"\"\"cat > x <<'PY'\n"),
-            [(1, "heredoc")]
-        );
-        assert!(kinds("s.sh", "cat <<<PY\n").is_empty());
+        assert!(k("s.sh", "printf '%s\\n' 'expected <<@P'\n").is_empty());
+        assert!(k("s.sh", "echo \"a <<@PTHON b\"\n").is_empty());
+        assert_eq!(k("s.sh", "cat <<\"@P\"\n"), [(1, "heredoc")]);
+        assert_eq!(k("m.nf", "    \"\"\"cat > x <<'@P'\n"), [(1, "heredoc")]);
+        assert!(k("s.sh", "cat <<<@P\n").is_empty());
         // A redirection right after the program; a path part stays out.
-        assert_eq!(kinds("s.sh", "python3</dev/null\n"), [(1, "call")]);
-        assert_eq!(kinds("s.sh", "x=$(python3>/dev/null)\n"), [(1, "call")]);
-        assert!(kinds("s.sh", "ls lib/python3.12/x\n").is_empty());
+        assert_eq!(k("s.sh", "@p3</dev/null\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", "x=$(@p3>/dev/null)\n"), [(1, "call")]);
+        assert!(k("s.sh", "ls lib/@p3.12/x\n").is_empty());
     }
 
     #[test]
     fn nextflow_comments_in_source_order() {
         // `// … /*` is a line comment: it opens no block, so the call
         // below is still read.
-        let nf =
-            "// Example: /*\nprocess P {\n    script:\n    \"\"\"\n    python3 x\n    \"\"\"\n}\n";
-        assert_eq!(kinds("m.nf", nf), [(5, "call")]);
+        let nf = "// Example: /*\nprocess P {\n    script:\n    \"\"\"\n    @p3 x\n    \"\"\"\n}\n";
+        assert_eq!(k("m.nf", nf), [(5, "call")]);
         // A #! line inside a block comment is prose; after it, code again.
-        let nf = "/*\n#!/usr/bin/env python3\n*/\nprocess P {\n    script:\n    \"\"\"\n    #!/usr/bin/env python3\n    \"\"\"\n}\n";
-        assert_eq!(kinds("m.nf", nf), [(7, "shebang")]);
+        let nf = "/*\n#!/usr/bin/env @p3\n*/\nprocess P {\n    script:\n    \"\"\"\n    #!/usr/bin/env @p3\n    \"\"\"\n}\n";
+        assert_eq!(k("m.nf", nf), [(7, "shebang")]);
         // A block that closes and a call after it on the same line.
-        assert_eq!(kinds("m.nf", "/* x */ python3 y\n"), [(1, "call")]);
-        assert!(kinds("m.nf", "x = 1 /* python3 */\n").is_empty());
+        assert_eq!(k("m.nf", "/* x */ @p3 y\n"), [(1, "call")]);
+        assert!(k("m.nf", "x = 1 /* @p3 */\n").is_empty());
     }
 
     #[test]
     fn command_fields_and_workflow_labels() {
         let tsv = "#var\topts\tneeds\tcommand\texpect\n\
-                   X_IMAGE\t-\t-\tprintf ok\trequires python3 on the old runner\n\
-                   Y_IMAGE\t-\t-\tpython3 -V\tPython 3\n";
-        assert_eq!(kinds("tests/smoke/commands.tsv", tsv), [(3, "call")]);
-        let yml = "name: python3 checks\non: push\njobs:\n  a:\n    steps:\n      - name: No python3 is needed\n        run: echo ok\n      - name: x\n        description: python3 only in a label\n        run: python3 -V\n";
-        assert_eq!(kinds(".github/workflows/x.yml", yml), [(10, "call")]);
+                   X_IMAGE\t-\t-\tprintf ok\trequires @p3 on the old runner\n\
+                   Y_IMAGE\t-\t-\t@p3 -V\tPython 3\n";
+        assert_eq!(k("tests/smoke/commands.tsv", tsv), [(3, "call")]);
+        let yml = "name: @p3 checks\non: push\njobs:\n  a:\n    steps:\n      - name: No @p3 is needed\n        run: echo ok\n      - name: x\n        description: @p3 only in a label\n        run: @p3 -V\n";
+        assert_eq!(k(".github/workflows/x.yml", yml), [(10, "call")]);
     }
 
     #[test]
     fn rust_raw_strings_and_comments_before_the_program() {
-        let rs = "fn a() { let _ = Command::new(r\"python3\"); }\n\
-                  fn b() { let _ = Command::new(/* the program */ \"python3\"); }\n\
-                  fn c() { let _ = Command::new(r#\"/usr/bin/python3\"#); }\n\
-                  fn d() { let _ = Command::new(// next line\n\"python3\"); }\n\
-                  fn e() { let _ = Command::new(r\"og\"); }\n";
+        let rs = "fn a() { let _ = Command::new(r\"@p3\"); }\n\
+                  fn b() { let _ = Command::new(/* the program */ \"@p3\"); }\n\
+                  fn c() { let _ = Command::new(r#\"/usr/bin/@p3\"#); }\n\
+                  fn d() { let _ = Command::new(// next line\n\"@p3\"); }\n\
+                          // Line 4 opens the call; its program string is on line 5, which
+        // the string rule finds as well.
+fn e() { let _ = Command::new(r\"og\"); }\n";
         assert_eq!(
-            kinds("x.rs", rs),
-            [(1, "rust"), (2, "rust"), (3, "rust"), (4, "rust")]
+            k("x.rs", rs),
+            [
+                (1, "rust"),
+                (2, "rust"),
+                (3, "rust"),
+                (4, "rust"),
+                (5, "rust")
+            ]
         );
     }
 
@@ -1164,7 +1293,7 @@ mod tests {
     /// A git repository in a temporary folder with these files, and the
     /// gate's failures on it with the allow list `allow`.
     fn gate(name: &str, files: &[(&str, &str)], allow: &str) -> Vec<String> {
-        let d = std::env::temp_dir().join(format!("og-python-gate-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("og-@p-gate-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         let ok = Command::new("git")
@@ -1185,7 +1314,7 @@ mod tests {
         for (rel, text) in base.iter().chain(files) {
             let p = d.join(rel);
             fs::create_dir_all(p.parent().unwrap()).unwrap();
-            fs::write(p, text).unwrap();
+            fs::write(p, t(text)).unwrap();
         }
         fs::write(d.join("allow.tsv"), allow).unwrap();
         #[cfg(unix)]
@@ -1199,8 +1328,8 @@ mod tests {
 
     #[test]
     fn allow_rows_count_uses_and_name_set_images() {
-        let one = [("s.sh", "docker run x python3 a\n")];
-        let two = [("s.sh", "docker run x python3 a\npython3 -c 'print(1)'\n")];
+        let one = [("s.sh", "docker run x @p3 a\n")];
+        let two = [("s.sh", "docker run x @p3 a\n@p3 -c 'print(1)'\n")];
         let row = "s.sh\t1\tTOOL_IMAGE: the tool's own Python\n";
         assert_eq!(gate("ok", &one, row), Vec::<String>::new());
         // A new use in an allowed file fails until the count changes.
@@ -1231,6 +1360,169 @@ mod tests {
             f.len() == 1 && f[0].ends_with("allow.tsv)") && !f[0].contains(ALLOW),
             "{f:?}"
         );
+    }
+
+    /// Test text with `@p` for the word python, `@P` for PY, `@i` for pip
+    /// and `@u` for uv, so no string in this file holds one of them and the
+    /// gate scans this file like any other Rust file.
+    fn t(s: &str) -> String {
+        s.replace("@p", concat!("pyt", "hon"))
+            .replace("@P", concat!("P", "Y"))
+            .replace("@i", concat!("pi", "p"))
+            .replace("@u", concat!("u", "v"))
+    }
+
+    fn k(rel: &str, text: &str) -> Vec<(usize, &'static str)> {
+        kinds(rel, &t(text))
+    }
+
+    #[test]
+    fn a_python_picked_into_a_variable() {
+        assert_eq!(k("s.sh", "PY=@p3; $PY -c \"print(1)\"\n"), [(1, "call")]);
+        assert_eq!(
+            k("s.sh", "PY=${PYTHON:-@p3}; \"$PY\" -c 1\n"),
+            [(1, "call")]
+        );
+        assert_eq!(k("s.sh", "PY=${PYTHON-@p3}\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", ": \"${PY:=@p3}\"\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", ": \"${PY=@p3.12}\"\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", "exec env PY=@p \"$@\"\n"), [(1, "call")]);
+        // Not a word start: an image, a stamp, a dash inside a word.
+        assert!(k("s.sh", "image=@p:3.15\n").is_empty());
+        assert!(k("s.sh", "stamp=\"@p=${PYTHON_IMAGE}\"\n").is_empty());
+        assert!(k("s.sh", "x=a-@p3\n--with-@p=3\n").is_empty());
+    }
+
+    #[test]
+    fn brackets_escapes_and_braces_that_are_not_calls() {
+        // An awk character class, a python shebang printed into a stub file,
+        // an escaped dot in a path pattern, a variable and a placeholder.
+        assert!(k("s.sh", "awk '/-O[uv]/ { next }'\n").is_empty());
+        assert!(k("s.sh", "printf '#!/usr/bin/env @p\\n' > \"$d/x\"\n").is_empty());
+        assert!(k("s.sh", "MNT=/usr/lib/@p3\\\\.12/x\n").is_empty());
+        assert!(k("s.sh", "echo \"${@p}\"\n").is_empty());
+        assert!(k("x.rs", "fn a() { println!(\"Python={@p}\"); }\n").is_empty());
+        // An escaped quote ends the word.
+        assert_eq!(
+            k("x.rs", "const C: &str = \"sh -c \\\"@p3\\\"\";\n"),
+            [(1, "rust")]
+        );
+    }
+
+    #[test]
+    fn python_run_from_a_rust_string() {
+        let rs = t(
+            r##"fn a() { Command::new("sh").args(["-c", "@p3 -c 'print(1)'"]); }
+fn b() { Command::new("env").arg("@p3"); }
+const PY: &str = "@p3";
+fn c() { let _ = "#!/usr/bin/env @p3\nprint(1)"; }
+fn d() { let _ = r#"cat > x <<'@P'"#; }
+fn e() { let _ = "sh -c \"@i install x\""; }
+fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
+"##,
+        );
+        assert_eq!(
+            kinds("rust/crates/x/src/a.rs", &rs),
+            [
+                (1, "rust"),
+                (2, "rust"),
+                (3, "rust"),
+                (4, "rust"),
+                (5, "rust"),
+                (6, "rust")
+            ]
+        );
+    }
+
+    #[test]
+    fn package_runners_and_setup_python() {
+        let sh = "@i install x\n@i3 install -r r.txt\n@ix run black\n@u run t.py\n\
+                  @ux ruff\n/opt/v/bin/@i3.12 install y\necho @i.\n@iline\n@uvar=1\n";
+        assert_eq!(
+            k("s.sh", sh),
+            [
+                (1, "call"),
+                (2, "call"),
+                (3, "call"),
+                (4, "call"),
+                (5, "call"),
+                (6, "call")
+            ]
+        );
+        let yml = "jobs:\n  a:\n    steps:\n      - uses: actions/setup-@p@abc # v7\n      \
+                   - uses: 'astral-sh/setup-@u@def'\n      - run: echo ok\n      \
+                   # - uses: actions/setup-@p@abc\n";
+        assert_eq!(
+            k(".github/workflows/x.yml", yml),
+            [(4, "call"), (5, "call")]
+        );
+        // Dependabot's config is data: it runs nothing.
+        assert!(k(".github/dependabot.yml", "  - package-ecosystem: @i\n").is_empty());
+    }
+
+    #[test]
+    fn makefiles_notebooks_brackets_and_javascript() {
+        assert_eq!(
+            k("justfile", "serve:\n    @p3 -m http.server\n"),
+            [(2, "call")]
+        );
+        assert_eq!(
+            k("assets/stub/db/megane.mk", "all:\n\t@p3 -c 1\n"),
+            [(2, "call")]
+        );
+        assert_eq!(k("GNUmakefile", "x:\n\t@p3 -V\n"), [(2, "call")]);
+        assert_eq!(k("docs/x.ipynb", "{}\n"), [(0, "file")]);
+        assert_eq!(
+            k(
+                ".github/workflows/x.yml",
+                "      - run: docker run --entrypoint [@p3,-c] img\n"
+            ),
+            [(1, "call")]
+        );
+        let js = "// @p3 in a comment\nexecSync('@p3 -c 1');\n/* @p3\n */ const a = '#x';\n";
+        assert_eq!(k("tests/demo/gate-property.js", js), [(2, "call")]);
+        assert_eq!(
+            k("x.ts", "spawn(\"@p3\", [\"-c\", \"1\"]);\n"),
+            [(1, "call")]
+        );
+    }
+
+    #[test]
+    fn a_mark_column_pins_what_each_use_runs() {
+        let one = [("s.sh", t("docker run x @p3 /tool/pre a\n"))];
+        let swapped = [("s.sh", t("@p3 -c 'print(1)'\n"))];
+        let g = |name: &str, f: &[(&str, String)], allow: &str| {
+            let refs: Vec<(&str, &str)> = f.iter().map(|(a, b)| (*a, b.as_str())).collect();
+            gate(name, &refs, allow)
+        };
+        let row = "s.sh\t1\tTOOL_IMAGE: x\t/tool/pre\n";
+        assert_eq!(g("mark-ok", &one, row), Vec::<String>::new());
+        // A use swapped for a host one at the same count fails.
+        let f = g("mark-swapped", &swapped, row);
+        assert!(
+            f.len() == 1 && f[0].contains("s.sh:1 holds none of the row's marks (/tool/pre)"),
+            "{f:?}"
+        );
+        // Any one of several marks is enough.
+        assert!(
+            g(
+                "mark-any",
+                &one,
+                "s.sh\t1\tTOOL_IMAGE: x\t/other|/tool/pre\n"
+            )
+            .is_empty()
+        );
+        // No mark column: the count alone, as before.
+        assert!(g("mark-none", &swapped, "s.sh\t1\tTOOL_IMAGE: x\n").is_empty());
+        // Five columns, or an empty mark, is a bad row.
+        let f = g(
+            "mark-five",
+            &one,
+            "s.sh\t1\tTOOL_IMAGE: x\t/tool/pre\textra\n",
+        );
+        assert!(f.iter().any(|f| f.contains("has 5 columns")), "{f:?}");
+        let f = g("mark-empty", &one, "s.sh\t1\tTOOL_IMAGE: x\t/tool/pre||\n");
+        assert!(f.iter().any(|f| f.contains("an empty mark")), "{f:?}");
     }
 
     #[cfg(unix)]
