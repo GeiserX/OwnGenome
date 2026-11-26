@@ -16,10 +16,11 @@ Step 26b skipped: no fine-grained ancestry panel at <genome_dir>/reference/ances
 
 ## Tools
 
+- **bcftools** reads the panel and genotypes the panel's SNVs from your gVCF or VCF.
 - **Beagle** 5.5 (Browning et al., AJHG 2021) phases your genotypes against the panel.
-- **og ancestry-fine**, OwnGenome's Rust tool, builds the model, projects the fractions, paints the phased chromosomes, and writes the report. `scripts/setup.sh --og` installs it. The bootstrap resamples 5 cM blocks and reference people.
+- **og ancestry-fine**, OwnGenome's Rust tool, counts each group's allele frequencies, projects your fractions, paints the phased chromosomes and writes the report. `scripts/setup.sh --og` installs it. [How the engines work](#how-the-engines-work) explains the projection, the bootstrap and the painting.
 
-Step 26b uses og for painting. RFMix is licensed for academic research and appears in the benchmark for comparison. [RFMix licence notice](https://github.com/slowkoni/rfmix)
+Licences: bcftools is MIT/Expat (GPL when it is built with the GNU Scientific Library), Beagle is GPL-3.0-or-later, and og is GPL-3.0-or-later. The step runs no tool that is licensed for academic use only. The [benchmark](#painting-accuracy-and-runtime) compares og with RFMix and ADMIXTURE, which are licensed for academic use only. Neither of them runs in the step.
 
 ## The Reference Panel
 
@@ -27,7 +28,7 @@ gnomAD's HGDP + 1000 Genomes callset (Koenig et al., Genome Research 2024), phas
 
 - the biallelic SNVs with a minor allele frequency of 5% or more, one per 2 kb (`ANCESTRY_FINE_THIN`), for everyone in the panel: phasing reference and painting reference;
 - the people's groups (`samples.tsv`), from gnomAD's metadata of the release;
-- after LD pruning (r2 above 0.1 within 500 kb removed, among the unrelated reference people), the SNVs ADMIXTURE uses, and each group's allele frequencies at both levels;
+- after LD pruning (r2 above 0.1 within 500 kb removed, among the unrelated reference people), the SNVs the projection uses, and each group's allele frequencies at both levels;
 - Beagle's GRCh38 genetic map (HapMap, lifted from GRCh37). Beagle's server is its only host; when it does not answer, the install takes the Internet Archive's copy of the same file, which has the same pinned sha256.
 
 The bucket reports a crc32c checksum per file. `versions.env` pins the sha256 of those checksums and sizes (`ANCESTRY_FINE_PANEL_SHA256`), and of the metadata and the map, so a file gnomAD replaces stops the install rather than changing the panel silently.
@@ -36,10 +37,9 @@ The bucket reports a crc32c checksum per file. `versions.env` pins the sha256 of
 
 A group name is ours: a set of reference populations we put together and named, not a nationality. Admixed populations (between continental groups) are in no group and are never a reference: ACB, ASW, CLM, MXL, PEL, PUR, Hazara and Uygur. Related people are no reference either: a person is related when gnomAD's metadata flags it (`sample_filters.all_samples_related`).
 
-**A group needs 10 unrelated reference people.** A regional group with fewer leaves the model: its people are no reference at either level and no painting reference. A continental group leaves with it when none of its regional groups is left. The install log and every report name the groups left out. Why 10:
+**A group needs 10 unrelated reference people.** A regional group with fewer leaves the model: its people are no reference at either level and no painting reference. A continental group leaves with it when none of its regional groups is left. The install log and every report name the groups left out.
 
-- RFMix fits its CRF weight on people it simulates from `floor(n / 10) + 1` reference people of each group, and leaves those people out of the reference while it does. With one reference person a group then has no reference haplotype at all: RFMix logs `mm::allocate() called at setup_ref_haplotypes():686 (random-forest.cpp) requesting zero or negative size (0)` and can stop with a segmentation fault, on some chromosomes and not others. Two people is RFMix's hard floor.
-- Above that floor, a group is meant to stand for a population. Below 10 people (20 haplotypes), the group's supervised ADMIXTURE frequencies and RFMix's reference are a handful of people's genotypes.
+Why 10: a group must stand for a population. With fewer than 10 people (20 haplotypes), its allele frequencies are those of a few families, so a fraction would measure how close you are to those families. The painter alone needs much less: one reference haplotype in each continental group.
 
 On hgdp1kgp_v2 this leaves out Oceania only: gnomAD flags 29 of its 30 people as related (second-degree or ambiguous, in three small populations), so it has one unrelated person. The next smallest group, Southern Africa, has 12. gnomAD's metadata says which kind of relative each person has but not with whom, so an unrelated subset of the 30 cannot be chosen from it. An Oceanian ancestry is then spread over the groups that are modelled, and the reports say Oceania is not one of them.
 
@@ -64,7 +64,7 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 
 ## Docker Images
 
-`ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE`, with `BCFTOOLS_IMAGE`, `OG_IMAGE` and, for the install, `BCFTOOLS_HTTPS_IMAGE` (the panel is read over https; `BCFTOOLS_IMAGE` has no CA certificates). All are pinned in `versions.env`; [Image versions](versions.md) lists the tags. `ADMIXTURE_IMAGE`, `BEAGLE_IMAGE`, `RFMIX_IMAGE` and `BCFTOOLS_HTTPS_IMAGE` are `# optional`: `setup.sh --ancestry-fine-panel` pulls them, a plain `setup.sh` does not.
+`BEAGLE_IMAGE`, with `BCFTOOLS_IMAGE`, `OG_IMAGE` and, for the install, `BCFTOOLS_HTTPS_IMAGE` (the panel is read over https; `BCFTOOLS_IMAGE` has no CA certificates). All are pinned in `versions.env`; [Image versions](versions.md) lists the tags. `BEAGLE_IMAGE` and `BCFTOOLS_HTTPS_IMAGE` are `# optional`: `setup.sh --ancestry-fine-panel` pulls them, a plain `setup.sh` does not.
 
 ## Input
 
@@ -88,10 +88,33 @@ The Allen Ancient DNA Resource (AADR, release v66.p1, CC0 1.0 on the [Harvard Da
 2. Projects your genotypes on each level's reference frequencies with `og ancestry-fine project` and runs the bootstrap replicates.
 3. Chooses chromosomes with at least 100 genotyped SNVs spanning at least 5 cM.
 4. Phases those chromosomes with Beagle against the panel (`impute=false`, `seed=1`).
-5. Paints them with `og ancestry-fine paint` against 200 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group). The model has two levels. First, for each continental group alone, a copying model over that group's reference haplotypes (Li and Stephens, as FLARE uses it) gives each site's evidence for the group, read both ways along the chromosome. Then an ancestry model over the groups calls each site's group from that evidence, weighted by 0.2, since neighbouring sites copied from one reference haplotype are not independent evidence. Its proportions stay at the continental fractions of part 2, and only the rate of ancestry changes is fitted, over all the chromosomes. It writes `work/paint/<chrom>.msp.tsv` and `work/paint/params.tsv`. A chromosome it cannot read (its phased file, panel or map missing or broken, a panel or phased file of another chromosome, a map with no marker, or no SNV shared with the panel) goes to `work/paint/failed.txt` with the reason in the log, and the others are still painted; the reports list it as not painted.
+5. Paints them with `og ancestry-fine paint` against 200 unrelated reference people per continental group at most, taken in turn from each population (`ANCESTRY_FINE_PAINT_PER_GROUP` at install, at least 10: a lower cap stops the install, since it would undo the minimum of 10 reference people per group). [The painting](#the-painting) explains the model. It writes `work/paint/<chrom>.msp.tsv` and `work/paint/params.tsv`. A chromosome it cannot read (its phased file, panel or map missing or broken, a panel or phased file of another chromosome, a map with no marker, or no SNV shared with the panel) goes to `work/paint/failed.txt` with the reason in the log, and the others are still painted; the reports list it as not painted.
 6. Writes the outputs below.
 
 The Nextflow module (`modules/local/ancestry_fine`) runs five processes. The end-to-end case compares its fractions and painting with the Bash step.
+
+## How the Engines Work
+
+### The fractions
+
+At install, `og ancestry-fine freqs` counts each group's allele frequency at every SNV of the model, from the group's reference people, and clamps it to between 0.00001 and 0.99999. Supervised ADMIXTURE climbs to the same answer when every reference person's group is given. Its likelihood then splits into one binomial per group and SNV, and the maximum of each is the group's sample frequency. og counts it exactly.
+
+At run time, `og ancestry-fine project` finds the fractions (one per group, each 0 or more, adding up to 1) that make your genotypes most likely, with the group frequencies fixed. At each SNV, each of your two copies carries the counted allele with a probability equal to the sum of each fraction times that group's frequency. The log-likelihood of that model is concave in the fractions, so every local maximum is the global one, and any solver that converges finds it. The maximum is unique as long as no group's frequencies at your SNVs are an exact linear combination of the other groups' (a sum of their frequencies, each times a number that may be negative). It is the model `admixture -P` fits, so the answer matches ADMIXTURE's up to where ADMIXTURE stops. og climbs with EM steps sped up by SQUAREM (Varadhan and Roland 2008), and never takes a step that lowers the likelihood. It stops when no fraction moves by more than 1e-9, then checks the conditions that hold only at the maximum (Karush-Kuhn-Tucker). If they fail, the step stops with an error, so a fit that stopped short is never reported. In the benchmark, og's continental fractions had the same mean error to the truth as ADMIXTURE `-P`'s, to three decimals, in all five scenarios.
+
+### The bootstrap range
+
+Each replicate cuts the genotyped SNVs into blocks of 5 cM on the genetic map. The blocks are cut per chromosome, so no block holds two chromosomes. The replicate draws as many blocks as there are, with replacement. It also draws each group's reference people again, with replacement, and counts the group frequencies again from them. So the range holds the uncertainty of the frequencies as well as that of your genotypes. Each replicate has its own random stream from a fixed seed, so a rerun gives the same range with any number of threads. The step runs 100 replicates by default.
+
+### The painting
+
+`og ancestry-fine paint` uses a model on two levels:
+
+1. For each continental group alone, a copying model over that group's reference haplotypes gives each site's evidence for the group. It is the Li and Stephens model as Browning, Waples and Browning published it for FLARE (AJHG 2023). The copied haplotype jumps at a rate of 4 Ne / n per Morgan (Ne 10,000, n the group's reference haplotypes). Each site differs from the copied allele with a chance of 0.01. It reads the chromosome in both directions.
+2. An ancestry model over the groups calls each site's group from that evidence. Ancestry changes come at a rate T per Morgan. The evidence is weighted by 0.2, because neighbouring sites copied from one reference haplotype are not independent evidence. The group proportions start at the continental fractions of the projection. A group with a fraction of 0 is raised to 0.000001, and the proportions are scaled to add up to 1 again, so the painter can still call that group. The proportions then stay fixed. Only T is fitted, from a start of 10, by up to 5 rounds of expectation-maximisation over all the painted chromosomes. Each site gets the group with the highest posterior.
+
+The fitted parameters go to `work/paint/params.tsv`. The sums are taken in a fixed order, so any number of threads gives the same output.
+
+**Why this model.** FLARE has a single model whose state is the group and the copied haplotype together. That model broke unadmixed genomes into many stretches, because a few sites where another group's haplotype matches better buy an ancestry change. The two levels keep the copying inside each group, so a change of copied haplotype never costs an ancestry change. RFMix, which this step used at first, is a classifier instead: random forests trained on people it simulates from the reference people, smoothed along the chromosome. To train, it sets aside `floor(n / 10) + 1` reference people of each group, so a small group loses part of its reference. The copying model needs no training set: every reference haplotype stays a reference. Its few parameters each have a meaning, the one it fits (T) is fitted on your own genome, and all of them are written out.
 
 ## Output
 
@@ -107,14 +130,14 @@ The HTML and text reports have a section with the fractions, the painted shares 
 
 ## Runtime
 
-Historical end-to-end timings in CI on the reduced panel: the fixture's slices plus chr22:20-35 Mb, 4 CPUs.
+End-to-end timings in CI on the reduced panel (the fixture's slices plus chr22:20-35 Mb), on GitHub's 4-CPU runner, from the e2e case of November 2026.
 
 | Part | Time | Notes |
 |---|---|---|
-| `setup.sh --ancestry-fine-panel` on that panel | 1 min 43 s | 154 MB on disk, 7,789 SNVs of 4,089 people, 1,003 of them for ADMIXTURE |
-| The step on the fixture's slices from a gVCF (no chromosome long enough to paint) | 4 s | 2,136 panel SNVs genotyped |
-| The step with the painting of chr22:20-35 Mb | 1 min 19 s | 100 bootstrap replicates, 236 painting references (235 since Oceania left the model), measured at the earlier cap of 50 per group |
-| The same through the Nextflow pipeline, with the HTML report | 1 min 38 s | earlier engine |
+| `setup.sh --ancestry-fine-panel` on that panel | 1 min 8 s | 7,789 SNVs of 4,089 people, 1,003 of them in the model (from 2,866 reference people), 835 painting references |
+| The step on the fixture's slices from a gVCF (no chromosome long enough to paint) | 3 s | 2,136 panel SNVs genotyped, 100 bootstrap replicates |
+| The step with the painting of chr22:20-35 Mb | 18 s | 100 bootstrap replicates (about 5 s), Beagle phasing (about 11 s), painting with 1,670 reference haplotypes (under 1 s) |
+| The same through the Nextflow pipeline, with the HTML report | 47 s | about 25 s of it is Nextflow starting |
 
 ### Painting accuracy and runtime
 
@@ -128,7 +151,7 @@ The benchmark used five simulated genomes per scenario, covering chromosomes 9, 
 | S3 | 0.7227 | 0.6267 | 0.7469 | 0.6618 | 15 | 2123 | 182 | 1272 |
 | S4 | 0.7817 | 0.6622 | 0.8049 | 0.6899 | 9 | 2880 | 206 | 1280 |
 
-In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9981 vs 0.9927) and on S3 (0.7227 vs 0.6267) and S4 (0.7817 vs 0.6622). og was slightly behind on recent two-way admixture (S1, 0.9614 vs 0.9657) and behind on recent three-way admixture (S2, 0.8764 vs 0.8983). For the recent mixes (S1 and S2), painting took about 20 seconds per genome and peaked at about 200 MB for og, compared with about 47 minutes and 1.3 GB for RFMix. Across all five scenarios, the range was 9 to 22 seconds and 140 to 216 MiB for og, and 35 to 48 minutes and 1,272 to 1,309 MiB for RFMix. The 1.1 follow-up will work on the gap in recent three-way admixture. See `docs/research/ancestry-engine-benchmark.md` in the repository for the simulation and scoring details.
+In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9981 vs 0.9927) and on S3 (0.7227 vs 0.6267) and S4 (0.7817 vs 0.6622). og was slightly behind on recent two-way admixture (S1, 0.9614 vs 0.9657) and behind on recent three-way admixture (S2, 0.8764 vs 0.8983). For the recent mixes (S1 and S2), painting took about 20 seconds per genome and peaked at about 200 MB for og, compared with about 47 minutes and 1.3 GB for RFMix. Across all five scenarios, the range was 9 to 22 seconds and 140 to 216 MiB for og, and 35 to 48 minutes and 1,272 to 1,309 MiB for RFMix. The 1.1 follow-up will work on the gap in recent three-way admixture. The [ancestry engine benchmark](https://github.com/GeiserX/OwnGenome/blob/main/docs/research/ancestry-engine-benchmark.md) has the simulation, the scoring, the breakpoint counts and the fraction errors.
 
 ## Interpreting Results
 
@@ -145,7 +168,10 @@ In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9
 - Greek and Southern Italian ancestry overlap, and the panel has no Greek population at all: a Greek genome is described with Italy, the Levant and the Caucasus.
 - Groups the panel samples poorly (Native American, North African) are estimated less well. Oceania is not modelled at all on the default panel (see [The groups](#the-groups)).
 - A population the panel lacks, Ashkenazi Jewish for one, gets no group of its own: its genomes are described with the nearest groups.
-- The painting uses continental groups only; local ancestry within Europe is not reliable with these tools.
+- The panel is small for regional answers. The smallest regional group, Southern Africa, has 12 reference people, and a regional fraction rests on that group's frequencies.
+- The painting uses the continental groups only. It cannot say which part of Europe a segment is most similar to.
+- A phase switch error in Beagle's phasing swaps your two copies from that point on. It changes which bar a segment is drawn on, not how many copies of each group a site has, so the painted shares hardly move. The fractions do not use the phase at all.
+- In recent three-way admixture the painting is less accurate than RFMix's (S2 in the benchmark above).
 
 ## Notes
 
@@ -154,6 +180,6 @@ In base-pair accuracy, og scored higher than RFMix on unadmixed genomes (S0, 0.9
 ## Links
 
 - [gnomAD downloads](https://gnomad.broadinstitute.org/downloads), where the HGDP + 1000 Genomes resource is listed, and its [data policy](https://gnomad.broadinstitute.org/policies)
-- [ADMIXTURE](https://dalexander.github.io/admixture/)
 - [Beagle](https://faculty.washington.edu/browning/beagle/beagle.html)
-- [RFMix](https://github.com/slowkoni/rfmix)
+- [FLARE](https://github.com/browning-lab/flare), whose published copying model the painter's first level follows
+- [ADMIXTURE](https://dalexander.github.io/admixture/) and [RFMix](https://github.com/slowkoni/rfmix), compared in the benchmark. Step 26b runs neither.
