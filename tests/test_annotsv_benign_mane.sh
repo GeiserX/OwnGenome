@@ -163,13 +163,29 @@ build_annotations "$ANN"
 cp -R "$ANN" "${WORK}/ann-plain"   # the set without the two files, for the red controls
 mkdir -p "${G}/s1/sv"
 sv_vcf > "${G}/s1/sv/fixture_sv.vcf"
-# The two downloads, already in the downloads folder: setup.sh keeps a
-# download only once its checksum matches, so it takes a file it finds there
-# as whole.
+# The two downloads, already in the downloads folder. setup.sh checks a file
+# there against its pin; the fixtures are not the real files, so their own
+# sha256 stands in for the pins (GNOMAD_SV_SHA256 and MANE_SUMMARY_SHA256 in
+# the environment win over versions.env, as PCGR_DATA_SHA256 does).
 DL="${G}/downloads"
 mkdir -p "$DL"
 gnomad_sites | gzip -c > "${DL}/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz"
 mane_summary | gzip -c > "${DL}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz"
+sha() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+PIN_GNOMAD=$GNOMAD_SV_SHA256 PIN_MANE=$MANE_SUMMARY_SHA256
+
+# A kept file that is not the pinned one is refused, never installed.
+rc=0
+GENOME_DIR="$G" GNOMAD_SV_SHA256=$PIN_GNOMAD MANE_SUMMARY_SHA256=$PIN_MANE \
+  "${REPO}/scripts/setup.sh" --annotsv-data "$G" > "${WORK}/setup0.log" 2>&1 || rc=$?
+expect "setup.sh with kept files that fail their pins does not exit 0" "$rc" '^[1-9]'
+expect "both kept files are refused" "$(grep -c 'is there but is not the file of' "${WORK}/setup0.log")" '^2$'
+expect "nothing is recorded as installed" \
+  "$(find "$ANN" -name 'gnomad-sv.installed' -o -name 'mane_select_refseq.release' | wc -l | tr -d ' ')" '^0$'
+
+GNOMAD_SV_SHA256=$(sha "${DL}/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz")
+MANE_SUMMARY_SHA256=$(sha "${DL}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz")
+export GNOMAD_SV_SHA256 MANE_SUMMARY_SHA256
 
 rc=0
 GENOME_DIR="$G" "${REPO}/scripts/setup.sh" --annotsv-data "$G" > "${WORK}/setup1.log" 2>&1 || rc=$?
@@ -236,6 +252,10 @@ expect "control without gnomAD-SV: DEL2 has no frequency" "$(field "$NG" 2450000
 expect "control without gnomAD-SV: DEL2 class 4" "$(field "$NG" 2450000 '' ACMG_class 2>/dev/null)" '^4'
 
 # --- 4. validate-setup.sh and step 05 without the files ---------------------------------
+# validate-setup.sh reads the pins of versions.env: the stamps say those.
+sed -i.bak "s/${GNOMAD_SV_SHA256}/${PIN_GNOMAD}/" "${BEN}/gnomad-sv.installed"
+sed -i.bak "s/${MANE_SUMMARY_SHA256}/${PIN_MANE}/" "${ANN}/mane_select_refseq.release"
+rm -f "${BEN}/gnomad-sv.installed.bak" "${ANN}/mane_select_refseq.release.bak"
 GENOME_DIR="$G" "${REPO}/scripts/validate-setup.sh" > "${WORK}/validate1.log" 2>&1 || true
 expect "validate-setup: gnomAD-SV passes" "$(grep -c '\[OK\].*AnnotSV benign set (step 5): gnomAD-SV' "${WORK}/validate1.log")" '^1$'
 expect "validate-setup: MANE passes" "$(grep -c '\[OK\].*AnnotSV transcripts (step 5): MANE' "${WORK}/validate1.log")" '^1$'

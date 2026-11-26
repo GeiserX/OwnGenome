@@ -112,6 +112,8 @@ set -euo pipefail
 
 # Keep an explicit checksum override for fixture tests and verified mirrors.
 PCGR_SHA_OVERRIDE=${PCGR_DATA_SHA256:-}
+GNOMAD_SV_SHA_OVERRIDE=${GNOMAD_SV_SHA256:-}
+MANE_SHA_OVERRIDE=${MANE_SUMMARY_SHA256:-}
 
 # These notices also print before the corresponding downloads.
 ANNOTSV_TERMS="AnnotSV's annotation bundle includes third-party data with their own terms."
@@ -288,6 +290,8 @@ export GENOME_DIR
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
+if [ -n "$GNOMAD_SV_SHA_OVERRIDE" ]; then GNOMAD_SV_SHA256=$GNOMAD_SV_SHA_OVERRIDE; fi
+if [ -n "$MANE_SHA_OVERRIDE" ]; then MANE_SUMMARY_SHA256=$MANE_SHA_OVERRIDE; fi
 
 # Every download goes through og (og setup fetch), so og is built before the
 # first one. Then, when the raw downloads are kept, the sources this run
@@ -965,7 +969,8 @@ consumer_sites_pin_check() {
 # people of v66.p1), so the install gives it a 12 GB container and needs that
 # much free RAM. The AADR downloads (7.3 GB) stay in the downloads folder
 # (done_with). ANCIENT_SOURCE_DIR=<folder> takes the four files (.anno, .ind, .snp,
-# .geno) from that folder instead, unchecked (the tests' synthetic panel).
+# .geno) from that folder instead, unchecked (the tests' synthetic panel),
+# staged in raw_<version> beside the panel and never in the downloads folder.
 HG19_TO_HG38_CHAIN_URL=https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 install_ancient_panel() {
   local base="${GENOME_DIR}/reference/ancient" dir part raw chain e url md5 f src=${ANCIENT_SOURCE_DIR:-}
@@ -984,7 +989,9 @@ install_ancient_panel() {
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
   need_og "chooses the ancient panel's people and places its sites" || return 1
-  raw=$(dl "aadr-${AADR_VERSION}")
+  # ANCIENT_SOURCE_DIR's unchecked files are staged in raw_<version> here,
+  # never in the downloads folder, where they would pass for AADR's.
+  [ -n "$src" ] || raw=$(dl "aadr-${AADR_VERSION}")
   mkdir -p "$raw"
   for e in anno ind snp geno; do
     f="${raw}/aadr.${e}"
@@ -993,7 +1000,6 @@ install_ancient_panel() {
         || { echo "[WARN] ANCIENT_SOURCE_DIR=${src} has no .${e} file."; return 1; }
       continue
     fi
-    [ -s "$f" ] && continue
     # One URL per file, spelled out so scripts/ci/check-links.sh asks each pinned id.
     case "$e" in
       anno) url="https://dataverse.harvard.edu/api/access/datafile/${AADR_ANNO_ID}" md5=$AADR_ANNO_MD5 ;;
@@ -1009,7 +1015,7 @@ install_ancient_panel() {
   done
   if [ -n "${ANCIENT_CHAIN:-}" ]; then
     chain=$ANCIENT_CHAIN
-  elif [ ! -s "$chain" ] && ! fetch "$HG19_TO_HG38_CHAIN_URL" "$chain" sha256 "$HG19_TO_HG38_CHAIN_SHA256"; then
+  elif ! fetch "$HG19_TO_HG38_CHAIN_URL" "$chain" sha256 "$HG19_TO_HG38_CHAIN_SHA256"; then
     echo "[WARN] Could not download UCSC's hg19ToHg38 chain; run: $0 --ancient-panel ${GENOME_DIR}"
     return 1
   fi
@@ -1058,7 +1064,8 @@ install_ancient_panel() {
     "$(date -u '+%Y-%m-%d')" > "${part}/DONE"
   rm -rf "$dir"  # not kept: the older panel, replaced
   mv "$part" "$dir"
-  done_with "$raw"
+  # The staged copy of ANCIENT_SOURCE_DIR is no download: it goes at once.
+  if [ -n "$src" ]; then rm -rf "$raw"; else done_with "$raw"; fi
   echo "[OK] ancient populations panel AADR ${AADR_VERSION} (step 44): ${dir} ($(wc -l < "${dir}/moderns.ind" | tr -d ' ') present-day people, $(($(wc -l < "${dir}/ancients.tsv") - 1)) ancient people)"
 }
 
@@ -1656,10 +1663,10 @@ install_locityper_data() {
     | sort -k1,1 -k2,2n \
     | awk -F'\t' '$1 == c && $2 <= e {if ($3 > e) e = $3; next} {if (c != "") print c ":" s + 1 "-" e; c = $1; s = $2; e = $3}
                   END {if (c != "") print c ":" s + 1 "-" e}' | tr '\n' ' ')
-  # What the regions read: kept in the downloads folder by the panel URL and
-  # the regions (with its sha256 beside it), so a rerun over the same loci
-  # reads nothing again.
-  key=$(printf '%s %s\n' "$LOCITYPER_PANEL_URL" "${regions% }" | _digest sha256 -)
+  # What the regions read: kept in the downloads folder by the panel URL, its
+  # pin and the regions (with its sha256 beside it), so a rerun over the same
+  # loci reads nothing again.
+  key=$(printf '%s %s %s\n' "$LOCITYPER_PANEL_URL" "$LOCITYPER_PANEL_TBI_SHA256" "${regions% }" | _digest sha256 -)
   saved=$(dl "locityper-${LOCITYPER_PANEL_VERSION}/panel-${key:0:16}.vcf.gz")
   if [ -s "$saved" ] && [ -s "${saved}.tbi" ] && [ "$(_digest sha256 "$saved")" = "$(cat "${saved}.sha256" 2>/dev/null)" ]; then
     echo "  The panel's haplotypes over these loci are already in ${saved} (sha256 matches); not read again."
@@ -1832,13 +1839,12 @@ install_annotsv_gnomad_sv() {
     echo "  The rows of the earlier release stay in AnnotSV's benign files; reinstall the bundle to drop them."
   fi
   mkdir -p "$benign"
-  # fetch keeps a download only once its checksum matches, so a file there is whole.
-  if [ ! -s "$src" ]; then
-    echo "Downloading gnomAD-SV ${GNOMAD_SV_VERSION} sites (~1.7 GB)..."
-    if ! fetch "$GNOMAD_SV_URL" "$src" sha256 "$GNOMAD_SV_SHA256"; then
-      echo "[WARN] Could not download gnomAD-SV ${GNOMAD_SV_VERSION}. Step 5 stops until it is in place; run setup.sh again."
-      return 1
-    fi
+  # fetch checks a file already there and downloads only a missing one; a
+  # wrong file in the downloads folder is refused.
+  [ -s "$src" ] || echo "Downloading gnomAD-SV ${GNOMAD_SV_VERSION} sites (~1.7 GB)..."
+  if ! fetch "$GNOMAD_SV_URL" "$src" sha256 "$GNOMAD_SV_SHA256"; then
+    echo "[WARN] Could not download gnomAD-SV ${GNOMAD_SV_VERSION}. Step 5 stops until it is in place; run setup.sh again."
+    return 1
   fi
   echo "  Keeping the records AnnotSV uses for its benign set..."
   if ! gzip -dc "$src" | awk -F'\t' -v OFS='\t' -v ver="$GNOMAD_SV_VERSION" '
@@ -1944,7 +1950,7 @@ install_annotsv_mane() {
     echo "[OK] MANE ${MANE_RELEASE} Select transcripts for AnnotSV already present."
     return 0
   fi
-  if [ ! -s "$src" ] && ! fetch "$MANE_SUMMARY_URL" "$src" sha256 "$MANE_SUMMARY_SHA256"; then
+  if ! fetch "$MANE_SUMMARY_URL" "$src" sha256 "$MANE_SUMMARY_SHA256"; then
     echo "[WARN] Could not download the MANE ${MANE_RELEASE} summary. Step 5 stops until it is in place; run setup.sh again."
     return 1
   fi
@@ -2192,7 +2198,7 @@ install_archaic() {
           { cut -f1 "$3/modern.tsv"; cat "$3/nonref.pos"; } | sort -nu | awk -v c="$2" "{print c \"\t\" \$1}" > "$3/keep.tsv"
           for g in Altai Vindija33.19 Denisova; do
             bcftools query -T "$3/keep.tsv" -i "GT!=\"mis\"" -f "%POS\t%REF\t%ALT\t[%GT]\n" "$1/$g.chr$2.vcf.gz" > "$3/$g.tsv"
-          done' _ "$(cpath "${dir}/download")" "$c" "$(cpath "$wk")" "$(cpath "${wk}/regions.bed")"; then
+          done' _ "$(cpath "$adl")" "$c" "$(cpath "$wk")" "$(cpath "${wk}/regions.bed")"; then
       echo "[WARN] Could not read the archaic genotypes of chr${c}"; return 1
     fi
     if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" \

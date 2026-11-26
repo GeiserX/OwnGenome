@@ -568,6 +568,9 @@ _install_gencode() {
   url="https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${GENCODE_RELEASE}/gencode.v${GENCODE_RELEASE}.basic.annotation.gtf.gz"
   gz=$(dl "${url##*/}")
   fetch "$url" "$gz" md5 "$(dirname "$url")/MD5SUMS" >&2 || return 1
+  # The download is in the downloads folder: the tables' own folder may not
+  # be there yet.
+  mkdir -p "$(dirname "$genes")" "$(dirname "$exons")"
   if [ ! -s "$genes" ]; then
     _gz_to "$gz" "$genes" awk -F'\t' '$3 == "gene"' || rc=1
   fi

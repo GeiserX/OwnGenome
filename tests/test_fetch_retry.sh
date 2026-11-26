@@ -58,7 +58,7 @@ unbounded() {
   # shellcheck disable=SC2016  # the wrapper's own code, expanded when it runs
   printf '%s\n' '#!/usr/bin/env bash' \
     'a=(); while [ $# -gt 0 ]; do case "$1" in --connect-timeout|--speed-limit|--speed-time) shift 2 ;; --connect-timeout=*|--read-timeout=*) shift ;; *) a+=("$1"); shift ;; esac; done' \
-    "exec $(command -v "$2") \"\${a[@]}\"" > "${WORK}/$1/$2"
+    "exec $(printf '%q' "$(command -v "$2")") \"\${a[@]}\"" > "${WORK}/$1/$2"
   chmod +x "${WORK}/$1/$2"
 }
 unbounded curl-unbounded curl
