@@ -575,12 +575,26 @@ fn headroom_tasks_hosts_and_disks() {
         d.join("not/yet").to_string_lossy().into_owned(),
     );
     fs::create_dir_all(&w).unwrap();
-    // Every disk in use is at or above 1%: the warning masked above is here.
+    // The warning masked above, on a disk at or above 1%. df rounds its
+    // capacity up, so 2% or more is surely at or above 1%.
     let at1 = headroom_parity(
         "headroom-4",
         &["--work-dir", &w, "--outdir", &r, "--disk-warn-percent", "1"],
     );
-    assert!(at1.contains("; WARN: at or above 1%\n"), "{at1}");
+    let df = std::process::Command::new("df")
+        .arg("-P")
+        .arg(&w)
+        .output()
+        .unwrap();
+    let used: u32 = String::from_utf8_lossy(&df.stdout)
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().nth(4))
+        .and_then(|c| c.trim_end_matches('%').parse().ok())
+        .expect("df -P capacity");
+    if used >= 2 {
+        assert!(at1.contains("; WARN: at or above 1%\n"), "{at1}");
+    }
     let _ = headroom_parity(
         "headroom-5",
         &["--work-dir", &w, "--disk-warn-percent", "100"],
@@ -809,11 +823,11 @@ fn eta_waits_for_the_history_lock() {
         .open(&lock)
         .unwrap();
     held.lock().unwrap();
+    let t = std::time::Instant::now();
     let holder = std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(1500));
         held.unlock().unwrap();
     });
-    let t = std::time::Instant::now();
     let o = og_eta(&d, None, 8, "held");
     let waited = t.elapsed();
     holder.join().unwrap();

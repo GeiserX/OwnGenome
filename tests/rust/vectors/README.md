@@ -15,7 +15,7 @@ Some Rust tests check og against the Python it replaced or against CPython itsel
 | `runlog.jsonl.gz` | `rust/crates/og-runlog/tests/parity.rs` | exit code, stdout, stderr and written files of `bin/run_state.py`, `run_headroom.py` and `run_delta.py` of commit 630292bd on each case |
 | `live_ops.jsonl.gz` | `rust/crates/og-live/tests/ops.rs` | the card and metrics text of `bin/owngenome_live_ops.py` of commit 1ec63069 on each case |
 
-A `.jsonl.gz` file holds one `[key, answer]` JSON array per line, sorted, gzipped with `gzip -9 -n`. Paths in an answer are written as `{TMP}`, `{TMP:<name>}` or `{REPO}`, and the test puts its own folders back. A test whose input changed finds no answer for it and fails with a message that says so.
+A `.jsonl.gz` file holds one `[key, answer]` JSON array per line, sorted, gzipped with `gzip -9 -n`. Paths in an answer are written as `{TMP}`, `{TMP:<name>}` or `{REPO}`, and the test puts its own folders back. The scanner and `ci_readers` keys are made from the input itself or a fingerprint of it: a test whose input changed finds no answer for it and fails with a message that says so. The pycompat cases sit beside their answers. The `runlog` and `live_ops` keys are the case labels: when a case's input changes, record its answer again, because the test still finds the old one.
 
 ## How they were made
 

@@ -82,7 +82,10 @@ jobs:
           diff "$out" "${d}/fetch.pysam.tsv" || { echo "ERROR: samtools does not return the reads of fetch.pysam.tsv"; exit 1; }
           echo "samtools: $(wc -l < "$out") reads, the same as fetch.pysam.tsv"
           # Control: a CIGAR deletion that does not move the reference must differ.
-          if OG_FETCH_PLANT=deletion rust/crates/og-bam/tests/samtools_fetch.sh "$SAMTOOLS_IMAGE" | cmp -s - "${d}/fetch.pysam.tsv"; then
+          # The helper must still finish: a failed run is not a caught mistake.
+          planted="${RUNNER_TEMP}/fetch-planted.tsv"
+          OG_FETCH_PLANT=deletion rust/crates/og-bam/tests/samtools_fetch.sh "$SAMTOOLS_IMAGE" > "$planted"
+          if cmp -s "$planted" "${d}/fetch.pysam.tsv"; then
             echo "ERROR: the samtools check passed a planted CIGAR mistake"; exit 1
           fi
           echo "Control: a planted CIGAR mistake differs from fetch.pysam.tsv."

@@ -477,7 +477,7 @@ pub fn run(input: impl BufRead, output: impl Write) -> io::Result<()> {
 /// mtime.
 #[cfg(test)]
 mod vectors {
-    use super::{hex, run};
+    use super::{files, hex, os_list, run};
     use std::collections::HashMap;
     use std::ffi::OsStr;
     use std::io::BufRead;
@@ -545,7 +545,7 @@ mod vectors {
                 let after = &rest[TREE_HEX.len()..];
                 if after.is_empty()
                     || after.starts_with("2f")
-                    || after.starts_with(['\t', ',', '|'])
+                    || after.starts_with(['\t', ',', '|', '\\'])
                 {
                     out.push_str(root);
                     rest = after;
@@ -573,7 +573,11 @@ mod vectors {
             "{s}: finer than a nanosecond"
         );
         let d = Duration::from_nanos(u64::try_from(ns.unsigned_abs()).unwrap());
-        if ns < 0 { UNIX_EPOCH - d } else { UNIX_EPOCH + d }
+        if ns < 0 {
+            UNIX_EPOCH - d
+        } else {
+            UNIX_EPOCH + d
+        }
     }
 
     /// The oracle's tree again under `root`: folders, empty files, symlinks
@@ -635,12 +639,13 @@ mod vectors {
         PathBuf::from(OsStr::from_bytes(&b))
     }
 
-    /// Whether og's answer `got` stands for CPython's `want` on a case of `op`.
-    fn agrees(op: &str, want: &str, got: &str) -> bool {
+    /// Whether og's answer `got` stands for CPython's `want` on `case`.
+    fn agrees(case: &str, want: &str, got: &str) -> bool {
         if want == got {
             return true;
         }
-        match op {
+        let mut args = case.split('\t');
+        match args.next().unwrap() {
             "glob" => {
                 fn sorted(s: &str) -> Vec<&str> {
                     let mut v: Vec<&str> = s.split("\\|").collect();
@@ -651,7 +656,9 @@ mod vectors {
             }
             "newest" if want != "None" && got != "None" && !got.contains('|') => {
                 let t = |h: &str| pycompat::mtime::mtime(unhex(h)).ok();
-                t(want).is_some() && t(want) == t(got) && unhex(got).is_file()
+                // A tie on mtime: any file the case's patterns match will do.
+                let eligible = files(&os_list(args.next().unwrap_or("")).unwrap(), false);
+                t(want).is_some() && t(want) == t(got) && eligible.contains(&unhex(got))
             }
             _ => false,
         }
@@ -716,14 +723,13 @@ mod vectors {
         input.push('\n');
         let mut out = Vec::new();
         run(input.as_bytes(), &mut out).unwrap();
-        let _ = std::fs::remove_dir_all(&root);
         let got: Vec<&str> = std::str::from_utf8(&out).unwrap().lines().collect();
         assert_eq!(got.len(), cases.len(), "one answer per case");
         let mut bad: std::collections::BTreeMap<&str, usize> = Default::default();
         let mut report = String::new();
         for ((case, want), got) in cases.iter().zip(&want).zip(&got) {
             let op = case.split('\t').next().unwrap();
-            if !agrees(op, want, got) {
+            if !agrees(case, want, got) {
                 *bad.entry(op).or_default() += 1;
                 if bad.values().sum::<usize>() <= 20 {
                     report.push_str(&format!(
@@ -732,6 +738,7 @@ mod vectors {
                 }
             }
         }
+        let _ = std::fs::remove_dir_all(&root);
         println!(
             "pycompat: {} cases against CPython{}",
             cases.len(),

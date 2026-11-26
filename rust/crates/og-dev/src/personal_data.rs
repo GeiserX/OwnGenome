@@ -1703,6 +1703,8 @@ mod tests {
         }
         walk(&f.0, b"", &mut key);
         if f.0.join(".git").exists() {
+            // Object ids as recorded: every fixture repo is made with
+            // --object-format=sha1, whatever git defaults to here.
             let index = Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
@@ -1871,7 +1873,7 @@ mod tests {
                     .success()
             )
         };
-        git(&["init", "-q"]);
+        git(&["init", "-q", "--object-format=sha1"]);
         std::fs::write(f.0.join("clean.md"), "clean\n").unwrap();
         std::fs::write(
             f.0.join("odd\nname.md"),
@@ -1950,7 +1952,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2199,7 +2201,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2277,7 +2279,7 @@ mod tests {
             assert!(output.status.success());
             output.stdout
         };
-        git(&["init", "-q"], b"");
+        git(&["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         git(&["add", "clean.md"], b"");
         let hash = git(
@@ -2322,7 +2324,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2383,7 +2385,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2545,7 +2547,7 @@ mod tests {
     #[test]
     fn round5_regex_case_relations() {
         let f = Fixture::new("r5-case");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         // These literal spellings are stable partners. Escape the pattern so
         // it reaches the compiler's decoded-scalar validation as well.
         for (text, pattern) in [
@@ -2586,7 +2588,7 @@ mod tests {
     #[test]
     fn round5_stable_case_scalars_pass() {
         let f = Fixture::new("r5-stable");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         for c in [
             '\u{390}', '\u{3b0}', '\u{1fd3}', '\u{1fe3}', '\u{fb05}', '\u{fb06}',
         ] {
@@ -2599,7 +2601,7 @@ mod tests {
     #[test]
     fn round5_gitlinks_fail_closed() {
         let f = Fixture::new("r5-gitlink");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         r5_git(&f, &["add", "clean.md"], b"");
         let tree = r5_git(&f, &["hash-object", "-t", "tree", "-w", "--stdin"], b"");
@@ -2645,7 +2647,7 @@ mod tests {
     #[test]
     fn round5_guard_filenames() {
         let f = Fixture::new("r5-path");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         let name = "x\u{1e6c0}PRIVATE_FIVE.md";
         std::fs::write(f.0.join(name), "clean").unwrap();
@@ -2673,7 +2675,7 @@ mod tests {
     #[test]
     fn round5_every_symlink_hop() {
         let f = Fixture::new("r5-hops");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         std::os::unix::fs::symlink(
             OsStr::from_bytes(b"PRIVATE_FIVE_\xff.md"),
@@ -2733,7 +2735,7 @@ mod tests {
     #[test]
     fn round6_astral_composite_cases() {
         let f = Fixture::new("r6-astral");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         let mut failures = Vec::new();
         // One lowercase/uppercase pair per astral cased script reported by
         // the composite oracle. Run each through all four public entry modes.
@@ -2787,7 +2789,7 @@ mod tests {
                 "guarded range accepted"
             );
             let f = Fixture::new("r6-range");
-            r5_git(&f, &["init", "-q"], b"");
+            r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
             std::fs::write(f.0.join("own.md"), "clean").unwrap();
             std::fs::write(f.0.join("patterns"), pattern).unwrap();
             r5_git(&f, &["add", "own.md"], b"");
@@ -2834,7 +2836,7 @@ mod tests {
             }
         }
         let f = Fixture::new("r6-uncased");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("own.md"), p("😀𠀀 rs123~ AG")).unwrap();
         r5_git(&f, &["add", "own.md"], b"");
         r5_modes(&f, &["own.md"], 1, "");
@@ -2843,7 +2845,7 @@ mod tests {
     #[test]
     fn round6_symlink_unicode_names() {
         let f = Fixture::new("r6-link-name");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         let name = "x\u{1e6c0}PRIVATE_SIX";
         let mut failures = Vec::new();
@@ -2906,7 +2908,7 @@ mod tests {
     #[test]
     fn round7_ordinary_cyrillic() {
         let f = Fixture::new("r7-cyrillic");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         for text in ["Привет, мир!", "Привіт, світе!", "Здраво, свете!", "о"]
         {
             std::fs::write(f.0.join("own.md"), text).unwrap();
@@ -2964,7 +2966,7 @@ mod tests {
     #[test]
     fn round7_custom_cyrillic_cli() {
         let f = Fixture::new("r7-custom");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("own.md"), "привет, мир!").unwrap();
         r5_git(&f, &["add", "own.md"], b"");
         for (pattern, expected) in [
@@ -3004,7 +3006,7 @@ mod tests {
     #[test]
     fn round7_cached_target_before_skip() {
         let f = Fixture::new("r7-index-target");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         for target in ["x\u{1e6c0}.md", "x\u{1e6c0}/clean.md"] {
             std::os::unix::fs::symlink(target, f.0.join("alias.md")).unwrap();
@@ -3114,7 +3116,7 @@ mod tests {
                         Err("own.md:1: Unicode version-dependent text".into())
                     );
                     let f = Fixture::new("r7-property-endpoint");
-                    r5_git(&f, &["init", "-q"], b"");
+                    r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
                     std::fs::write(f.0.join("own.md"), &text).unwrap();
                     r5_git(&f, &["add", "own.md"], b"");
                     r5_modes(&f, &["own.md"], 2, "");
