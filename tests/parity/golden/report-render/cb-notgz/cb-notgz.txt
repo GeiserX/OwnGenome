@@ -13,8 +13,8 @@
 ## Clinical Variant Filter
 ---
   Clinical variants: 6
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 0 ClinVar P/LP, 0 rare HIGH impact (listed apart: 1 weak call(s)), 2 not reported by the gene's rule
-    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 0 ClinVar P/LP, 0 rare HIGH impact (listed apart: 1 weak call(s), 1 with no GQ, DP or AD to judge the call), 2 not reported by the gene's rule
+    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant; no GQ, DP or AD to judge the call, not counted as rare
     MSH2     chr2:47414000 A>AT  het  frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
     MUTYH chr1:45332000 G>A het (HIGH impact): not reported, one heterozygous variant; MUTYH is reported with P and LP (2 variants)
     HFE chr6:26093000 C>T hom (HIGH impact): not reported, HFE is reported only for: HFE p.C282Y homozygotes only

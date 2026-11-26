@@ -47,12 +47,12 @@
 ## Clinical Variant Filter
 ---
   Clinical variants: 6
-  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s)), 0 class 4/5 SV(s), 3 not reported by the gene's rule
-    MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic
+  Secondary-findings genes (ACMG SF v3.3, 84 genes): 3 ClinVar P/LP, 1 rare HIGH impact (listed apart: 1 weak call(s), 1 with no GQ, DP or AD to judge the call), 0 class 4/5 SV(s), 3 not reported by the gene's rule
+    MUTYH    chr1:45331556 C>T  het  ClinVar Pathogenic; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)
     BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
     GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
-    MUTYH    chr1:45332000 G>A  het  stop_gained
-    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant
+    MUTYH    chr1:45332000 G>A  het  stop_gained; biallelic: in trans: read-backed phase puts them on different copies (phase set 45331000)
+    MYBPC3   chr11:47332000 G>A  het  splice_donor_variant,intron_variant; no GQ, DP or AD to judge the call, not counted as rare
     MSH2     chr2:47414000 A>AT  het  frameshift_variant; weak call (alt reads 0.07 of the depth on a heterozygote): check the reads; A deletion of the 3' end of EPCAM silences MSH2 and counts as an MSH2 finding.
     HFE chr6:26092913 G>A het (ClinVar): not reported, HFE is reported only for: HFE p.C282Y homozygotes only
     BTD chr3:15645186 G>C het (ClinVar): not reported, one heterozygous variant; BTD is reported with P and LP (2 variants)
@@ -111,8 +111,8 @@
   Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside
   MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C>T het, ClinVar Pathogenic
   HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G>A het, ClinVar Pathogenic
-  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic
-  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic
+  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic; low-confidence call: check the reads
+  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic; low-confidence call: check the reads
   BRCA1 (Fanconi anemia; AR): chr17:43057100 C>T het, ClinVar Pathogenic
   HBA1 (Alpha-thalassemia; AR): chr16:176700 G>A het, ClinVar Pathogenic
   GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier

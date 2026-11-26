@@ -46,6 +46,15 @@
 ## Clinical Variant Filter
 ---
   [could not be read: S_clinical.vcf.gz: Compressed file ended before the end-of-stream marker was reached]
+  Secondary-findings genes (ACMG SF v3.3, 84 genes; ClinVar only, HIGH-impact not checked): 2 ClinVar P/LP, 3 not reported by the gene's rule
+    BRCA1    chr17:43057100 C>T  het  ClinVar Pathogenic
+    GLA      chrX:101398000 C>T  1  ClinVar Pathogenic
+    MUTYH chr1:45331556 C>T het (ClinVar): not reported, one heterozygous variant; MUTYH is reported with P and LP (2 variants)
+    HFE chr6:26092913 G>A het (ClinVar): not reported, HFE is reported only for: HFE p.C282Y homozygotes only
+    BTD chr3:15645186 G>C het (ClinVar): not reported, one heterozygous variant; BTD is reported with P and LP (2 variants)
+    Rare HIGH-impact variants were not screened: step 23's clinical VCF cannot be read: S_clinical.vcf.gz: Compressed file ended before the end-of-stream marker was reached. This card holds the ClinVar P/LP hits and the class 4 and 5 structural variants only, so it can miss a predicted loss-of-function variant that is not in ClinVar, alone or as the second hit of a recessive gene.
+    A list to review with a clinician, not a diagnosis. Each gene's ACMG SF v3.3 reporting rule (assets/acmg_sf.tsv) is applied: one variant in a dominant gene; two in a recessive gene such as MUTYH, BTD or ATP7B, even when their phase is unknown; HFE only as homozygous p.C282Y. A variant the rule does not report is listed apart with the reason. A rare HIGH-impact record is not a ClinVar classification.
+
 ################################################################################
 #  3. CARRIER: What could I pass on to a child?
 ################################################################################
@@ -55,8 +64,8 @@
   Carrier list (3292 genes): 6 finding(s), 2 with no unchanged copy, 1 set aside
   MUTYH (MUTYH-related polyposis; AR): chr1:45331556 C>T het, ClinVar Pathogenic
   HFE (Symptomatic form of HFE-related hemochromatosis; AR): chr6:26092913 G>A het, ClinVar Pathogenic
-  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic
-  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic
+  CFTR (Cystic fibrosis; AR): chr7:117559590 ATCT>A het, ClinVar Pathogenic; low-confidence call: check the reads
+  GJB2 (Nonsyndromic hearing loss, recessive (DFNB1A); AR): chr13:20189473 C>T one copy, other copy not called ref (1/.), ClinVar Likely pathogenic; low-confidence call: check the reads
   BRCA1 (Fanconi anemia; AR): chr17:43057100 C>T het, ClinVar Pathogenic
   HBA1 (Alpha-thalassemia; AR): chr16:176700 G>A het, ClinVar Pathogenic
   GLA (Fabry disease; XL): chrX:101398000 C>T hemizygous, ClinVar Pathogenic: the only copy changed, not the pattern of a carrier
