@@ -203,8 +203,8 @@ jobs:
         if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
         run: scripts/ci/check-container-helpers.sh --orad
 
-  # og for the unit tests (tests/og_binary.py): the tests of a ported tool
-  # and the demo sample builder run og as a subprocess. Built once here, so
+  # og for the unit tests (OG): the shell tests of a ported tool run og as a
+  # subprocess. Built once here, so
   # the three shards do not each spend minutes of their 10 on it. The images
   # job runs its og dev scans with it too.
   og:
@@ -257,10 +257,10 @@ jobs:
           chmod 755 "$RUNNER_TEMP/og/og"
           echo "OG=${RUNNER_TEMP}/og/og" >> "$GITHUB_ENV"
 
-      # Every tests/test_*.py runs with python3 and every tests/test_*.sh with
-      # bash, found by glob, so a new test file needs no workflow edit. The
-      # two planted failures prove the loop reports a failing test.
-      - name: Run this shard's tests/test_*.py and tests/test_*.sh
+      # Every tests/test_*.sh runs with bash, found by glob, so a new test
+      # file needs no workflow edit. The planted failure proves the loop
+      # reports a failing test. No test is Python (og dev python-gate).
+      - name: Run this shard's tests/test_*.sh
         env:
           SHARD: ${{ matrix.shard }}
           SHARDS: 3
@@ -270,16 +270,13 @@ jobs:
           run_tests() {
             local dir=$1 shard=${2:-0} shards=${3:-1} t rc i=0 n=0 fail=0
             shopt -s nullglob
-            for t in "$dir"/test_*.py "$dir"/test_*.sh; do
+            for t in "$dir"/test_*.sh; do
               i=$((i + 1))
               [ $(( (i - 1) % shards )) -eq "$shard" ] || continue
               n=$((n + 1))
               rc=0
               echo "::group::${t}"
-              case "$t" in
-                *.py) python3 "$t" || rc=$? ;;
-                *.sh) bash "$t" || rc=$? ;;
-              esac
+              bash "$t" || rc=$?
               echo "::endgroup::"
               if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
             done
@@ -289,16 +286,12 @@ jobs:
           }
 
           ctl=$(mktemp -d)
-          mkdir "${ctl}/py" "${ctl}/sh"
-          echo 'assert False, "planted failure"' > "${ctl}/py/test_planted.py"
-          echo 'exit 1' > "${ctl}/sh/test_planted.sh"
-          for d in "${ctl}/py" "${ctl}/sh"; do
-            if run_tests "$d"; then
-              echo "ERROR: a planted failing test in ${d} was reported as passing"
-              exit 1
-            fi
-          done
-          echo "Control: both planted failures were reported."
+          echo 'exit 1' > "${ctl}/test_planted.sh"
+          if run_tests "$ctl"; then
+            echo "ERROR: a planted failing test in ${ctl} was reported as passing"
+            exit 1
+          fi
+          echo "Control: the planted failure was reported."
 
           run_tests tests "$SHARD" "$SHARDS"
 
@@ -934,7 +927,7 @@ jobs:
   # The two musl builds of og, as scripts/setup.sh --og makes them in
   # OG_BUILDER, and every check that runs the real bin/og: the stale-binary
   # guard, og dev schema, the og-leg tests, the fake-docker case
-  # cn-engine-calls, og dev remnants and everything-check, and nextflow run
+  # cn-engine-calls, og dev python-gate and everything-check, and nextflow run
   # on a stale og. None of them needs what the rust job builds or tests, so
   # they run beside it and build og here, in the builder image. It took 17
   # minutes on a cold fork runner on 2026-11-24, 14.5 of them in the musl
@@ -1003,26 +996,23 @@ jobs:
             for t in "$@"; do
               rc=0
               echo "::group::${t}"
-              case "$t" in
-                *.py) python3 "$t" || rc=$? ;;
-                *.sh) bash "$t" || rc=$? ;;
-              esac
+              bash "$t" || rc=$?
               echo "::endgroup::"
               if [ "$rc" -eq 0 ]; then echo "PASS ${t}"; else echo "FAIL ${t} (exit ${rc})"; fail=1; fi
             done
             return "$fail"
           }
-          # Control: a planted test with the marker and a failing assert is
-          # picked by the glob and turns the leg red.
-          probe=tests/test_og_leg_probe.py
+          # Control: a planted test with the marker that fails is picked by
+          # the glob and turns the leg red.
+          probe=tests/test_og_leg_probe.sh
           trap 'rm -f "$probe"' EXIT
-          printf '%s\nassert False, "planted"\n' "$marker" > "$probe"
-          picked=$(grep -lxF "$marker" tests/test_*.py tests/test_*.sh)
+          printf '%s\nexit 1\n' "$marker" > "$probe"
+          picked=$(grep -lxF "$marker" tests/test_*.sh)
           grep -qxF "$probe" <<< "$picked" || { echo "ERROR: the marker glob missed the planted test"; exit 1; }
           if og_leg "$probe"; then echo "ERROR: the planted failing test passed"; exit 1; fi
           rm -f "$probe"
           echo "Control: the planted marked test was picked and failed."
-          mapfile -t tests < <(grep -lxF "$marker" tests/test_*.py tests/test_*.sh | sort)
+          mapfile -t tests < <(grep -lxF "$marker" tests/test_*.sh | sort)
           [ "${#tests[@]}" -gt 0 ] || { echo "ERROR: no test carries the og-leg marker"; exit 1; }
           echo "${#tests[@]} tests carry the og-leg marker"
           og_leg "${tests[@]}"
@@ -1035,11 +1025,39 @@ jobs:
           echo "$out"
           if grep -q '^skip: bin/og is not built' <<<"$out"; then echo "ERROR: the case was skipped, with og built"; exit 1; fi
 
-      # A Python file kept only for what other Python imports from it holds
-      # those names and nothing else (tests/parity/remnants.tsv).
-      - name: og dev remnants
+      # No owned Python: every *.py file, Python heredoc, python call in
+      # shell, Nextflow, workflows and command tables, python shebang, and
+      # Command::new("python3") in Rust fails unless tests/python-allow.tsv
+      # names its file as third-party Python, run in its own pinned image.
+      # The matching rules have their planted cases in og-dev's cargo tests;
+      # the three controls here prove the gate reads this checkout: a new
+      # untracked .py file, a new python3 call in a script, and the list
+      # without one of its rows each turn it red.
+      - name: og dev python-gate
         working-directory: .
-        run: bin/og dev remnants
+        run: |
+          bin/og dev python-gate
+          ctl=$(mktemp -d)
+          trap 'rm -rf "$ctl" bin/planted_gate_probe.py scripts/planted-gate-probe.sh' EXIT
+          expect_red() {  # expect_red WHAT PATTERN [ARGS...]: the gate fails and names PATTERN
+            local what=$1 pat=$2 out rc=0
+            shift 2
+            out=$(bin/og dev python-gate "$@") || rc=$?
+            if [ "$rc" -ne 1 ] || ! grep -qF -- "$pat" <<< "$out"; then
+              echo "ERROR: control '${what}' did not fail on ${pat} (exit ${rc}):"; echo "$out"; exit 1
+            fi
+            echo "Control '${what}' failed, as it must: $(grep -F -- "$pat" <<< "$out" | head -n 1)"
+          }
+          printf 'print(1)\n' > bin/planted_gate_probe.py
+          expect_red 'a planted bin/*.py' 'FAIL bin/planted_gate_probe.py:0: file'
+          rm -f bin/planted_gate_probe.py
+          printf '#!/usr/bin/env bash\npython3 -c "print(1)"\n' > scripts/planted-gate-probe.sh
+          expect_red 'a planted Python call' 'FAIL scripts/planted-gate-probe.sh:2: call'
+          rm -f scripts/planted-gate-probe.sh
+          row=$(grep -v -m 1 -E '^(#|$)' tests/python-allow.tsv)
+          grep -vxF -- "$row" tests/python-allow.tsv > "${ctl}/allow.tsv"
+          expect_red 'the list without its first row' "FAIL ${row%%$'\t'*}:" --allow "${ctl}/allow.tsv"
+          bin/og dev python-gate
 
       # EVERYTHING=true and -profile everything run every optional step from
       # assets/everything.tsv: a new tool, switch, setup flag, false-by-default

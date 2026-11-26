@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       test:
-        description: "Test to repeat (a tests/test_*.sh or tests/test_*.py)"
+        description: "Test to repeat (a tests/test_*.sh)"
         default: tests/test_annotsv_benign_mane.sh
       runs:
         description: "How many runs (1 to 60)"
@@ -47,8 +47,8 @@ jobs:
         id: plan
         run: |
           case "$TEST" in
-            tests/test_*.sh|tests/test_*.py) ;;
-            *) echo "ERROR: '${TEST}' is not a tests/test_*.sh or tests/test_*.py"; exit 1 ;;
+            tests/test_*.sh) ;;
+            *) echo "ERROR: '${TEST}' is not a tests/test_*.sh"; exit 1 ;;
           esac
           [ -f "$TEST" ] || { echo "ERROR: ${TEST} does not exist"; exit 1; }
           case "$RUNS" in ''|*[!0-9]*) echo "ERROR: runs must be a whole number, got '${RUNS}'"; exit 1 ;; esac
@@ -85,10 +85,7 @@ jobs:
             echo 'echo "planted failure"; exit 1' > "$t"
           fi
           rc=0
-          case "$t" in
-            *.py) python3 "$t" || rc=$? ;;
-            *) bash "$t" || rc=$? ;;
-          esac
+          bash "$t" || rc=$?
           echo "run ${RUN}: exit ${rc}"
           echo "$rc" > "${RUNNER_TEMP}/rc"
           echo "RC=${rc}" >> "$GITHUB_ENV"
