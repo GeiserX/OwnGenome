@@ -208,8 +208,9 @@ check "control: a docker run line that ends on --user 0:0 is read as root" test 
 rm -rf "$STUB_WORK" "${CASE_TMP}/stub-out"
 
 check_info "nextflow" "${NF_OUT}/${P}/prs/pgsc_calc/pipeline_info"
-check_eq "PRS scores in the summary (one per id of assets/pgs_scores.tsv)" "$(awk 'NR > 1' "${NF_OUT}/${P}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
-  "$(awk -F'\t' '$1 ~ /^PGS[0-9]+$/' "${REPO}/assets/pgs_scores.tsv" | wc -l | tr -d ' ')"
+check_eq "PRS scores in the summary (one per author-terms score)" "$(awk 'NR > 1' "${NF_OUT}/${P}/prs/${P}_prs_summary.tsv" 2>/dev/null | wc -l | tr -d ' ')" \
+  "$(awk -F'\t' '$1 == "pgs_id" { for (i=1; i<=NF; i++) col[$i]=i; next }
+    $1 ~ /^PGS[0-9]+$/ && $col["licence"] == "author" { n++ } END { print n+0 }' "${REPO}/assets/pgs_scores.tsv")"
 
 # --- step 25 ---------------------------------------------------------------------------
 # A copy of HG002P's VCF and gVCF under another label, so HG002P's own
@@ -219,9 +220,12 @@ rm -rf "${G:?}/${T}" "${G}/prs_scores"
 mkdir -p "${G}/${T}/vcf" "${G}/prs_scores"
 for s in vcf.gz vcf.gz.tbi g.vcf.gz g.vcf.gz.tbi; do cp "${D}/vcf/${P}.${s}" "${G}/${T}/vcf/${T}.${s}"; done
 cp "${PGS}"/*.txt.gz "${G}/prs_scores/"
-ANCESTRY_PANEL=none run_step 25-prs.sh "$T"
+PRS_ACADEMIC=true ANCESTRY_PANEL=none run_step 25-prs.sh "$T"
 check_step_exit 25-prs.sh
 check_info "step 25" "${G}/${T}/prs/pgsc_calc/pipeline_info"
+check_eq "step 25 with PRS_ACADEMIC=true scores every listed PGS ID" \
+  "$(awk -F'\t' 'NR > 1 { print $2 }' "${G}/${T}/prs/${T}_prs_summary.tsv" | LC_ALL=C sort)" \
+  "$(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ { print $1 }' "${REPO}/assets/pgs_scores.tsv" | LC_ALL=C sort)"
 check "step 25: the run reports are no longer under results/" test ! -e "${G}/${T}/prs/pgsc_calc/results/pipeline_info"
 
 printf '#### pgsc_calc: outer docker flags and its own trace\n\n%s of %s pgsc_calc containers had both outer labels; trace published by both entry points\n\n' \

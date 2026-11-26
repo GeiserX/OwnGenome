@@ -1594,3 +1594,23 @@ fn corrupt_vcf_leaves_clinvar_readable_in_both_reports() {
         });
     }
 }
+
+#[test]
+fn both_reports_name_each_academic_score_left_out() {
+    let sample = Sample::new("report-prs-academic", "S");
+    put_prs_evaluation(&sample, "EUR", PRS_EUR_EFFECT);
+    with_reports(&sample, |txt, html| {
+        for report in [txt, html] {
+            has(
+                report,
+                &[
+                    "Type 2 diabetes (T2D) (PGS000014) skipped: academic-only licence",
+                    "Atrial fibrillation (PGS000016) skipped: academic-only licence",
+                    "Inflammatory bowel disease (PGS000017) skipped: academic-only licence",
+                    "Body mass index (BMI) (PGS000027) skipped: academic-only licence",
+                    "(setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)",
+                ],
+            );
+        }
+    });
+}

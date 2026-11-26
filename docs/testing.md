@@ -202,9 +202,13 @@ gh workflow run public-evidence.yml -f chromosomes=22 -f ancient=false
 - `ancient-footprint`: `setup.sh --ancient-panel` on the full AADR release, then step 44 on a gVCF built from GIAB's HG002 v4.2.1 genotypes, with the peak memory of each step's containers (one maximum per step, not per container), the peak disk growth and the time. It fails if a command fails, if the sampler saw no container memory, or if step 44 used no site. What it measured is in [step 44, Runtime](44-ancient.md#runtime).
 - `archaic-hg002`: `setup.sh --archaic` and step 43 on HG002, one job per autosome; `archaic-share` joins them into one report per population. When all 22 autosomes ran, the summary prints HG002's total as a multiple of the 51.6 Mb median of Chen et al.'s 503 European per-person totals (42.0 to 62.0 Mb), not an inside or outside verdict, and does not gate on it. The `archaic-same-person` job takes the `same_person_chromosomes` input (the autosomes to compare; the default `none` skips the job) and the `same_person` input and compares step 43 with the released calls of one person both sides have. A job fails if a command fails or step 43 analysed no site, and the job `empty` is its red control: an empty region list must make setup fail. What it measured is in [step 43, Runtime](43-archaic.md#runtime).
 
+## Academic-only PGS scores
+
+The Rust tests check that a directory holding all 15 scores yields 11 by default and 15 with `--academic`. They also check the skipped traits in the summary and both reports. `scripts/ci/check-pgs-labels.sh --self-test` flips a licence in a test copy and checks that CI rejects it. The fake-docker case `screen-pgs-academic-optin` checks the setup and step 25 download lists. The end-to-end case `screen-pgs-academic-optin-1-stub` checks the Nextflow option in stub mode.
+
 ## The prs-memory job
 
-It measures the memory of the two PRS tasks that read only the scoring files: `PRS_PREPARE` and pgsc_calc's `FORMAT_SCOREFILES` on the default score list (`tests/test_prs_memory.sh --measure`). One leg runs them under the memory `conf/base.config` gives them and must pass; the other runs them under what the labels gave before, where `FORMAT_SCOREFILES` must be killed and `PRS_PREPARE` (`og prs format`) must fit. It runs only by hand (`job: prs-memory`) and is not a gate. What it measured is in [PRS: Memory](25-prs.md#memory).
+It measures the memory of the two PRS tasks that read only the scoring files: `PRS_PREPARE` and pgsc_calc's `FORMAT_SCOREFILES` with all 15 scores, including the academic opt-in (`tests/test_prs_memory.sh --measure`). One leg runs them under the memory `conf/base.config` gives them and must pass; the other runs them under what the labels gave before, where `FORMAT_SCOREFILES` must be killed and `PRS_PREPARE` (`og prs format`) must fit. It runs only by hand (`job: prs-memory`) and is not a gate. What it measured is in [PRS: Memory](25-prs.md#memory).
 
 ## Running the e2e job yourself
 

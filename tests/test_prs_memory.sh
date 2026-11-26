@@ -222,7 +222,7 @@ prepare() {
     -v "${REPO}/bin:/pgp-bin:ro" -v "${REPO}/assets/pgs_scores.tsv:/pgs_scores.tsv:ro" \
     -v "${DIR}/scores:/scores:ro" -v "${DIR}/prepare:/out" "$PYTHON_IMAGE" \
     /pgp-bin/og prs format --scores /scores --labels /pgs_scores.tsv \
-      --out /out/pgs --alleles /out/score_alleles.tsv --keep-x
+      --out /out/pgs --alleles /out/score_alleles.tsv --keep-x --academic
 }
 read -r LIMIT GB < <(limit_for PRS_PREPARE "${PREPARE_LIMIT_GB:-}")
 prepare "$LIMIT"

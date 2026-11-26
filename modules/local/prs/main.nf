@@ -11,7 +11,9 @@
                      the samples of the run need. With
                      --prs_keep_ambiguous it checks each score's alleles
                      against the reference and keeps the strand-ambiguous
-                     rows of the scores that pass
+                     rows of the scores that pass. A score the list marks
+                     academic-research is written only with
+                     --pgs_academic true (og prs format --academic)
     PRS_SCORE_SITES  genotypes the score positions (and, with a panel, the
                      panel's) from the gVCF, so a site where the sample
                      matches the reference is a real 0/0; without a gVCF it
@@ -56,15 +58,18 @@ process PRS_PREPARE {
     script:
     def keep_x = score_set == 'with_x' ? '--keep-x' : ''
     def keep_amb = params.prs_keep_ambiguous.toString() == 'true' ? "--keep-ambiguous --reference ${reference}" : ''
+    def academic = params.pgs_academic.toString() == 'true' ? '--academic' : ''
     """
-    og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb}
+    og prs format --scores ${scoring_dir} --labels ${labels} --out pgs --alleles score_alleles.tsv ${keep_x} ${keep_amb} ${academic}
 
     og_tree=\$(og --tree-hash)
     printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "\$og_tree" > versions.yml
     """
 
     stub:
+    def academic = params.pgs_academic.toString() == 'true' ? '--academic' : ''
     """
+    echo "og prs format options: ${academic}"
     mkdir -p pgs
     touch pgs/PGS000000.txt.gz score_alleles.tsv
     printf '"%s":\\n    ubuntu: %s\\n    owngenome: %s\\n' "${task.process}" "${task.container.replaceFirst(/^[^:@]+[:@]/, '')}" "stub" > versions.yml

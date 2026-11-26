@@ -24,6 +24,14 @@
 # report that odds ratio (OR) or hazard ratio (HR). A wrong PPM id, ancestry
 # or effect is a failure, as a wrong label is.
 #
+# A score list with a header row must have a licence column, and each row's
+# licence must be what the catalog's license field says (og dev pgs licence):
+# author for its default text, academic-research for "Freely available to
+# the academic community for research use". Step 25 and the PRS process
+# score an academic-research score only on request, so a licence the
+# catalog adds, drops or changes is a failure, and so is a text the check
+# does not know: it fails closed until a person reads the new terms.
+#
 # Usage:
 #   scripts/ci/check-pgs-labels.sh [FILE]   check FILE (default assets/pgs_scores.tsv)
 #   scripts/ci/check-pgs-labels.sh --self-test
@@ -61,11 +69,55 @@ read_map() {
 # API fails, times out, or answers without that ID. The API answers {} with
 # HTTP 200 for an unknown ID, so the id field is checked too. PGS_API is read
 # on every call, so a caller can point a single check at another host.
+score_answer() {
+  local api=${PGS_API:-https://www.pgscatalog.org/rest/score}
+  curl -fsS --connect-timeout 10 --max-time 30 --retry "${PGS_RETRY:-3}" --retry-delay 5 --retry-all-errors \
+    -H 'Accept: application/json' "${api}/$1"
+}
 trait_of() {
-  local id=$1 body api=${PGS_API:-https://www.pgscatalog.org/rest/score}
-  body=$(curl -fsS --connect-timeout 10 --max-time 30 --retry "${PGS_RETRY:-3}" --retry-delay 5 --retry-all-errors \
-    -H 'Accept: application/json' "${api}/${id}") || return 1
+  local id=$1 body
+  body=$(score_answer "$id") || return 1
   "$OG" dev pgs trait --id "$id" <<<"$body"
+}
+
+# Prints the licence column value the catalog's answer for PGS ID $1 calls
+# for (author or academic-research), or nothing with exit 1 when the API
+# fails or the licence text is one og dev pgs licence does not know.
+licence_of() {
+  local id=$1 body
+  body=$(score_answer "$id") || return 1
+  "$OG" dev pgs licence --id "$id" <<<"$body"
+}
+
+# The licence table of file $1; exit 1 when one is wrong. A file with no
+# header row (the older map formats) has no licence to check.
+check_licences() {
+  local f=$1 bad=0 n=0 id lic want
+  awk -F'\t' '$1 == "pgs_id" {found = 1; exit} END {exit !found}' "$f" || return 0
+  echo ""
+  if ! awk -F'\t' '$1 == "pgs_id" { for (i = 1; i <= NF; i++) if ($i == "licence") found = 1; exit } END {exit !found}' "$f"; then
+    echo "ERROR: ${f} has no licence column; every score needs one (author or academic-research)."
+    return 1
+  fi
+  echo "| PGS ID | Licence in $(basename "$f") | PGS Catalog license | Result |"
+  echo "|---|---|---|---|"
+  while IFS=$'\t' read -r id lic; do
+    n=$((n + 1))
+    if ! want=$(licence_of "$id"); then
+      echo "| ${id} | ${lic} | (no answer, or a licence text the check does not know) | ERROR: read the catalog's terms |"
+      bad=$((bad + 1))
+    elif [ "$lic" = "$want" ]; then
+      echo "| ${id} | ${lic} | ${want} | ok |"
+    else
+      echo "| ${id} | ${lic} | ${want} | MISMATCH |"
+      bad=$((bad + 1))
+    fi
+  done < <(awk -F'\t' '
+    !h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+    h && $1 ~ /^PGS[0-9]{6}$/ { print $1 "\t" $c["licence"] }' "$f")
+  echo ""
+  echo "Checked ${n} licences, ${bad} problem(s)."
+  [ "$bad" -eq 0 ]
 }
 
 # Exit 0 when every word of label $1 appears in trait $2.
@@ -165,6 +217,7 @@ check_file() {
   fi
   echo "Checked ${n} PGS IDs, ${bad} problem(s)."
   check_metrics "$f" || bad=$((bad + 1))
+  check_licences "$f" || bad=$((bad + 1))
   [ "$bad" -eq 0 ]
 }
 
@@ -274,8 +327,41 @@ self_test() {
     echo "SELF-TEST FAIL: an effect of 1.0 was not read as OR 1 (exit ${rc}): ${out}"; fail=1
   fi
 
+  # Control 8: the licences, against the catalog's saved answers for the
+  # shipped list (tests/fixtures/screen-pgs-academic-optin, read as file://
+  # URLs, so no network). The shipped rows pass; a row flipped either way, a
+  # licence text the check does not know and a list without the column each
+  # fail.
+  mkdir -p "${d}/score"
+  awk '{ if (match($0, /"id":"PGS[0-9]+"/)) { f = dir "/" substr($0, RSTART + 6, RLENGTH - 7); print > f; close(f) } }' \
+    dir="${d}/score" "${ROOT}/tests/fixtures/screen-pgs-academic-optin/score-licences.jsonl"
+  awk -F'\t' '/^#/ {next} {print}' "${ROOT}/assets/pgs_scores.tsv" | cut -f1,2,3,7 > "${d}/lic.tsv"
+  rc=0; out=$(PGS_API="file://${d}/score" PGS_RETRY=0 check_file "${d}/lic.tsv" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ] || ! grep -q 'Checked 15 licences, 0 problem(s).' <<<"$out" \
+     || ! grep -q '| PGS000014 | academic-research | academic-research | ok |' <<<"$out"; then
+    echo "SELF-TEST FAIL: the shipped licences did not pass against the saved answers:"; echo "$out"; fail=1
+  fi
+  awk -F'\t' -v OFS='\t' '$1 == "PGS000014" {$4 = "author"} $1 == "PGS000004" {$4 = "academic-research"} {print}' \
+    "${d}/lic.tsv" > "${d}/flipped.tsv"
+  rc=0; out=$(PGS_API="file://${d}/score" PGS_RETRY=0 check_file "${d}/flipped.tsv" 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ] || ! grep -q '| PGS000014 | author | academic-research | MISMATCH |' <<<"$out" \
+     || ! grep -q '| PGS000004 | academic-research | author | MISMATCH |' <<<"$out" \
+     || ! grep -q 'Checked 15 licences, 2 problem(s).' <<<"$out"; then
+    echo "SELF-TEST FAIL: a flipped licence was not caught:"; echo "$out"; fail=1
+  fi
+  sed 's/"license":"[^"]*"/"license":"CC BY-NC-SA 4.0"/' "${d}/score/PGS000018" > "${d}/PGS000018.new" && mv "${d}/PGS000018.new" "${d}/score/PGS000018"
+  rc=0; out=$(PGS_API="file://${d}/score" PGS_RETRY=0 check_file "${d}/lic.tsv" 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ] || ! grep -q '| PGS000018 | author | (no answer, or a licence text the check does not know) | ERROR' <<<"$out"; then
+    echo "SELF-TEST FAIL: a licence text the check does not know passed:"; echo "$out"; fail=1
+  fi
+  cut -f1-3 "${d}/lic.tsv" > "${d}/nocol.tsv"
+  rc=0; out=$(PGS_API="file://${d}/score" PGS_RETRY=0 check_file "${d}/nocol.tsv" 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ] || ! grep -q 'has no licence column' <<<"$out"; then
+    echo "SELF-TEST FAIL: a list without the licence column passed:"; echo "$out"; fail=1
+  fi
+
   if [ "$fail" -eq 0 ]; then
-    echo "SELF-TEST OK: wrong label (list and map formats), old format, empty answer, no answer, empty map, a wrong PPM id, ancestry or effect, an empty entry and an effect of true are all caught."
+    echo "SELF-TEST OK: wrong label (list and map formats), old format, empty answer, no answer, empty map, a wrong PPM id, ancestry or effect, an empty entry, an effect of true, a flipped or unknown licence and a missing licence column are all caught."
   fi
   return "$fail"
 }
