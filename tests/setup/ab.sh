@@ -2,8 +2,8 @@
 # tests/setup/ab.sh: install one setup component twice, with bash (side A)
 # and with og (side B), and compare everything the two runs left: the
 # install trees file by file (og dev install-manifest), the exit codes, the
-# logs with times masked, the missing list, the images and pinned tags, the
-# Nextflow plugin folder and bin/.og.
+# logs with times masked, the missing list, the images and pinned tags each
+# side added or removed, the Nextflow plugin folder and bin/.og.
 #
 # Usage: tests/setup/ab.sh [--bash-vs-bash] COMPONENT [WORK_DIR]
 #
@@ -49,7 +49,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 
 usage() {
-  sed -n '9p' "$0" | sed 's/^# //' >&2
+  grep -m 1 '^# Usage:' "$0" | sed 's/^# //' >&2
   exit 2
 }
 
@@ -118,28 +118,47 @@ seed() {
   fi
 }
 
-# Untag the localhost/pgp-pinned tags side A added, where the image keeps
-# another tag (so only the tag goes): side B must add them again. An image
-# side A pulled stays; pulling it again would only cost time.
-untag_pinned() {
-  local tag id n=0
-  while IFS=$'\t' read -r tag id; do
-    case "$tag" in localhost/pgp-pinned/* | pgp-pinned/*) ;; *) continue ;; esac
-    if [ "$(awk -F'\t' -v i="$id" '$2 == i' "${work}/a.images" | wc -l)" -gt 1 ] \
-      && "$ENGINE" rmi "$tag" >/dev/null 2>&1; then
-      n=$((n + 1))
-    fi
-  done < <(LC_ALL=C comm -13 "${work}/before.images" "${work}/a.images")
-  echo "   untagged ${n} pinned tag(s) side A added, for side B to add again"
+# undo_images: remove the tags side A added for an image its log names (an
+# image with no other tag goes with its last one), so side B starts from the
+# images side A started from: it pulls and pins what side A pulled and
+# pinned, and logs it the same way. A tag another job on the engine added
+# while side A ran is not named in side A's log and is left alone.
+undo_images() {
+  local tag repo n=0
+  while IFS=$'\t' read -r tag _; do
+    repo=${tag#localhost/pgp-pinned/}
+    repo=${repo#pgp-pinned/}
+    repo=${repo%:*}
+    grep -qF -- "$repo" "${work}/a.log" || continue
+    "$ENGINE" rmi "$tag" >/dev/null 2>&1 && n=$((n + 1))
+  done < <(LC_ALL=C comm -13 "${work}/a.before.images" "${work}/a.images" | grep -v ':<none>' || true)
+  echo "   removed ${n} image tag(s) side A added, for side B to add again"
 }
 
-images >"${work}/before.images"
+# delta SIDE: what the side changed in the image list, "+" added and "-"
+# removed; another job on the machine may change it too, but only while a
+# side runs.
+delta() {
+  LC_ALL=C comm -3 "${work}/$1.before.images" "${work}/$1.images" \
+    | awk -F'\t' '{ if ($1 != "") print "-\t" $1 "\t" $2; else print "+\t" $2 "\t" $3 }' >"${work}/$1.images.delta"
+}
+
+# setup.sh builds og when it is missing or stale, and only the first of two
+# runs would: build it before side A, so neither side does.
+if ! "${ROOT}/rust/og.sh" check --required >/dev/null 2>&1; then
+  echo "== og is missing or stale: rust/og.sh install first (log in ${work}/og-build.log)"
+  "${ROOT}/rust/og.sh" install >"${work}/og-build.log" 2>&1 || {
+    echo "ERROR: could not build og; read ${work}/og-build.log." >&2
+    exit 2
+  }
+fi
 og_dir="${ROOT}/bin/.og"
 [ -n "${AB_SEED:-}" ] && manifest "$AB_SEED" >"${work}/seed.before.tsv" 2>/dev/null
 
 for side in a b; do
   if [ "$side" = a ]; then cmd=("${side_a[@]}"); else cmd=("${side_b[@]}"); fi
-  [ "$side" = b ] && untag_pinned
+  [ "$side" = b ] && undo_images
+  images >"${work}/${side}.before.images"
   mkdir "${work}/install" "${work}/${side}.nxf"
   seed "${work}/install"
   echo "== side ${side}: ${cmd[*]} ${work}/install"
@@ -152,6 +171,7 @@ for side in a b; do
   manifest "${work}/${side}" >"${work}/${side}.tsv" 2>/dev/null
   manifest "${work}/${side}.nxf" >"${work}/${side}.nxf.tsv" 2>/dev/null
   images >"${work}/${side}.images"
+  delta "$side"
   if [ -d "$og_dir" ]; then manifest "$og_dir" >"${work}/${side}.og.tsv" 2>/dev/null; else echo none >"${work}/${side}.og.tsv"; fi
 done
 
@@ -165,7 +185,7 @@ check() { # NAME COMMAND...: run a check, print its verdict, keep its output.
   else
     red=$((red + 1))
     echo "[RED]  ${name} (${work}/check.${name}.txt):"
-    grep -v '^#' "${work}/check.${name}.txt" | head -n 20 | sed 's/^/         /'
+    awk '!/^#/ && n++ < 20 {print "         " $0}' "${work}/check.${name}.txt"
   fi
 }
 # shellcheck disable=SC2329  # called through check
@@ -175,7 +195,7 @@ check exit-codes same_file "${work}/a.exit" "${work}/b.exit"
 check tree manifest --compare "${work}/a.tsv" "${work}/b.tsv" --allow "$allow"
 check nxf-home manifest --compare "${work}/a.nxf.tsv" "${work}/b.nxf.tsv" --allow "$allow"
 check logs manifest --compare-logs "${work}/a.log" "${work}/b.log"
-check images same_file "${work}/a.images" "${work}/b.images"
+check images same_file "${work}/a.images.delta" "${work}/b.images.delta"
 check bin-og same_file "${work}/a.og.tsv" "${work}/b.og.tsv"
 if [ -n "${AB_SEED:-}" ]; then
   manifest "$AB_SEED" >"${work}/seed.after.tsv" 2>/dev/null

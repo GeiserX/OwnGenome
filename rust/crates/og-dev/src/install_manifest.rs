@@ -1051,16 +1051,15 @@ fn flip_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
 // ---------------------------------------------------------------- logs
 
 static CURL_ROW: LazyLock<Regex> = LazyLock::new(|| {
-    let n = r"[\d.]+[kMGT]?";
-    let t = r"[-:\d]+";
-    Regex::new(&format!(
-        r"^\s*\d+\s+{n}\s+\d+\s+{n}\s+\d+\s+{n}\s+{n}\s+{n}\s+{t}\s+{t}\s+{t}\s+{n}\s*$"
-    ))
-    .expect("a valid pattern")
+    // A progress row of curl: a percentage, then sizes, speeds and times
+    // only. curl 8 leaves a time it does not know blank, so the number of
+    // fields varies.
+    Regex::new(r"^\s*\d{1,3}(\s+(\d+(\.\d+)?[kMGTP]?|[\d-]*:[\d:-]*)){7,11}\s*$")
+        .expect("a valid pattern")
 });
 static PULL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^([0-9a-f]{12}: (Pulling fs layer|Waiting|Downloading|Verifying Checksum|Download complete|Extracting|Pull complete|Already exists)|Digest: sha256:|Status: (Downloaded newer image|Image is up to date) for |\S+: Pulling from )",
+        r"^(Unable to find image '[^']+' locally$|[0-9a-f]{12}: (Pulling fs layer|Waiting|Downloading|Verifying Checksum|Download complete|Extracting|Pull complete|Already exists)|Digest: sha256:|Status: (Downloaded newer image|Image is up to date) for |\S+: Pulling from )",
     )
     .expect("a valid pattern")
 });
@@ -1221,5 +1220,13 @@ mod tests {
             "2026-11-26T10:00:01Z start\r  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n100  1234  100  1234    0     0   5000      0 --:--:-- --:--:-- --:--:--  5012\ndone in 12 s at 3.4 MB/s\n",
         );
         assert_eq!(l, ["<time> start", "done in <duration> at <speed>"]);
+        // curl 8 leaves a time it does not know blank; docker run says when
+        // it pulls an image first, which only the first of two runs does.
+        let l = masked_log(
+            "100 192.3M 100 192.3M   0      0  9.51M      0   00:20   00:20          6.83M\n100 597.6k 100 597.6k   0      0 689.5k      0                              0\nUnable to find image 'staphb/bcftools:1.24' locally\nkept\n",
+        );
+        assert_eq!(l, ["kept"]);
+        let l = masked_log("100 apples\n");
+        assert_eq!(l, ["100 apples"]);
     }
 }

@@ -255,13 +255,15 @@ The cold build downloads the crates once; pulling `OG_BUILDER` the first time ad
 - the install trees, file by file, with `og dev install-manifest` (below);
 - the exit codes;
 - the two logs, with times, durations, speeds, curl progress and image pull progress masked, and the missing list (`Missing (...)`, each item and its `retry:` line) line by line;
-- the images and tags the engine holds after each side. Before side B it untags the `localhost/pgp-pinned/` tags side A added, so side B must add them again;
+- the images and tags each side added or removed, `localhost/pgp-pinned/` tags included. Before side B, ab.sh removes the tags side A added for images side A's log names, so side B starts from the images side A started from and must pull and pin them again. A tag another job added meanwhile is left alone;
 - each side's own `NXF_HOME`, where setup puts the nf-schema plugin;
 - `bin/.og`.
 
 Side B calls og itself and never `setup.sh`, so it cannot run bash in og's place. When og has no `setup install`, ab.sh stops before side A. `--bash-vs-bash` runs side A's command twice. It finds what changes from one run to the next with no code change, and its result says that no og side ran. Every run ends with a control: ab.sh flips one bit of the smallest file compared byte for byte in tree B, and the compare must turn red and name that file. A run whose control stays green exits 2.
 
 A component that needs another one first, as most need the reference, gets it from `AB_SEED`. That folder is put into each side's empty folder before the side runs: as hard links on Linux, as APFS clones on macOS, never as symlinks, which a container cannot follow out of `GENOME_DIR`. The seed must be unchanged at the end. `OG_DOWNLOADS` is shared by both sides, so side B reuses side A's downloads where setup reads that folder. Other variables exported before the call, such as `ARCHAIC_REGIONS`, reach both sides.
+
+Before side A, ab.sh builds og when it is missing or stale, so neither side builds it. Run ab.sh on a container engine that nothing else uses while it runs: the image check sees every change on the engine, so another job that pulls or pins an image turns it red.
 
 ### The manifest and its compare modes
 
