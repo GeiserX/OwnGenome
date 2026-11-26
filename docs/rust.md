@@ -136,7 +136,7 @@ OwnGenome's own code is Rust, plus the shell and Nextflow glue of the steps. `og
 - a heredoc whose delimiter says Python, such as `<<'PY'`;
 - `Command::new("python3")`, or the variable that named a Python oracle, in Rust code.
 
-Comments and docs are prose and never count. An image name such as `python:3.15`, `PYTHON_IMAGE` or a `site-packages/python3.12/` path is not a call either.
+Comments and docs are prose and never count. An image name or its variable, such as `PYTHON_IMAGE`, or a `site-packages/python3.12/` path is not a call either.
 
 Third-party Python passes when `tests/python-allow.tsv` names its file with a reason. PharmCAT's preprocessor, eKLIPse and Cyrius run Python inside their own pinned images, and the docs builder is a pinned pip package. A row names one file, never a directory or a pattern. The gate also fails when a row covers nothing, when a reason names an `*_IMAGE` variable that `versions.env` does not set, and when a row names a Python file: a Python file in this repository is owned code, so no row can allow it. Write new code in Rust, and a test as a cargo test or a `tests/test_*.sh`.
 
