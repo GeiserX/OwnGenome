@@ -1,10 +1,11 @@
 //! og-live's ops card and `/metrics` text on the made-up run of
 //! `tests/fixtures/live/ops`, with a fake disk and a fake host; then the same
-//! inputs through the Python plugin it replaces (`bin/owngenome_live_ops.py`,
-//! while the Python site still runs it), which must give the same card by
-//! meaning and the same metrics text byte for byte. A second parity case
-//! runs on the traces and messages of `tests/fixtures/run_eta` and
-//! `tests/fixtures/run_headroom`.
+//! inputs against what the Python plugin it replaces
+//! (`bin/owngenome_live_ops.py` of 1ec63069) answered, frozen in
+//! `tests/rust/vectors/live_ops.jsonl.gz` (see `tests/rust/vectors/README.md`):
+//! the same card by meaning and the same metrics text byte for byte. A second
+//! parity case runs on the traces and messages of `tests/fixtures/run_eta`
+//! and `tests/fixtures/run_headroom`.
 //!
 //! With `--features fault-inject` each `planted_*` test turns on one planted
 //! mistake and runs the behaviour checks: every one of them must fail
@@ -22,7 +23,6 @@ use pycompat::json::{Value, loads};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
@@ -32,9 +32,6 @@ const SAMPLE: &str = "OPS-001";
 const T0: f64 = 1_767_348_000.0;
 const G: u128 = 1 << 30;
 const UTC: TimeZone = TimeZone::UTC;
-/// The last commit whose `bin/` still held the Python plugin, for the parity
-/// cases once the Python site is gone.
-const ORACLE: &str = "1ec630690e63796b4410d23ec65768200adb8dc0";
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -113,7 +110,6 @@ struct Tree {
     root: PathBuf,
     run_dir: PathBuf,
     events: Vec<Value>,
-    events_file: PathBuf,
     work: PathBuf,
     out: PathBuf,
     sample: String,
@@ -148,26 +144,14 @@ fn make_tree(run_all: bool, extra: &[Value]) -> Tree {
         std::fs::copy(fix("run_status.tsv"), &status).unwrap();
         set_mtime(&status, T0);
     }
-    let events_file = tmp.join("events.jsonl");
-    write_events(&events_file, &events);
     Tree {
         root,
         run_dir,
         events,
-        events_file,
         work,
         out,
         sample: SAMPLE.into(),
     }
-}
-
-fn write_events(path: &Path, events: &[Value]) {
-    let opts = pycompat::json::Dump::default();
-    let text: String = events
-        .iter()
-        .map(|e| pycompat::json::dumps(e, &opts).unwrap() + "\n")
-        .collect();
-    std::fs::write(path, text).unwrap();
 }
 
 /// How one case runs.
@@ -743,319 +727,46 @@ fn the_state_hook_gives_the_card_or_one_error_line() {
     );
 }
 
-// --- the Python live site, while it still runs the plugin -----------------------------------
-
-/// A free local port.
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .expect("a local port")
-        .port()
-}
-
-/// One GET on the local site: status, content type and body; `None` while
-/// it does not answer.
-fn get(port: u16, path: &str) -> Option<(u16, String, String)> {
-    use std::io::{Read, Write};
-    let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
-    c.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
-    write!(c, "GET {path} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").ok()?;
-    let mut raw = Vec::new();
-    c.read_to_end(&mut raw).ok()?;
-    let raw = String::from_utf8(raw).ok()?;
-    let (head, body) = raw.split_once("\r\n\r\n")?;
-    let status = head.split(' ').nth(1)?.parse().ok()?;
-    let ctype = head
-        .lines()
-        .find_map(|l| {
-            let (k, v) = l.split_once(':')?;
-            k.eq_ignore_ascii_case("content-type")
-                .then(|| v.trim().to_owned())
-        })
-        .unwrap_or_default();
-    Some((status, ctype, body.to_owned()))
-}
-
-/// The site's process, stopped when the test ends, pass or fail.
-struct Site(std::process::Child);
-
-impl Drop for Site {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-/// What `bin/owngenome_live.py` serves on the ops tree.
-struct Served {
-    /// `/runs/OPS-001/state.json`.
-    state: Value,
-    /// `/metrics`: content type and text.
-    metrics: (String, String),
-    /// `state.json` again, once the history has lost its `trace_file` column.
-    broken: Option<Value>,
-}
-
-fn key<'a>(v: &'a Value, k: &str) -> Option<&'a Value> {
-    match v {
-        Value::Object(m) => m.get(k),
-        _ => None,
-    }
-}
-
-/// Starts the Python site on a new ops tree (`plugin_dir` in place of
-/// `bin/` when given) and reads it.
-fn python_site(plugin_dir: Option<&Path>) -> Result<Served, String> {
-    let t = make_tree(true, &[]);
-    let base = t.root.parent().unwrap().to_path_buf();
-    let state_dir = base.join("state");
-    let runs = state_dir.join("runs").join(SAMPLE);
-    std::fs::create_dir_all(&runs).unwrap();
-    write_events(&runs.join("events.jsonl"), &t.events);
-    let (port, iport) = (free_port(), free_port());
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let err_log = base.join("site.stderr");
-    let mut cmd = Command::new(&exe);
-    cmd.arg(repo().join("bin/owngenome_live.py"))
-        .arg("--root")
-        .arg(&t.root)
-        .arg("--state-dir")
-        .arg(&state_dir)
-        .args([
-            "--port",
-            &port.to_string(),
-            "--ingest-port",
-            &iport.to_string(),
-        ])
-        .args(["--quiet", "--stall-minutes", "30"])
-        .args(["--disk-warn-percent", "90", "--mem-warn-percent", "90"])
-        .env("PGP_BOX", "opsbox")
-        .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::fs::File::create(&err_log).unwrap());
-    if let Some(d) = plugin_dir {
-        cmd.arg("--plugin-dir").arg(d);
-    }
-    let mut site = Site(
-        cmd.spawn()
-            .map_err(|e| format!("cannot run {exe}: {e}; set OG_PYTHON"))?,
-    );
-    let why = || std::fs::read_to_string(&err_log).unwrap_or_default();
-    let state_path = format!("/runs/{SAMPLE}/state.json");
-    let read_state = || match get(port, &state_path) {
-        Some((200, _, body)) => loads(&body).map_err(|e| format!("state.json: {e:?}")),
-        Some((code, _, body)) => Err(format!("state.json answered {code}: {body}")),
-        None => Err("state.json: no answer".into()),
-    };
-    let mut state = Err(String::new());
-    for _ in 0..200 {
-        if let Some(code) = site.0.try_wait().unwrap() {
-            return Err(format!("the site exited ({code}): {}", why()));
-        }
-        state = read_state();
-        if state.is_ok() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    let state = state.map_err(|e| format!("{e}; {}", why()))?;
-    let (_, ctype, text) = get(port, "/metrics").ok_or("/metrics: no answer")?;
-    std::fs::write(
-        t.root.join("pipeline_info/step_history/opsbox.tsv"),
-        "step\tseconds\nROH\t60\n",
-    )
-    .unwrap();
-    let broken = read_state().ok();
-    Ok(Served {
-        state,
-        metrics: (ctype, text),
-        broken,
-    })
-}
-
-/// Check 14 and 15 of the Python suite this file replaces: the site loads
-/// the plugin (state.json has `plugins.ops`, `/metrics` answers in the
-/// Prometheus text format), and an error in the plugin's hook becomes the
-/// card's error field while the rest of state.json stays.
-fn site_serves_the_plugin(s: &Served) -> Result<(), String> {
-    let ops = key(&s.state, "plugins").and_then(|p| key(p, "ops"));
-    if ops.and_then(|o| key(o, "alerts")).is_none() {
-        return Err(format!("state.json has no plugins.ops card: {ops:?}"));
-    }
-    let (ctype, text) = &s.metrics;
-    let running = format!("pgp_run_running{{run=\"{SAMPLE}\"}} 1");
-    if !ctype.contains("version=0.0.4")
-        || !text.lines().any(|l| l == "pgp_runs 1")
-        || !text.lines().any(|l| l == running)
-    {
-        return Err(format!("/metrics: {ctype} {text}"));
-    }
-    let broken = s
-        .broken
-        .as_ref()
-        .ok_or("state.json fails on a bad history")?;
-    let err = key(broken, "plugins")
-        .and_then(|p| key(p, "ops"))
-        .and_then(|o| key(o, "error"));
-    match err {
-        Some(Value::Str(e))
-            if e.contains("could not be read") && key(broken, "steps").is_some() =>
-        {
-            Ok(())
-        }
-        _ => Err(format!("a hook error gave {err:?}")),
-    }
-}
-
-/// While `bin/owngenome_live.py` lives, it must load the plugin and serve
-/// `/metrics`; the check goes with the Python server. Two controls run the
-/// site on a copy of the plugin with its hook unregistered, and with its
-/// catch-all cut: both must fail the check.
-#[test]
-fn the_python_site_loads_the_plugin_serves_metrics_and_keeps_a_hook_error_on_the_card() {
-    let bin = repo().join("bin");
-    let plugin = bin.join("owngenome_live_ops.py");
-    if !bin.join("owngenome_live.py").is_file() || !plugin.is_file() {
-        eprintln!("bin/owngenome_live.py is gone: the Python site check retired with it");
-        return;
-    }
-    let served = python_site(None).unwrap_or_else(|e| panic!("{e}"));
-    site_serves_the_plugin(&served).unwrap_or_else(|e| panic!("{e}"));
-    let src = std::fs::read_to_string(&plugin).unwrap();
-    let catch_all = "        except Exception as e:  # anything else: the card says so, the rest of the run's state stays\n            return {\"error\": f\"run health could not be read ({type(e).__name__})\"}\n";
-    for (what, from, to) in [
-        ("unregistered", "    app.state_hook(\"ops\", hook)\n", ""),
-        ("no catch-all", catch_all, ""),
-    ] {
-        assert!(
-            src.contains(from),
-            "the control found no line to cut ({what})"
-        );
-        let dir = tmp().join("plugins");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("owngenome_live_ops.py"), src.replacen(from, to, 1)).unwrap();
-        let red = python_site(Some(&dir)).and_then(|s| site_serves_the_plugin(&s));
-        assert!(
-            red.is_err(),
-            "the site check passed a plugin with its hook {what}"
-        );
-    }
-}
-
 // --- parity with the Python plugin ----------------------------------------------------------
 
-fn git(args: &[&str]) -> std::process::Output {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo())
-        .args(args)
-        .output()
-        .expect("git runs")
-}
-
-/// The folder holding `owngenome_live_ops.py` and the modules it imports:
-/// `bin/` while the Python site lives, else those files at [`ORACLE`].
-fn oracle_bin() -> &'static Path {
-    static DIR: OnceLock<PathBuf> = OnceLock::new();
-    DIR.get_or_init(|| {
-        let bin = repo().join("bin");
-        if bin.join("owngenome_live_ops.py").is_file() {
-            return bin;
-        }
-        if !git(&["cat-file", "-e", &format!("{ORACLE}^{{commit}}")])
-            .status
-            .success()
+/// What the Python plugin answered on case `label`: its card and metrics
+/// text, with `{TMP}` (the folder of the case's tree) and `{REPO}` written
+/// back. It ran with the tree, the clock, the fake disk and host of the case
+/// (`now`, `disk`, `physical`, `stopped`, `stall_minutes`,
+/// `disk_warn_percent`), in UTC, `eta_box` opsbox, 8 cores and
+/// `mem_warn_percent` 90.
+fn py_ops(label: &str, t: &Tree) -> (Value, String) {
+    use std::collections::HashMap;
+    use std::io::BufRead;
+    static TABLE: OnceLock<HashMap<String, String>> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut table = HashMap::new();
+        for line in og_io::open(repo().join("tests/rust/vectors/live_ops.jsonl.gz"))
+            .unwrap()
+            .lines()
         {
-            let f = git(&["fetch", "-q", "--depth=1", "origin", ORACLE]);
-            assert!(f.status.success(), "commit {ORACLE} could not be fetched");
+            let line = line.unwrap();
+            let Value::Array(row) = loads(&line).unwrap() else {
+                panic!("live_ops: {line}");
+            };
+            let [Value::Str(label), Value::Str(out)]: [Value; 2] = row.try_into().unwrap() else {
+                panic!("live_ops: {line}");
+            };
+            assert!(
+                table.insert(label, out).is_none(),
+                "live_ops: a label twice"
+            );
         }
-        let root = tmp().join("oracle");
-        std::fs::create_dir_all(root.join("bin")).unwrap();
-        std::fs::create_dir_all(root.join("assets")).unwrap();
-        for f in ["owngenome_live_ops", "run_eta", "run_headroom", "run_state"] {
-            let o = git(&["show", &format!("{ORACLE}:bin/{f}.py")]);
-            assert!(o.status.success(), "git show {ORACLE}:bin/{f}.py");
-            std::fs::write(root.join("bin").join(format!("{f}.py")), o.stdout).unwrap();
-        }
-        std::fs::copy(
-            repo().join("assets/steps.tsv"),
-            root.join("assets/steps.tsv"),
-        )
-        .unwrap();
-        root.join("bin")
-    })
-}
-
-const PY: &str = r#"
-import json, os, sys, types
-a = json.loads(sys.argv[1])
-sys.path.insert(0, a["bin"])
-import run_headroom, run_state
-import owngenome_live_ops as ops
-
-class FakeFs:
-    def __init__(self, used_ratio):
-        self.f_frsize = self.f_bsize = 4096
-        self.f_blocks = 1000000
-        self.f_bfree = self.f_bavail = int(self.f_blocks * (1 - used_ratio))
-        self.f_files, self.f_ffree = 1000, 900
-
-run_headroom._statvfs = lambda p: FakeFs(a["disk"])
-events = [json.loads(l) for l in open(a["events"]) if l.strip()]
-steps = run_state.read_steps()
-status_path = os.path.join(a["run_dir"], "logs", "run_status.tsv")
-status = run_state.read_run_status(status_path) if os.path.isfile(status_path) else None
-cur = ops.current_run(events)
-state = run_state.build(a["sample"], steps, status, None, [], run_state.event_tasks(cur, a["sample"]), cur, None, a["now"])
-if a["stopped"]:
-    state["run"]["state"] = "stopped"
-cfg = types.SimpleNamespace(root=a["root"], steps=run_state.STEPS_TSV, eta_box="opsbox", eta_cores=8,
-                            disk_warn_percent=a["dwp"], mem_warn_percent="90", stall_minutes=a["stall"])
-o = ops.run_ops(a["run_dir"], state, events, cfg, now=a["now"], steps=steps, physical=a["physical"])
-sys.stdout.write(json.dumps(o) + "\n---\n" + ops.metrics_text([(a["sample"], o)], 0.9, a["physical"], 0))
-"#;
-
-/// The Python card and metrics text of the tree at `c`.
-fn py_ops(t: &Tree, c: &Case) -> (Value, String) {
-    let mut args = indexmap::IndexMap::new();
-    let mut put = |k: &str, v: Value| {
-        args.insert(k.to_owned(), v);
-    };
-    put("bin", Value::Str(s(oracle_bin())));
-    put("events", Value::Str(s(&t.events_file)));
-    put("run_dir", Value::Str(s(&t.run_dir)));
-    put("root", Value::Str(s(&t.root)));
-    put("sample", Value::Str(t.sample.clone()));
-    put("now", Value::Float(c.now));
-    put("disk", Value::Float(c.disk));
-    put("physical", Value::Int(c.physical as i128));
-    put("stopped", Value::Bool(c.stopped));
-    put("stall", Value::Float(c.stall_minutes));
-    put(
-        "dwp",
-        Value::Str(c.disk_warn_percent.unwrap_or("90").into()),
-    );
-    let arg =
-        pycompat::json::dumps(&Value::Object(args), &pycompat::json::Dump::default()).unwrap();
-    let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
-    let o = Command::new(&exe)
-        .args(["-c", PY, &arg])
-        .env("TZ", "UTC")
-        .env_remove("PGP_BOX")
-        .env_remove("OWNGENOME_DISK_WARN_PERCENT")
-        .env_remove("OWNGENOME_MEM_WARN_PERCENT")
-        .output()
-        .unwrap_or_else(|e| panic!("cannot run the Python oracle {exe}: {e}; set OG_PYTHON"));
-    assert!(
-        o.status.success(),
-        "the Python plugin failed: {}",
-        String::from_utf8_lossy(&o.stderr)
-    );
-    let out = String::from_utf8(o.stdout).unwrap();
+        table
+    });
+    let out = table
+        .get(label)
+        .unwrap_or_else(|| panic!("no committed plugin answer in live_ops.jsonl.gz for {label:?}"))
+        .replace("{TMP}", &t.root.parent().unwrap().display().to_string())
+        .replace("{REPO}", &repo().display().to_string());
     let (card, text) = out.split_once("\n---\n").expect("card and text");
     (loads(card).unwrap(), text.to_owned())
 }
-
 /// The same by meaning: numbers by value, the rest equal, keys in order.
 fn same(a: &Value, b: &Value, at: &str) -> Result<(), String> {
     let num = |v: &Value| match v {
@@ -1088,7 +799,7 @@ fn same(a: &Value, b: &Value, at: &str) -> Result<(), String> {
 
 fn parity(t: &Tree, c: &Case, what: &str) {
     let o = ops_of(t, c);
-    let (card, text) = py_ops(t, c);
+    let (card, text) = py_ops(what, t);
     if let Err(e) = same(&o.to_json(), &card, what) {
         panic!("og and the Python plugin differ: {e}");
     }
@@ -1187,13 +898,10 @@ fn the_card_and_metrics_match_the_python_plugin_on_the_eta_and_headroom_fixtures
         ))
         .unwrap(),
     );
-    let events_file = d.join("events.jsonl");
-    write_events(&events_file, &events);
     let t = Tree {
         root,
         run_dir,
         events,
-        events_file,
         work,
         out,
         sample: "demo1".into(),
@@ -1208,7 +916,7 @@ fn the_card_and_metrics_match_the_python_plugin_on_the_eta_and_headroom_fixtures
         "{o:?}"
     );
     // Control: a card that differs in one number must be seen.
-    let (card, _) = py_ops(&t, &c);
+    let (card, _) = py_ops("eta and headroom fixtures", &t);
     let mut changed = o.clone();
     changed.memory.retries = 2;
     assert!(same(&changed.to_json(), &card, "control").is_err());

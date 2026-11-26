@@ -2,8 +2,9 @@
 //!
 //! Every function here returns the bytes CPython 3.15 returns for the same
 //! input, except for the known limits in `docs/rust.md`, where it returns an
-//! error instead. The differential test (`tests/rust/pycompat-diff.sh`) checks that
-//! against `python3 -I` in the pinned `PYTHON_IMAGE`.
+//! error instead. The differential test (`og/src/probe.rs`, module `vectors`)
+//! checks that against what `python3 -I` in the pinned `PYTHON_IMAGE` answered,
+//! committed in `tests/rust/vectors/pycompat`.
 //!
 //! - [`fmt`]: `repr(float)`, the `f`, `e`, `g` and `%` format types, `{:,}`,
 //!   zero padding, `ljust`/`rjust`, `round(x)` and `round(x, n)`.

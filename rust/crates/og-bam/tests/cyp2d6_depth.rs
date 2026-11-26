@@ -208,7 +208,7 @@ fn bad_inputs_exit_2_and_write_nothing() {
     }
 }
 
-/// The synthetic reads of `make_parity.py`: Cyrius's region tiled, MAPQ 0
+/// The synthetic reads of `parity/in/cyp2d6_synthetic.bam`: Cyrius's region tiled, MAPQ 0
 /// in REP6 and around the body, the body at MAPQ 60 except some at MAPQ 10.
 #[test]
 fn measure_shares_on_synthetic_reads() {

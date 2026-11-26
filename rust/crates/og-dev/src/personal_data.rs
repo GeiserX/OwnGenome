@@ -1621,8 +1621,10 @@ mod tests {
         }
     }
 
-    // Execute the removed scanner itself. Only its reporting is adapted to
-    // structured metadata, because printing findings is the bug being fixed.
+    // What the removed scanner (scripts/ci/check-personal-data.sh at
+    // 4104a93f, run by CPython) reported on the same inputs: one JSON line
+    // `[kind, file, line]` per finding, committed in oracle.jsonl.gz under
+    // the inputs' fingerprint ([`scan_key`]).
     fn oracle(f: &Fixture, files: &[&str], cached: bool) -> String {
         oracle_options(f, files, cached, "", "", "")
     }
@@ -1635,66 +1637,100 @@ mod tests {
         skip: &str,
         patterns: &str,
     ) -> String {
-        static PYTHON: LazyLock<String> = LazyLock::new(|| {
-            const SHA: &str = "4104a93f2121b457413336574b8563fe85291fd7";
-            let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-            let read = || {
-                Command::new("git")
-                    .arg("-C")
-                    .arg(&repo)
-                    .args(["show", &format!("{SHA}:scripts/ci/check-personal-data.sh")])
-                    .output()
-                    .unwrap()
-            };
-            let mut source = read();
-            if !source.status.success() {
-                assert!(
-                    Command::new("git")
-                        .arg("-C")
-                        .arg(&repo)
-                        .args(["fetch", "--quiet", "--depth=1", "origin", SHA])
-                        .status()
-                        .unwrap()
-                        .success()
-                );
-                source = read();
-            }
-            assert!(source.status.success());
-            let source = String::from_utf8(source.stdout).unwrap();
-            let python = source
-                .split("<<'PY'\n")
-                .nth(1)
-                .unwrap()
-                .split("\nPY\n")
-                .next()
-                .unwrap();
-            python
-                .replace(
-                    "import fnmatch, os, re, subprocess, sys",
-                    "import fnmatch, os, re, subprocess, sys, json",
-                )
-                .replace(
-                    "print(\"FAIL %-9s %s:%d: %s\" % (kind, rel, n, line.strip()[:160]))",
-                    "print(json.dumps([kind, rel, n]))",
-                )
-        });
-        let mut cmd = Command::new("python3");
-        cmd.args(["-I", "-c", &PYTHON]).arg(&f.0).args([
-            allow,
-            skip,
-            patterns,
-            if cached { "1" } else { "" },
-        ]);
-        for file in files {
-            cmd.arg(f.0.join(file));
+        crate::lookaround::vectors::text(
+            "oracle",
+            &scan_key(f, files, cached, allow, skip, patterns),
+        )
+        .to_owned()
+    }
+
+    /// What the removed scanner's answer depends on, as one fingerprint:
+    /// the options (the fixture folder written as `{ROOT}`), every file under
+    /// the fixture folder with its kind and bytes (a link by its target),
+    /// and the git index when there is one. Two runs with the same key give
+    /// the same answer, so the answer can be committed under it.
+    fn scan_key(
+        f: &Fixture,
+        files: &[&str],
+        cached: bool,
+        allow: &str,
+        skip: &str,
+        patterns: &str,
+    ) -> String {
+        let root = f.0.display().to_string();
+        let norm = |s: &str| s.replace(&root, "{ROOT}");
+        let mut key: Vec<u8> = Vec::new();
+        for part in [norm(allow), norm(skip), norm(patterns), cached.to_string()] {
+            key.extend_from_slice(part.as_bytes());
+            key.push(0);
         }
-        let output = cmd.output().unwrap();
-        assert!(
-            output.status.code().is_some_and(|c| c == 0 || c == 1),
-            "oracle failed"
-        );
-        assert!(output.stderr.is_empty(), "oracle diagnostic");
-        String::from_utf8(output.stdout).unwrap()
+        for file in files {
+            key.extend_from_slice(file.as_bytes());
+            key.push(0);
+        }
+        fn walk(dir: &Path, rel: &[u8], key: &mut Vec<u8>) {
+            let mut entries: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            entries.sort();
+            for name in entries {
+                if rel.is_empty() && name == ".git" {
+                    continue;
+                }
+                let mut r = rel.to_vec();
+                if !r.is_empty() {
+                    r.push(b'/');
+                }
+                r.extend_from_slice(name.as_bytes());
+                let path = dir.join(&name);
+                let meta = std::fs::symlink_metadata(&path).unwrap();
+                key.extend_from_slice(&r);
+                if meta.file_type().is_symlink() {
+                    key.extend_from_slice(b"\0L");
+                    key.extend_from_slice(
+                        std::fs::read_link(&path).unwrap().as_os_str().as_bytes(),
+                    );
+                } else if meta.is_dir() {
+                    key.extend_from_slice(b"\0D");
+                    walk(&path, &r, key);
+                } else {
+                    key.extend_from_slice(b"\0F");
+                    key.extend_from_slice(&std::fs::read(&path).unwrap());
+                }
+                key.push(0);
+            }
+        }
+        walk(&f.0, b"", &mut key);
+        if f.0.join(".git").exists() {
+            // Object ids as recorded: every fixture repo is made with
+            // --object-format=sha1, whatever git defaults to here.
+            let index = Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["ls-files", "-s", "-z"])
+                .output()
+                .unwrap();
+            assert!(index.status.success());
+            key.extend_from_slice(b"\0INDEX\0");
+            key.extend_from_slice(&index.stdout);
+        }
+        // The fixture folder's own name can sit inside a link target.
+        let (needle, mut out, mut i) = (root.as_bytes(), Vec::new(), 0);
+        while i < key.len() {
+            if key[i..].starts_with(needle) {
+                out.extend_from_slice(b"{ROOT}");
+                i += needle.len();
+            } else {
+                out.push(key[i]);
+                i += 1;
+            }
+        }
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in &out {
+            h = (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}-{}", out.len())
     }
 
     fn assert_oracle_findings(f: &Fixture, files: &[&str], cached: bool) {
@@ -1837,7 +1873,7 @@ mod tests {
                     .success()
             )
         };
-        git(&["init", "-q"]);
+        git(&["init", "-q", "--object-format=sha1"]);
         std::fs::write(f.0.join("clean.md"), "clean\n").unwrap();
         std::fs::write(
             f.0.join("odd\nname.md"),
@@ -1916,7 +1952,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2165,7 +2201,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2243,7 +2279,7 @@ mod tests {
             assert!(output.status.success());
             output.stdout
         };
-        git(&["init", "-q"], b"");
+        git(&["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         git(&["add", "clean.md"], b"");
         let hash = git(
@@ -2288,7 +2324,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2349,7 +2385,7 @@ mod tests {
             Command::new("git")
                 .arg("-C")
                 .arg(&f.0)
-                .args(["init", "-q"])
+                .args(["init", "-q", "--object-format=sha1"])
                 .status()
                 .unwrap()
                 .success()
@@ -2511,7 +2547,7 @@ mod tests {
     #[test]
     fn round5_regex_case_relations() {
         let f = Fixture::new("r5-case");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         // These literal spellings are stable partners. Escape the pattern so
         // it reaches the compiler's decoded-scalar validation as well.
         for (text, pattern) in [
@@ -2552,7 +2588,7 @@ mod tests {
     #[test]
     fn round5_stable_case_scalars_pass() {
         let f = Fixture::new("r5-stable");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         for c in [
             '\u{390}', '\u{3b0}', '\u{1fd3}', '\u{1fe3}', '\u{fb05}', '\u{fb06}',
         ] {
@@ -2565,7 +2601,7 @@ mod tests {
     #[test]
     fn round5_gitlinks_fail_closed() {
         let f = Fixture::new("r5-gitlink");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         r5_git(&f, &["add", "clean.md"], b"");
         let tree = r5_git(&f, &["hash-object", "-t", "tree", "-w", "--stdin"], b"");
@@ -2611,7 +2647,7 @@ mod tests {
     #[test]
     fn round5_guard_filenames() {
         let f = Fixture::new("r5-path");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         let name = "x\u{1e6c0}PRIVATE_FIVE.md";
         std::fs::write(f.0.join(name), "clean").unwrap();
@@ -2639,7 +2675,7 @@ mod tests {
     #[test]
     fn round5_every_symlink_hop() {
         let f = Fixture::new("r5-hops");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         std::os::unix::fs::symlink(
             OsStr::from_bytes(b"PRIVATE_FIVE_\xff.md"),
@@ -2699,7 +2735,7 @@ mod tests {
     #[test]
     fn round6_astral_composite_cases() {
         let f = Fixture::new("r6-astral");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         let mut failures = Vec::new();
         // One lowercase/uppercase pair per astral cased script reported by
         // the composite oracle. Run each through all four public entry modes.
@@ -2753,7 +2789,7 @@ mod tests {
                 "guarded range accepted"
             );
             let f = Fixture::new("r6-range");
-            r5_git(&f, &["init", "-q"], b"");
+            r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
             std::fs::write(f.0.join("own.md"), "clean").unwrap();
             std::fs::write(f.0.join("patterns"), pattern).unwrap();
             r5_git(&f, &["add", "own.md"], b"");
@@ -2781,9 +2817,9 @@ mod tests {
         for pattern in [r"[A-Z]", r"(?i)[A-Z]", r"[À-Ö]", r"(?i)[À-Ö]"] {
             let rule = Rule::compile(pattern, false).unwrap();
             for text in ["aZz", "ÀàÖö", "abc", "😀𠀀Z"] {
-                let oracle = Command::new("python3").args(["-I", "-c",
-                    "import re,sys; print(';'.join(f'{m.start()},{m.end()}' for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
-                assert!(oracle.status.success());
+                // CPython's re.finditer spans, as `start,end;...`.
+                let python =
+                    crate::lookaround::vectors::text("spans", &format!("r6:{pattern}\u{0}{text}"));
                 let spans = rule
                     .find_iter(text)
                     .map(|m| {
@@ -2796,11 +2832,11 @@ mod tests {
                     })
                     .collect::<Vec<_>>()
                     .join(";");
-                assert_eq!(spans, String::from_utf8(oracle.stdout).unwrap().trim());
+                assert_eq!(spans, python, "{pattern:?} on {text:?}");
             }
         }
         let f = Fixture::new("r6-uncased");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("own.md"), p("😀𠀀 rs123~ AG")).unwrap();
         r5_git(&f, &["add", "own.md"], b"");
         r5_modes(&f, &["own.md"], 1, "");
@@ -2809,7 +2845,7 @@ mod tests {
     #[test]
     fn round6_symlink_unicode_names() {
         let f = Fixture::new("r6-link-name");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         let name = "x\u{1e6c0}PRIVATE_SIX";
         let mut failures = Vec::new();
@@ -2872,7 +2908,7 @@ mod tests {
     #[test]
     fn round7_ordinary_cyrillic() {
         let f = Fixture::new("r7-cyrillic");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         for text in ["Привет, мир!", "Привіт, світе!", "Здраво, свете!", "о"]
         {
             std::fs::write(f.0.join("own.md"), text).unwrap();
@@ -2930,7 +2966,7 @@ mod tests {
     #[test]
     fn round7_custom_cyrillic_cli() {
         let f = Fixture::new("r7-custom");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("own.md"), "привет, мир!").unwrap();
         r5_git(&f, &["add", "own.md"], b"");
         for (pattern, expected) in [
@@ -2970,7 +3006,7 @@ mod tests {
     #[test]
     fn round7_cached_target_before_skip() {
         let f = Fixture::new("r7-index-target");
-        r5_git(&f, &["init", "-q"], b"");
+        r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
         std::fs::write(f.0.join("clean.md"), "clean").unwrap();
         for target in ["x\u{1e6c0}.md", "x\u{1e6c0}/clean.md"] {
             std::os::unix::fs::symlink(target, f.0.join("alias.md")).unwrap();
@@ -2998,144 +3034,57 @@ mod tests {
         }
     }
 
-    #[test]
-    fn round7_required_interpreters_fail_closed() {
-        let f = Fixture::new("r7-required-python");
-        for interpreter in [f.0.join("missing-python"), PathBuf::from("/usr/bin/false")] {
-            for test in [
-                "round4_guard_agrees_with_available_pythons",
-                "round5_regex_case_table_matches_interpreters",
-            ] {
-                let output = Command::new(std::env::current_exe().unwrap())
-                    .args([
-                        "--exact",
-                        &format!("personal_data::tests::{test}"),
-                        "--nocapture",
-                    ])
-                    .env("PERSONAL_DATA_PYTHONS", &interpreter)
-                    .output()
-                    .unwrap();
-                assert!(
-                    !output.status.success(),
-                    "required interpreter silently skipped: {test}"
-                );
-                let bytes = [output.stdout, output.stderr].concat();
-                let log = String::from_utf8_lossy(&bytes);
-                assert!(
-                    log.contains("required Python oracle"),
-                    "wrong verifier failure"
-                );
-            }
-        }
+    /// The CPython versions an answer file was made with, in the order the
+    /// interpreters ran (3.9, 3.12 and 3.15, as CI installed them, then the
+    /// recording image's own python3, 3.13.5).
+    fn oracle_versions(name: &str) -> Vec<String> {
+        use pycompat::json::Value;
+        let Value::Array(v) = crate::lookaround::vectors::get(name, "versions") else {
+            panic!("{name}: versions is not a list");
+        };
+        let v: Vec<String> = v
+            .iter()
+            .map(|x| match x {
+                Value::Str(s) => s.clone(),
+                other => panic!("{name}: a version is {other:?}"),
+            })
+            .collect();
+        assert!(
+            v.len() >= 2,
+            "{name}: answers of fewer than two interpreters"
+        );
+        v
     }
 
-    /// Explicit oracles are requirements, even when another path has the same
-    /// version. PATH discovery is optional. Probe requirements before dedup.
-    fn oracle_interpreters() -> Vec<(String, Vec<u8>)> {
-        let probe = |command: &str| {
-            Command::new(command).args(["-I", "-c",
-            "import sys,unicodedata; print(sys.version.split()[0],unicodedata.unidata_version)"]).output()
+    /// The `[[a, b], ...]` list under `key` in `name`.
+    fn oracle_pairs(name: &str, key: &str) -> Vec<(u32, u32)> {
+        use pycompat::json::Value;
+        let Value::Array(rows) = crate::lookaround::vectors::get(name, key) else {
+            panic!("{name}: {key} is not a list");
         };
-        let mut found = Vec::new();
-        if let Some(extra) = std::env::var_os("PERSONAL_DATA_PYTHONS") {
-            for command in std::env::split_paths(&extra) {
-                let command = command
-                    .to_str()
-                    .expect("required Python oracle path encoding");
-                let output = probe(command).expect("required Python oracle could not run");
-                assert!(
-                    output.status.success() && output.stderr.is_empty(),
-                    "required Python oracle failed"
-                );
-                assert!(
-                    String::from_utf8_lossy(&output.stdout)
-                        .split_whitespace()
-                        .count()
-                        == 2,
-                    "required Python oracle returned an invalid version"
-                );
-                found.push((command.to_owned(), output.stdout));
-            }
-        }
-        for command in [
-            "python3",
-            "python3.9",
-            "python3.10",
-            "python3.11",
-            "python3.12",
-            "python3.13",
-            "python3.14",
-            "python3.15",
-            "/usr/bin/python3",
-        ] {
-            if let Ok(output) = probe(command)
-                && output.status.success()
-                && output.stderr.is_empty()
-            {
-                found.push((command.to_owned(), output.stdout));
-            }
-        }
-        if let Ok(required) = std::env::var("PERSONAL_DATA_REQUIRE_PYTHONS") {
-            for minor in required.split(':') {
-                assert!(
-                    found
-                        .iter()
-                        .any(|(_, version)| String::from_utf8_lossy(version)
-                            .starts_with(&format!("{minor}."))),
-                    "required Python oracle version unavailable"
-                );
-            }
-        }
-        let mut versions = HashSet::new();
-        found.retain(|(_, version)| versions.insert(version.clone()));
-        assert!(!found.is_empty(), "no Python oracle available");
-        found
+        rows.iter()
+            .map(|row| match row {
+                Value::Array(ab) => match ab.as_slice() {
+                    [Value::Int(a), Value::Int(b)] => {
+                        (u32::try_from(*a).unwrap(), u32::try_from(*b).unwrap())
+                    }
+                    other => panic!("{name}: {key} row {other:?}"),
+                },
+                other => panic!("{name}: {key} row {other:?}"),
+            })
+            .collect()
     }
+
     /// Prove the converse on admitted text with real finditer spans. Endpoints
     /// excluded by the property guard must stop before matching instead.
-    /// Discover third partners from actual singleton relations and probe them.
-    fn regex_case_converse(
-        interpreters: &[String],
-        pairs: &std::collections::BTreeSet<(u32, u32)>,
-    ) {
-        let input: String = pairs.iter().map(|(a, b)| format!("{a} {b}\n")).collect();
-        let run = |command: &str, script: &str, input: &str| {
-            let mut child = Command::new(command)
-                .args(["-I", "-c", script])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut stdin = child.stdin.take().unwrap();
-            let bytes = input.to_owned();
-            let writer = std::thread::spawn(move || stdin.write_all(bytes.as_bytes()));
-            let output = child.wait_with_output().unwrap();
-            writer.join().unwrap().unwrap();
-            assert!(
-                output.status.success() && output.stderr.is_empty(),
-                "converse oracle failed"
-            );
-            String::from_utf8(output.stdout).unwrap()
-        };
+    /// Third partners come from the actual singleton relations CPython found
+    /// (`graph` in regex_case.jsonl.gz); the spans each interpreter found on
+    /// each class's patterns and texts are `converse:<version>:<class row>`.
+    fn regex_case_converse() {
         let mut graph: HashMap<u32, HashSet<u32>> = HashMap::new();
-        for command in interpreters {
-            let output = run(
-                command,
-                r#"
-import re,sys
-for row in sys.stdin:
-    a,b=map(int,row.split())
-    if re.fullmatch(re.escape(chr(a)),chr(b),re.I) or re.fullmatch(re.escape(chr(b)),chr(a),re.I): print(a,b)
-"#,
-                &input,
-            );
-            for row in output.lines() {
-                let (a, b) = row.split_once(' ').unwrap();
-                let (a, b) = (a.parse::<u32>().unwrap(), b.parse::<u32>().unwrap());
-                graph.entry(a).or_default().insert(b);
-                graph.entry(b).or_default().insert(a);
-            }
+        for (a, b) in oracle_pairs("regex_case", "graph") {
+            graph.entry(a).or_default().insert(b);
+            graph.entry(b).or_default().insert(a);
         }
         let mut classes = Vec::new();
         for &(a, b) in REGEX_CASE_RELATIONS {
@@ -3168,7 +3117,7 @@ for row in sys.stdin:
                         Err("own.md:1: Unicode version-dependent text".into())
                     );
                     let f = Fixture::new("r7-property-endpoint");
-                    r5_git(&f, &["init", "-q"], b"");
+                    r5_git(&f, &["init", "-q", "--object-format=sha1"], b"");
                     std::fs::write(f.0.join("own.md"), &text).unwrap();
                     r5_git(&f, &["add", "own.md"], b"");
                     r5_modes(&f, &["own.md"], 2, "");
@@ -3178,11 +3127,11 @@ for row in sys.stdin:
                 }
             }
         }
-        let input: String = classes
+        let input: Vec<String> = classes
             .iter()
             .map(|(a, b, class)| {
                 format!(
-                    "{a} {b} {} {} {}\n",
+                    "{a} {b} {} {} {}",
                     u8::from(admitted.contains(a)),
                     u8::from(admitted.contains(b)),
                     class
@@ -3193,38 +3142,6 @@ for row in sys.stdin:
                 )
             })
             .collect();
-        let script = r#"
-import re,sys,json
-for row in sys.stdin:
-    a,b,admit_a,admit_b,*group=map(int,row.split()); group=set(group)
-    # No named scalar is in the union of real case classes. Category escapes
-    # name categories, not individual scalars, even in negated classes.
-    atoms=['.',r'\w',r'\W',r'\d',r'\D',r'\s',r'\S',r'[^\w]',r'[^\W]',r'[^\d]',r'[^\D]',r'[^\s]',r'[^\S]',
-        '[^AZ]','[^éΩ]', '[A-Z]', '[é-ö]', '[^A-Zé-ö]',r'[A-Z\w]',r'[^AZ\d]',r'[^éΩ\W]']
-    assert not any(ord(c) in group for p in atoms for c in p)
-    assert not any(c in group for lo,hi in ((65,90),(233,246)) for c in range(lo,hi+1))
-    patterns=[]
-    for p in atoms:
-        patterns.extend(['(?i)'+p,'(?i:'+p+')','(?i:'+p+')+','(?i:'+p+'){1,3}?',
-            '(?i:'+p+'|Z)', '(?i:Z|'+p+')', '(?i:'+p+')(?-i:a)?', '(?i:(?:'+p+')+|Z)'])
-    # Stable case-sensitive names must still agree, including ordinary prose.
-    patterns.extend(['привет','[а-я]','[^В]','(?i:a)(?-i:привет)'])
-    texts=[]
-    for c,admit in ((a,admit_a),(b,admit_b)):
-        if not admit: continue
-        s=chr(c)
-        texts.extend([s,s*2,'A'+s+'éΩ9 ',s+'\u0301'+s,'! '+s+' Z', 'привет '+s])
-    for p in patterns:
-        for t in texts:
-            print(json.dumps([p,t,[(m.start(),m.end()) for m in re.finditer(p,t)],False,False],ensure_ascii=True))
-    # A third member can expose a different optimized compiler shape even if
-    # the pair table never used it as a pattern. Test every discovered member.
-    for c in sorted(group):
-        e=re.escape(chr(c))
-        for body in (e,'['+e+']','[^'+e+']','['+e+'Z]','[^'+e+'Z]',e+'|Z',r'[^'+e+r'\w]'):
-            p='(?i:'+body+')+'
-            for t in texts: print(json.dumps([p,t,[(m.start(),m.end()) for m in re.finditer(p,t)],True,c not in (a,b)],ensure_ascii=True))
-"#;
         fn row_values(row: &str) -> (String, String, pycompat::json::Value, bool, bool) {
             use pycompat::json::{Value, loads};
             let Value::Array(row) = loads(row).unwrap() else {
@@ -3247,9 +3164,20 @@ for row in sys.stdin:
         let mut third_differences = HashSet::new();
         let mut named_differences = HashSet::new();
         let mut compiled: HashMap<String, Result<Rule, ()>> = HashMap::new();
-        for command in interpreters {
-            let output = run(command, script, &input);
-            let rows: Vec<_> = output.lines().map(str::to_owned).collect();
+        for version in oracle_versions("regex_case") {
+            let mut rows: Vec<String> = Vec::new();
+            for line in &input {
+                let pycompat::json::Value::Array(answer) = crate::lookaround::vectors::get(
+                    "regex_case",
+                    &format!("converse:{version}:{line}"),
+                ) else {
+                    panic!("converse rows are not a list");
+                };
+                rows.extend(answer.iter().map(|r| match r {
+                    pycompat::json::Value::Str(s) => s.clone(),
+                    other => panic!("converse row {other:?}"),
+                }));
+            }
             if let Some(first) = &baseline {
                 assert_eq!(first.len(), rows.len());
                 for (old, new) in first.iter().zip(&rows) {
@@ -3310,246 +3238,68 @@ for row in sys.stdin:
             third_differences.len()
         );
     }
-    // Regenerate with PERSONAL_DATA_UPDATE_REGEX_CASES=1 and all supported
-    // interpreters on PATH (or in PERSONAL_DATA_PYTHONS). No Python file is
-    // added to the repository; these calls use each real interpreter's engine.
+
+    // The BMP re.IGNORECASE relations that differ between CPython 3.9, 3.12,
+    // 3.15 and the image's own 3.13.5 (`differing` in regex_case.jsonl.gz:
+    // real fullmatch results of each interpreter on every candidate pair its
+    // own case tables named, in both directions and many compiler shapes)
+    // must all be in the table.
     #[test]
     fn round5_regex_case_table_matches_interpreters() {
-        let mut interpreters = Vec::new();
-        let mut versions = HashSet::new();
-        let mut pairs = std::collections::BTreeSet::new();
-        for (command, version) in oracle_interpreters() {
-            versions.insert(version.clone());
-            println!(
-                "Regex relations checked Python {}",
-                String::from_utf8_lossy(&version).trim()
-            );
-            // Lowercase buckets plus the compiler's extra cases enumerate
-            // candidate pairs, including relations absent in another version.
-            // They are candidates only: every result below is real fullmatch.
-            let output = Command::new(&command)
-                .args([
-                    "-I",
-                    "-c",
-                    r#"
-import _sre,itertools
-try:
-    from re._casefix import _EXTRA_CASES
-except ImportError:
-    import sre_compile
-    _EXTRA_CASES=sre_compile._ignorecase_fixes
-buckets={}
-for c in range(0x10000):
-    if 0xd800 <= c <= 0xdfff: continue
-    lower=_sre.unicode_tolower(c)
-    if lower != c or _sre.unicode_iscased(c): buckets.setdefault(lower,set()).add(c)
-for key,others in _EXTRA_CASES.items():
-    group=set(buckets.get(key,{key}))
-    for other in others: group.update(buckets.get(other,{other}))
-    for a,b in itertools.combinations(sorted(group),2): print(a,b)
-for group in buckets.values():
-    for a,b in itertools.combinations(sorted(group),2): print(a,b)
-"#,
-                ])
-                .output()
-                .unwrap();
-            assert!(output.status.success(), "regex candidate oracle failed");
-            assert!(output.stderr.is_empty());
-            for row in String::from_utf8(output.stdout).unwrap().lines() {
-                let (a, b) = row.split_once(' ').unwrap();
-                let pair = (a.parse::<u32>().unwrap(), b.parse::<u32>().unwrap());
-                assert!(pair.0 <= 0xffff && pair.1 <= 0xffff);
-                pairs.insert(pair);
-            }
-            interpreters.push(command);
-        }
-        assert!(!interpreters.is_empty());
-        let input: String = pairs.iter().map(|(a, b)| format!("{a} {b}\n")).collect();
-        let mut baseline = None;
-        let mut differing = std::collections::BTreeSet::new();
-        for command in &interpreters {
-            let mut child = Command::new(command)
-                .args([
-                    "-I",
-                    "-c",
-                    r#"
-import re,sys
-for row in sys.stdin:
-    a,b=map(int,row.split()); a,b=chr(a),chr(b)
-    # Exercise compiler optimizations in both directions. Category unions,
-    # negation, ranges and grouping can select different engine instructions.
-    def shapes(s):
-        e=re.escape(s)
-        patterns=[e, '(?:'+e+')', '('+e+')', '['+e+']', '[^'+e+']',
-            '['+e+'Z]', '[^'+e+'Z]',
-            e+'|Z', 'Z|'+e, '(?:'+e+'|Z)', '('+e+'|Z)',
-            '(?:'+e+')|(?:Z)', '(?:(?:'+e+')|(?:Z))']
-        for category in (r'\d',r'\D',r'\w',r'\W',r'\s',r'\S'):
-            for extra in (category,'Z'+category):
-                patterns.extend(('['+e+extra+']','[^'+e+extra+']'))
-        c=ord(s)
-        for lo,hi in ((c,c+1),(c-1,c),(c-1,c+1)):
-            if 0 <= lo <= hi <= 0xffff and not (lo <= 0xdfff and hi >= 0xd800):
-                span=re.escape(chr(lo))+'-'+re.escape(chr(hi))
-                for extra in ('','Z',r'\d',r'\D',r'\w',r'\W',r'\s',r'\S'):
-                    patterns.extend(('['+span+extra+']','[^'+span+extra+']'))
-        return patterns
-    print(''.join(str(int(re.fullmatch(p,t,re.IGNORECASE) is not None))
-        for s,t in ((a,b),(b,a)) for p in shapes(s)))
-"#,
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut stdin = child.stdin.take().unwrap();
-            let bytes = input.clone();
-            let writer = std::thread::spawn(move || stdin.write_all(bytes.as_bytes()));
-            let output = child.wait_with_output().unwrap();
-            writer.join().unwrap().unwrap();
-            assert!(output.status.success(), "regex relation oracle failed");
-            assert!(output.stderr.is_empty());
-            let rows: Vec<String> = String::from_utf8(output.stdout)
-                .unwrap()
-                .lines()
-                .map(str::to_owned)
-                .collect();
-            assert_eq!(rows.len(), pairs.len());
-            if let Some(first) = &baseline {
-                for ((pair, row), old) in pairs.iter().zip(&rows).zip(first) {
-                    if row != old {
-                        differing.insert(*pair);
-                    }
-                }
-            } else {
-                baseline = Some(rows);
-            }
-        }
-        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/personal_data.rs");
-        if std::env::var_os("PERSONAL_DATA_UPDATE_REGEX_CASES").is_some() {
-            assert!(
-                versions.len() >= 2,
-                "generation requires multiple real interpreters"
-            );
-            let mut table = String::from(
-                "// Generated by round5_regex_case_table_matches_interpreters; decimal Unicode scalar pairs.\n// Differing BMP re.IGNORECASE relations seed the pattern-only fold-class guard.\n",
-            );
-            let mut versions: Vec<_> = versions
-                .iter()
-                .map(|v| String::from_utf8_lossy(v).trim().to_owned())
-                .collect();
-            versions.sort();
-            for version in versions {
-                table.push_str(&format!("// Python {version}\n"));
-            }
-            table.push_str("const REGEX_CASE_RELATIONS: &[(u32, u32)] = &[\n");
-            for (a, b) in &differing {
-                table.push_str(&format!("    ({a}, {b}),\n"));
-            }
-            table.push_str("];\n");
-            let source = std::fs::read_to_string(&file).unwrap();
-            let (prefix, rest) = source
-                .split_once("// BEGIN GENERATED REGEX CASE RELATIONS\n")
-                .unwrap();
-            let (_, suffix) = rest
-                .split_once("// END GENERATED REGEX CASE RELATIONS\n")
-                .unwrap();
-            std::fs::write(&file, format!("{prefix}// BEGIN GENERATED REGEX CASE RELATIONS\n{table}// END GENERATED REGEX CASE RELATIONS\n{suffix}")).unwrap();
+        let differing: std::collections::BTreeSet<_> = oracle_pairs("regex_case", "differing")
+            .into_iter()
+            .collect();
+        for version in oracle_versions("regex_case") {
+            println!("Regex relations checked Python {version}");
         }
         let checked: std::collections::BTreeSet<_> = REGEX_CASE_RELATIONS.iter().copied().collect();
-        if std::env::var_os("PERSONAL_DATA_UPDATE_REGEX_CASES").is_none() {
-            assert!(
-                differing.is_subset(&checked),
-                "checked-in regex table misses a differing pair"
-            );
-        }
-        regex_case_converse(&interpreters, &pairs);
+        assert!(
+            differing.is_subset(&checked),
+            "checked-in regex table misses a differing pair"
+        );
+        regex_case_converse();
         println!(
-            "{} candidate pairs, {} differing pairs on available interpreters, {} checked-in pairs",
-            pairs.len(),
+            "{} differing pairs, {} checked-in pairs",
             differing.len(),
             checked.len()
         );
-        // Generation can run before the production table is updated. Every
-        // ordinary verification must prove both endpoints are pattern-guarded.
-        if std::env::var_os("PERSONAL_DATA_UPDATE_REGEX_CASES").is_none() {
-            for (a, b) in &checked {
-                for c in [a, b] {
-                    assert!(
-                        range_regex_case_dependent(
-                            char::from_u32(*c).unwrap(),
-                            char::from_u32(*c).unwrap()
-                        ),
-                        "regex endpoint is unguarded"
-                    );
-                }
+        // Every ordinary verification must prove both endpoints are pattern-guarded.
+        for (a, b) in &checked {
+            for c in [a, b] {
+                assert!(
+                    range_regex_case_dependent(
+                        char::from_u32(*c).unwrap(),
+                        char::from_u32(*c).unwrap()
+                    ),
+                    "regex endpoint is unguarded"
+                );
             }
         }
     }
 
     #[test]
     fn round4_guard_agrees_with_available_pythons() {
-        // Every available interpreter is checked, not just whichever python3
-        // happens to be first on PATH. CI requires 3.9, 3.12 and 3.15 explicitly.
-        let guarded = VERSION_DEPENDENT.to_vec();
-        let ranges = guarded
-            .iter()
-            .map(|(a, b)| format!("{a} {b}\n"))
-            .collect::<String>();
-        let mut baseline = None;
-        let mut versions = HashSet::new();
-        for (command, version) in oracle_interpreters() {
-            versions.insert(version);
-            let mut child = Command::new(command)
-                .args([
-                    "-I",
-                    "-c",
-                    r#"
-import sys,unicodedata
-ranges=[tuple(map(int,row.split())) for row in sys.stdin]
-i=0
-for c in range(0x110000):
-    if 0xd800 <= c <= 0xdfff: continue
-    while i < len(ranges) and ranges[i][1] < c: i+=1
-    if i < len(ranges) and ranges[i][0] <= c: continue
-    s=chr(c)
-    # Unicode 17 is the newest shipped table. No unassigned scalar may pass.
-    if unicodedata.unidata_version == '17.0.0': assert unicodedata.category(s) != 'Cn'
-    values=(int(s.isalnum() or s=='_'), int(s.isdecimal()), int(s.isspace()))
-    maps=','.join('.'.join(str(ord(x)) for x in m) for m in (s.lower(),s.upper(),s.casefold()))
-    print(str(c)+':'+''.join(map(str,values))+':'+maps)
-"#,
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(ranges.as_bytes())
-                .unwrap();
-            let output = child.wait_with_output().unwrap();
-            assert!(output.status.success(), "Unicode oracle failed");
-            assert!(output.stderr.is_empty());
-            if let Some(ref first) = baseline {
-                assert!(
-                    first == &output.stdout,
-                    "stable Unicode signatures differ across available Pythons"
-                );
-            } else {
-                baseline = Some(output.stdout);
+        // Each scalar whose isalnum/isdecimal/isspace or lower/upper/casefold
+        // differs between CPython 3.9, 3.12, 3.15 and the image's own 3.13.5
+        // (`differ` in unicode.jsonl.gz), and each scalar Unicode 17 leaves
+        // unassigned (`unassigned17`), must be in VERSION_DEPENDENT.
+        let guarded = |c: u32| {
+            let at = VERSION_DEPENDENT.partition_point(|&(_, end)| end < c);
+            VERSION_DEPENDENT
+                .get(at)
+                .is_some_and(|&(start, _)| start <= c)
+        };
+        for key in ["differ", "unassigned17"] {
+            let ranges = oracle_pairs("unicode", key);
+            assert!(!ranges.is_empty(), "unicode: {key} is empty");
+            for (lo, hi) in ranges {
+                for c in lo..=hi {
+                    assert!(guarded(c), "U+{c:04X} ({key}) is outside VERSION_DEPENDENT");
+                }
             }
         }
-        assert!(!versions.is_empty(), "no Python oracle available");
-        for version in versions {
-            println!(
-                "Unicode guard checked Python {}",
-                String::from_utf8(version).unwrap().trim()
-            );
+        for version in oracle_versions("unicode") {
+            println!("Unicode guard checked Python {version}");
         }
     }
 }
