@@ -64,10 +64,11 @@
 #                    place (AFR read as the next group, and so on): the red
 #                    control, which must fail the gate
 #   OG               the og Linux binary (default bin/.og/og-linux-<arch>)
-# Every tool runs in its image from versions.env, with --cpus THREADS and
-# the lowest CPU weight; nothing reads a personal genome. The panel is
-# gnomAD's HGDP + 1000 Genomes (CC0), so the genomes and the numbers can be
-# published.
+# Every tool runs in its pinned image (versions.env, and RFMix and ADMIXTURE
+# below, which nothing else in the repository runs), with
+# --cpus THREADS and the lowest CPU weight; nothing reads a personal genome.
+# The panel is gnomAD's HGDP + 1000 Genomes (CC0), so the genomes and the
+# numbers can be published.
 set -euo pipefail
 
 PANEL_IN=${1:?Usage: $0 <panel_dir> <work_dir>}
@@ -118,6 +119,11 @@ hold_count() { case $1 in AMR) echo 3 ;; *) echo 4 ;; esac; }
 
 # shellcheck source=../../versions.env
 . "${REPO}/versions.env"
+# RFMix and ADMIXTURE left step 26b when og took over the painting and the
+# fractions, and versions.env dropped them; the bench keeps the tags it was
+# measured with. Both are for academic use only.
+RFMIX_IMAGE="quay.io/biocontainers/rfmix:2.03.r0.9505bfa--h503566f_8"
+ADMIXTURE_IMAGE="quay.io/biocontainers/admixture:1.3.0--0"
 for v in BCFTOOLS_IMAGE BEAGLE_IMAGE RFMIX_IMAGE ADMIXTURE_IMAGE PLINK2_IMAGE OG_IMAGE; do
   [ -n "${!v:-}" ] || { echo "ERROR: ${v} is not set in versions.env" >&2; exit 2; }
 done
@@ -128,14 +134,21 @@ for f in samples.tsv model/paint_map.tsv model/ref.bim; do
   [ -s "${PANEL}/${f}" ] || { echo "ERROR: ${PANEL}/${f} is missing: install the panel with scripts/setup.sh --ancestry-fine-panel" >&2; exit 2; }
 done
 for c in $CHROMS; do
-  for f in "panel/${c}.vcf.gz" "maps/${c}.map" "maps/${c}.rfmix.map"; do
+  for f in "panel/${c}.vcf.gz" "maps/${c}.map"; do
     [ -s "${PANEL}/${f}" ] || { echo "ERROR: ${PANEL}/${f} is missing" >&2; exit 2; }
   done
 done
 [ -x "$OG" ] || { echo "ERROR: no og binary at ${OG}: build it with scripts/setup.sh --og, or set OG" >&2; exit 2; }
 mkdir -p "$WORK_IN"
 WORK=$(cd "$WORK_IN" && pwd)
-mkdir -p "${WORK}/stats" "${WORK}/tmp"
+mkdir -p "${WORK}/stats" "${WORK}/tmp" "${WORK}/maps"
+# RFMix's map of each chromosome (chromosome, position, cM: fields 1, 4 and
+# 3 of each non-blank row of the panel's PLINK map), which setup.sh wrote as
+# maps/chrN.rfmix.map while step 26b ran RFMix.
+for c in $CHROMS; do
+  awk -v OFS='\t' '{ sub(/\r$/, "") } NF { print $1, $4, $3 }' "${PANEL}/maps/${c}.map" > "${WORK}/maps/${c}.rfmix.map.part"
+  mv "${WORK}/maps/${c}.rfmix.map.part" "${WORK}/maps/${c}.rfmix.map"
+done
 
 # run <stat> <image> <cmd...>: the command in its image, as root, with the
 # panel read-only at /panel, the work folder at /work and og at /og; its
@@ -300,7 +313,7 @@ genome() {
     finished "${d}/rfmix/${c}" && continue
     # shellcheck disable=SC2016  # $1 to $3 belong to the inner sh
     run "${n}.rfmix.${c}" "$RFMIX_IMAGE" sh -c 'rfmix -f "$1/phase/$2.vcf.gz" -r "/work/panel/$2.vcf.gz" \
-        -m /work/model/paint_map.tsv -g "/panel/maps/$2.rfmix.map" -o "$1/rfmix/$2" --chromosome="$2" \
+        -m /work/model/paint_map.tsv -g "/work/maps/$2.rfmix.map" -o "$1/rfmix/$2" --chromosome="$2" \
         --n-threads="$3" --random-seed=1 > "$1/rfmix/$2.log" 2>&1 || { tail -n 20 "$1/rfmix/$2.log"; exit 1; }' \
       _ "/work/${d}" "$c" "$THREADS"
     mark "${d}/rfmix/${c}"

@@ -16,9 +16,6 @@
       ANCESTRY_FINE_REPORT    the fractions table, the painting (BED, PNG) and
                               the text summary
 
-    RFMix is for academic research use only, and any other use, a personal one
-    included, needs a licence from Stanford.
-
     Equivalent to: scripts/26b-ancestry-fine.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */

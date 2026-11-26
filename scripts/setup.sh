@@ -210,9 +210,7 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "                percentiles instead of raw scores in step 25; then exit."
   echo "  --ancestry-fine-panel"
   echo "                Install the reference of step 26b, gnomAD's HGDP + 1000 Genomes panel (~19 GB is read, a few GB"
-  echo "                stored, hours on a home connection), and its images; then exit. Step 26b runs ADMIXTURE,"
-  echo "                free for academic use, and RFMix, free for academic research use only: any other use,"
-  echo "                a personal one included, needs a licence from Stanford."
+  echo "                stored, hours on a home connection), and its images; then exit."
   echo "  --yleaf-data  Install Yleaf ${YLEAF_DATA_VERSION:-}'s Y marker tables and trees and the current YFull tree (step 37, about 210 MB to download, 220 MB on disk), pull its image and exit."
   echo "  --consumer-sites"
   echo "                Build the site table of the raw-data export (step 40): the 23andMe v5 site list joined with"
@@ -1229,19 +1227,20 @@ ancestry_fine_pins() {
   done
 }
 
-# install_fine_maps DIR CHROMS: DIR/maps/ of step 26b, Beagle's map of each
-# chromosome of CHROMS (space separated) and the same in RFMix's column order
-# (chromosome, position, cM), cut from DIR/maps/plink.GRCh38.map.zip by og
-# (`og setup genetic-map`), which writes each file whole or not at all.
+# install_fine_maps DIR CHROMS: DIR/maps/ of step 26b, the genetic map of each
+# chromosome of CHROMS (space separated) that Beagle and og's painting read,
+# cut from DIR/maps/plink.GRCh38.map.zip by og (`og setup genetic-map`), which
+# writes each file whole or not at all.
 # maps/DONE, written last, names the map and the chromosomes: without it (an
 # install from before og, whose maps a kill could have left cut short), or
-# with a map file missing, every map is written again.
+# with a map file missing, every map is written again. The chrN.rfmix.map
+# files an older install wrote for RFMix stay on disk, read by nothing.
 # tests/test_setup_fine_maps.sh runs it.
 install_fine_maps() {
   local dir=$1 chroms=$2
   local gstamp="map=${ANCESTRY_FINE_MAP_SHA256} chroms=${chroms% }" c whole=yes
   for c in $chroms; do
-    [ -s "${dir}/maps/${c}.map" ] && [ -s "${dir}/maps/${c}.rfmix.map" ] || whole=no
+    [ -s "${dir}/maps/${c}.map" ] || whole=no
   done
   [ "$whole" = yes ] && [ "$(cat "${dir}/maps/DONE" 2>/dev/null)" = "$gstamp" ] && return 0
   rm -f "${dir}/maps/DONE"
@@ -1249,7 +1248,7 @@ install_fine_maps() {
   # SC2086: one argument per chromosome.
   # shellcheck disable=SC2086
   if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" "$OG_IMAGE" /pgp-bin/og setup genetic-map \
-      --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" --rfmix $chroms; then
+      --zip "$(cpath "${dir}/maps/plink.GRCh38.map.zip")" --out "$(cpath "${dir}/maps")" $chroms; then
     echo "[WARN] Could not unpack the genetic map"
     return 1
   fi
@@ -1258,9 +1257,7 @@ install_fine_maps() {
 
 # install_ancestry_fine_panel: the reference of step 26b, in
 # reference/ancestry_fine/ANCESTRY_FINE_PANEL (ANCESTRY_FINE_DIR: another
-# folder inside GENOME_DIR). ADMIXTURE is free for academic use; RFMix for
-# academic research use only, and any other use, a personal one included,
-# needs a licence from Stanford. Four parts, each redone only when its inputs change:
+# folder inside GENOME_DIR). Four parts, each redone only when its inputs change:
 #   samples.tsv  every person of the panel with population, continental and
 #                regional group, reference and painting flags (og ancestry-fine
 #                panel-map, rust/crates/og-ancestry); ANCESTRY_FINE_SAMPLE_MAP gives
@@ -1268,14 +1265,13 @@ install_fine_maps() {
 #   panel/       chrN.vcf.gz: their phased genotypes at the biallelic SNVs with a
 #                minor allele frequency of 5% or more, one per 2 kb (bcftools
 #                +prune); sites.tsv (chrN, position, REF, ALT) and positions.tsv;
-#   maps/        chrN.map (Beagle) and chrN.rfmix.map (RFMix's column order);
+#   maps/        chrN.map (Beagle and og's painting);
 #   model/       ref.bim, ref.fam and ref.geno: the reference individuals' genotypes
 #                at the SNVs left after LD pruning (r2 above 0.1 within 500 kb
 #                removed); for each level (continent, region) each group's allele
-#                frequencies, <level>.P, counted by og ancestry-fine freqs (the
-#                maximum a supervised ADMIXTURE run climbs to), with their column
-#                order in levels.tsv; and paint_map.tsv, the reference individuals
-#                RFMix paints with.
+#                frequencies, <level>.P, counted by og ancestry-fine freqs, with
+#                their column order in levels.tsv; and paint_map.tsv, the
+#                reference individuals og paints with.
 # ANCESTRY_FINE_REGIONS (a BED file) keeps only those regions, and
 # ANCESTRY_FINE_EXCLUDE (sample ids) leaves people out of the panel: the e2e
 # case uses both, for the fixture's slices and the two people of its
@@ -1290,9 +1286,8 @@ install_ancestry_fine_panel() {
   local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
-  echo "  Step 26b finds the fractions and paints the chromosomes with og. The RFMix image is still pulled; RFMix is free for academic research use only:"
-  echo "  any other use of RFMix, a personal one included, needs a licence from Stanford."
-  for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE ADMIXTURE_IMAGE BEAGLE_IMAGE RFMIX_IMAGE; do ensure_image "$v" 26b || return 1; done
+  echo "  Step 26b finds the fractions and paints the chromosomes with og."
+  for v in OG_IMAGE BCFTOOLS_HTTPS_IMAGE BEAGLE_IMAGE; do ensure_image "$v" 26b || return 1; done
   # The sample table and the column order come from og (og ancestry-fine).
   if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
     echo "[WARN] Could not build og, which writes the panel's sample table: run ${0} --og and look at its error."
@@ -1436,11 +1431,11 @@ install_ancestry_fine_panel() {
     echo "  model: ${fit}"
     awk -F'\t' -v OFS='\t' 'NR > 1 && $6 == 1 {print $1, $3}' "${dir}/samples.tsv" > "${tmp}/paint_map.tsv"
     for e in ref.bim ref.fam ref.geno continent.P region.P levels.tsv paint_map.tsv; do mv -f "${tmp}/${e}" "${dir}/model/${e}"; done
-    # ref.bed: ADMIXTURE's input of an older install, read by nothing now.
+    # ref.bed: the model's genotypes as an older install wrote them, read by nothing now.
     rm -rf "$tmp" "${dir}/model/ref.bed"
     echo "$mstamp" > "${dir}/model/DONE"
   fi
-  echo "[OK] fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b): ${dir} ($(wc -l < "${dir}/model/ref.bim" | tr -d ' ') SNVs for ADMIXTURE, $(wc -l < "${dir}/model/paint_map.tsv" | tr -d ' ') painting references)"
+  echo "[OK] fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b): ${dir} ($(wc -l < "${dir}/model/ref.bim" | tr -d ' ') SNVs in the model, $(wc -l < "${dir}/model/paint_map.tsv" | tr -d ' ') painting references)"
 }
 
 # install_mocha_data: the phasing panel of step 51 in

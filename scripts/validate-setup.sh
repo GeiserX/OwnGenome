@@ -1007,9 +1007,7 @@ else
     for opt in "PYTHON_IMAGE|21|tools/cyrius-${CYRIUS_VERSION}/INSTALLED|cyrius" \
                "PARASCOPY_IMAGE|35|reference/parascopy-${PARASCOPY_DATA_VERSION}/homology_table/GRCh38.bed.gz|parascopy-data" \
                "YLEAF_IMAGE|37|reference/yleaf-${YLEAF_DATA_VERSION}/data/hg38/new_positions.txt|yleaf-data" \
-               "ADMIXTURE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
-               "BEAGLE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel" \
-               "RFMIX_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel"; do
+               "BEAGLE_IMAGE|26b|reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/model/DONE|ancestry-fine-panel"; do
       IFS='|' read -r var step data flag <<< "$opt"
       [ -s "${GENOME_DIR}/${data}" ] || continue
       if "$CONTAINER_ENGINE" image inspect "${!var}" &>/dev/null; then
