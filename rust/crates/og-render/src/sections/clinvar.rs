@@ -494,12 +494,19 @@ fn conflicting_card(c: &D<'_>) -> Result<Card, Malformed> {
         }
         body.push(Line::ViewerNote);
     }
-    Ok(Card {
-        title: format!(
+    // An unchecked list has no size: its badge says why, and the title
+    // never reads "(0 of 0)".
+    let title = if checked {
+        format!(
             "{CONFLICTING_TITLE} ({} of {})",
             hits.len().min(HITS_SHOWN),
             hits.len()
-        ),
+        )
+    } else {
+        CONFLICTING_TITLE.to_owned()
+    };
+    Ok(Card {
+        title,
         full: true,
         caveats: vec![CONFLICTING_NOTE],
         body,

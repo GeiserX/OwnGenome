@@ -178,10 +178,15 @@ fn a_list_that_was_not_checked_never_reads_as_zero() {
         html.contains(r#"class="badge badge-yellow">not checked: run setup.sh --refresh clinvar<"#)
     );
     assert!(!text.contains(&format!("{TITLE}: 0")));
+    assert!(
+        !html.contains(&format!("{TITLE} (0 of")),
+        "an unchecked card title never counts"
+    );
     let none = r#"{"checked": true, "note": null, "count": 0, "hits": []}"#;
     let [text, html] = reports(&clinvar(Some(none)));
     assert!(text.contains(&format!("{TITLE}: 0")));
     assert!(html.contains(r#"class="badge badge-gray">0<"#));
+    assert!(html.contains(&format!("{TITLE} (0 of 0)")));
 }
 
 #[test]
