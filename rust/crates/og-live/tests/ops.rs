@@ -1015,8 +1015,38 @@ o = ops.run_ops(a["run_dir"], state, events, cfg, now=a["now"], steps=steps, phy
 sys.stdout.write(json.dumps(o) + "\n---\n" + ops.metrics_text([(a["sample"], o)], 0.9, a["physical"], 0))
 "#;
 
+/// `text` with the tree's folder written as `{TMP}` and the repository as
+/// `{REPO}`, so an answer does not hold this run's paths.
+fn norm(t: &Tree, text: &str) -> String {
+    text.replace(&t.root.parent().unwrap().display().to_string(), "{TMP}")
+        .replace(&repo().display().to_string(), "{REPO}")
+}
+
+/// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends the
+/// plugin's answer to `<dir>/live_ops.jsonl` under `label`.
+fn record(label: &str, t: &Tree, out: &str) {
+    use std::io::Write;
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let Some(dir) = std::env::var_os("OG_RECORD_VECTORS") else {
+        return;
+    };
+    let line = pycompat::json::dumps(
+        &Value::Array(vec![Value::Str(label.to_owned()), Value::Str(norm(t, out))]),
+        &pycompat::json::Dump::default(),
+    )
+    .unwrap();
+    let _g = LOCK.lock().unwrap();
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(PathBuf::from(dir).join("live_ops.jsonl"))
+        .unwrap()
+        .write_all(format!("{line}\n").as_bytes())
+        .unwrap();
+}
+
 /// The Python card and metrics text of the tree at `c`.
-fn py_ops(t: &Tree, c: &Case) -> (Value, String) {
+fn py_ops(label: &str, t: &Tree, c: &Case) -> (Value, String) {
     let mut args = indexmap::IndexMap::new();
     let mut put = |k: &str, v: Value| {
         args.insert(k.to_owned(), v);
@@ -1052,6 +1082,7 @@ fn py_ops(t: &Tree, c: &Case) -> (Value, String) {
         String::from_utf8_lossy(&o.stderr)
     );
     let out = String::from_utf8(o.stdout).unwrap();
+    record(label, t, &out);
     let (card, text) = out.split_once("\n---\n").expect("card and text");
     (loads(card).unwrap(), text.to_owned())
 }
@@ -1088,7 +1119,7 @@ fn same(a: &Value, b: &Value, at: &str) -> Result<(), String> {
 
 fn parity(t: &Tree, c: &Case, what: &str) {
     let o = ops_of(t, c);
-    let (card, text) = py_ops(t, c);
+    let (card, text) = py_ops(what, t, c);
     if let Err(e) = same(&o.to_json(), &card, what) {
         panic!("og and the Python plugin differ: {e}");
     }
@@ -1208,7 +1239,7 @@ fn the_card_and_metrics_match_the_python_plugin_on_the_eta_and_headroom_fixtures
         "{o:?}"
     );
     // Control: a card that differs in one number must be seen.
-    let (card, _) = py_ops(&t, &c);
+    let (card, _) = py_ops("eta and headroom fixtures", &t, &c);
     let mut changed = o.clone();
     changed.memory.retries = 2;
     assert!(same(&changed.to_json(), &card, "control").is_err());

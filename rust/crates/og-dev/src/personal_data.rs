@@ -1694,7 +1694,98 @@ mod tests {
             "oracle failed"
         );
         assert!(output.stderr.is_empty(), "oracle diagnostic");
-        String::from_utf8(output.stdout).unwrap()
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        crate::lookaround::vectors::record(
+            "oracle",
+            &scan_key(f, files, cached, allow, skip, patterns),
+            pycompat::json::Value::Str(stdout.clone()),
+        );
+        stdout
+    }
+
+    /// What the removed scanner's answer depends on, as one fingerprint:
+    /// the options (the fixture folder written as `{ROOT}`), every file under
+    /// the fixture folder with its kind and bytes (a link by its target),
+    /// and the git index when there is one. Two runs with the same key give
+    /// the same answer, so the answer can be committed under it.
+    fn scan_key(
+        f: &Fixture,
+        files: &[&str],
+        cached: bool,
+        allow: &str,
+        skip: &str,
+        patterns: &str,
+    ) -> String {
+        let root = f.0.display().to_string();
+        let norm = |s: &str| s.replace(&root, "{ROOT}");
+        let mut key: Vec<u8> = Vec::new();
+        for part in [norm(allow), norm(skip), norm(patterns), cached.to_string()] {
+            key.extend_from_slice(part.as_bytes());
+            key.push(0);
+        }
+        for file in files {
+            key.extend_from_slice(file.as_bytes());
+            key.push(0);
+        }
+        fn walk(dir: &Path, rel: &[u8], key: &mut Vec<u8>) {
+            let mut entries: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            entries.sort();
+            for name in entries {
+                if rel.is_empty() && name == ".git" {
+                    continue;
+                }
+                let mut r = rel.to_vec();
+                if !r.is_empty() {
+                    r.push(b'/');
+                }
+                r.extend_from_slice(name.as_bytes());
+                let path = dir.join(&name);
+                let meta = std::fs::symlink_metadata(&path).unwrap();
+                key.extend_from_slice(&r);
+                if meta.file_type().is_symlink() {
+                    key.extend_from_slice(b"\0L");
+                    key.extend_from_slice(std::fs::read_link(&path).unwrap().as_os_str().as_bytes());
+                } else if meta.is_dir() {
+                    key.extend_from_slice(b"\0D");
+                    walk(&path, &r, key);
+                } else {
+                    key.extend_from_slice(b"\0F");
+                    key.extend_from_slice(&std::fs::read(&path).unwrap());
+                }
+                key.push(0);
+            }
+        }
+        walk(&f.0, b"", &mut key);
+        if f.0.join(".git").exists() {
+            let index = Command::new("git")
+                .arg("-C")
+                .arg(&f.0)
+                .args(["ls-files", "-s", "-z"])
+                .output()
+                .unwrap();
+            assert!(index.status.success());
+            key.extend_from_slice(b"\0INDEX\0");
+            key.extend_from_slice(&index.stdout);
+        }
+        // The fixture folder's own name can sit inside a link target.
+        let (needle, mut out, mut i) = (root.as_bytes(), Vec::new(), 0);
+        while i < key.len() {
+            if key[i..].starts_with(needle) {
+                out.extend_from_slice(b"{ROOT}");
+                i += needle.len();
+            } else {
+                out.push(key[i]);
+                i += 1;
+            }
+        }
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in &out {
+            h = (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}-{}", out.len())
     }
 
     fn assert_oracle_findings(f: &Fixture, files: &[&str], cached: bool) {
@@ -2784,6 +2875,13 @@ mod tests {
                 let oracle = Command::new("python3").args(["-I", "-c",
                     "import re,sys; print(';'.join(f'{m.start()},{m.end()}' for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
                 assert!(oracle.status.success());
+                crate::lookaround::vectors::record(
+                    "spans",
+                    &format!("r6:{pattern}\u{0}{text}"),
+                    pycompat::json::Value::Str(
+                        String::from_utf8(oracle.stdout.clone()).unwrap().trim().to_owned(),
+                    ),
+                );
                 let spans = rule
                     .find_iter(text)
                     .map(|m| {
@@ -3137,6 +3235,29 @@ for row in sys.stdin:
                 graph.entry(b).or_default().insert(a);
             }
         }
+        {
+            let mut edges: Vec<(u32, u32)> = graph
+                .iter()
+                .flat_map(|(a, bs)| bs.iter().map(move |b| (*a, *b)))
+                .filter(|(a, b)| a < b)
+                .collect();
+            edges.sort();
+            crate::lookaround::vectors::record(
+                "regex_case",
+                "graph",
+                pycompat::json::Value::Array(
+                    edges
+                        .iter()
+                        .map(|(a, b)| {
+                            pycompat::json::Value::Array(vec![
+                                pycompat::json::Value::Int(i128::from(*a)),
+                                pycompat::json::Value::Int(i128::from(*b)),
+                            ])
+                        })
+                        .collect(),
+                ),
+            );
+        }
         let mut classes = Vec::new();
         for &(a, b) in REGEX_CASE_RELATIONS {
             let mut class = std::collections::BTreeSet::from([a, b]);
@@ -3247,6 +3368,27 @@ for row in sys.stdin:
         let mut third_differences = HashSet::new();
         let mut named_differences = HashSet::new();
         let mut compiled: HashMap<String, Result<Rule, ()>> = HashMap::new();
+        if std::env::var_os("OG_RECORD_VECTORS").is_some() {
+            for command in interpreters {
+                let version = Command::new(command)
+                    .args(["-I", "-c", "import sys; print(sys.version.split()[0])"])
+                    .output()
+                    .unwrap();
+                let version = String::from_utf8(version.stdout).unwrap().trim().to_owned();
+                for line in input.lines() {
+                    let out = run(command, script, &format!("{line}\n"));
+                    crate::lookaround::vectors::record(
+                        "regex_case",
+                        &format!("converse:{version}:{line}"),
+                        pycompat::json::Value::Array(
+                            out.lines()
+                                .map(|r| pycompat::json::Value::Str(r.to_owned()))
+                                .collect(),
+                        ),
+                    );
+                }
+            }
+        }
         for command in interpreters {
             let output = run(command, script, &input);
             let rows: Vec<_> = output.lines().map(str::to_owned).collect();
@@ -3457,6 +3599,30 @@ for row in sys.stdin:
                 .unwrap();
             std::fs::write(&file, format!("{prefix}// BEGIN GENERATED REGEX CASE RELATIONS\n{table}// END GENERATED REGEX CASE RELATIONS\n{suffix}")).unwrap();
         }
+        {
+            use pycompat::json::Value;
+            let mut names = Vec::new();
+            for command in &interpreters {
+                let v = Command::new(command)
+                    .args(["-I", "-c", "import sys; print(sys.version.split()[0])"])
+                    .output()
+                    .unwrap();
+                names.push(Value::Str(String::from_utf8(v.stdout).unwrap().trim().to_owned()));
+            }
+            crate::lookaround::vectors::record("regex_case", "versions", Value::Array(names));
+            crate::lookaround::vectors::record(
+                "regex_case",
+                "differing",
+                Value::Array(
+                    differing
+                        .iter()
+                        .map(|(a, b)| {
+                            Value::Array(vec![Value::Int(i128::from(*a)), Value::Int(i128::from(*b))])
+                        })
+                        .collect(),
+                ),
+            );
+        }
         let checked: std::collections::BTreeSet<_> = REGEX_CASE_RELATIONS.iter().copied().collect();
         if std::env::var_os("PERSONAL_DATA_UPDATE_REGEX_CASES").is_none() {
             assert!(
@@ -3492,6 +3658,72 @@ for row in sys.stdin:
     fn round4_guard_agrees_with_available_pythons() {
         // Every available interpreter is checked, not just whichever python3
         // happens to be first on PATH. CI requires 3.9, 3.12 and 3.15 explicitly.
+        if std::env::var_os("OG_RECORD_VECTORS").is_some() {
+            // RECORD: every scalar's signature on each interpreter, with no
+            // guard, and the scalars Unicode 17 leaves unassigned.
+            use pycompat::json::Value;
+            let mut sigs: Vec<(String, Vec<String>)> = Vec::new();
+            let mut unassigned: Vec<u32> = Vec::new();
+            for (command, version) in oracle_interpreters() {
+                let out = Command::new(&command)
+                    .args([
+                        "-I",
+                        "-c",
+                        r#"
+import sys,unicodedata
+for c in range(0x110000):
+    if 0xd800 <= c <= 0xdfff: continue
+    s=chr(c)
+    values=(int(s.isalnum() or s=='_'), int(s.isdecimal()), int(s.isspace()))
+    maps=','.join('.'.join(str(ord(x)) for x in m) for m in (s.lower(),s.upper(),s.casefold()))
+    cn=int(unicodedata.unidata_version == '17.0.0' and unicodedata.category(s) == 'Cn')
+    print(str(c)+':'+''.join(map(str,values))+':'+maps+':'+str(cn))
+"#,
+                    ])
+                    .output()
+                    .unwrap();
+                assert!(out.status.success() && out.stderr.is_empty());
+                let mut rows = Vec::new();
+                for line in String::from_utf8(out.stdout).unwrap().lines() {
+                    let (sig, cn) = line.rsplit_once(':').unwrap();
+                    if cn == "1" {
+                        unassigned.push(sig.split(':').next().unwrap().parse().unwrap());
+                    }
+                    rows.push(sig.to_owned());
+                }
+                sigs.push((String::from_utf8(version).unwrap().trim().to_owned(), rows));
+            }
+            let ranges = |mut cs: Vec<u32>| {
+                cs.sort_unstable();
+                cs.dedup();
+                let mut out: Vec<(u32, u32)> = Vec::new();
+                for c in cs {
+                    match out.last_mut() {
+                        Some((_, hi)) if *hi + 1 == c => *hi = c,
+                        _ => out.push((c, c)),
+                    }
+                }
+                Value::Array(
+                    out.into_iter()
+                        .map(|(a, b)| Value::Array(vec![Value::Int(a.into()), Value::Int(b.into())]))
+                        .collect(),
+                )
+            };
+            let mut differ = Vec::new();
+            for i in 0..sigs[0].1.len() {
+                if sigs.iter().any(|(_, rows)| rows[i] != sigs[0].1[i]) {
+                    differ.push(sigs[0].1[i].split(':').next().unwrap().parse().unwrap());
+                }
+            }
+            let rec = crate::lookaround::vectors::record;
+            rec(
+                "unicode",
+                "versions",
+                Value::Array(sigs.iter().map(|(v, _)| Value::Str(v.clone())).collect()),
+            );
+            rec("unicode", "differ", ranges(differ));
+            rec("unicode", "unassigned17", ranges(unassigned));
+        }
         let guarded = VERSION_DEPENDENT.to_vec();
         let ranges = guarded
             .iter()

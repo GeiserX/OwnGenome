@@ -29,6 +29,24 @@ impl Drop for Temp {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+/// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends
+/// `[key, answer]` to `<dir>/ci_readers.jsonl`.
+fn record(key: &str, answer: bool) {
+    use std::io::Write;
+    let Some(out) = std::env::var_os("OG_RECORD_VECTORS") else {
+        return;
+    };
+    let mut row = String::from("[");
+    pycompat::json::quote(&mut row, key, true);
+    row.push_str(if answer { ", true]\n" } else { ", false]\n" });
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(PathBuf::from(out).join("ci_readers.jsonl"))
+        .unwrap()
+        .write_all(row.as_bytes())
+        .unwrap();
+}
 type Cli = fn(&[String], &mut dyn std::io::Write, &mut dyn std::io::Write) -> u8;
 fn run(cli: Cli, args: &[&str]) -> (u8, String, String) {
     let mut out = Vec::new();
@@ -458,6 +476,10 @@ fn differential_coordinate_controls() {
                     .current_dir(&t.0)
                     .output()
                     .unwrap();
+                record(
+                    &format!("coord:{kind}:{column}:{value}"),
+                    old.status.success(),
+                );
                 let new = run(smoke::cli, &["check", kind, &p]);
                 assert_eq!(
                     old.status.success(),
@@ -588,6 +610,10 @@ fn differential_json_controls() {
                 .current_dir(&t.0)
                 .output()
                 .unwrap();
+            record(
+                &format!("json:{var}:{index}:{value}"),
+                python.status.success(),
+            );
             let rust = Command::new("bash")
                 .args(["-c", &helper, "_", &p, filter])
                 .output()
@@ -614,15 +640,15 @@ fn differential_json_controls() {
         }
         let valid = template.replace("VALUE", good);
         let p = t.file(file, &format!("{valid}\n{valid}\n"));
-        assert!(
-            !Command::new("python3")
-                .args(["-I", "-c", code])
-                .current_dir(&t.0)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        let twice = Command::new("python3")
+            .args(["-I", "-c", code])
+            .current_dir(&t.0)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        record(&format!("json-twice:{var}:{index}"), twice);
+        assert!(!twice);
         assert!(
             !Command::new("bash")
                 .args(["-c", &helper, "_", &p, filter])

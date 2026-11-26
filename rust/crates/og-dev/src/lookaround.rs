@@ -622,9 +622,108 @@ fn fold_class(class: &str) -> Result<String, ()> {
     Ok(out)
 }
 
+/// The CPython answers the scanner tests compare against, committed under
+/// `tests/rust/vectors/scanner/` (gzipped JSON lines, one `[key, answer]`
+/// array per line; `tests/rust/vectors/README.md` says how they were made).
+#[cfg(test)]
+pub(crate) mod vectors {
+    use pycompat::json::{Value, loads};
+    use std::collections::HashMap;
+    use std::io::{BufRead, Write};
+    use std::path::PathBuf;
+    use std::sync::{LazyLock, Mutex};
+
+    fn dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/rust/vectors/scanner")
+    }
+
+    type Table = &'static HashMap<String, Value>;
+
+    /// Every row of `<name>.jsonl.gz`, by key.
+    pub(crate) fn table(name: &str) -> Table {
+        static TABLES: LazyLock<Mutex<HashMap<String, Table>>> = LazyLock::new(Default::default);
+        let mut tables = TABLES.lock().unwrap();
+        if let Some(t) = tables.get(name) {
+            return t;
+        }
+        let path = dir().join(format!("{name}.jsonl.gz"));
+        let mut rows = HashMap::new();
+        let reader = og_io::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        for (n, line) in reader.lines().enumerate() {
+            let line = line.unwrap();
+            let Value::Array(mut row) = loads(&line)
+                .unwrap_or_else(|e| panic!("{}:{}: {e:?}", path.display(), n + 1))
+            else {
+                panic!("{}:{}: not an array", path.display(), n + 1);
+            };
+            let (Some(answer), Some(Value::Str(key))) = (row.pop(), row.pop()) else {
+                panic!("{}:{}: not [key, answer]", path.display(), n + 1);
+            };
+            assert!(
+                rows.insert(key, answer).is_none(),
+                "{}:{}: a key twice",
+                path.display(),
+                n + 1
+            );
+        }
+        let t: Table = Box::leak(Box::new(rows));
+        tables.insert(name.to_owned(), t);
+        t
+    }
+
+    /// The answer of `key` in `<name>`. A missing key fails: the inputs of
+    /// the test changed since the vectors were made.
+    pub(crate) fn get(name: &str, key: &str) -> &'static Value {
+        table(name).get(key).unwrap_or_else(|| {
+            panic!("no committed CPython answer in {name}.jsonl.gz for {key:?}: the test's input changed")
+        })
+    }
+
+    /// The answer of `key` as text.
+    pub(crate) fn text(name: &str, key: &str) -> &'static str {
+        match get(name, key) {
+            Value::Str(s) => s,
+            other => panic!("{name}: {key:?} is not text: {other:?}"),
+        }
+    }
+
+    /// FNV-1a, 64 bits, as 16 hex digits: the fingerprint of a long answer.
+    pub(crate) fn fnv(s: &str) -> String {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in s.bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}")
+    }
+
+    /// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends
+    /// `[key, answer]` to `<dir>/<name>.jsonl`.
+    pub(crate) fn record(name: &str, key: &str, answer: Value) {
+        static LOCK: Mutex<()> = Mutex::new(());
+        let Some(out) = std::env::var_os("OG_RECORD_VECTORS") else {
+            return;
+        };
+        let line = pycompat::json::dumps(
+            &Value::Array(vec![Value::Str(key.to_owned()), answer]),
+            &pycompat::json::Dump::default(),
+        )
+        .unwrap();
+        let _g = LOCK.lock().unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(PathBuf::from(out).join(format!("{name}.jsonl")))
+            .unwrap();
+        f.write_all(format!("{line}\n").as_bytes()).unwrap();
+    }
+}
+
 #[cfg(test)]
 mod python_tests {
+    use super::vectors::{fnv, record};
     use super::*;
+    use pycompat::json::Value;
 
     #[test]
     fn finditer_spans_match_real_python() {
@@ -650,6 +749,11 @@ mod python_tests {
                 let output = std::process::Command::new("python3").args(["-I", "-c",
                     "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
                 assert!(output.status.success(), "span oracle failed");
+                record(
+                    "spans",
+                    &format!("{pattern}\u{0}{text}"),
+                    Value::Str(String::from_utf8(output.stdout.clone()).unwrap().trim().to_owned()),
+                );
                 let rule = PythonRule::compile(pattern, false).expect("supported span pattern");
                 let actual = rule
                     .find_iter(text)
@@ -677,6 +781,11 @@ mod python_tests {
             let output = std::process::Command::new("python3").args(["-I", "-c",
                 "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
             assert!(output.status.success());
+            record(
+                "spans",
+                &format!("{pattern}\u{0}{text}"),
+                Value::Str(String::from_utf8(output.stdout.clone()).unwrap().trim().to_owned()),
+            );
             assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), spans);
             assert!(
                 PythonRule::compile(pattern, false).is_err(),
@@ -842,6 +951,17 @@ for p in patterns:
             assert!(output.status.success(), "model oracle failed");
             assert!(output.stderr.is_empty(), "model oracle diagnostic");
             let oracle = String::from_utf8(output.stdout).unwrap();
+            {
+                let lines: Vec<&str> = oracle.lines().collect();
+                for (index, (pattern, _)) in rules.iter().enumerate() {
+                    let rows = &lines[index * texts.len()..(index + 1) * texts.len()];
+                    record(
+                        "model",
+                        &format!("{}:{pattern}", texts.len()),
+                        Value::Str(fnv(&rows.join("\n"))),
+                    );
+                }
+            }
             let mut spans = oracle.lines();
             for (index, (_, rule)) in rules.iter().enumerate() {
                 for (t, text) in texts.iter().enumerate() {

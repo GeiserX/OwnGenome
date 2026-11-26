@@ -460,3 +460,72 @@ pub fn run(input: impl BufRead, output: impl Write) -> io::Result<()> {
     }
     out.flush()
 }
+
+/// RECORD (this commit only): `tests/rust/vectors/make.sh` runs this to
+/// turn the oracle's `chars` answers (one entry per code point) into the
+/// compact table `pycompat/chars.tsv`: `R lo hi F` for a run of code points
+/// that are their own upper and lower case, need no escaping and share the
+/// flags F; `X cp F upper lower` (as the oracle wrote them) for the rest.
+#[cfg(test)]
+mod record {
+    use std::io::{BufRead, Write};
+
+    const SPECIAL: &str = "%[],{}=~\\|";
+
+    #[test]
+    #[ignore = "record only: tests/rust/vectors/make.sh"]
+    fn make_chars_table() {
+        let raw = std::env::var("PYCOMPAT_RAW").unwrap();
+        let out = std::env::var("PYCOMPAT_CHARS").unwrap();
+        let lines: Vec<String> = std::io::BufReader::new(std::fs::File::open(raw).unwrap())
+            .lines()
+            .map(Result::unwrap)
+            .collect();
+        let mut entries: Vec<(u32, String, String, String)> = Vec::new();
+        for pair in lines.chunks(2) {
+            let case: Vec<&str> = pair[0].split('\t').collect();
+            if case[0] != "chars" {
+                continue;
+            }
+            let (start, k): (u32, u32) = (case[1].parse().unwrap(), case[2].parse().unwrap());
+            let mut rest = pair[1].as_str();
+            for cp in (start..(start + k).min(0x11_0000)).filter(|c| !(0xD800..0xE000).contains(c)) {
+                let open = rest.find('[').unwrap();
+                let comma = rest.find(',').unwrap();
+                let close = rest.find(']').unwrap();
+                entries.push((
+                    cp,
+                    rest[..open].to_owned(),
+                    rest[open + 1..comma].to_owned(),
+                    rest[comma + 1..close].to_owned(),
+                ));
+                rest = &rest[close + 1..];
+            }
+            assert!(rest.is_empty(), "chars {start}: entries left over");
+        }
+        entries.sort_by_key(|e| e.0);
+        let mut w = std::io::BufWriter::new(std::fs::File::create(out).unwrap());
+        let mut run: Option<(u32, u32, String)> = None;
+        for (cp, f, u, l) in entries {
+            let c = char::from_u32(cp).unwrap();
+            let own = c.to_string();
+            let plain = u == own && l == own && u32::from(c) >= 32 && !SPECIAL.contains(c);
+            match &mut run {
+                Some((_, hi, rf)) if plain && *rf == f && *hi + 1 == cp => *hi = cp,
+                _ => {
+                    if let Some((lo, hi, rf)) = run.take() {
+                        writeln!(w, "R\t{lo}\t{hi}\t{rf}").unwrap();
+                    }
+                    if plain {
+                        run = Some((cp, cp, f));
+                    } else {
+                        writeln!(w, "X\t{cp}\t{f}\t{u}\t{l}").unwrap();
+                    }
+                }
+            }
+        }
+        if let Some((lo, hi, rf)) = run {
+            writeln!(w, "R\t{lo}\t{hi}\t{rf}").unwrap();
+        }
+    }
+}

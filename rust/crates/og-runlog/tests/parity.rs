@@ -125,7 +125,7 @@ fn oracle_bin() -> &'static Path {
 }
 
 /// The Python tool `<tool>.py` of [`ORACLE`] with `args`, in the zone [`TZ`].
-fn py(tool: &str, args: &[&str]) -> Out {
+fn py(label: &str, tool: &str, args: &[&str]) -> Out {
     let exe = std::env::var("OG_PYTHON").unwrap_or_else(|_| "python3".into());
     let o = Command::new(&exe)
         .arg(oracle_bin().join(format!("{tool}.py")))
@@ -136,11 +136,81 @@ fn py(tool: &str, args: &[&str]) -> Out {
         .env_remove("OWNGENOME_MEM_WARN_PERCENT")
         .output()
         .unwrap_or_else(|e| panic!("cannot run the Python oracle {exe}: {e}; set OG_PYTHON"));
-    Out {
+    let out = Out {
         code: o.status.code().unwrap_or(-1),
         stdout: String::from_utf8(o.stdout).unwrap(),
         stderr: String::from_utf8(o.stderr).unwrap(),
+    };
+    record(label, args, &out);
+    out
+}
+
+/// `text` with each test folder written as `{TMP:<name>}` and the
+/// repository as `{REPO}`, so an answer does not hold this run's paths.
+fn norm(text: &str) -> String {
+    let pre = format!(
+        "{}/og-runlog-parity-{}-",
+        std::env::temp_dir().canonicalize().unwrap().display(),
+        std::process::id()
+    );
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(i) = rest.find(&pre) {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i + pre.len()..];
+        let end = tail
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .unwrap_or(tail.len());
+        let (name, _) = tail[..end].rsplit_once('-').unwrap();
+        out.push_str(&format!("{{TMP:{name}}}"));
+        rest = &tail[end..];
     }
+    out.push_str(rest);
+    out.replace(&repo().display().to_string(), "{REPO}")
+}
+
+/// RECORD (this commit only): with `OG_RECORD_VECTORS=<dir>`, appends the
+/// answer and every file the tool wrote at its `--out` to
+/// `<dir>/runlog.jsonl` under `label`.
+fn record(label: &str, args: &[&str], out: &Out) {
+    use pycompat::json::{Dump, Value, dumps};
+    use std::io::Write;
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let Some(dir) = std::env::var_os("OG_RECORD_VECTORS") else {
+        return;
+    };
+    let mut files = indexmap::IndexMap::new();
+    if let Some(i) = args.iter().position(|a| *a == "--out") {
+        let base = args[i + 1];
+        for p in [
+            base.to_owned(),
+            format!("{base}.txt"),
+            format!("{base}.html"),
+            format!("{base}.json"),
+        ] {
+            if let Ok(text) = fs::read_to_string(&p) {
+                files.insert(norm(&p), Value::Str(norm(&text)));
+            }
+        }
+    }
+    let mut answer = indexmap::IndexMap::new();
+    answer.insert("code".to_owned(), Value::Int(out.code.into()));
+    answer.insert("stdout".to_owned(), Value::Str(norm(&out.stdout)));
+    answer.insert("stderr".to_owned(), Value::Str(norm(&out.stderr)));
+    answer.insert("files".to_owned(), Value::Object(files));
+    let line = dumps(
+        &Value::Array(vec![Value::Str(label.to_owned()), Value::Object(answer)]),
+        &Dump::default(),
+    )
+    .unwrap();
+    let _g = LOCK.lock().unwrap();
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(PathBuf::from(dir).join("runlog.jsonl"))
+        .unwrap()
+        .write_all(format!("{line}\n").as_bytes())
+        .unwrap();
 }
 
 /// `og run <args>` in the zone [`TZ`] at [`NOW`].
@@ -242,7 +312,7 @@ fn state_case(dir: &Path) -> (PathBuf, PathBuf) {
     (s, events)
 }
 
-fn state_parity(sample: &str, dir: &Path, extra: &[&str]) {
+fn state_parity(label: &str, sample: &str, dir: &Path, extra: &[&str]) {
     let st = steps();
     let py_out = dir.join("py.json");
     let og_out = dir.join("og.json");
@@ -256,7 +326,7 @@ fn state_parity(sample: &str, dir: &Path, extra: &[&str]) {
     let mut oa = vec!["state"];
     oa.extend(base);
     oa.extend(["--out", &oo]);
-    let (p, o) = (py("run_state", &pa), og(&oa));
+    let (p, o) = (py(label, "run_state", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
     // og writes the file and says so on stderr; the Python said it on
     // stdout. Same sentence, and nothing on og's stdout (docs/rust.md,
@@ -278,9 +348,11 @@ fn state_parity(sample: &str, dir: &Path, extra: &[&str]) {
 fn state_a_run_going() {
     let dir = tmp("state");
     let (s, events) = state_case(&dir);
-    state_parity("S1", &s, &["--events", &events.to_string_lossy()]);
+    state_parity(
+"state-1", "S1", &s, &["--events", &events.to_string_lossy()]);
     // Without the messages, from the trace alone.
-    state_parity("S1", &s, &[]);
+    state_parity(
+"state-2", "S1", &s, &[]);
 }
 
 #[test]
@@ -297,17 +369,20 @@ fn state_a_run_that_ended() {
     let mut rs = fs::read_to_string(s.join("logs/run_status.tsv")).unwrap();
     rs.push_str("meta\tfinished_utc\t2026-01-03 05:12:00 UTC\n");
     fs::write(s.join("logs/run_status.tsv"), rs).unwrap();
-    state_parity("S1", &s, &[]);
+    state_parity(
+"state-3", "S1", &s, &[]);
     // A run with no run-all.sh file: the process table alone says it ended.
     fs::remove_file(s.join("logs/run_status.tsv")).unwrap();
-    state_parity("S1", &s, &[]);
+    state_parity(
+"state-4", "S1", &s, &[]);
 }
 
 #[test]
 fn state_not_started_and_the_live_fixture() {
     let dir = tmp("state-empty");
     fs::create_dir_all(dir.join("S9")).unwrap();
-    state_parity("S9", &dir.join("S9"), &[]);
+    state_parity(
+"state-5", "S9", &dir.join("S9"), &[]);
     let live = tmp("state-live");
     copy_dir(
         &repo().join("tests/fixtures/live/DEMO-001"),
@@ -315,7 +390,7 @@ fn state_not_started_and_the_live_fixture() {
     );
     let ev = repo().join("tests/fixtures/live/demo-001.weblog.jsonl");
     state_parity(
-        "DEMO-001",
+        "state-6", "DEMO-001",
         &live.join("DEMO-001"),
         &["--events", &ev.to_string_lossy()],
     );
@@ -328,7 +403,7 @@ fn state_not_started_and_the_live_fixture() {
     .unwrap();
     let ev = repo().join("tests/fixtures/live/ops/events.jsonl");
     state_parity(
-        "OPS-001",
+        "state-7", "OPS-001",
         &ops.join("OPS-001"),
         &["--events", &ev.to_string_lossy()],
     );
@@ -492,11 +567,11 @@ fn mask_host(text: &str) -> String {
         .join("\n")
 }
 
-fn headroom_parity(args: &[&str]) {
+fn headroom_parity(label: &str, args: &[&str]) {
     let st = steps();
     let mut oa = vec!["headroom", "--steps", &st];
     oa.extend_from_slice(args);
-    let (p, o) = (py("run_headroom", args), og(&oa));
+    let (p, o) = (py(label, "run_headroom", args), og(&oa));
     assert_eq!(p.code, o.code, "{}{}", p.stderr, o.stderr);
     if p.code == 0 {
         same(
@@ -526,9 +601,9 @@ fn headroom_tasks_hosts_and_disks() {
             .into_owned(),
         fx.join("events.jsonl").to_string_lossy().into_owned(),
     );
-    headroom_parity(&["--trace", &tr, "--trace", &tr0]);
-    headroom_parity(&["--events", &ev, "--max-memory", "64.GB"]);
-    headroom_parity(&[
+    headroom_parity("headroom-1", &["--trace", &tr, "--trace", &tr0]);
+    headroom_parity("headroom-2", &["--events", &ev, "--max-memory", "64.GB"]);
+    headroom_parity("headroom-3", &[
         "--events",
         &ev,
         "--trace",
@@ -544,8 +619,8 @@ fn headroom_tasks_hosts_and_disks() {
         d.join("not/yet").to_string_lossy().into_owned(),
     );
     fs::create_dir_all(&w).unwrap();
-    headroom_parity(&["--work-dir", &w, "--outdir", &r, "--disk-warn-percent", "1"]);
-    headroom_parity(&["--work-dir", &w, "--disk-warn-percent", "100"]);
+    headroom_parity("headroom-4", &["--work-dir", &w, "--outdir", &r, "--disk-warn-percent", "1"]);
+    headroom_parity("headroom-5", &["--work-dir", &w, "--disk-warn-percent", "100"]);
     // The weblog metadata names the folders: a relative outdir is under
     // the launch folder.
     let ops = d.join("ops.jsonl");
@@ -562,11 +637,11 @@ fn headroom_tasks_hosts_and_disks() {
             ),
     )
     .unwrap();
-    headroom_parity(&["--events", &ops.to_string_lossy()]);
-    headroom_parity(&[]);
+    headroom_parity("headroom-6", &["--events", &ops.to_string_lossy()]);
+    headroom_parity("headroom-7", &[]);
     for bad in ["0", "101", "x", "nan"] {
-        headroom_parity(&["--disk-warn-percent", bad]);
-        headroom_parity(&["--mem-warn-percent", bad]);
+        headroom_parity(&format!("headroom-disk-{bad}"), &["--disk-warn-percent", bad]);
+        headroom_parity(&format!("headroom-mem-{bad}"), &["--mem-warn-percent", bad]);
     }
 }
 
@@ -642,8 +717,7 @@ fn delta_every_kind_of_change() {
         man.to_string_lossy().into_owned(),
         prev.to_string_lossy().into_owned(),
     );
-    delta_parity(
-        &d,
+    delta_parity("delta-1", &d,
         &[
             "--sample",
             "S1",
@@ -656,8 +730,7 @@ fn delta_every_kind_of_change() {
         ],
     );
     // The same run again: no change. No previous run. An old re-check.
-    delta_parity(
-        &d,
+    delta_parity("delta-2", &d,
         &[
             "--sample",
             "S1",
@@ -671,8 +744,7 @@ fn delta_every_kind_of_change() {
     );
     fs::copy(&cur, prev.join("summary.json")).unwrap();
     fs::copy(&man, prev.join("run_manifest.tsv")).unwrap();
-    delta_parity(
-        &d,
+    delta_parity("delta-3", &d,
         &[
             "--sample",
             "S1",
@@ -684,15 +756,16 @@ fn delta_every_kind_of_change() {
             &p,
         ],
     );
-    delta_parity(&d, &["--sample", "S1", "--summary", &c, "--manifest", &m]);
+    delta_parity("delta-4", &d, &["--sample", "S1", "--summary", &c, "--manifest", &m]);
     fs::write(&man, "run\twritten_utc\t2026-01-04 10:00:00 UTC\n").unwrap();
-    delta_parity(&d, &["--sample", "S1", "--summary", &c]);
+    delta_parity("delta-5", &d, &["--sample", "S1", "--summary", &c]);
     // A summary that cannot be read exits 2.
     let bad = d.join("bad.json");
     fs::write(&bad, "{").unwrap();
     let out = d.join("x").to_string_lossy().into_owned();
     let (pb, ob) = (
         py(
+            "delta-unreadable",
             "run_delta",
             &[
                 "--sample",
@@ -721,7 +794,7 @@ fn delta_every_kind_of_change() {
     );
 }
 
-fn delta_parity(d: &Path, args: &[&str]) {
+fn delta_parity(label: &str, d: &Path, args: &[&str]) {
     let (po, oo) = (
         d.join("py_delta").to_string_lossy().into_owned(),
         d.join("og_delta").to_string_lossy().into_owned(),
@@ -731,7 +804,7 @@ fn delta_parity(d: &Path, args: &[&str]) {
     let mut oa = vec!["delta"];
     oa.extend_from_slice(args);
     oa.extend(["--out", &oo]);
-    let (p, o) = (py("run_delta", &pa), og(&oa));
+    let (p, o) = (py(label, "run_delta", &pa), og(&oa));
     assert_eq!((p.code, o.code), (0, 0), "{}{}", p.stderr, o.stderr);
     // og words a reason that names inputs as a guess; the oracle states
     // it as a fact. Map og's wording back so the rest stays byte for byte.
