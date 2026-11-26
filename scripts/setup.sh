@@ -453,8 +453,8 @@ install_parascopy_data() {
     return 0
   fi
   while read -r part md5; do
-    raw=$(source_of parascopy_data --part "$part" path) || return 1
-    adopt "${dest}.part/${raw##*/}" "$raw"
+    url=$(source_of parascopy_data --part "$part" url) && raw=$(source_of parascopy_data --part "$part" path) || return 1
+    adopt "${dest}.part/${raw##*/}" "$raw" "$url" md5 "$md5"
   done <<<"$PARASCOPY_FILES"
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
@@ -516,7 +516,7 @@ install_yleaf_data() {
     echo "[OK] Yleaf ${YLEAF_DATA_VERSION} marker tables (step 37) already present."
   else
     url=$(source_of yleaf_data url) && tgz=$(source_of yleaf_data path) || return 1
-    adopt "${dest}.tar.gz" "$tgz"
+    adopt "${dest}.tar.gz" "$tgz" "$url" sha256 "$YLEAF_DATA_SHA256"
     if ! fetch "$url" "$tgz" sha256 "$YLEAF_DATA_SHA256"; then
       echo "[WARN] Could not download Yleaf ${YLEAF_DATA_VERSION}."
       return 1
@@ -584,7 +584,7 @@ install_yleaf_data() {
     echo "[WARN] Could not download the current Y tree (${label}); step 37 will place the sample on Yleaf's tree only. Run this again to retry."
     rm -rf "${yt}.part"
     if $mask_ok; then
-      find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +
+      find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +  # not kept: the installed tree of an older pin; the mask that matches its pin stays
     else
       rm -rf "$yt"  # not kept: the installed tree of an older pin
     fi
@@ -711,7 +711,7 @@ install_exomiser_data() {
   while read -r part sha; do
     [ -d "${dest}/${EXOMISER_DATA_VERSION}_${part}" ] && continue
     url=$(source_of exomiser_data --part "$part" url) && zip=$(source_of exomiser_data --part "$part" path) || return 1
-    adopt "${dest}/${zip##*/}" "$zip"
+    adopt "${dest}/${zip##*/}" "$zip" "$url" sha256 "$sha"
     # A zip kept by an unpack that failed is used again once its sha256 still matches.
     if [ -f "$zip" ] && [ "$(_digest sha256 "$zip")" = "$sha" ]; then
       echo "Using the checked ${zip##*/} kept from the last run."
@@ -920,7 +920,7 @@ install_consumer_sites() {
   # (a rerun after a failed build, another install) and refuses one that does
   # not, so the table is never built from another file.
   db=$(source_of dbsnp path) && url=$(source_of dbsnp url) || return 1
-  adopt "${dir}/${db##*/}" "$db"
+  adopt "${dir}/${db##*/}" "$db" "$url" md5 "$CONSUMER_DBSNP_MD5"
   echo "dbSNP ${CONSUMER_DBSNP_BUILD} for GRCh38 (about 30 GB, kept in ${OG_DOWNLOADS}; a copy already there with the pinned md5 is used)..."
   if ! fetch "$url" "$db" md5 "$CONSUMER_DBSNP_MD5"; then
     echo "[WARN] Could not download dbSNP ${CONSUMER_DBSNP_BUILD}. Run this command again: the download resumes."
@@ -1019,7 +1019,7 @@ install_ancient_panel() {
     # An older setup downloaded into raw_<version>: a file there that
     # matches its md5 moves to the downloads folder (a staged copy does not).
     if [ -s "${old}/aadr.${e}" ] && [ "$(_digest md5 "${old}/aadr.${e}")" = "$md5" ]; then
-      adopt "${old}/aadr.${e}" "$f"
+      adopt "${old}/aadr.${e}" "$f" "$url" md5 "$md5"
     fi
     [ "$e" != geno ] || echo "  Downloading the AADR genotypes (7.1 GB; an interrupted download resumes)..."
     if ! fetch "$url" "$f" md5 "$md5"; then
@@ -1105,7 +1105,7 @@ PGS_BASE_URL=${PGS_BASE_URL:-https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores
 install_pgsc_calc() {
   local dir=$1 tgz url
   url=$(source_of pgsc_calc url) && tgz=$(source_of pgsc_calc path) || return 1
-  adopt "${dir}.tar.gz" "$tgz"
+  adopt "${dir}.tar.gz" "$tgz" "$url" sha256 "$PGSC_CALC_SHA256"
   fetch "$url" "$tgz" sha256 "$PGSC_CALC_SHA256" || return 1
   rm -rf "${dir}.part"
   mkdir -p "${dir}.part"
@@ -1812,7 +1812,7 @@ install_annotsv_bundle() {
   echo "Downloading AnnotSV ${ANNOTSV_ANNOTATIONS_VERSION} annotation data (~5.3 GB)..."
   echo "  The AnnotSV server is slow (about 0.8 MB/s measured from a GitHub runner), so this can take"
   echo "  1-2 hours. An interrupted download resumes when setup.sh runs again."
-  adopt "${GENOME_DIR}/${ANNOTSV_NAME}" "$ANNOTSV_TARBALL"
+  adopt "${GENOME_DIR}/${ANNOTSV_NAME}" "$ANNOTSV_TARBALL" "$ANNOTSV_URL"
   if ! fetch "$ANNOTSV_URL" "$ANNOTSV_TARBALL"; then
     echo "[WARN] AnnotSV annotation download failed. Step 5 (AnnotSV) will be skipped until it is in place."
     echo "  Re-run setup.sh, or download it by hand:"
@@ -1869,7 +1869,7 @@ install_annotsv_gnomad_sv() {
   mkdir -p "$benign"
   # fetch checks a file already there and downloads only a missing one; a
   # wrong file in the downloads folder is refused.
-  adopt "${ANNOTSV_DIR}/${src##*/}" "$src"
+  adopt "${ANNOTSV_DIR}/${src##*/}" "$src" "$GNOMAD_SV_URL" sha256 "$GNOMAD_SV_SHA256"
   [ -s "$src" ] || echo "Downloading gnomAD-SV ${GNOMAD_SV_VERSION} sites (~1.7 GB)..."
   if ! fetch "$GNOMAD_SV_URL" "$src" sha256 "$GNOMAD_SV_SHA256"; then
     echo "[WARN] Could not download gnomAD-SV ${GNOMAD_SV_VERSION}. Step 5 stops until it is in place; run setup.sh again."
@@ -1908,8 +1908,9 @@ install_annotsv_gnomad_sv() {
   n=$(gzip -dc "${out}.part" | grep -vc '^#' || true)
   if [ "$n" -eq 0 ]; then
     rm -f "${out}.part"
-    rm -f "$src"  # not kept: it gave no record, so the next run downloads it again
-    echo "[WARN] ${src} gave no record AnnotSV can use; removed it. Run setup.sh again."
+    # The file matched its pinned sha256, so the conversion failed (a full
+    # disk, the tool), not the download: it stays for the next run.
+    echo "[WARN] Converting ${src} gave no record AnnotSV can use, though it matches its pinned sha256; it is kept. Free some disk if it is full, and run setup.sh again."
     return 1
   fi
   mv "${out}.part" "$out"
@@ -1979,7 +1980,7 @@ install_annotsv_mane() {
     echo "[OK] MANE ${MANE_RELEASE} Select transcripts for AnnotSV already present."
     return 0
   fi
-  adopt "${ANNOTSV_DIR}/${src##*/}" "$src"
+  adopt "${ANNOTSV_DIR}/${src##*/}" "$src" "$MANE_SUMMARY_URL" sha256 "$MANE_SUMMARY_SHA256"
   if ! fetch "$MANE_SUMMARY_URL" "$src" sha256 "$MANE_SUMMARY_SHA256"; then
     echo "[WARN] Could not download the MANE ${MANE_RELEASE} summary. Step 5 stops until it is in place; run setup.sh again."
     return 1
@@ -1996,8 +1997,9 @@ install_annotsv_mane() {
   n=$(wc -l < "${out}.part" | tr -d ' ')
   if [ "$n" -eq 0 ]; then
     rm -f "${out}.part"
-    rm -f "$src"  # not kept: it lists no transcript, so the next run downloads it again
-    echo "[WARN] ${src} lists no MANE Select RefSeq transcript; removed it. Run setup.sh again."
+    # The file matched its pinned sha256, so reading it failed (a full disk,
+    # the tool), not the download: it stays for the next run.
+    echo "[WARN] Reading ${src} gave no MANE Select RefSeq transcript, though it matches its pinned sha256; it is kept. Free some disk if it is full, and run setup.sh again."
     return 1
   fi
   mv "${out}.part" "$out"
@@ -2796,7 +2798,7 @@ refresh_clinvar() {
   local new="${CLINVARDIR}/.refresh"
   # A download cut short last time (*.part) is resumed; anything else is redone.
   mkdir -p "$new"
-  find "$new" -mindepth 1 ! -name '*.part' -exec rm -rf {} +
+  find "$new" -mindepth 1 ! -name '*.part' -exec rm -rf {} +  # not kept: a stopped refresh's staging files, redone; its .part resumes
   echo "Downloading the current ClinVar release..."
   fetch "$CLINVAR_URL" "${new}/clinvar.vcf.gz" md5 "${CLINVAR_URL}.md5" || return 1
   fetch "${CLINVAR_URL}.tbi" "${new}/clinvar.vcf.gz.tbi" || return 1
@@ -2900,7 +2902,8 @@ else
   if [ ! -f "$FASTA" ]; then
     case "$REF_FASTA_URL" in
       *.gz) DL=$(dl "${REF_FASTA_URL##*/}")
-        adopt "${FASTA}.download.gz" "$DL" ;;
+        # shellcheck disable=SC2046  # the checksum arguments are dropped when REF_FASTA_MD5 is empty
+        adopt "${FASTA}.download.gz" "$DL" "$REF_FASTA_URL" $([ -z "$REF_FASTA_MD5" ] || printf 'md5 %s' "$REF_FASTA_MD5") ;;
       *) DL="$FASTA" ;;
     esac
     # shellcheck disable=SC2046  # the checksum arguments are dropped when REF_FASTA_MD5 is empty
@@ -2915,8 +2918,14 @@ else
         done_with "$DL"
       else
         rm -f "${FASTA}.tmp"
-        rm -f "$DL"  # not kept: it does not unpack, so the next run downloads it again
-        echo "ERROR: could not unpack $(basename "$REF_FASTA_URL"); removed it, run setup.sh again." >&2
+        if [ -n "$REF_FASTA_MD5" ]; then
+          # It matched its md5, so the unpack failed (a full disk, gzip), not
+          # the download: it stays for the next run.
+          echo "ERROR: could not unpack $(basename "$REF_FASTA_URL"), though it matches its md5; it is kept in ${DL}. Free some disk if it is full, and run setup.sh again." >&2
+        else
+          rm -f "$DL"  # not kept: no checksum vouches for it and it does not unpack, so the next run downloads it again
+          echo "ERROR: could not unpack $(basename "$REF_FASTA_URL"); removed it, run setup.sh again." >&2
+        fi
         exit 1
       fi
     fi

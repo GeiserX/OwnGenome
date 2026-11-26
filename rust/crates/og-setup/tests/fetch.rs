@@ -1036,7 +1036,7 @@ fn plan_lists_rows_sizes_state_kept_raw_size_and_free_disk() {
     let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
     let s = Sources::read(&root).unwrap();
     let rows = og_setup::plan::chosen(&s, &["setup".to_owned()]);
-    let lines = og_setup::plan::lines(&c, &rows).unwrap();
+    let lines = og_setup::plan::lines(&c, &s, &rows).unwrap();
     let mut out = vec![];
     og_setup::plan::write_plan(&c, &lines, &mut out).unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -1242,6 +1242,209 @@ fn a_rerun_of_an_install_built_by_the_shell_setup_needs_no_vep_download() {
     assert!(!g.join("downloads").exists());
 }
 
+/// The real table with row ID made too large for any disk.
+fn checkout_with_huge(id: &str) -> PathBuf {
+    let t = read("assets/data-sources.tsv");
+    let row = t
+        .lines()
+        .find(|l| l.starts_with(&format!("{id}\t")))
+        .unwrap();
+    let mut f: Vec<&str> = row.split('\t').collect();
+    f[8] = "1000000000000000000";
+    let big = f.join("\t");
+    real_checkout(Some(("assets/data-sources.tsv", row, &big)))
+}
+
+#[test]
+fn an_archaic_folder_holding_only_the_sites_file_and_a_lock_is_still_to_download() {
+    let root = checkout_with_huge("archaic_vcf");
+    let g = tmp("archaic");
+    let genome = ("GENOME_DIR", g.display().to_string());
+    let c = ctx(&root, std::slice::from_ref(&genome));
+    let x = |s: &str| c.expand(s, None).unwrap();
+    let v = x("${ARCHAIC_DATA_VERSION}");
+    let adl = g.join(format!("downloads/archaic-{v}"));
+    fs::create_dir_all(&adl).unwrap();
+    // An interrupted --archaic run: the sites file (another row, fetched
+    // first), fetch's lock, a VCF's .part and a saved checksum.
+    for f in [
+        "1kg_sites.vcf.gz",
+        ".1kg_sites.vcf.gz.lock",
+        "Altai.chr1.vcf.gz.part",
+        "1kg_sites.vcf.gz.checksum",
+    ] {
+        fs::write(adl.join(f), b"x").unwrap();
+    }
+    let check = || {
+        plan_cli(
+            &root,
+            &["--for", "archaic", "--check"],
+            std::slice::from_ref(&genome),
+        )
+    };
+    let row = format!("archaic_vcf\tdownloads/archaic-{v}/\t1000000.0 TB\t");
+    let (rc, out, err) = check();
+    assert_eq!(rc, 1, "{out}{err}");
+    assert!(out.contains(&format!("{row}missing\n")), "{out}");
+    // A VCF of its own: still to download, less what it holds.
+    fs::write(adl.join("Altai.chr1.vcf.gz"), b"data").unwrap();
+    let (rc, out, err) = check();
+    assert_eq!(rc, 1, "{out}{err}");
+    assert!(
+        out.contains(&format!("{row}missing, 4 bytes of it already here\n")),
+        "{out}"
+    );
+    // The install done, stamped with today's pins: present.
+    let stamp = x(
+        "data=${ARCHAIC_DATA_VERSION} regions=all bcftools=${BCFTOOLS_IMAGE} picard=${PICARD_IMAGE} masks=m code=c",
+    );
+    let done = g.join(format!("reference/archaic/{v}/DONE"));
+    fs::create_dir_all(done.parent().unwrap()).unwrap();
+    fs::write(&done, format!("{stamp}\n")).unwrap();
+    let (rc, out, err) = check();
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(out.contains(&format!("{row}present\n")), "{out}");
+    // A stamp of an older bcftools: setup redoes it, so it is to download.
+    fs::write(&done, stamp.replace("bcftools=", "bcftools=old-")).unwrap();
+    let (rc, out, err) = check();
+    assert_eq!(rc, 1, "{out}{err}");
+    // Done, its VCFs pruned: nothing to download.
+    fs::write(&done, format!("{stamp}\n")).unwrap();
+    fs::remove_file(adl.join("Altai.chr1.vcf.gz")).unwrap();
+    let (rc, out, err) = check();
+    assert_eq!(rc, 0, "{out}{err}");
+    assert!(
+        out.contains(&format!("{row}installed, not kept\n")),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_row_of_many_installed_files_or_a_family_counts_each_file_it_lacks() {
+    let root = real_checkout(None);
+    let s = Sources::read(&root).unwrap();
+    let g = tmp("markers");
+    let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
+    let x = |t: &str| c.expand(t, None).unwrap();
+    // GENCODE: the genes table there, the exons BED not.
+    let genes = g.join(x("reference/gencode.v${GENCODE_RELEASE}.basic.genes.gtf"));
+    fs::create_dir_all(genes.parent().unwrap()).unwrap();
+    fs::write(&genes, b"x").unwrap();
+    // MoChA: 21 of 22 chromosomes cut, each stamped as setup stamps it.
+    let panel = g.join(x("reference/mocha-${MOCHA_PANEL_VERSION}/panel"));
+    fs::create_dir_all(&panel).unwrap();
+    let stamp =
+        x("manifest=${MOCHA_PANEL_MANIFEST_SHA256} regions=all bcftools=${MOCHA_IMAGE} cnp=1");
+    for n in 1..=21 {
+        fs::write(panel.join(format!("chr{n}.vcf.gz.tbi")), b"x").unwrap();
+        fs::write(panel.join(format!("chr{n}.stamp")), format!("{stamp}\n")).unwrap();
+    }
+    let rows = og_setup::plan::chosen(&s, &["setup".to_owned(), "mocha-data".to_owned()]);
+    let l = og_setup::plan::lines(&c, &s, &rows).unwrap();
+    let get = |id: &str| l.iter().find(|x| x.id == id).unwrap().clone();
+    let gc = get("gencode");
+    assert_eq!((gc.present, gc.installed), (0, 0), "MP1: {gc:?}");
+    let mp = get("mocha_panel");
+    assert_eq!(
+        (mp.files, mp.present, mp.installed),
+        (22, 0, 21),
+        "MP2: {mp:?}"
+    );
+    let mut out = vec![];
+    og_setup::plan::write_plan(&c, std::slice::from_ref(&mp), &mut out).unwrap();
+    let out = String::from_utf8(out).unwrap();
+    let part = og_setup::plan::human(mp.bytes.unwrap() / 22);
+    assert!(
+        out.contains("\t0 of 22 files present, 21 installed and not kept\n")
+            && out.contains(&format!("To download: 1 source, {part};")),
+        "one part counted: {out}"
+    );
+}
+
+#[test]
+fn a_stamped_install_is_done_only_while_its_stamp_holds_todays_pins() {
+    let root = real_checkout(None);
+    let s = Sources::read(&root).unwrap();
+    let g = tmp("stamps");
+    let c = ctx(&root, &[("GENOME_DIR", g.display().to_string())]);
+    let x = |t: &str| c.expand(t, None).unwrap();
+    let put = |p: &str, text: &str| {
+        let p = g.join(x(p));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
+    };
+    let done = |id: &str, part: Option<&str>| c.installed(s.get(id).unwrap(), part).unwrap();
+    // gnomAD-SV: AnnotSV's merge consumes the converted file; the stamp stays.
+    let sv =
+        "annotsv_annotations/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed";
+    assert!(!done("gnomad_sv", None));
+    put(
+        sv,
+        &x("gnomAD-SV ${GNOMAD_SV_VERSION} sha256 ${GNOMAD_SV_SHA256}\n"),
+    );
+    assert!(done("gnomad_sv", None), "the stamp of today's release");
+    put(sv, "gnomAD-SV 4.0 sha256 0000\n");
+    assert!(
+        !done("gnomad_sv", None),
+        "an older release: setup adds the new one"
+    );
+    // MANE: the transcripts and their release stamp.
+    put("annotsv_annotations/mane_select_refseq.txt", "NM_1.1\n");
+    assert!(!done("mane_summary", None), "no stamp");
+    put(
+        "annotsv_annotations/mane_select_refseq.release",
+        &x("MANE ${MANE_RELEASE} sha256 ${MANE_SUMMARY_SHA256}\n"),
+    );
+    assert!(done("mane_summary", None));
+    // MoChA: a chromosome stamped with another image is cut again.
+    let panel = "reference/mocha-${MOCHA_PANEL_VERSION}/panel";
+    let stamp =
+        x("manifest=${MOCHA_PANEL_MANIFEST_SHA256} regions=all bcftools=${MOCHA_IMAGE} cnp=1");
+    put(&format!("{panel}/chr7.vcf.gz.tbi"), "x");
+    put(&format!("{panel}/chr7.stamp"), &stamp);
+    assert!(done("mocha_panel", Some("7")) && done("mocha_panel_index", Some("7")));
+    put(
+        &format!("{panel}/chr7.stamp"),
+        &stamp.replace("bcftools=", "bcftools=x"),
+    );
+    assert!(!done("mocha_panel", Some("7")), "a new MOCHA_IMAGE");
+    // The fine ancestry panel: the same, by its pins and bcftools image.
+    let fine = "reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel";
+    let pstamp = x(
+        "pins=${ANCESTRY_FINE_PANEL_SHA256} regions=all thin=1 keep=k bcftools=${BCFTOOLS_HTTPS_IMAGE}",
+    );
+    put(&format!("{fine}/chr3.vcf.gz.tbi"), "x");
+    put(&format!("{fine}/chr3.stamp"), &pstamp);
+    assert!(done("ancestry_fine_bcf", Some("3")));
+    put(
+        &format!("{fine}/chr3.stamp"),
+        &pstamp.replace("pins=", "pins=0"),
+    );
+    assert!(!done("ancestry_fine_bcf", Some("3")), "new panel pins");
+    // A word must be a whole word of the stamp, and a large file is no stamp.
+    put(
+        sv,
+        &x("gnomAD-SV ${GNOMAD_SV_VERSION}x sha256 ${GNOMAD_SV_SHA256}\n"),
+    );
+    assert!(!done("gnomad_sv", None));
+    put(
+        sv,
+        &format!(
+            "{}{}",
+            x("gnomAD-SV ${GNOMAD_SV_VERSION} sha256 ${GNOMAD_SV_SHA256}\n"),
+            " ".repeat(70_000)
+        ),
+    );
+    assert!(!done("gnomad_sv", None));
+    // The table refuses an empty stamp word.
+    let bad = format!("{TABLE_HEAD}a\tsetup\t1\tdownloads/a\t\thttps://h/a\t\t\t\t\ta.done#\n");
+    assert!(
+        Sources::parse(&bad)
+            .unwrap_err()
+            .contains("a stamp is FILE#WORD")
+    );
+}
+
 #[test]
 fn the_next_gencode_release_is_one_line_of_common_sh() {
     let now = read("scripts/lib/common.sh");
@@ -1268,7 +1471,7 @@ fn the_next_gencode_release_is_one_line_of_common_sh() {
     )
     .unwrap();
     let rows = og_setup::plan::chosen(&s, &["setup".to_owned()]);
-    let l = og_setup::plan::lines(&c, &rows).unwrap();
+    let l = og_setup::plan::lines(&c, &s, &rows).unwrap();
     let gl = l.iter().find(|x| x.id == "gencode").unwrap();
     assert_eq!(gl.present, 1, "{gl:?}");
 }
@@ -1405,23 +1608,37 @@ fn read(p: &str) -> String {
 }
 
 /// Pins of the table also written in one of FILES: (id, pin, file).
-fn duplicated_pins(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, String)> {
+fn duplicated_pins(s: &Sources, files: &[(String, String)]) -> Vec<(String, String, String)> {
     let mut out = vec![];
     for (id, pin) in literal_pins(s) {
         for (name, text) in files {
             if text.contains(&pin) {
-                out.push((id.clone(), pin.clone(), (*name).to_owned()));
+                out.push((id.clone(), pin.clone(), name.clone()));
             }
         }
     }
     out
 }
 
-fn pin_files() -> Vec<(&'static str, String)> {
-    ["versions.env", "scripts/setup.sh", "scripts/lib/common.sh"]
-        .into_iter()
-        .map(|f| (f, read(f)))
-        .collect()
+/// versions.env and every script under scripts/ and scripts/lib/ (setup,
+/// its library and the steps): setup.sh first, then common.sh, then the rest.
+fn pin_files() -> Vec<(String, String)> {
+    let mut names = vec![
+        "versions.env".to_owned(),
+        "scripts/setup.sh".to_owned(),
+        "scripts/lib/common.sh".to_owned(),
+    ];
+    for dir in ["scripts", "scripts/lib"] {
+        let mut more: Vec<String> = fs::read_dir(repo().join(dir))
+            .unwrap()
+            .flatten()
+            .map(|e| format!("{dir}/{}", e.file_name().to_string_lossy()))
+            .filter(|n| n.ends_with(".sh") && !names.contains(n))
+            .collect();
+        more.sort();
+        names.extend(more);
+    }
+    names.into_iter().map(|f| (f.clone(), read(&f))).collect()
 }
 
 #[test]
@@ -1463,7 +1680,7 @@ fn a_pin_planted_twice_is_caught() {
 
 /// Defaults of the table, `${NAME:-default}`, for a NAME that versions.env,
 /// setup.sh or common.sh sets: (id, NAME, file). The default then lives twice.
-fn repeated_defaults(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, String)> {
+fn repeated_defaults(s: &Sources, files: &[(String, String)]) -> Vec<(String, String, String)> {
     let mut out = vec![];
     for r in s.rows.values() {
         let fields = [&r.path, &r.url, &r.value]
@@ -1490,7 +1707,7 @@ fn repeated_defaults(s: &Sources, files: &[(&str, String)]) -> Vec<(String, Stri
                     l.strip_prefix(name).is_some_and(|x| x.starts_with('='))
                 });
                 if sets {
-                    out.push((r.id.clone(), name.to_owned(), (*f).to_owned()));
+                    out.push((r.id.clone(), name.to_owned(), f.clone()));
                 }
             }
         }
@@ -1498,12 +1715,54 @@ fn repeated_defaults(s: &Sources, files: &[(&str, String)]) -> Vec<(String, Stri
     out
 }
 
-/// URLs of the table that setup.sh or common.sh also spell: a line holding
-/// the start of a row's URL up to its first `${` or `{part}` (at least a host
-/// and a folder) and, after it, the URL's end after its last `}` (the file
-/// name's tail): (id, prefix, file). A row whose installer builds its URL
-/// says `-`; every other installer reads its URL from the table.
-fn repeated_urls(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, String)> {
+/// True when TEXT spells a URL whose start is PREFIX and whose end is TAIL:
+/// on one line, or split over a variable, `base=PREFIX...` on one line and
+/// `${base}...TAIL` (or `$base`) on another. A URL with no `${` (TAIL
+/// empty) split that way: a variable set to the URL's start (a host and a
+/// folder at least), then used before the rest of it.
+fn spells_url(text: &str, url: &str, prefix: &str, tail: &str) -> bool {
+    if text.lines().any(|l| {
+        l.find(prefix)
+            .is_some_and(|i| l[i + prefix.len()..].contains(tail))
+    }) {
+        return true;
+    }
+    let mut bases: Vec<(String, String)> = vec![];
+    for l in text.lines() {
+        for (k, v) in assignments(l) {
+            let v = v.trim_matches(|c| c == '"' || c == '\'');
+            if !tail.is_empty() && v.starts_with(prefix) {
+                bases.push((k, tail.to_owned()));
+            } else if tail.is_empty()
+                && v.len() < url.len()
+                && url.starts_with(v)
+                && v.split_once("://")
+                    .is_some_and(|(_, rest)| rest.contains('/'))
+            {
+                bases.push((k, url[v.len()..].to_owned()));
+            }
+        }
+    }
+    text.lines().any(|l| {
+        bases.iter().any(|(k, rest)| {
+            [format!("${{{k}}}"), format!("${k}")].iter().any(|use_| {
+                l.match_indices(use_.as_str()).any(|(i, _)| {
+                    let after = &l[i + use_.len()..];
+                    let word_end = use_.ends_with('}')
+                        || !after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+                    word_end && after.contains(rest.as_str())
+                })
+            })
+        })
+    })
+}
+
+/// URLs of the table that a script also spells (`spells_url`): the start
+/// of a row's URL up to its first `${` or `{part}` (at least a host and a
+/// folder) and, after it, the URL's end after its last `}` (the file name's
+/// tail): (id, prefix, file). A row whose installer builds its URL says `-`;
+/// every other script reads its URL from the table.
+fn repeated_urls(s: &Sources, files: &[(String, String)]) -> Vec<(String, String, String)> {
     let mut out = vec![];
     for r in s.rows.values() {
         if r.url == "-" || r.url.starts_with("${") {
@@ -1527,12 +1786,8 @@ fn repeated_urls(s: &Sources, files: &[(&str, String)]) -> Vec<(String, String, 
             continue;
         }
         for (f, text) in files {
-            let spelt = text.lines().any(|l| {
-                l.find(prefix)
-                    .is_some_and(|i| l[i + prefix.len()..].contains(tail))
-            });
-            if *f != "versions.env" && spelt {
-                out.push((r.id.clone(), prefix.to_owned(), (*f).to_owned()));
+            if *f != "versions.env" && spells_url(text, &r.url, prefix, tail) {
+                out.push((r.id.clone(), prefix.to_owned(), f.clone()));
             }
         }
     }
@@ -1583,6 +1838,32 @@ fn a_planted_default_or_url_is_caught() {
             && f == "scripts/setup.sh"),
         "{u:#?}"
     );
+    // PN2: the same URL split over a base variable, in a step script.
+    let mut files = pin_files();
+    let step = files
+        .iter()
+        .position(|(f, _)| f == "scripts/25-prs.sh")
+        .expect("pin_files reads the step scripts");
+    files[step].1.push_str(
+        "\n  base=\"https://ftp.ensembl.org/pub/release-${rel}/variation/indexed_vep_cache\"\n  url=\"${base}/homo_sapiens_vep_${rel}_GRCh38.tar.gz\"\n",
+    );
+    let u = repeated_urls(&s, &files);
+    assert!(
+        u.iter()
+            .any(|(id, _, f)| id == "vep_cache" && f == "scripts/25-prs.sh"),
+        "PN2 {u:#?}"
+    );
+    // And a URL with no pin in it, split the same way.
+    let mut files = pin_files();
+    files[step].1.push_str(
+        "\n  z=https://zenodo.org/records/7072866/files\n  fetch \"$z/revel-v1.3_all_chromosomes.zip\" \"$out\"\n",
+    );
+    let u = repeated_urls(&s, &files);
+    assert!(
+        u.iter()
+            .any(|(id, _, f)| id == "revel" && f == "scripts/25-prs.sh"),
+        "a literal URL split {u:#?}"
+    );
 }
 
 /// The shell functions of TEXT (and its top level, as one more block):
@@ -1610,19 +1891,49 @@ fn blocks(text: &str) -> Vec<(String, Vec<(usize, String)>)> {
     out
 }
 
-/// `$x` written as `${x}`, and quotes dropped, so two spellings of a path compare.
+/// `$x` written as `${x}`, `${x:?msg}`, `${x:-y}` and `${x?}` as `${x}` (the
+/// same path when x is set), and quotes dropped, so two spellings of a path
+/// compare.
 fn norm(s: &str) -> String {
     let s = s.trim_matches(|c| c == '"' || c == '\'');
     let mut out = String::new();
     let b: Vec<char> = s.chars().collect();
+    let name_at = |j: usize| {
+        let mut k = j;
+        while k < b.len() && (b[k].is_ascii_alphanumeric() || b[k] == '_') {
+            k += 1;
+        }
+        k
+    };
+    // `${NAME` followed by `?`, `:?` or `:-`: where NAME ends.
+    let modified = |i: usize| {
+        if b[i] != '$' || b.get(i + 1) != Some(&'{') {
+            return None;
+        }
+        let k = name_at(i + 2);
+        let m = b.get(k) == Some(&'?')
+            || (b.get(k) == Some(&':') && matches!(b.get(k + 1), Some('?' | '-')));
+        (k > i + 2 && m).then_some(k)
+    };
     let mut i = 0;
     while i < b.len() {
         if b[i] == '$' && i + 1 < b.len() && (b[i + 1].is_ascii_alphabetic() || b[i + 1] == '_') {
-            let mut j = i + 1;
-            while j < b.len() && (b[j].is_ascii_alphanumeric() || b[j] == '_') {
+            let j = name_at(i + 1);
+            out.push_str(&format!("${{{}}}", b[i + 1..j].iter().collect::<String>()));
+            i = j;
+        } else if let Some(k) = modified(i) {
+            // The modifier's word runs to its closing brace.
+            let mut depth = 1;
+            let mut j = k;
+            while j < b.len() && depth > 0 {
+                match b[j] {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
                 j += 1;
             }
-            out.push_str(&format!("${{{}}}", b[i + 1..j].iter().collect::<String>()));
+            out.push_str(&format!("${{{}}}", b[i + 2..k].iter().collect::<String>()));
             i = j;
         } else {
             if b[i] != '"' {
@@ -1797,13 +2108,23 @@ fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
                 continue;
             }
             let w = words(l);
-            let del = w.iter().position(|x| x == "rm").or_else(|| {
-                (w.iter().any(|x| x == "find")
-                    && (w.iter().any(|x| x == "-delete") || l.contains("-exec rm")))
-                .then_some(0)
-            });
-            let Some(at) = del else { continue };
-            for a in w[at + 1..].iter().filter(|a| !a.starts_with('-')) {
+            // `find PATH... -delete` or `-exec rm`: the paths before its first
+            // test or action; else the arguments of `rm`.
+            let found = w
+                .iter()
+                .position(|x| x == "find")
+                .filter(|_| w.iter().any(|x| x == "-delete") || l.contains("-exec rm"));
+            let args: Vec<&String> = if let Some(f) = found {
+                w[f + 1..]
+                    .iter()
+                    .take_while(|a| !a.starts_with(['-', '(', '!']))
+                    .collect()
+            } else if let Some(at) = w.iter().position(|x| x == "rm") {
+                w[at + 1..].iter().filter(|a| !a.starts_with('-')).collect()
+            } else {
+                continue;
+            };
+            for a in args {
                 let a = shape(&norm(a));
                 if a.ends_with(".part") {
                     continue;
@@ -1871,6 +2192,21 @@ fn a_planted_delete_of_a_download_is_caught() {
         1,
         "main's archaic VCFs"
     );
+    // G1: find names the download before -exec rm (the rm word is no path).
+    let g1 = "install_pgsc_calc() {\n  url=$(source_of pgsc_calc url) && tgz=$(source_of pgsc_calc path) || return 1\n  fetch \"$url\" \"$tgz\" sha256 \"$K\" || return 1\n  find \"$tgz\" -exec rm -f {} +\n}\n";
+    assert_eq!(deleted_downloads("g1.sh", g1).len(), 1, "G1 find -exec rm");
+    let g1d = g1.replace("-exec rm -f {} +", "-maxdepth 0 -delete");
+    assert_eq!(deleted_downloads("g1.sh", &g1d).len(), 1, "G1 find -delete");
+    let unpacked = "install_x() {\n  tgz=$(dl x.tar.gz)\n  fetch \"$u\" \"$tgz\" md5 \"$m\"\n  find \"${tree}.part\" -name '*.tmp' -exec rm -f {} +\n}\n";
+    assert!(deleted_downloads("tree.sh", unpacked).is_empty());
+    // G1b: `${tgz:?}` is `${tgz}`, and so are `${tgz:-x}` and `${tgz?}`.
+    for planted in ["\"${tgz:?}\"", "\"${tgz:-/none}\"", "\"${tgz?unset}\""] {
+        let g1b = g1.replace(
+            "find \"$tgz\" -exec rm -f {} +",
+            &format!("rm -f {planted}"),
+        );
+        assert_eq!(deleted_downloads("g1b.sh", &g1b).len(), 1, "G1b {planted}");
+    }
     // The staged copy, marked, deletes no download.
     let staged = "install_ancient_panel() {\n  [ -n \"$src\" ] || raw=$(dl \"aadr-${AADR_VERSION}\")\n  if [ -n \"$src\" ]; then\n    rm -rf \"$raw\"  # not kept: the staged copy\n  else\n    done_with \"$raw\"\n  fi\n}\n";
     assert!(deleted_downloads("staged.sh", staged).is_empty());
@@ -1887,25 +2223,28 @@ const NET_REASONS: [&str; 6] = [
     "checksum",
 ];
 
-/// True when one of the three lines above says `# net: REASON`, REASON one
-/// of NET_REASONS.
-fn says_why(above: &[&str]) -> bool {
-    above.iter().any(|a| {
-        a.trim_start().strip_prefix("# net:").is_some_and(|r| {
-            let r = r.trim_start();
-            NET_REASONS.iter().any(|x| {
-                r.strip_prefix(x)
-                    .is_some_and(|t| t.is_empty() || t.starts_with([',', ' ', ':']))
+/// True when the comment lines right above line I of LINES (the block that
+/// ends on the line before it) hold `# net: REASON`, REASON one of
+/// NET_REASONS: each read gives its own reason.
+fn says_why(lines: &[&str], i: usize) -> bool {
+    lines[..i]
+        .iter()
+        .rev()
+        .take_while(|a| a.trim_start().starts_with('#'))
+        .any(|a| {
+            a.trim_start().strip_prefix("# net:").is_some_and(|r| {
+                let r = r.trim_start();
+                NET_REASONS.iter().any(|x| {
+                    r.strip_prefix(x)
+                        .is_some_and(|t| t.is_empty() || t.starts_with([',', ' ', ':']))
+                })
             })
         })
-    })
 }
 
-/// True when L pipes a body read to stdout (`_get URL -`, `og setup fetch
-/// --get URL -`) into another command.
-fn piped_get(l: &str) -> bool {
-    let at = l
-        .match_indices("_get ")
+/// Where L calls a body read (`_get`, `og setup fetch --get`).
+fn get_calls(l: &str) -> Vec<usize> {
+    l.match_indices("_get ")
         .map(|(i, _)| i)
         .filter(|&i| {
             i == 0
@@ -1914,18 +2253,38 @@ fn piped_get(l: &str) -> bool {
                     .next_back()
                     .is_some_and(|c| c.is_ascii_alphanumeric())
         })
-        .chain(l.find("fetch --get "))
-        .min();
-    let Some(at) = at else { return false };
-    let rest = &l[at..];
-    let Some(pipe) = rest.find('|') else {
+        .chain(l.match_indices("fetch --get ").map(|(i, _)| i))
+        .collect()
+}
+
+/// True when L streams a body read into another command: to stdout (`-`,
+/// `/dev/stdout`, `/dev/fd/N`) through a pipe, or inside a process
+/// substitution `<(...)`.
+fn piped_get(l: &str) -> bool {
+    let calls = get_calls(l);
+    let substituted = l.match_indices("<(").any(|(s, _)| {
+        let end = l[s..].find(')').map_or(l.len(), |e| s + e);
+        calls.iter().any(|&c| c > s && c < end)
+    });
+    let Some(&at) = calls.iter().min() else {
         return false;
     };
-    words(&rest[..pipe]).iter().any(|w| w == "-")
+    let rest = &l[at..];
+    let to_stdout = |w: &String| {
+        w == "-"
+            || w.trim_matches('"') == "/dev/stdout"
+            || w.trim_matches('"')
+                .strip_prefix("/dev/fd/")
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
+    };
+    substituted
+        || rest
+            .find('|')
+            .is_some_and(|p| words(&rest[..p]).iter().any(to_stdout))
 }
 
 /// Every network read in TEXT that saves nothing and has no `# net:` comment
-/// in the three lines above it saying why (NET_REASONS): a container's
+/// in the comment lines right above it saying why (NET_REASONS): a container's
 /// network read (`run_in --net`), a body read piped into a command, and curl
 /// or wget writing a body anywhere but through fetch.
 fn unsaved_streams(name: &str, text: &str) -> Vec<String> {
@@ -1939,7 +2298,7 @@ fn unsaved_streams(name: &str, text: &str) -> Vec<String> {
         let w = words(l);
         let net = w.iter().any(|x| x == "run_in")
             && w.iter().any(|x| x == "--net" || x.contains("net[@]"));
-        if (net || piped_get(l)) && !says_why(&lines[i.saturating_sub(3)..i]) {
+        if (net || piped_get(l)) && !says_why(&lines, i) {
             out.push(format!("{name}:{}: {}", i + 1, l.trim()));
             continue;
         }
@@ -1998,6 +2357,26 @@ fn a_planted_stream_is_caught() {
     assert_eq!(unsaved_streams("p4.sh", p4).len(), 1, "P4");
     let header = "y() {\n  # net: sample header, the sample list of the panel\n  run_in --net \"$IMG\" bcftools query -l \"$URL\"\n}\n";
     assert!(unsaved_streams("header.sh", header).is_empty());
+    // G2: stdout spelt as a device.
+    for out in ["/dev/stdout", "\"/dev/stdout\"", "/dev/fd/1"] {
+        let g2 = format!("install_x() {{\n  _get \"$url\" {out} | tar -xzf - -C \"$dir\"\n}}\n");
+        assert_eq!(unsaved_streams("g2.sh", &g2).len(), 1, "G2 {out}");
+    }
+    // G2b: a body read in a process substitution.
+    for get in ["_get \"$url\" -", "og_setup fetch --get \"$url\" -"] {
+        let g2b = format!("install_x() {{\n  tar -xzf <({get}) -C \"$dir\"\n}}\n");
+        assert_eq!(unsaved_streams("g2b.sh", &g2b).len(), 1, "G2b {get}");
+    }
+    // G3b: one reason covers the read right below it, not the next one.
+    let g3b = "y() {\n  # net: slice, the regions of LOCI only\n  run_in --net \"$IMG\" tabix \"$URL\" chr1\n  run_in --net \"$IMG\" bcftools view \"$URL\" > out\n}\n";
+    let bad = unsaved_streams("g3b.sh", g3b);
+    assert_eq!(bad.len(), 1, "G3b {bad:#?}");
+    assert!(bad[0].contains(":4:"), "G3b {bad:#?}");
+    let block = "y() {\n  # net: slice, the regions of LOCI only\n  # (htslib keeps the index here)\n  run_in --net \"$IMG\" tabix \"$URL\" chr1\n}\n";
+    assert!(
+        unsaved_streams("block.sh", block).is_empty(),
+        "a reason in the comment block right above"
+    );
 }
 
 #[test]

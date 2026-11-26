@@ -6,7 +6,9 @@
 #     sequences;
 #   - a download whose md5 is not the listed one is removed and setup fails,
 #     leaving no reference;
-#   - a checksum file that does not list the download fails setup too.
+#   - a checksum file that does not list the download fails setup too;
+#   - a download that matches its md5 but does not unpack fails setup and is
+#     kept in the downloads folder.
 # The fake curl serves the files of FAKE_DOWNLOAD_DIR by base name.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
@@ -67,5 +69,19 @@ FAKE_DOWNLOAD_DIR="${CASE_WORK}/served-unlisted" run_rc setup-unlisted "${SCRIPT
 [ "$RC" -ne 0 ] || fail "setup.sh exited 0 although md5checksums.txt does not list the reference"
 output_has setup-unlisted "could not read the checksum of ${NAME//./\\.}\\.gz"
 [ ! -e "${G3}/reference/GRCh38_no_alt_analysis_set.fasta" ] || fail "an unchecked reference was stored"
+
+# --- a download that matches its md5 but does not unpack -----------------------------
+# The checksum vouches for the file, so the unpack failed (a full disk, gzip):
+# the download is kept for the next run, never paid for again.
+G4="${CASE_WORK}/genome4"
+mkdir -p "$G4"
+serve "${CASE_WORK}/served-nogz"
+printf 'not gzip\n' > "${CASE_WORK}/served-nogz/${NAME}.gz"
+sed -i.orig "s|^[0-9a-f]*  ./${NAME}.gz\$|$(md5_of "${CASE_WORK}/served-nogz/${NAME}.gz")  ./${NAME}.gz|" "${CASE_WORK}/served-nogz/md5checksums.txt"
+FAKE_DOWNLOAD_DIR="${CASE_WORK}/served-nogz" run_rc setup-nogz "${SCRIPTS}/setup.sh" "$G4"
+[ "$RC" -ne 0 ] || fail "setup.sh exited 0 although the reference did not unpack"
+output_has setup-nogz "could not unpack ${NAME//./\\.}\\.gz, though it matches its md5; it is kept"
+cmp -s "${G4}/downloads/${NAME}.gz" "${CASE_WORK}/served-nogz/${NAME}.gz" || fail "the checked download was deleted after its unpack failed"
+[ ! -e "${G4}/reference/GRCh38_no_alt_analysis_set.fasta" ] || fail "a reference that did not unpack was stored"
 
 echo "reference-setup: the default reference is NCBI's no-ALT analysis set, unpacked and checked against md5checksums.txt"

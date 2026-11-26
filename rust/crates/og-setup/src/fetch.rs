@@ -69,6 +69,14 @@ pub const COLUMNS: [&str; 11] = [
     "installed",
 ];
 
+/// The largest stamp an `installed` entry reads.
+const STAMP_MAX: u64 = 64 * 1024;
+
+/// The file of an `installed` entry, without its stamp words (`FILE#WORD`).
+pub fn stamp_file(entry: &str) -> &str {
+    entry.split('#').next().unwrap_or(entry)
+}
+
 /// The checksum file beside a download: the checksum it matched.
 pub fn saved_checksum_path(dest: &Path) -> PathBuf {
     PathBuf::from(format!("{}.checksum", dest.display()))
@@ -1007,7 +1015,10 @@ pub struct Source {
     pub licence: String,
     /// For a raw download, the files of the install it feeds (`{part}` for a
     /// family's member): when they are all there, the install is done and
-    /// the download is not needed again (`og setup plan`).
+    /// the download is not needed again (`og setup plan`). `FILE#WORD#...`
+    /// is a stamp the installer compares: FILE must also hold each WORD (a
+    /// pin, expanded) as one of its words, so an install that a moved pin
+    /// makes setup redo is not done.
     pub installed: Vec<String>,
     /// The table's line number, for messages.
     pub line: usize,
@@ -1124,7 +1135,12 @@ impl Sources {
                     "{TABLE}:{n}: {{part}} in 'installed' goes with a parts list"
                 ));
             }
-            if let Some(bad) = installed.iter().find(|p| {
+            if let Some(bad) = installed.iter().find(|p| p.split('#').any(str::is_empty)) {
+                return Err(format!(
+                    "{TABLE}:{n}: installed file '{bad}': a stamp is FILE#WORD, no part of it empty"
+                ));
+            }
+            if let Some(bad) = installed.iter().map(|p| stamp_file(p)).find(|p| {
                 p.starts_with('/') || p.starts_with("downloads/") || p.split('/').any(|x| x == "..")
             }) {
                 return Err(format!(
@@ -1405,8 +1421,9 @@ impl Ctx {
         }
     }
 
-    /// True when every file of the install row R (part PART) feeds is there
-    /// (a row with none: never).
+    /// True when every file of the install row R (part PART) feeds is there,
+    /// and each stamp (`FILE#WORD#...`) holds its words, as the installer
+    /// compares it (a row with none: never).
     pub fn installed(&self, r: &Source, part: Option<&str>) -> Result<bool, String> {
         if r.installed.is_empty() {
             return Ok(false);
@@ -1417,7 +1434,25 @@ impl Ctx {
             let p = self
                 .expand(f, part)
                 .map_err(|e| format!("ERROR: {}: {e}", r.id))?;
-            if fs::metadata(g.join(p)).is_err() {
+            let mut it = p.split('#');
+            let file = g.join(it.next().unwrap_or_default());
+            let words: Vec<&str> = it.collect();
+            if words.is_empty() {
+                if fs::metadata(&file).is_err() {
+                    return Ok(false);
+                }
+                continue;
+            }
+            // A stamp is a line or two; a larger file is no stamp.
+            let mut text = String::new();
+            let read = File::open(&file)
+                .and_then(|h| h.take(STAMP_MAX).read_to_string(&mut text))
+                .is_ok_and(|n| (n as u64) < STAMP_MAX);
+            if !read {
+                return Ok(false);
+            }
+            let have: Vec<&str> = text.split_whitespace().collect();
+            if !words.iter().all(|w| have.contains(w)) {
                 return Ok(false);
             }
         }

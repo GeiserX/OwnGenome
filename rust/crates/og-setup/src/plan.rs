@@ -2,10 +2,12 @@
 //! installers need (`assets/data-sources.tsv`), whether it is already on
 //! disk, its size, what is left to download and the free disk.
 //!
-//! Presence is a file at the row's path; `og setup fetch` checks its
-//! checksum when it is reached, so the plan itself reads no file and makes
-//! no request. A raw download that is not there but whose install is done
-//! (every file its `installed` column names is there: an install by an
+//! Presence is a file at the row's path (for a folder row, which fills over
+//! many fetches: its install done and a file of its own in it); `og setup
+//! fetch` checks its checksum when it is reached, so the plan itself reads
+//! no download and makes no request. A raw download that is not there but
+//! whose install is done (every file its `installed` column names is there,
+//! each stamp holding the pins the installer compares: an install by an
 //! older setup, which deleted the raw files, or one pruned since) is not
 //! needed again, so it counts as nothing to download.
 
@@ -57,32 +59,51 @@ pub struct Line {
     pub present: usize,
     /// Files not there whose install is done: not downloaded again.
     pub installed: usize,
+    /// The bytes a folder row not installed already holds of its own.
+    pub held: u64,
     pub bytes: Option<u64>,
     /// Kept in the downloads folder (a raw download), not installed.
     pub download: bool,
 }
 
-/// The plan of ROWS: one line each, a family counted file by file.
-pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
+fn parts_of(r: &Source) -> Vec<Option<&str>> {
+    if r.parts.is_empty() {
+        vec![None]
+    } else {
+        r.parts.iter().map(|p| Some(p.as_str())).collect()
+    }
+}
+
+/// The plan of ROWS (rows of S): one line each, a family counted file by
+/// file. A folder row (a path ending in /) fills over many fetches, so a
+/// file in it proves nothing: it is present when its install is done and it
+/// holds a file of its own, and otherwise the files it holds already are
+/// taken off its size.
+pub fn lines(ctx: &Ctx, s: &Sources, rows: &[&Source]) -> Result<Vec<Line>, String> {
+    // The files of every row, so a folder row never counts another's file.
+    let mut others: Vec<PathBuf> = vec![];
+    for r in s.rows.values().filter(|r| !r.path.ends_with('/')) {
+        for p in parts_of(r) {
+            others.push(ctx.path(r, p)?);
+        }
+    }
     let mut out = vec![];
     for r in rows {
-        let parts: Vec<Option<&str>> = if r.parts.is_empty() {
-            vec![None]
-        } else {
-            r.parts.iter().map(|p| Some(p.as_str())).collect()
-        };
-        let (mut present, mut installed) = (0, 0);
+        let parts = parts_of(r);
+        let (mut present, mut installed, mut held) = (0, 0, 0);
         for p in &parts {
             let f = ctx.path(r, *p)?;
-            // A folder row (a path ending in /) is there when it holds a file.
-            let there = if r.path.ends_with('/') {
-                has_file(&f)
-            } else {
-                f.is_file()
-            };
-            if there {
+            let done = ctx.installed(r, *p)?;
+            if r.path.ends_with('/') {
+                let h = held_bytes(&f, &others);
+                match (done, h) {
+                    (true, Some(_)) => present += 1,
+                    (true, None) => installed += 1,
+                    (false, h) => held += h.unwrap_or(0),
+                }
+            } else if f.is_file() {
                 present += 1;
-            } else if ctx.installed(r, *p)? {
+            } else if done {
                 installed += 1;
             }
         }
@@ -94,6 +115,7 @@ pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
             files: parts.len(),
             present,
             installed,
+            held,
             bytes: r.bytes,
             download: r.is_download(),
         });
@@ -101,9 +123,33 @@ pub fn lines(ctx: &Ctx, rows: &[&Source]) -> Result<Vec<Line>, String> {
     Ok(out)
 }
 
-/// True when folder D holds a file.
-pub fn has_file(d: &Path) -> bool {
-    std::fs::read_dir(d).is_ok_and(|mut e| e.any(|x| x.is_ok_and(|x| x.path().is_file())))
+/// The bytes of the files folder D holds of its own (at any depth), or
+/// None when it holds none: a hidden file (a fetch's lock), a `.part`, a
+/// saved `.checksum` and a file of another row (OTHERS) are not its own.
+pub fn held_bytes(d: &Path, others: &[PathBuf]) -> Option<u64> {
+    let mut found = None;
+    let mut todo = vec![d.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.ends_with(".part") || name.ends_with(".checksum") {
+                continue;
+            }
+            let p = e.path();
+            let Ok(m) = std::fs::metadata(&p) else {
+                continue;
+            };
+            if m.is_dir() {
+                todo.push(p);
+            } else if m.is_file() && !others.contains(&p) {
+                found = Some(found.unwrap_or(0) + m.len());
+            }
+        }
+    }
+    found
 }
 
 /// How much NEED is over FREE, if it is.
@@ -137,6 +183,8 @@ pub fn write_plan(
                 "present".to_owned()
             } else if l.installed == 1 {
                 "installed, not kept".to_owned()
+            } else if l.held > 0 {
+                format!("missing, {} of it already here", human(l.held))
             } else {
                 "missing".to_owned()
             }
@@ -153,9 +201,11 @@ pub fn write_plan(
         if missing > 0 {
             n_need += 1;
             match l.bytes {
-                // A family's size is shared out over its files.
+                // A family's size is shared out over its files; a folder's
+                // own files already there are not downloaded again.
                 Some(b) => {
-                    let n = b / l.files as u64 * missing as u64;
+                    let n = (b / l.files as u64 * missing as u64).saturating_sub(l.held);
+                    have += l.held.min(b);
                     need += n;
                     if l.download {
                         need_dl += n;
@@ -314,7 +364,7 @@ pub fn cli_with(args: &[String], env: Env, out: &mut dyn Write, err: &mut dyn Wr
             .into_iter()
             .filter(|r| !r.installers.iter().any(|i| skip.contains(&i.as_str())))
             .collect();
-        let l = lines(&ctx, &rows)?;
+        let l = lines(&ctx, &s, &rows)?;
         let (need, free) = write_plan(&ctx, &l, out)?;
         if check
             && keeping(&ctx)

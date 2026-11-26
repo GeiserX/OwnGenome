@@ -477,17 +477,43 @@ done_with() {
   done
 }
 
-# adopt OLD NEW: a raw download an older setup left at OLD (before the
-# downloads folder; an install stopped before it deleted it) moves to NEW in
-# the downloads folder, with its OLD.part, so fetch checks it there by its
-# checksum instead of downloading it again. When NEW is already there, OLD
-# is a second copy and goes.
+# adopt OLD NEW [URL [CHECK VALUE]]: a raw download an older setup left at
+# OLD (before the downloads folder; an install stopped before it deleted it)
+# moves to NEW in the downloads folder, with its OLD.part, so fetch checks it
+# there by its checksum instead of downloading it again. When NEW is already
+# there, one of the two goes only once a check says which: URL, CHECK and
+# VALUE are the fetch that follows (a file there is checked, never
+# downloaded). NEW that matches: OLD is a second copy and goes. NEW that
+# does not, and OLD that does: OLD replaces it. Otherwise (no check given,
+# neither matches, the checksum list cannot be read) both stay, and fetch
+# then refuses NEW and says so.
 adopt() {
   local old=$1 new=$2 x
+  shift 2
+  if [ -e "$old" ] && [ -e "$new" ]; then
+    # Only files are checked: fetch downloads into a NEW that is no file.
+    if [ ! -f "$old" ] || [ ! -f "$new" ]; then set --; fi
+    if [ $# -gt 0 ] && fetch "$1" "$new" "${@:2}" > /dev/null 2>&1; then
+      rm -rf -- "$old" "${old}.part"  # not kept: a second copy of a checked file in the downloads folder
+      echo "  Deleted ${old}, left by an older setup: ${new} is the same download, checked."
+      return 0
+    fi
+    if [ $# -gt 0 ] && mv -- "$new" "${new}.adopt" \
+        && { mv -- "$old" "$new" || { mv -- "${new}.adopt" "$new"; false; }; }; then
+      if fetch "$1" "$new" "${@:2}" > /dev/null 2>&1; then
+        rm -rf -- "${new}.adopt"  # not kept: the copy that failed its check, replaced by the one that passed
+        echo "  ${new} failed its check; replaced it with ${old}, left by an older setup, which passes."
+        return 0
+      fi
+      mv -- "$new" "$old" && mv -- "${new}.adopt" "$new"
+    fi
+    echo "  [WARN] ${old}, left by an older setup, and ${new} are both here; neither is deleted, as no check says which is the download."
+    return 0
+  fi
   for x in "" .part; do
     [ -e "${old}${x}" ] || continue
     if [ -e "${new}${x}" ]; then
-      rm -rf -- "${old}${x}"  # not kept: a second copy of a file in the downloads folder
+      rm -rf -- "${old}${x}"  # not kept: a second partial download; the one in the downloads folder resumes
     elif mkdir -p "$(dirname "$new")" && mv -- "${old}${x}" "${new}${x}"; then
       echo "  Moved ${old}${x}, left by an older setup, to ${new}${x}."
     fi
@@ -595,7 +621,7 @@ _install_gencode() {
   genes=$(data_file gencode_genes) || true
   exons=$(data_file gencode_exons) || true
   url=$(source_of gencode url) && gz=$(source_of gencode path) && md5s=$(source_of gencode value) || return 1
-  adopt "${genes}.download.gz" "$gz"
+  adopt "${genes}.download.gz" "$gz" "$url" md5 "$md5s"
   fetch "$url" "$gz" md5 "$md5s" >&2 || return 1
   # The download is in the downloads folder: the tables' own folder may not
   # be there yet.
@@ -680,7 +706,7 @@ install_vep_cache() {
     return 1
   fi
   mkdir -p "${dir}/homo_sapiens"
-  adopt "${dir}/${tarball##*/}" "$tarball"
+  adopt "${dir}/${tarball##*/}" "$tarball" "$url" sum "$sums"
   # fetch uses a kept tarball that matches its CHECKSUMS line with no
   # download (it reads that small list first), so an install stopped during
   # extraction unpacks it again.
@@ -751,7 +777,7 @@ install_pcgr_bundle() {
   echo "  Review those terms before use; --no-clinical-data skips this download."
   url=$(source_of pcgr_bundle url) && tarball=$(source_of pcgr_bundle path) || return 1
   mkdir -p "$dir" || return 1
-  adopt "${dir}/${tarball##*/}" "$tarball"
+  adopt "${dir}/${tarball##*/}" "$tarball" "$url" sha256 "$PCGR_DATA_SHA256"
   fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1

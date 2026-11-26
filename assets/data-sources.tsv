@@ -27,15 +27,18 @@
 #             install it feeds, under GENOME_DIR; when they are all there the
 #             install is done, so og setup plan does not count the download
 #             as needed again (an install by an older setup, which deleted
-#             its raw downloads, or one pruned since); - for other rows
+#             its raw downloads, or one pruned since); FILE#WORD#... is a
+#             stamp the installer compares: FILE must also hold each WORD
+#             (pins expanded) as a word, so an install setup redoes because
+#             a pin moved counts as not done; - for other rows
 #
 # ${NAME} is a pin of versions.env, else a setting of scripts/lib/common.sh
 # or scripts/setup.sh (NAME=value, or NAME=${NAME:-value}, which the
 # environment overrides), and ${NAME:-default} an environment variable.
 # Each pin, setting and URL lives in one place: a URL written here is read
-# from here by its installer (og setup source ID url), and tests/fetch.rs
-# of og-setup fails when a pin, a URL or a default of the table is also
-# written in versions.env, setup.sh or common.sh.
+# from here by every script that needs it (og setup source ID url), and
+# tests/fetch.rs of og-setup fails when a pin, a URL or a default of the
+# table is also written in versions.env or a script under scripts/.
 id	installers	steps	path	parts	url	check	value	bytes	licence	installed
 reference_fasta	setup	02	downloads/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz		-	md5	-	872949833	NCBI (public domain)	reference/GRCh38_no_alt_analysis_set.fasta
 reference_fai	setup	02	reference/GRCh38_no_alt_analysis_set.fasta.fai		-	md5	-	7804	NCBI (public domain)	-
@@ -54,8 +57,8 @@ tandem_repeats	setup	04c	reference/GRCh38_AllTandemRepeats.bed.gz		${TANDEM_REPE
 pgs_scores	setup,prs-academic	25	prs_scores/		-	md5	-		PGS Catalog (per score)	-
 pgsc_calc	setup	25	downloads/pgsc_calc-${PGSC_CALC_VERSION}.tar.gz		https://github.com/PGScatalog/pgsc_calc/archive/refs/tags/${PGSC_CALC_VERSION}.tar.gz	sha256	${PGSC_CALC_SHA256}	5491138	pgsc_calc (Apache-2.0)	tools/pgsc_calc-${PGSC_CALC_VERSION}/main.nf
 annotsv_bundle	setup,annotsv-data	15	downloads/Annotations_Human_${ANNOTSV_ANNOTATIONS_VERSION}.tar.gz		-			5313737411	AnnotSV bundle (third-party terms)	annotsv_annotations/Annotations_Human/Genes/GRCh38
-gnomad_sv	setup,annotsv-data	15	downloads/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz		-	sha256	${GNOMAD_SV_SHA256}	1743544245	gnomAD (CC0 1.0)	annotsv_annotations/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad.v4.0.sv.chrAll.from-v${GNOMAD_SV_VERSION}-sites.vcf.gz
-mane_summary	setup,annotsv-data	15	downloads/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz		-	sha256	${MANE_SUMMARY_SHA256}	1115288	NCBI MANE (public domain)	annotsv_annotations/mane_select_refseq.txt
+gnomad_sv	setup,annotsv-data	15	downloads/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz		-	sha256	${GNOMAD_SV_SHA256}	1743544245	gnomAD (CC0 1.0)	annotsv_annotations/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed#${GNOMAD_SV_VERSION}#${GNOMAD_SV_SHA256}
+mane_summary	setup,annotsv-data	15	downloads/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz		-	sha256	${MANE_SUMMARY_SHA256}	1115288	NCBI MANE (public domain)	annotsv_annotations/mane_select_refseq.txt annotsv_annotations/mane_select_refseq.release#${MANE_RELEASE}#${MANE_SUMMARY_SHA256}
 vep_cache	setup,clinical-data,vep-cache	13	downloads/homo_sapiens_vep_${VEP_CACHE_RELEASE}_GRCh38.tar.gz		https://ftp.ensembl.org/pub/release-${VEP_CACHE_RELEASE}/variation/indexed_vep_cache/homo_sapiens_vep_${VEP_CACHE_RELEASE}_GRCh38.tar.gz	sum	https://ftp.ensembl.org/pub/release-${VEP_CACHE_RELEASE}/variation/indexed_vep_cache/CHECKSUMS	27644657162	Ensembl (Apache-2.0)	vep_cache/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38/info.txt
 pcgr_vep_cache	setup,clinical-data	17	downloads/homo_sapiens_vep_${PCGR_VEP_CACHE_RELEASE}_GRCh38.tar.gz		https://ftp.ensembl.org/pub/release-${PCGR_VEP_CACHE_RELEASE}/variation/indexed_vep_cache/homo_sapiens_vep_${PCGR_VEP_CACHE_RELEASE}_GRCh38.tar.gz	sum	https://ftp.ensembl.org/pub/release-${PCGR_VEP_CACHE_RELEASE}/variation/indexed_vep_cache/CHECKSUMS	25272957721	Ensembl (Apache-2.0)	vep_cache/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt
 pcgr_bundle	setup,clinical-data	17	downloads/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz		https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz	sha256	${PCGR_DATA_SHA256}	7664082467	PCGR bundle (third-party terms)	pcgr_data/${PCGR_DATA_BUNDLE}/data
@@ -77,15 +80,15 @@ hg19_to_hg38_chain	ancient-panel	44	reference/liftover/hg19ToHg38.over.chain.gz	
 pgsc_ancestry_panel	ancestry-panel	25	reference/pgsc_calc/${PGSC_PANEL}.tar.zst		https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/${PGSC_PANEL}.tar.zst	md5	https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/md5s.txt	7434464202	PGS Catalog (EMBL-EBI terms)	-
 ancestry_fine_meta	ancestry-fine-panel	26b	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/meta.tsv		-	sha256	${ANCESTRY_FINE_META_SHA256}	6158624	gnomAD (CC0 1.0)	-
 genetic_map	ancestry-fine-panel,mocha-data	26b,51	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/maps/plink.GRCh38.map.zip		-	sha256	${ANCESTRY_FINE_MAP_SHA256}	47469980	Beagle maps (CC BY 4.0)	-
-ancestry_fine_bcf	ancestry-fine-panel	26b	downloads/ancestry-fine-${ANCESTRY_FINE_PANEL}/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	1..22	https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	crc32c	-	19099527953	gnomAD (CC0 1.0)	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/chr{part}.vcf.gz.tbi
+ancestry_fine_bcf	ancestry-fine-panel	26b	downloads/ancestry-fine-${ANCESTRY_FINE_PANEL}/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	1..22	https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_chr{part}.filtered.SNV_INDEL.phased.shapeit5.bcf	crc32c	-	19099527953	gnomAD (CC0 1.0)	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/chr{part}.vcf.gz.tbi reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/chr{part}.stamp#pins=${ANCESTRY_FINE_PANEL_SHA256}#bcftools=${BCFTOOLS_HTTPS_IMAGE}
 mocha_manifest	mocha-data	51	reference/mocha-${MOCHA_PANEL_VERSION}/manifest.txt		${MOCHA_PANEL_URL}/20220804_manifest.txt	sha256	${MOCHA_PANEL_MANIFEST_SHA256}	5092	1000 Genomes (open access)	-
-mocha_panel	mocha-data	51	downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	1..22	${MOCHA_PANEL_URL}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	md5	@mocha_manifest	29764425089	1000 Genomes (open access)	reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.vcf.gz.tbi
-mocha_panel_index	mocha-data	51	downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi	1..22	${MOCHA_PANEL_URL}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi	md5	@mocha_manifest	2656354	1000 Genomes (open access)	reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.vcf.gz.tbi
+mocha_panel	mocha-data	51	downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	1..22	${MOCHA_PANEL_URL}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz	md5	@mocha_manifest	29764425089	1000 Genomes (open access)	reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.vcf.gz.tbi reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.stamp#manifest=${MOCHA_PANEL_MANIFEST_SHA256}#bcftools=${MOCHA_IMAGE}#cnp=1
+mocha_panel_index	mocha-data	51	downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi	1..22	${MOCHA_PANEL_URL}/1kGP_high_coverage_Illumina.chr{part}.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi	md5	@mocha_manifest	2656354	1000 Genomes (open access)	reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.vcf.gz.tbi reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr{part}.stamp#manifest=${MOCHA_PANEL_MANIFEST_SHA256}#bcftools=${MOCHA_IMAGE}#cnp=1
 locityper_panel_index	locityper-data	53	reference/locityper-${LOCITYPER_PANEL_VERSION}/panel.remote.tbi		${LOCITYPER_PANEL_URL}.tbi	sha256	${LOCITYPER_PANEL_TBI_SHA256}	2222268	HPRC (CC0 1.0)	-
-locityper_region	locityper-data	53	downloads/locityper-${LOCITYPER_PANEL_VERSION}/		-	sha256	-		HPRC (CC0 1.0)	reference/locityper-${LOCITYPER_PANEL_VERSION}/DONE
+locityper_region	locityper-data	53	downloads/locityper-${LOCITYPER_PANEL_VERSION}/		-	sha256	-		HPRC (CC0 1.0)	reference/locityper-${LOCITYPER_PANEL_VERSION}/DONE#image=${LOCITYPER_IMAGE}#panel=${LOCITYPER_PANEL_TBI_SHA256}
 archaic_md5sums	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/md5/{part}.txt	Altai Vindija33.19 Denisova	-	sha256	-		MPI-EVA (open access)	-
-archaic_vcf	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/		-	md5	-	150470457136	MPI-EVA (open access)	reference/archaic/${ARCHAIC_DATA_VERSION}/DONE
-archaic_1kg_sites	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/1kg_sites.vcf.gz		-	md5	${ARCHAIC_1KG_SITES_MD5}	1458224240	1000 Genomes (open access)	reference/archaic/${ARCHAIC_DATA_VERSION}/DONE
+archaic_vcf	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/		-	md5	-	150470457136	MPI-EVA (open access)	reference/archaic/${ARCHAIC_DATA_VERSION}/DONE#data=${ARCHAIC_DATA_VERSION}#bcftools=${BCFTOOLS_IMAGE}#picard=${PICARD_IMAGE}
+archaic_1kg_sites	archaic	43	downloads/archaic-${ARCHAIC_DATA_VERSION}/1kg_sites.vcf.gz		-	md5	${ARCHAIC_1KG_SITES_MD5}	1458224240	1000 Genomes (open access)	reference/archaic/${ARCHAIC_DATA_VERSION}/DONE#data=${ARCHAIC_DATA_VERSION}#bcftools=${BCFTOOLS_IMAGE}#picard=${PICARD_IMAGE}
 archaic_chain	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/hg19ToHg38.over.chain.gz		-	sha256	${ARCHAIC_CHAIN_SHA256}	227698	UCSC (non-commercial)	-
 archaic_strict_mask	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/strict_GRCh38.bed		-	sha256	${ARCHAIC_STRICT_MASK_SHA256}	128218530	1000 Genomes (open access)	-
 archaic_segdups	archaic	43	reference/archaic/${ARCHAIC_DATA_VERSION}/segdups_hg19.txt.gz		-	sha256	${ARCHAIC_SEGDUPS_SHA256}	3002024	UCSC (non-commercial)	-
