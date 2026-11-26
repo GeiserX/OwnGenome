@@ -326,10 +326,12 @@ pub(super) fn clinical_findings<'a>(
     let sf_record = D::new(sf, "clinical.acmg_sf");
     let sf_list = text_or(val(sf, "version"), "ACMG SF");
     match sf_rows(summary, sf).and_then(|rows| {
+        let counted = acmg_sf::counted(&sf_record)?;
         rows.into_iter()
-            .map(|r| {
+            .zip(counted)
+            .map(|(r, counted)| {
                 let condition = acmg_sf::listed_condition(&sf_record, &r.0)?;
-                Ok((acmg_sf::lede(&r.0, condition.as_deref()), r))
+                Ok((acmg_sf::lede(&r.0, condition.as_deref(), counted), r))
             })
             .collect::<Read<Vec<_>>>()
     }) {
@@ -418,13 +420,52 @@ pub(super) fn family_findings(summary: &Summary, found: &mut Vec<Finding>) {
                         text_or(condition, "a condition on the carrier list"), text_or(val(c, "inheritance"), "inheritance not given")))
                     .detail(format!("{g} {} {gt}", text_or(variant, ""))).evidence("Genotype", &s(&gt))
             } else {
-                let title = if truthy(condition) {
-                    format!("{} carrier", text(condition))
-                } else {
-                    format!("Carrier in {g}")
+                // The pair word decides the opening: a pair on different
+                // copies is no carrier, a pair of unknown phase may not be
+                // one; a single hit or a pair on one copy is a carrier.
+                let of = || {
+                    format!(
+                        "a gene of {} ({})",
+                        text_or(condition, "a condition on the carrier list"),
+                        text_or(val(c, "inheritance"), "inheritance not given")
+                    )
                 };
-                Finding::new(Level::Carrier, "carrier-list", &key, title,
-                    format!("A carrier has one changed copy of a gene where it takes two to cause the condition. This genome has one changed copy of {g}: a carrier, not affected."))
+                let name = text_or(condition, &g);
+                let (level, title, lede) = match text_or(val(c, "pair"), "").as_str() {
+                    "two hits" => (
+                        Level::Act,
+                        format!("{name}: two hits"),
+                        format!(
+                            "This genome has two different changes in {g}, {}, and they sit on different copies: both copies are hit. That is not the pattern of a carrier: a doctor or genetic counsellor reads it.",
+                            of()
+                        ),
+                    ),
+                    p if p.starts_with("possible two hits") => (
+                        Level::Review,
+                        format!("{name}: possible two hits"),
+                        format!(
+                            "This genome has two different changes in {g}, {}. No read-backed phase links them, so they may sit on the same copy: both copies may be hit, or only one, as in a carrier.{} A genetic counsellor reads it.",
+                            of(),
+                            if p.contains("low-confidence") {
+                                " One of the calls has low confidence, so confirm it first."
+                            } else {
+                                ""
+                            }
+                        ),
+                    ),
+                    _ => (
+                        Level::Carrier,
+                        if truthy(condition) {
+                            format!("{} carrier", text(condition))
+                        } else {
+                            format!("Carrier in {g}")
+                        },
+                        format!(
+                            "A carrier has one changed copy of a gene where it takes two to cause the condition. This genome has one changed copy of {g}: a carrier, not affected."
+                        ),
+                    ),
+                };
+                Finding::new(level, "carrier-list", &key, title, lede)
                     .detail(format!("{g} {}", text_or(variant, "")))
             };
             // The call's mark against the hits file's floor, and the pair word
@@ -604,5 +645,162 @@ mod tests {
             "{:?}",
             ev("GENE3")
         );
+    }
+    /// Carrier rows of one recessive gene, as the carrier list writes them:
+    /// `pair` and `phase` given as `(pair, phase)`, either one `None`.
+    fn carriers(rows: &[(&str, Option<&str>, Option<&str>)]) -> Summary {
+        let rows: Vec<String> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (gene, pair, phase))| {
+                let opt = |k: &str, v: &Option<&str>| match v {
+                    Some(v) => format!(r#", "{k}": "{v}""#),
+                    None => String::new(),
+                };
+                format!(
+                    r#"{{"gene": "{gene}", "variant": "chr1:{} C>T", "genotype": "het",
+                     "significance": "Pathogenic", "stars": 2, "inheritance": "AR",
+                     "condition": "Condition of {gene}", "low_confidence": false{}{}}}"#,
+                    100 + i,
+                    opt("pair", pair),
+                    opt("phase", phase)
+                )
+            })
+            .collect();
+        parse(&format!(
+            r#""carrier": {{"state": "ok", "data": {{"genes_on_list": 3, "set_aside": [],
+              "hom_or_hemizygous": [], "carriers": [{}]}}}}"#,
+            rows.join(", ")
+        ))
+    }
+
+    /// Two hits that read-backed phase puts on different copies are no
+    /// carrier finding: the row opens with both copies hit, at the level
+    /// of a homozygous row. Two hits on one copy (cis) stay a carrier.
+    #[test]
+    fn a_pair_in_trans_is_not_called_a_carrier() {
+        let trans = "in trans: read-backed phase puts them on different copies (phase set 77)";
+        let cis = "two heterozygous variants in cis: read-backed phase puts them on the same copy \
+                   (phase set 9), so one copy is hit";
+        let mut found = Vec::new();
+        family_findings(
+            &carriers(&[
+                ("ATP7B", Some("two hits"), Some(trans)),
+                ("ATP7B", Some("two hits"), Some(trans)),
+                ("CFTR", None, Some(cis)),
+                ("CFTR", None, Some(cis)),
+            ]),
+            &mut found,
+        );
+        let pair: Vec<_> = found.iter().filter(|f| f.gene == s("ATP7B")).collect();
+        assert_eq!(pair.len(), 2);
+        for f in pair {
+            assert!(f.level == Level::Act, "{}", f.title);
+            assert_eq!(f.title, "Condition of ATP7B: two hits");
+            assert!(f.text.contains("both copies are hit"), "{}", f.text);
+            assert!(
+                f.text.contains("not the pattern of a carrier"),
+                "{}",
+                f.text
+            );
+            assert!(!f.text.contains("not affected"), "{}", f.text);
+            assert!(!f.text.contains("may sit"), "{}", f.text);
+        }
+        let cis: Vec<_> = found.iter().filter(|f| f.gene == s("CFTR")).collect();
+        assert_eq!(cis.len(), 2);
+        for f in cis {
+            assert!(f.level == Level::Carrier, "{}", f.title);
+            assert!(f.text.contains("a carrier, not affected"), "{}", f.text);
+        }
+    }
+
+    /// Two hits whose phase is unknown may sit on one copy: the row says
+    /// so, never "not affected" and never "both copies are hit", and asks
+    /// for a review. A pair that needs a low-confidence call says to
+    /// confirm it.
+    #[test]
+    fn an_unphased_pair_may_sit_on_one_copy() {
+        let unknown = "phase unknown: no read-backed phase links the variants, so they may sit \
+                       on the same copy (cis)";
+        let mut found = Vec::new();
+        family_findings(
+            &carriers(&[
+                ("MUTYH", Some("possible two hits"), Some(unknown)),
+                ("MUTYH", Some("possible two hits"), Some(unknown)),
+                (
+                    "GAA",
+                    Some("possible two hits (low-confidence call)"),
+                    Some(unknown),
+                ),
+                (
+                    "GAA",
+                    Some("possible two hits (low-confidence call)"),
+                    Some(unknown),
+                ),
+            ]),
+            &mut found,
+        );
+        let pairs: Vec<_> = found
+            .iter()
+            .filter(|f| f.gene == s("MUTYH") || f.gene == s("GAA"))
+            .collect();
+        assert_eq!(pairs.len(), 4);
+        for f in pairs {
+            assert!(f.level == Level::Review, "{}", f.title);
+            assert!(f.title.ends_with(": possible two hits"), "{}", f.title);
+            assert!(f.text.contains("may sit on the same copy"), "{}", f.text);
+            assert!(!f.text.contains("not affected"), "{}", f.text);
+            assert!(!f.text.contains("both copies are hit"), "{}", f.text);
+            assert_eq!(
+                f.text.contains("confirm it first"),
+                f.gene == s("GAA"),
+                "{}",
+                f.text
+            );
+        }
+    }
+
+    /// A HIGH-impact row the card lists apart (a weak call, a call with no
+    /// GQ, DP or AD, unknown frequency) is not said to be counted by the
+    /// gene's rule; a sound rare call is.
+    #[test]
+    fn an_sf_row_listed_apart_is_not_said_to_count() {
+        let row = |gene: &str, marks: &str| {
+            format!(
+                r#"{{"gene": "{gene}", "variant": "chr2:100 C>T", "genotype": "het",
+                 "consequence": "stop_gained", "transcript": "MANE", "frequency": "rare",
+                 "rule": "All P and LP", "rule_note": null, "severity": null{marks}}}"#
+            )
+        };
+        let high = [
+            row(
+                "MSH2",
+                r#", "weak_call": true, "call_note": "alt reads 0.07""#,
+            ),
+            row("MYBPC3", r#", "call_unverified": true"#),
+            row("PKP2", r#", "frequency_unknown": true"#),
+            row("MLH1", ""),
+        ]
+        .join(", ");
+        let summary = parse(&format!(
+            r#""clinical": {{"state": "ok", "data": {{"variants": 4, "acmg_sf": {{
+                "version": "ACMG SF v3.3", "genes_on_list": 84, "clinvar_hits": [],
+                "high_impact": [{high}], "high_impact_checked": true}}}}}}"#
+        ));
+        let mut found = Vec::new();
+        clinical_findings(&summary, &mut found);
+        let text = |gene: &str| {
+            found
+                .iter()
+                .find(|f| f.title == format!("Secondary finding in {gene}"))
+                .map(|f| f.text.clone())
+                .expect("the SF finding")
+        };
+        for gene in ["MSH2", "MYBPC3", "PKP2"] {
+            let t = text(gene);
+            assert!(!t.contains("reporting rule counts"), "{gene}: {t}");
+            assert!(t.contains("needs checking first"), "{gene}: {t}");
+        }
+        assert!(text("MLH1").contains("the gene's reporting rule counts"));
     }
 }

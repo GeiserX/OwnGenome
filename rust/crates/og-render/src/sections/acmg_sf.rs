@@ -170,19 +170,40 @@ pub fn listed_condition(sf: &D<'_>, gene: &str) -> Result<Option<String>, Malfor
 }
 
 /// The opening sentence of a secondary finding, in plain words: what the
-/// gene is, why it is reported, and what the result is not. The list's
-/// name, its version and the ClinVar class stay in the evidence rows.
-pub fn lede(gene: &str, condition: Option<&str>) -> String {
+/// gene is, why it is reported, and what the result is not. `counted` is
+/// false for a row the card lists apart (see [`counted`]): its call or its
+/// frequency needs checking before the rule counts it. The list's name,
+/// its version and the ClinVar class stay in the evidence rows.
+pub fn lede(gene: &str, condition: Option<&str>, counted: bool) -> String {
     let health = match condition {
         Some(c) => format!("a change there can matter for health ({c})"),
         None => "a change there can matter for health".to_owned(),
     };
+    let found = if counted {
+        "This genome has a change there that the gene's reporting rule counts."
+    } else {
+        "This genome may have a change there that counts: its call or its frequency needs \
+         checking first."
+    };
     format!(
         "{gene} is one of the genes doctors report even when nobody looked for it, because \
-         {health}. This genome has a change there that the gene's reporting rule counts. This is \
-         a research result, not a diagnosis: a certified laboratory confirms it before anyone \
-         acts on it."
+         {health}. {found} This is a research result, not a diagnosis: a certified laboratory \
+         confirms it before anyone acts on it."
     )
+}
+
+/// Whether the gene's rule counts each row of [`rows`], in the same order:
+/// false for a HIGH-impact record the card lists apart (a weak call, a call
+/// with no GQ, DP or AD, or unknown frequency), true for every other row.
+pub fn counted(sf: &D<'_>) -> Result<Vec<bool>, Malformed> {
+    let mut out = vec![true; sf.at("clinvar_hits")?.len()?];
+    for x in sf.at("high_impact")?.items()? {
+        out.push(high_marks(&x, "")?.is_empty());
+    }
+    if let Some(sv) = sf.get("structural")? {
+        out.extend(std::iter::repeat_n(true, sv.len()?));
+    }
+    Ok(out)
 }
 
 /// The card's label when step 23's HIGH-impact source was not read.
