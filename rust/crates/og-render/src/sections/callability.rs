@@ -15,12 +15,15 @@ use crate::{html, text};
 const TITLE: &str = "Genes This Genome Could Not Read Reliably";
 
 /// `share` as a percent at one decimal. A share under `min` never prints at
-/// or above it: 0.8999 is 89.9%, not 90.0%.
+/// or above it: 0.8999 is 89.9%, not 90.0%. The bar is compared as printed,
+/// since `100.0 * 0.55` is `55.00000000000001` and `55.0` would pass under it.
 pub fn percent(share: f64, min: f64) -> String {
     let p = 100.0 * share;
     let t = fixed(p, 1);
-    if share < min && t.parse::<f64>().is_ok_and(|x| x >= 100.0 * min) {
-        return fixed((p * 10.0).floor() / 10.0, 1);
+    let bar = fixed(100.0 * min, 1).parse::<f64>().unwrap_or(100.0 * min);
+    if share < min && t.parse::<f64>().is_ok_and(|x| x >= bar) {
+        let down = (p * 10.0).floor() / 10.0;
+        return fixed(if down >= bar { bar - 0.1 } else { down }, 1);
     }
     t
 }

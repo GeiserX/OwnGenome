@@ -183,3 +183,24 @@ fn a_list_that_was_not_checked_never_reads_as_zero() {
     assert!(text.contains(&format!("{TITLE}: 0")));
     assert!(html.contains(r#"class="badge badge-gray">0<"#));
 }
+
+#[test]
+fn a_share_under_any_bar_never_prints_the_bar() {
+    use og_render::sections::callability::percent;
+    use pycompat::fmt::fixed;
+    // 100 * 0.55 is 55.00000000000001 in binary, so a check against the
+    // unrounded bar let 0.5499999 print as 55.0.
+    assert_eq!(percent(0.5499999, 0.55), "54.9");
+    for b in 50..100 {
+        let min = f64::from(b) / 100.0;
+        let bar = fixed(100.0 * min, 1);
+        for share in [min - 1e-7, min - 1e-9, f64::from_bits(min.to_bits() - 1)] {
+            assert_ne!(
+                percent(share, min),
+                bar,
+                "share {share} under the bar {min}"
+            );
+        }
+        assert_eq!(percent(min, min), bar);
+    }
+}
