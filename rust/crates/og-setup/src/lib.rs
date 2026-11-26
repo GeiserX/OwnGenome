@@ -17,6 +17,7 @@
 
 pub mod fetch;
 pub mod genetic_map;
+pub mod megane_kmers;
 pub mod plan;
 pub mod prune;
 pub mod revel;

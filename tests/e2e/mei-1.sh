@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Step 50 (MEGAnE: Alu, L1 and SVA insertions) on real reads:
 #   - HG002's chr20 at 30x: the reads of chr20 in GIAB's 60x novoalign BAM,
-#     half the pairs, realigned with minimap2 to chr20 alone. MEGAnE's k-mer
-#     set holds 16 bytes per reference base in memory, so the fixture's
-#     1.4 Gb reference does not fit a runner and chr20's 64 Mb does. The reads
+#     half the pairs, realigned with minimap2 to chr20 alone. The case was
+#     cut to chr20 when MEGAnE's own builder made the k-mer set: on GRCh38
+#     it peaked at about 67 GB, RAM plus swap, so the fixture's 1.4 Gb
+#     reference did not fit a runner. og builds the set now, in about 5 GB
+#     for GRCh38, and chr20's 64 Mb keeps the case short. The reads
 #     left unmapped are dropped: MEGAnE searches each one against the whole
 #     genome, which took 21 minutes of a 23-minute run on this slice;
 #   - setup.sh --megane-kmers builds the k-mer set of that reference, and
