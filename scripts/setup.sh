@@ -715,7 +715,7 @@ megane_kmers_path() {
 # og builds it (`og setup megane-kmers`, in OG_IMAGE with bin/ mounted), byte
 # for byte the files MEGAnE's own build_kmerset writes, in og's 5 GB budget:
 # the genome at 4 bits per base, then one range of k-mers at a time.
-# MEGAnE's builder holds 16 bytes per base instead, about 50 GB for GRCh38.
+# MEGAnE's own builder peaked at about 67 GB for GRCh38, RAM plus swap.
 install_megane_kmers() {
   local mk dir need=6 have log
   mk=$(megane_kmers_path); dir=$(dirname "$mk")
@@ -727,7 +727,10 @@ install_megane_kmers() {
     echo "[OK] MEGAnE k-mer set (step 50) already present: ${mk}"
     return 0
   fi
-  have=$("$CONTAINER_ENGINE" info --format '{{.MemTotal}}' 2>/dev/null | awk '{ printf "%d", $1 / 1e9 }')
+  # Docker names the engine's memory .MemTotal; podman has it under .Host.
+  have=$("$CONTAINER_ENGINE" info --format '{{.MemTotal}}' 2>/dev/null) || have=""
+  case "$have" in ''|*[!0-9]*) have=$("$CONTAINER_ENGINE" info --format '{{.Host.MemTotal}}' 2>/dev/null) || have="" ;; esac
+  have=$(printf '%s\n' "$have" | awk '$1 ~ /^[0-9]+$/ { printf "%d", $1 / 1e9 }')
   if [ -n "$have" ] && [ "$have" -gt 0 ] && [ "$have" -lt "$need" ]; then
     echo "[WARN] MEGAnE's k-mer set needs about ${need} GB of RAM and ${CONTAINER_ENGINE} has ${have} GB."
     echo "       Build it on a machine with more memory (./scripts/setup.sh --megane-kmers <genome_dir> there) and copy ${dir#"$GENOME_DIR"/}/ here."
@@ -736,7 +739,10 @@ install_megane_kmers() {
   need_og "builds MEGAnE's k-mer set" || return 1
   mkdir -p "$dir"
   echo "Building MEGAnE's k-mer set of $(basename "$REF_FASTA") (step 50; a few minutes, about 5 GB of RAM)..."
-  rm -f "$mk" "${mk%.mk}.mi"
+  # og writes each file under a hidden temporary name (.<name>.tmp-<pid>-<n>)
+  # and renames it at the end; a build killed on the way (out of memory,
+  # Ctrl-C) leaves that file behind, up to 1.2 GB for GRCh38.
+  rm -f "$mk" "${mk%.mk}.mi" "${dir}/.$(basename "$mk").tmp-"* "${dir}/.$(basename "${mk%.mk}").mi.tmp-"*
   if ! log=$(run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --memory "${need}g" "$OG_IMAGE" \
         /pgp-bin/og setup megane-kmers --fa "$REF_FASTA_C" --out "$(cpath "$dir")" \
         --prefix "$(basename "${mk%.mk}")" --mem 5) || [ ! -s "$mk" ] || [ ! -s "${mk%.mk}.mi" ]; then
