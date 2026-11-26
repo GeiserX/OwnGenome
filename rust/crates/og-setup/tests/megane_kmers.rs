@@ -166,6 +166,14 @@ fn rules() -> Vec<u8> {
         ]),
         60,
     ));
+    // A lowercase n drops windows too: two copies of one contig with an n
+    // at base 35, so a window over the n would be seen twice, and kept, if
+    // the n did not drop it. Their own generator, so the contigs above and
+    // below keep their bases.
+    let mut nl = Rng(0x6d65_6761_6e65_0004).seq(70);
+    nl[35] = b'n';
+    c.push(("nlow1", nl.clone(), 60));
+    c.push(("nlow2", nl, 60));
     // The last contig ends without a line end; its end is copied before it.
     let t = r.seq(137);
     c.push(("tailcopy", cat(&[&r.seq(10), &t[90..], &r.seq(10)]), 60));
@@ -348,6 +356,14 @@ fn the_vectors_exercise_every_rule() {
         !has(&seq("a0a5")[20..52]),
         "an N at base 5 drops the first window"
     );
+    let nl = seq("nlow1");
+    assert_eq!(nl[35], b'n', "nlow1 has its n at base 35");
+    assert!(has(&nl[0..32]), "a window before the lowercase n is kept");
+    let over_n: Vec<u8> = [&nl[20..35], b"A".as_slice(), &nl[36..52]].concat();
+    assert!(
+        !has(&over_n) && !has(&rc(&[&nl[20..35], b"T".as_slice(), &nl[36..52]].concat())),
+        "a lowercase n drops the windows that hold it"
+    );
     let s = seq("fwd");
     let r = seq("rev");
     assert!(has(&s[0..32]) && has(&r[0..32]), "both strands");
@@ -434,6 +450,69 @@ fn input_megane_reads_undefined_or_wrong_is_refused() {
     match megane_kmers::build(&fa, &out, "og", 1 << 20, 2) {
         Err(Error::Input(m)) => assert!(m.contains("--mem"), "{m}"),
         other => panic!("too little memory was not refused: {other:?}"),
+    }
+    // The message names the value as given, not rounded: --mem 0.25 on 8
+    // threads needs 0.27 GB.
+    match megane_kmers::build(&fa, &out, "og", 250_000_000, 8) {
+        Err(Error::Input(m)) => assert!(
+            m.starts_with("--mem 0.25 is too little") && m.ends_with("at least 0.3 GB"),
+            "{m}"
+        ),
+        other => panic!("--mem 0.25 on 8 threads was not refused: {other:?}"),
+    }
+    fs::remove_dir_all(&d).unwrap();
+}
+
+/// A contig name that is not UTF-8: samtools indexes it and MEGAnE's
+/// builder reads it, and og shows names only in its messages. `twice.fa`
+/// with `x` renamed to the Latin-1 bytes `caf\xe9` must give `twice.mk`.
+#[test]
+fn a_contig_name_that_is_not_utf8_is_read() {
+    let d = scratch("latin");
+    let v = vectors();
+    let fa = fs::read(v.join("twice.fa")).unwrap();
+    let head = b">x synthetic\n";
+    assert!(fa.starts_with(head), "twice.fa starts with contig x");
+    let latin = [b">caf\xe9 synthetic\n".as_slice(), &fa[head.len()..]].concat();
+    // The name is 3 bytes longer, so every offset moves by 3.
+    let mut fai = Vec::new();
+    for line in fs::read_to_string(v.join("twice.fa.fai")).unwrap().lines() {
+        let f: Vec<&str> = line.split('\t').collect();
+        let name: &[u8] = if f[0] == "x" {
+            b"caf\xe9"
+        } else {
+            f[0].as_bytes()
+        };
+        let offset: u64 = f[2].parse().unwrap();
+        fai.extend_from_slice(name);
+        fai.extend_from_slice(
+            format!("\t{}\t{}\t{}\t{}\n", f[1], offset + 3, f[3], f[4]).as_bytes(),
+        );
+    }
+    let p = d.join("latin.fa");
+    fs::write(&p, &latin).unwrap();
+    fs::write(d.join("latin.fa.fai"), &fai).unwrap();
+    let out = d.join("out");
+    let s = megane_kmers::build(&p, &out, "og", 1 << 30, 2).unwrap();
+    assert!(
+        fs::read(out.join("og.mk")).unwrap() == fs::read(v.join("twice.mk")).unwrap(),
+        "the k-mers of twice.fa under another contig name"
+    );
+    assert_eq!(
+        fs::read_to_string(out.join("og.mi")).unwrap(),
+        fs::read_to_string(v.join("twice.mi")).unwrap()
+    );
+    assert_eq!(s.kept, 98);
+    // A refusal still names the contig, with the byte shown as U+FFFD.
+    let mut bad = latin.clone();
+    bad[b">caf\xe9 synthetic\n".len() + 5] = 0xC3;
+    fs::write(&p, &bad).unwrap();
+    match megane_kmers::build(&p, &out, "og", 1 << 30, 2) {
+        Err(Error::Input(m)) => assert!(
+            m.contains("contig caf\u{FFFD}, base 6 is the byte 0xc3"),
+            "{m}"
+        ),
+        other => panic!("a byte of 0x80 or more was not refused: {other:?}"),
     }
     fs::remove_dir_all(&d).unwrap();
 }

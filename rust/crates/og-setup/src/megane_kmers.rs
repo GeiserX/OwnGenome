@@ -2,7 +2,8 @@
 //! [--threads N]`: MEGAnE's k-mer set of a reference for step 50, the files
 //! `DIR/P.mk` and `DIR/P.mi`, byte for byte what MEGAnE's own
 //! `build_kmerset` writes for the same FASTA and `.fai`, in a few GB of
-//! memory instead of about 50 for GRCh38.
+//! memory, where MEGAnE's own builder peaked at about 67 GB (RAM plus
+//! swap) for GRCh38.
 //!
 //! The format (MEGAnE, RIKEN, MIT licence; this is a new implementation of
 //! its file format and copies no code):
@@ -544,10 +545,12 @@ pub fn plan_for(mem: u64, genome: u64, threads: usize) -> Result<Plan, String> {
             threads: threads as usize,
             pass_values: b / 8 / threads,
         }),
+        // The value as given (the command line rounds GB to whole bytes), and
+        // the minimum rounded up, so --mem of the number shown fits.
         _ => Err(format!(
-            "--mem {:.1} is too little for this reference on {threads} threads: it needs at least {:.1} GB",
+            "--mem {} is too little for this reference on {threads} threads: it needs at least {:.1} GB",
             mem as f64 / 1e9,
-            (fixed + floor) as f64 / 1e9
+            ((fixed + floor) as f64 / 1e8).ceil() / 10.0
         )),
     }
 }
@@ -565,8 +568,10 @@ pub fn build(
     let fai_path = PathBuf::from(fai_path);
     let fai_name = fai_path.display().to_string();
     let text = std::fs::read(&fai_path).map_err(|e| Error::Io(format!("{fai_name}: {e}")))?;
-    let text =
-        String::from_utf8(text).map_err(|_| Error::Input(format!("{fai_name} is not text")))?;
+    // MEGAnE reads a contig name as bytes, and og shows names only in its
+    // messages: a name that is not UTF-8 is read, with U+FFFD for its bad
+    // bytes. The number columns are checked as digits either way.
+    let text = String::from_utf8_lossy(&text);
     let fai = parse_fai(&text, &fai_name)?;
     let plan = plan_for(mem, Genome::bytes_for(&fai), threads).map_err(Error::Input)?;
     let g = Genome::load(fasta, &fai)?;
@@ -596,6 +601,13 @@ const USAGE: &str =
 
 /// The default memory budget, in GB: GRCh38 fits it on 8 threads.
 pub const DEFAULT_MEM_GB: f64 = 5.0;
+
+/// `--mem` in bytes, rounded to the nearest byte: 1.15 GB is
+/// 1,150,000,000 bytes, where truncating would give 1,149,999,999, and the
+/// too-little message shows the value as given.
+fn mem_bytes(gb: f64) -> u64 {
+    (gb * 1e9).round() as u64
+}
 
 /// The command line; returns the exit code: 0, 1 on an I/O error, 2 on
 /// input it refuses or a wrong command line.
@@ -644,7 +656,7 @@ pub fn cli(args: &[String]) -> u8 {
         Path::new(&fa),
         Path::new(&out),
         &prefix,
-        (mem * 1e9) as u64,
+        mem_bytes(mem),
         threads,
     ) {
         Ok(s) => {
@@ -725,6 +737,27 @@ mod tests {
         assert!(parse_fai("a\t40\t3\t20\t1\n", "x.fai").is_err());
         assert!(parse_fai("a\t4x\t3\t20\t21\n", "x.fai").is_err());
         assert!(parse_fai("a\t40\t3\t20\t21\r\n", "x.fai").is_err());
+    }
+
+    #[test]
+    fn the_mem_message_names_the_value_as_given_and_a_minimum_that_fits() {
+        let e = plan_for(1_150_000_000, 2_000_000_000, 8).unwrap_err();
+        assert!(e.starts_with("--mem 1.15 is too little"), "{e}");
+        // 2.27 GB is needed: 2.3 fits, 2.2 would not.
+        assert!(e.ends_with("it needs at least 2.3 GB"), "{e}");
+        // 0.27 GB of genome + 8 + 128 + 8 MiB = 0.421 GB: rounded up, since
+        // --mem 0.4 would not fit.
+        let e = plan_for(250_000_000, 270_000_000, 1).unwrap_err();
+        assert!(e.ends_with("at least 0.5 GB"), "{e}");
+    }
+
+    #[test]
+    fn mem_is_rounded_to_whole_bytes_not_truncated() {
+        assert_eq!(mem_bytes(1.15), 1_150_000_000);
+        assert_eq!(mem_bytes(0.25), 250_000_000);
+        assert_eq!(mem_bytes(5.0), 5_000_000_000);
+        let e = plan_for(mem_bytes(1.15), 2_000_000_000, 8).unwrap_err();
+        assert!(e.starts_with("--mem 1.15 is"), "{e}");
     }
 
     #[test]
