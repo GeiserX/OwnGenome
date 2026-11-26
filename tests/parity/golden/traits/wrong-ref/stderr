@@ -1,0 +1,1 @@
+ERROR: rs429358 at chr19:44908684: the gVCF has REF G, the table T (the GRCh38 base). Is the gVCF on GRCh38?

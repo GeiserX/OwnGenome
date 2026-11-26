@@ -1,0 +1,10 @@
+# clinvar	clinvar_chr.vcf.gz	2026-10-05
+# gnomad	gnomad.chrM.vcf.bgz	-
+chrom	pos	ref	alt	filter	af	clinvar_id	clinvar_significance	clinvar_review	clinvar_condition	gnomad_af_hom	gnomad_af_het	gnomad_max_hl
+chrM	73	A	G	PASS	1.00	9	not_provided	no_classification_provided	not_provided	.	.	.
+chrM	302	AC	A	PASS	0.3	.	.	.	.	.	.	.
+chrM	302	A	AC	PASS	0.4	8	Benign	criteria_provided,_single_submitter	not_provided	0.01,0.02	0.2	0.99
+chrM	3243	A	G	PASS	0.3	7	Pathogenic	reviewed_by_expert_panel	MELAS	0.00002	0.0003	0.9
+chrM	9000	C	T	strand_bias	0.1	.	.	.	.	.	.	.
+chrM	16189	T	C	PASS	.	.	.	.	.	.	.	.
+chrM	16191	C	G	PASS	.	.	.	.	.	.	.	.

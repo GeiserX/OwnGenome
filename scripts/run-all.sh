@@ -20,12 +20,14 @@
 #   to be PacBio HiFi, PL:PACBIO, or its step fails and the rest goes on; cyrius runs when setup.sh --cyrius installed it, whose
 #   licence is non-commercial: TOOLS without cyrius leaves it out); KIR=true (KIR genes with HLA);
 #   HLA_QC=true (OptiType beside T1K: HLA-A and HLA-B reach PharmCAT only when both agree);
+#   PRS_ACADEMIC=true (--pgs_academic true: step 25 also scores the four PGS Catalog scores free for academic research
+#   use only, after setup.sh --prs-academic; without it summary.json lists them as skipped);
 #   CPSR_SECONDARY_FINDINGS=false (--cpsr_secondary_findings false: step 17's CPSR reports the cancer genes only, not
 #   the ACMG SF genes; the report's own secondary-findings card from step 23 stays);
 #   HPO=HP:0001250,HP:0001263 (the symptoms as HPO ids: step 48 ranks the variants that could explain them with Exomiser,
 #   after setup.sh --exomiser-data);
-#   EVERYTHING=true (every optional step of assets/everything.tsv: every --tools name, KIR, HLA_QC, GRIDSS, TIDDIT,
-#   IMPUTATION, SOMATIC, BENCHMARK and every EXTRA_CALLERS; TOOLS or a switch set to another value stops it with exit 2.
+#   EVERYTHING=true (every optional step of assets/everything.tsv: every --tools name, KIR, HLA_QC, PRS_ACADEMIC, GRIDSS,
+#   TIDDIT, IMPUTATION, SOMATIC, BENCHMARK and every EXTRA_CALLERS; TOOLS or a switch set to another value stops it with exit 2.
 #   A step that would be skipped because its data is not installed, or because ANCESTRY_PANEL, ANCESTRY_FINE_DIR or
 #   ARCHAIC_DIR is none, stops it with exit 2 before Nextflow, naming the setup command; a skip that comes from the
 #   input stays a skip: no BAM, no gVCF, a female sample for the Y steps, a BAM that is not PacBio HiFi for Paraphase);
@@ -80,7 +82,7 @@ fi
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have. The replay reads this
 # shape back word by word and starts run-all.sh with those arguments, never through a shell; it refuses any other.
-SWITCHES=(GENOME_DIR INPUT SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
+SWITCHES=(GENOME_DIR INPUT SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC PRS_ACADEMIC HPO CPSR_SECONDARY_FINDINGS REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS TIDDIT IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
   FAMILIES OWNGENOME_LIVE_URL OWNGENOME_LIVE_STATE_DIR LOCITYPER_DATA LOCITYPER_BG_REGION EVERYTHING NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
@@ -356,6 +358,20 @@ hifi() {
 plan "35b Paraphase (PacBio HiFi)" paraphase "$(optin paraphase || hifi)" && { [ -z "${PARAPHASE_REGIONS:-}" ] || NF+=(--paraphase_regions "$PARAPHASE_REGIONS"); }
 plan "25 PRS" prs "$(need "$(compgen -G "${G}/prs_scores/*.txt.gz" | head -n 1 || echo "${G}/prs_scores/<PGS id>.txt.gz")")" && NF+=(--pgs_scoring "${G}/prs_scores") \
   && { PC=${PGSC_CALC_DIR:-${G}/tools/pgsc_calc-${PGSC_CALC_VERSION}}; [ ! -f "${PC}/main.nf" ] || NF+=(--pgsc_calc "$PC"); }
+# PRS_ACADEMIC=true scores the academic-only files that are installed.
+# Everything requires each of them before the pipeline starts.
+if [[ " ${SEL[*]} " == *" prs "* ]] && on PRS_ACADEMIC; then
+  NF+=(--pgs_academic true)
+  AM=""
+  while read -r id; do
+    [ -s "${G}/prs_scores/${id}.txt.gz" ] || AM+=" ${id}"
+  done < <(awk -F'\t' '$1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; next }
+    c["licence"] && $c["licence"] == "academic-research" {print $1}' "${PGP_ROOT}/assets/pgs_scores.tsv")
+  if [ -n "$AM" ]; then
+    echo "  Academic-only PGS scores skipped: data not installed:${AM} (setup.sh --prs-academic)"
+    [ -z "$EV" ] || EVMISS+=("25 PRS academic-only scores (PRS_ACADEMIC=true): data not installed:${AM}; install: setup.sh --prs-academic")
+  fi
+fi
 # Step 26 is pgsc_calc's projection inside the PRS run, with its panel and the site list setup.sh writes beside it.
 PANEL=${ANCESTRY_PANEL:-${G}/reference/pgsc_calc/${PGSC_PANEL}.tar.zst}
 plan "26 Ancestry (pgsc_calc)" ancestry "$(if [[ " ${SEL[*]} " != *" prs "* ]]; then echo 'needs PRS'; elif [ "$PANEL" = none ]; then echo 'ANCESTRY_PANEL=none'

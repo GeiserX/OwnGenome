@@ -1,0 +1,19 @@
+key	value
+sites	180578
+called	169830
+no_call	10748
+from_reference_blocks	166323
+from_variant_records	3718
+reference_checked	11950
+reference_mismatch	29
+template_sites	181578
+table_dropped	1000
+sex	male
+file_23andme	S_23andme_v5.zip
+file_ancestrydna	S_ancestrydna_layout.zip
+no_call: filtered call	123
+no_call: inside a deletion or a longer allele	1782
+no_call: no gVCF record	5779
+no_call: no-call in the gVCF	2824
+no_call: reference base differs from the site table	29
+no_call: two alleles on a haploid site (chrM heteroplasmy, or male chrX/chrY)	211

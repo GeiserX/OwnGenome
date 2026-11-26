@@ -1,0 +1,3 @@
+family	dad	-9	-9	1	-9
+family	kid	dad	mum	1	-9
+family	mum	-9	-9	2	-9

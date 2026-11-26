@@ -1,0 +1,11 @@
+metric	value
+status	not assessed
+kiv2_copies	.
+ci95_low	.
+ci95_high	.
+class	.
+kiv2_depth	68.57
+flank_depth	30.00
+mapq0_share	0.050
+message	not assessed: reads of mapping quality 0 make up 5.0% of the depth over the KIV-2 exons, so the aligner left out the reads that fit several KIV-2 copies (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM
+advice	A research estimate from read depth, not a diagnostic test. Lp(a) is measured in blood; a 2022 European Atherosclerosis Society consensus advises measuring it at least once in every adult.

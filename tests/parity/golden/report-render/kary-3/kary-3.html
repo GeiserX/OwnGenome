@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnGenome Report</title>
+<style>
+  :root { --bg: #15171c; --card: #1e2128; --fg: #e3e5ea; --muted: #a3a9b4; --line: #2e333c; --head: #262a32;
+          --accent: #8cbcf0; --hdr: linear-gradient(135deg, #12324d 0%, #1f5f8f 100%); --hdr-fg: #f2f6fa;
+          --green-bg: #1d3b2a; --green-fg: #8ee0ae; --yellow-bg: #3f3618; --yellow-fg: #f2d77c;
+          --red-bg: #4a2424; --red-fg: #f5a9a2; --gray-bg: #2d3139; --gray-fg: #b6bbc4;
+          --state-bg: #1f3550; --state-fg: #a9cdf5; --stale-bg: #3c2e16; --stale-fg: #f4ca8c;
+          --caveat-bg: #232a35; --disc-bg: #3a3214; --disc-line: #a8861c; color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); line-height: 1.6; }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; max-width: 1400px;
+            margin: 0 auto; padding: 20px; }
+  .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 8px 0;
+         font-size: 13px; }
+  .toc .toc-title { font-size: 15px; color: var(--accent); margin-bottom: 8px; }
+  .toc ol { list-style: none; }
+  .toc > ol > li { margin-bottom: 10px; }
+  .toc > ol > li > a { font-weight: 600; }
+  .toc ol ol { margin: 2px 0 0 4px; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot-ok { background: #5b9ee6; } .dot-stale, .dot-incomplete { background: #e0b94a; }
+  .dot-failed, .dot-part { background: #e2685d; } .dot-missing { background: #6b717c; }
+  .header { background: var(--hdr); color: var(--hdr-fg); padding: 26px 30px; border-radius: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 28px; margin-bottom: 8px; }
+  .header .meta { opacity: 0.9; font-size: 14px; }
+  .print-hint { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .chapter { margin-bottom: 32px; }
+  .chapter-title { font-size: 22px; color: var(--accent); }
+  .question { color: var(--muted); margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .sec { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 12px; }
+  .sec:target .card { outline: 2px solid var(--accent); }
+  .card { background: var(--card); border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .card h2 { font-size: 18px; color: var(--accent); margin-bottom: 8px;
+             padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  .card h3 { font-size: 15px; margin: 12px 0 6px; }
+  .sec-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .sec-meta .anchor { color: var(--muted); }
+  .caveat { font-size: 13px; background: var(--caveat-bg); border-left: 3px solid var(--accent);
+            padding: 6px 10px; margin-bottom: 10px; border-radius: 4px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .files { font-size: 13px; color: var(--muted); }
+  .offsite-note { font-size: 12px; color: var(--muted); font-weight: normal; }
+  .stat { display: flex; justify-content: space-between; padding: 8px 0;
+          border-bottom: 1px solid var(--line); gap: 12px; }
+  .stat:last-child { border-bottom: none; }
+  .stat .label { color: var(--muted); }
+  .stat .value { font-weight: 600; text-align: right; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+           font-size: 13px; font-weight: 600; }
+  .badge-green { background: var(--green-bg); color: var(--green-fg); }
+  .badge-yellow { background: var(--yellow-bg); color: var(--yellow-fg); }
+  .badge-red { background: var(--red-bg); color: var(--red-fg); }
+  .badge-gray { background: var(--gray-bg); color: var(--gray-fg); }
+  .badge-state { background: var(--state-bg); color: var(--state-fg); }
+  .stale { background: var(--stale-bg); color: var(--stale-fg); border-radius: 6px; padding: 6px 10px;
+           font-size: 13px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { background: var(--head); font-weight: 600; color: var(--muted); }
+  .full-width { grid-column: 1 / -1; }
+  figure.chart { margin: 4px 0 12px; } figure.chart svg { display: block; max-width: 760px; }
+  figure.chart a:focus, figure.chart a:hover { opacity: 0.8; }
+  ul.plain { margin-left: 18px; }
+  .disclaimer { background: var(--disc-bg); border: 1px solid var(--disc-line); border-radius: 8px;
+                padding: 16px; margin-top: 24px; font-size: 14px; }
+  .footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; padding: 16px; }
+  .footer table { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 900px) { .layout { display: block; } .toc { position: static; max-height: none; } }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  /* Print is light. With a section or a chapter in the address (#id, from
+     the contents), only it prints, with the header, the list of what is not
+     assessed (.always) and the disclaimer. A browser without :has() prints
+     everything. */
+  @media print {
+    :root { --bg: #fff; --card: #fff; --fg: #111; --muted: #444; --line: #ccc; --head: #f0f0f0; --accent: #1a5276;
+            --hdr: #fff; --hdr-fg: #111; --green-bg: #d5f5e3; --green-fg: #196f3d; --yellow-bg: #fef9e7;
+            --yellow-fg: #7d6608; --red-bg: #fadbd8; --red-fg: #922b21; --gray-bg: #eee; --gray-fg: #555;
+            --state-bg: #e3eefa; --state-fg: #1a4a7a; --stale-bg: #fdebd0; --stale-fg: #7e5109;
+            --caveat-bg: #f4f6f8; --disc-bg: #fff3cd; --disc-line: #c9a227; color-scheme: light; }
+    .toc, .print-hint, .sec-meta .anchor { display: none; }
+    .layout { display: block; padding: 0; max-width: none; }
+    .header { border: 1px solid #999; padding: 12px 16px; }
+    .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+    .sec:target .card { outline: none; }
+    .grid { display: block; } .sec { margin-bottom: 16px; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)):not(:has(.always)) { display: none; }
+    body:has(.sec:target) .sec:not(:target):not(.always) { display: none; }
+    body:has(.chapter:target) .chapter:not(:target) .sec:not(.always) { display: none; }
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .chapter-title,
+    body:has(main :target) .chapter:not(:target):not(:has(:target)) > .question { display: none; }
+  }
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 10; padding: 8px 14px; border-radius: 6px;
+           background: var(--card); color: var(--accent); font-weight: 600; }
+  .skip:focus { top: 8px; }
+  main:focus { outline: none; }
+  .header .research-only { font-weight: 600; margin-bottom: 8px; }
+  main { overflow-wrap: anywhere; }
+  .sec, .card { min-width: 0; }
+  .tscroll { overflow-x: auto; max-width: 100%; }
+  .tscroll:focus-visible { outline: 2px solid var(--accent); }
+  .toc-fold > summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 8px 0; }
+  @media (max-width: 900px) { .toc-fold .toc-title { display: none; } }
+  @media (min-width: 901px) { .toc-fold { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; } }
+  @supports selector(::details-content) {
+    @media (min-width: 901px) {
+      .toc-fold > summary { display: none; }
+      .toc-fold::details-content { content-visibility: visible; display: block; }
+    }
+  }
+  @media print { .toc-fold, .skip { display: none; } .tscroll { overflow: visible; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to results</a>
+<div class="layout">
+<details class="toc-fold">
+<summary>Contents</summary>
+<nav class="toc" aria-label="Contents">
+  <h2 class="toc-title">Contents</h2>
+  <ol>
+    <li><a href="#ch-quality">Quality</a>
+      <ol>
+        <li><a href="#qc"><span class="dot dot-incomplete" title="Part not run"></span>Quality control</a></li>
+        <li><a href="#variants"><span class="dot dot-missing" title="Not run"></span>Variant calling</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-clinical">Clinical</a>
+      <ol>
+        <li><a href="#clinvar"><span class="dot dot-missing" title="Not run"></span>ClinVar screen and hits</a></li>
+        <li><a href="#clinical-filter"><span class="dot dot-missing" title="Not run"></span>Clinical filter and secondary findings</a></li>
+        <li><a href="#cpsr"><span class="dot dot-missing" title="Not run"></span>Cancer predisposition</a></li>
+        <li><a href="#slivar"><span class="dot dot-missing" title="Not run"></span>Variant prioritization</a></li>
+        <li><a href="#structural-variants"><span class="dot dot-missing" title="Not run"></span>Structural variants</a></li>
+        <li><a href="#expansions"><span class="dot dot-missing" title="Not run"></span>Repeat expansions</a></li>
+        <li><a href="#mito"><span class="dot dot-missing" title="Not run"></span>Mitochondrial variants</a></li>
+        <li><a href="#mosaic"><span class="dot dot-missing" title="Not run"></span>Mosaic loss of chromosome Y or X</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-carrier">Carrier</a>
+      <ol>
+        <li><a href="#paralogs"><span class="dot dot-missing" title="Not run"></span>Paralog genes and SMN1</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-medicines">Medicines</a>
+      <ol>
+        <li><a href="#pharmcat"><span class="dot dot-missing" title="Not run"></span>PharmCAT</a></li>
+        <li><a href="#cpic"><span class="dot dot-missing" title="Not run"></span>CPIC recommendations</a></li>
+        <li><a href="#cyp2d6"><span class="dot dot-missing" title="Not run"></span>pypgx, Cyrius and CYP2D6</a></li>
+        <li><a href="#hla"><span class="dot dot-missing" title="Not run"></span>HLA typing</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-ancestry">Ancestry</a>
+      <ol>
+        <li><a href="#mt-haplogroup"><span class="dot dot-missing" title="Not run"></span>Mitochondrial haplogroup</a></li>
+        <li><a href="#roh"><span class="dot dot-missing" title="Not run"></span>Runs of homozygosity</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-traits">Traits and scores</a>
+      <ol>
+        <li><a href="#traits-panel"><span class="dot dot-missing" title="Not run"></span>Traits</a></li>
+        <li><a href="#telomere"><span class="dot dot-missing" title="Not run"></span>Telomere content</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-limits">What this report leaves out</a>
+      <ol>
+        <li><a href="#not-run">Steps not run</a></li>
+        <li><a href="#not-assessed">Not assessed</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch-terms">Genes and rsIDs in these results</a></li>
+  </ol>
+</nav>
+</details>
+<main id="main" tabindex="-1">
+<header class="header">
+  <h1>Genomic Analysis Report</h1>
+  <p class="research-only">Research software, not a clinical report: confirm any finding in a certified laboratory before acting on it.</p>
+  <div class="meta">
+    Sample: <strong>S</strong> &nbsp;|&nbsp; Generated: 2026-01-02 03:04 UTC
+  </div>
+  <div class="meta">
+    Pipeline commit: unknown &nbsp;|&nbsp; ClinVar file: unknown &nbsp;|&nbsp; ClinVar in CPSR's bundle: unknown &nbsp;|&nbsp; HLA database: unknown
+  </div>
+</header>
+<p class="print-hint">To print one section, open it from the contents (or its "link to this section"), then print: the printout holds that section, this header, the list of what is not assessed and the disclaimer. A chapter prints the same way. In a browser without CSS :has() the whole report prints.</p>
+<section class="chapter" id="ch-quality">
+  <h2 class="chapter-title">Quality</h2>
+  <p class="question">Can I trust this data?</p>
+  <div class="grid">
+  <section class="sec" id="qc">
+  <div class="card">
+    <h2>Quality Control</h2>
+    <p class="sec-meta">Steps 16b, 16, 33, 02 &middot; <span class="badge badge-yellow">Part not run</span> &middot; file date 2021-03-04 05:06 UTC &middot; <a class="anchor" href="#qc">link to this section</a></p>
+    <p class="caveat">Mean depth is an average over the genome: some genes get far fewer reads, and the gene callability card lists those. The sex, identity and contamination checks catch a swapped or mixed sample, not every lab error.</p>
+    <div class="stat"><span class="label">Mean depth</span><span class="value">not available</span></div>
+    <div class="stat"><span class="label">Inferred sex (indexcov)</span><span class="value">male</span></div>
+    <div class="stat"><span class="label">Declared sex</span><span class="value">not declared</span></div>
+    <div class="stat"><span class="label">Sex from the reads (somalier)</span><span class="value"><span class="badge badge-gray">male</span></span></div>
+    <div class="stat"><span class="label">Contamination (FREEMIX)</span><span class="value"><span class="badge badge-gray">not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="variants">
+  <div class="card">
+    <h2>Variant Calling</h2>
+    <p class="sec-meta">Step 03 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#variants">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-clinical">
+  <h2 class="chapter-title">Clinical</h2>
+  <p class="question">Is there anything to take to a doctor?</p>
+  <div class="grid">
+  <section class="sec" id="clinvar">
+  <div class="card">
+    <h2>ClinVar Screening</h2>
+    <p class="sec-meta">Step 06 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinvar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="clinical-filter">
+  <div class="card">
+    <h2>Clinical Variant Filter</h2>
+    <p class="sec-meta">Step 23 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#clinical-filter">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpsr">
+  <div class="card">
+    <h2>Cancer Predisposition</h2>
+    <p class="sec-meta">Step 17 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpsr">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="slivar">
+  <div class="card">
+    <h2>Variant Prioritization (slivar)</h2>
+    <p class="sec-meta">Step 31 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#slivar">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="structural-variants">
+  <div class="card">
+    <h2>Structural Variants</h2>
+    <p class="sec-meta">Steps 04, 19, 18, 22, 05 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#structural-variants">link to this section</a></p>
+    <p class="caveat">Short reads find large deletions and duplications better than insertions and inversions, and the callers disagree on many events. The totals count every call, most of them common in the population; only the AnnotSV class 4 and 5 rows are graded for disease.</p>
+    <div class="stat"><span class="label">Manta SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">Delly SVs (total / PASS)</span><span class="value">N/A / N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor CNVs</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">CNVpytor significant (e-val &lt; 0.01)</span><span class="value">N/A</span></div>
+    <div class="stat"><span class="label">Consensus SVs (2+ callers)</span><span class="value">N/A</span></div>
+  </div>
+  </section>
+  <section class="sec" id="expansions">
+  <div class="card">
+    <h2>Repeat Expansions</h2>
+    <p class="sec-meta">Step 09 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#expansions">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mito">
+  <div class="card">
+    <h2>Mitochondrial Analysis</h2>
+    <p class="sec-meta">Step 20 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mito">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="mosaic">
+  <div class="card">
+    <h2>Mosaic Loss of Chromosome Y or X</h2>
+    <p class="sec-meta">Step 33 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mosaic">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-carrier">
+  <h2 class="chapter-title">Carrier</h2>
+  <p class="question">What could I pass on to a child?</p>
+  <div class="grid">
+  <section class="sec" id="paralogs">
+  <div class="card">
+    <h2>Paralog Copy Number</h2>
+    <p class="sec-meta">Steps 35b, 35 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#paralogs">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not checked</span></span></div>
+    <p class="note">Paralog copy number: not checked (neither step 35 nor step 35b ran)</p>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-medicines">
+  <h2 class="chapter-title">Medicines</h2>
+  <p class="question">How might I respond to medicines?</p>
+  <div class="grid">
+  <section class="sec" id="pharmcat">
+  <div class="card">
+    <h2>Pharmacogenomics</h2>
+    <p class="sec-meta">Step 07 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#pharmcat">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cpic">
+  <div class="card">
+    <h2>CPIC Drug Recommendations</h2>
+    <p class="sec-meta">Step 27 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cpic">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="cyp2d6">
+  <div class="card">
+    <h2>CYP2D6 Across Callers</h2>
+    <p class="sec-meta">Steps 32, 21 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#cyp2d6">link to this section</a></p>
+    <p class="caveat">CYP2D6 sits beside its look-alike CYP2D7, and short reads often cannot tell them apart, so pypgx, Cyrius and step 36 can disagree or give no call. A disagreement or a missing call means the gene was not read reliably here; a clinical CYP2D6 test settles it.</p>
+    <div class="stat"><span class="label">PharmCAT (step 36&#x27;s call)</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">Cyrius</span><span class="value">not run</span></div>
+    <div class="stat"><span class="label">pypgx and Cyrius agree</span><span class="value"><span class="badge badge-gray">fewer than two usable calls</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="hla">
+  <div class="card">
+    <h2>HLA Typing</h2>
+    <p class="sec-meta">Step 08 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#hla">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-ancestry">
+  <h2 class="chapter-title">Ancestry</h2>
+  <p class="question">Where do my ancestors come from?</p>
+  <div class="grid">
+  <section class="sec" id="mt-haplogroup">
+  <div class="card">
+    <h2>Mitochondrial Haplogroup</h2>
+    <p class="sec-meta">Step 12 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#mt-haplogroup">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="roh">
+  <div class="card">
+    <h2>Runs of Homozygosity</h2>
+    <p class="sec-meta">Step 11 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#roh">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-traits">
+  <h2 class="chapter-title">Traits and scores</h2>
+  <p class="question">What do studies say about my traits and risk scores?</p>
+  <div class="grid">
+  <section class="sec full-width" id="traits-panel">
+  <div class="card full-width">
+    <h2>Traits</h2>
+    <p class="sec-meta">Step 42 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#traits-panel">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  <section class="sec" id="telomere">
+  <div class="card">
+    <h2>Telomere content (relative)</h2>
+    <p class="sec-meta">Step 10 &middot; <span class="badge badge-gray">Not run</span> &middot; <a class="anchor" href="#telomere">link to this section</a></p>
+    <div class="stat"><span class="label">Status</span><span class="value"><span class="badge badge-gray">Not run</span></span></div>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-limits">
+  <h2 class="chapter-title">What this report leaves out</h2>
+  <p class="question">Which steps did not run, and what does no step look at?</p>
+  <div class="grid">
+  <section class="sec" id="not-run">
+  <div class="card">
+    <h2>Steps Not Run</h2>
+    <ul class="plain">
+      <li>Coverage (mosdepth)</li>
+      <li>Gene callability (mosdepth)</li>
+      <li>Mosaic loss of chromosome Y or X</li>
+      <li>Variant calling</li>
+      <li>ClinVar screen</li>
+      <li>PharmCAT</li>
+      <li>CPIC drug-gene recommendations</li>
+      <li>pypgx</li>
+      <li>Cyrius (CYP2D6)</li>
+      <li>SMN1/SMN2 copy number (Parascopy, short reads)</li>
+      <li>Paralog genes (Paraphase, PacBio HiFi)</li>
+      <li>HLA typing (T1K)</li>
+      <li>Polygenic risk scores</li>
+      <li>Fine-grained ancestry</li>
+      <li>Structural variants (Manta)</li>
+      <li>Structural variants (Delly)</li>
+      <li>Copy number (CNVpytor)</li>
+      <li>SV consensus merge</li>
+      <li>Structural variants, class 4 and 5 (AnnotSV)</li>
+      <li>Repeat expansions (ExpansionHunter)</li>
+      <li>Telomere content (TelomereHunter)</li>
+      <li>Runs of homozygosity</li>
+      <li>Mitochondrial haplogroup</li>
+      <li>Y-chromosome haplogroup (Yleaf)</li>
+      <li>Y placement on the current public tree</li>
+      <li>Y-STR markers (HipSTR)</li>
+      <li>Raw-data export (23andMe v5 layout)</li>
+      <li>Blood groups (predicted)</li>
+      <li>Lp(a): LPA KIV-2 repeat count</li>
+      <li>MUC1 VNTR frameshifts (VNtyper)</li>
+      <li>Locityper second opinion at hard loci</li>
+      <li>Mitochondrial variants</li>
+      <li>Traits panel</li>
+      <li>Archaic ancestry (IBDmix)</li>
+      <li>Ancient populations (AADR PCA)</li>
+      <li>Viral DNA in the unmapped reads</li>
+      <li>Symptom-driven ranking (Exomiser)</li>
+      <li>Clonal haematopoiesis (CHIP)</li>
+      <li>Mobile element insertions (MEGAnE)</li>
+      <li>Mosaic chromosomal alterations (MoChA)</li>
+      <li>Cancer predisposition (CPSR)</li>
+      <li>Clinical variant filter</li>
+      <li>Variant prioritization (slivar)</li>
+    </ul>
+  </div>
+  </section>
+  <section class="sec always" id="not-assessed">
+  <div class="card">
+    <h2>Not Assessed by This Pipeline</h2>
+    <ul class="plain">
+      <li>Mosaic and low-fraction small variants (only chrM heteroplasmy is reported, and with step 49 the CHIP genes)</li>
+      <li>Methylation and imprinting</li>
+      <li>Repeat expansions outside the ExpansionHunter catalog</li>
+      <li>Phase: two variants in one gene are compound-het candidates, not confirmed</li>
+      <li>Variants of uncertain significance (not interpreted)</li>
+      <li>Polygenic score percentiles: no ancestry reference panel was used, so the scores are raw sums</li>
+      <li>HBA1/HBA2 copy number (alpha-thalassaemia deletions): neither step 35&#x27;s read-depth count (short reads) nor step 35b (Paraphase, PacBio HiFi) made a call</li>
+      <li>Mobile element insertions (Alu, L1 and SVA, the FKTN, TAF1 and BBS1 SVA insertions among them): not looked for (step 50, MEGAnE, is opt-in)</li>
+      <li>MUC1 VNTR frameshifts (ADTKD-MUC1): step 52 (VNtyper, opt-in) gave no reading; no standard caller sees them</li>
+      <li>Autosomal mosaic chromosomal alterations (large gains, losses and copy-neutral LOH in a share of the blood cells): step 51 (MoChA) did not assess this sample</li>
+    </ul>
+  </div>
+  </section>
+  </div>
+</section>
+<section class="chapter" id="ch-terms">
+  <h2 class="chapter-title">Genes and rsIDs in these results</h2>
+  <p class="question">Where in this report does a gene or an rsID come up?</p>
+  <div class="grid">
+  <section class="sec" id="terms-list">
+  <div class="card">
+    <p class="note">Every gene symbol and rsID a section of this report names, with the sections that name it and how many times. A gene listed here is a gene the results mention, not a finding: open the section to see what it says. The genes of the clinical filter (step 23) and variant prioritization (step 31) come from their tables, which the report counts but does not list.</p>
+    <p>No section of this report names a gene or an rsID.</p>
+  </div>
+  </section>
+  </div>
+</section>
+<div class="disclaimer">
+  <strong>Disclaimer:</strong> This report is for educational and research purposes only.
+  It is not a clinical diagnosis. Always discuss genomic findings with a qualified healthcare
+  professional before making any medical decisions. Variants of Uncertain Significance (VUS)
+  are not clinically actionable.
+</div>
+
+<div class="footer">
+  Generated by <span class="offsite"><a href="https://github.com/GeiserX/OwnGenome">OwnGenome</a> <span class="offsite-note">(opens a website)</span></span>
+  &mdash; 100% local analysis, no data uploaded
+  <p>No run_manifest.tsv in the sample folder.</p>
+</div>
+</main>
+</div>
+</body>
+</html>

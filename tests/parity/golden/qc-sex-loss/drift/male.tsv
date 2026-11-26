@@ -1,0 +1,21 @@
+key	value
+sample	S
+inferred_sex	male
+declared_sex	male
+same_person_as	
+mosaic_sex	male
+mosaic_sex_from	reads
+mosaic_chrom	chrY
+mosaic_depth_ratio	0.563
+mosaic_depth_ratio_expected	0.5
+mosaic_depth_blocks	22
+mosaic_loss_depth	-0.126
+mosaic_loss_depth_low	-0.326
+mosaic_loss_depth_high	0.075
+mosaic_x_het_sites	
+mosaic_loss_af	
+mosaic_loss_af_low	
+mosaic_loss_af_high	
+mosaic_floor	0.100
+mosaic_call	not_detected
+mosaic_reason	the 95% range does not put a loss of the Y above 10%; below that nothing can be told at 30x

@@ -1113,13 +1113,7 @@ jobs:
           fi
           echo "Refused, as it must (exit ${rc}): $(grep 'og is stale' <<< "$out")"
 
-  # The parity harness (tests/parity/README.md): every og port against the
-  # Python it replaced, by meaning. First the harness's own self-test (each
-  # planted kind of difference must be reported, by oracle-diff.sh, by
-  # og dev parity-compare and by bin/og's shadow mode), then every case of
-  # tests/parity/cases.tsv with the oracle in its production image, then
-  # tests/test_fixitfelix.sh with og. It took 19 minutes on main on
-  # 2026-11-18 and ran past 20 twice on the geiresx fork, so the limit is 35.
+  # Compare each parity case with its committed goldens.
   parity:
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -1142,7 +1136,10 @@ jobs:
       - name: The harness's self-test (planted differences must each be reported)
         run: scripts/ci/oracle-diff.sh --self-test
 
-      - name: og against the Python it replaced, every case of tests/parity/cases.tsv
+      - name: Check the 1 MB cap per parity case
+        run: scripts/ci/oracle-diff.sh --check-goldens
+
+      - name: Compare every parity case with its goldens
         if: ${{ !cancelled() }}   # runs even when the self-test failed, so each result shows
         run: scripts/ci/oracle-diff.sh
 

@@ -1,0 +1,192 @@
+[
+ {
+  "LocusId": "HTT",
+  "LocusStructure": "(CAG)*CAACAG(CCG)*",
+  "ReferenceRegion": [
+   "chr4:3074876-3074933",
+   "chr4:3074939-3074966"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "HTT",
+   "HTT_CCG"
+  ],
+  "NormalMax": 26,
+  "PathologicMin": 36,
+  "PathologicRegion": "chr4:3074876-3074933",
+  "Disease": "HD",
+  "InheritanceMode": "AD",
+  "Source": "STRchive",
+  "SourceId": "HD_HTT",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "EIEE1_ARX",
+  "LocusStructure": "(GCG)*",
+  "ReferenceRegion": "chrX:25013649-25013697",
+  "VariantType": "Repeat",
+  "NormalMax": 16,
+  "PathologicMin": 20,
+  "Disease": "EIEE1",
+  "InheritanceMode": "X/R",
+  "Source": "STRchive",
+  "SourceId": "EIEE1_ARX",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "PRTS_ARX",
+  "LocusStructure": "(GCG)*",
+  "ReferenceRegion": "chrX:25013529-25013565",
+  "VariantType": "Repeat",
+  "NormalMax": 12,
+  "PathologicMin": 20,
+  "Disease": "PRTS",
+  "InheritanceMode": "XR/XD",
+  "Source": "STRchive",
+  "SourceId": "PRTS_ARX",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "SAMD12",
+  "LocusStructure": "(TAAAA)*(TGAAA)*",
+  "ReferenceRegion": [
+   "chr8:118366812-118366912",
+   "chr8:118366913-118366918"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "SAMD12_TAAAA",
+   "SAMD12"
+  ],
+  "NormalMax": 1,
+  "PathologicMin": 105,
+  "PathologicRegion": "chr8:118366913-118366918",
+  "Disease": "FAME1",
+  "Source": "STRchive",
+  "SourceId": "FAME1_SAMD12",
+  "SourceDisplay": "STRchive-t1",
+  "BenignMotifs": [
+   "TAAAA"
+  ],
+  "PathogenicMotifs": [
+   "TGAAA"
+  ]
+ },
+ {
+  "LocusId": "RFC1",
+  "LocusStructure": "(AAAAG)*",
+  "ReferenceRegion": "chr4:39348424-39348483",
+  "VariantType": "Repeat",
+  "NormalMax": 11,
+  "PathologicMin": 400,
+  "Disease": "CANVAS",
+  "InheritanceMode": "AR",
+  "Source": "STRchive",
+  "SourceId": "CANVAS_RFC1",
+  "SourceDisplay": "STRchive-t1",
+  "BenignMotifs": [
+   "AAAAG",
+   "AAAGG"
+  ],
+  "PathogenicMotifs": [
+   "AAGGG",
+   "ACAGG"
+  ]
+ },
+ {
+  "LocusId": "MUC1",
+  "LocusStructure": "(CCCCACCCCGCCCCGCCCCCACCCCGCCGCCCCCACCCCGCCCCGCCCCCACCCCGCCCCCGCCCCG)*",
+  "ReferenceRegion": "chr1:155188505-155192239",
+  "VariantType": "Repeat",
+  "NoThresholds": "the reference repeat is 3734 bases, longer than 300: short reads cannot size it",
+  "Disease": "MCKD1",
+  "Source": "STRchive",
+  "SourceId": "MCKD1_MUC1",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "NOPATH",
+  "LocusStructure": "(CTG)*",
+  "ReferenceRegion": "chr2:1000-1030",
+  "VariantType": "Repeat",
+  "NoThresholds": "STRchive gives no pathogenic size",
+  "Disease": "NOPATH",
+  "Source": "STRchive",
+  "SourceId": "NOPATH_GENE",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "GENE2",
+  "LocusStructure": "(GAA)*",
+  "ReferenceRegion": "chr3:2000-2030",
+  "VariantType": "Repeat",
+  "NoThresholds": "pathogenic from 8 units, below the benign maximum 12: a contraction, which Stranger does not grade",
+  "Disease": "CONTRACT",
+  "Source": "STRchive",
+  "SourceId": "CONTRACT_GENE2",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "GENE3",
+  "LocusStructure": "(AT)*",
+  "ReferenceRegion": "chr5:500-520",
+  "VariantType": "Repeat",
+  "NormalMax": 10.0,
+  "PathologicMin": 40.0,
+  "Disease": "FLOAT",
+  "Source": "STRchive",
+  "SourceId": "FLOAT_GENE3",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "GENE4",
+  "LocusStructure": "(cag)*(CCG)*",
+  "ReferenceRegion": [
+   "chr6:100-130",
+   "chr6:130-160"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "GENE4",
+   "GENE4_CCG"
+  ],
+  "NormalMax": 5,
+  "PathologicMin": 50,
+  "PathologicRegion": "chr6:100-130",
+  "Disease": "LOWER",
+  "Source": "STRchive",
+  "SourceId": "LOWER_GENE4",
+  "SourceDisplay": "STRchive-t1"
+ },
+ {
+  "LocusId": "CFTR",
+  "LocusStructure": "(TG)*(T)*",
+  "ReferenceRegion": [
+   "chr7:117548606-117548628",
+   "chr7:117548628-117548635"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "CFTR_TG",
+   "CFTR_T"
+  ],
+  "NoThresholds": "read by its counts",
+  "Disease": "CF",
+  "Source": "OwnGenome",
+  "SourceId": "CFTR_TG_T",
+  "SourceDisplay": "OwnGenome",
+  "Note": "kept as is \u00e9"
+ }
+]

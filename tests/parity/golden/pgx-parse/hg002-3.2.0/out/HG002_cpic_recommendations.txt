@@ -1,0 +1,88 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: HG002
+Date: 2026-11-25
+Source: PharmCAT 3.2.0 report (report-3.2.0.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+ABCG2        Unknown/Unknown                No Result
+CACNA1S      Unknown/Unknown                No Result
+CFTR         Unknown/Unknown                No Result
+CYP2B6       *2/*5 (1 of 4 possible)        ambiguous: one of Normal Metabolizer, Intermediate Metabolizer, Indeterminate
+CYP2C19      *1/*1 (1 of 528 possible)      ambiguous: one of Normal Metabolizer, Intermediate Metabolizer, Likely Intermediate Metabolizer, Indeterminate, Rapid Metabolizer, ...
+CYP2C9       Unknown/Unknown                No Result
+CYP2D6       Unknown/Unknown                No Result
+CYP3A4       Unknown/Unknown                No Result
+CYP3A5       Unknown/Unknown                No Result
+CYP4F2       Unknown/Unknown                No Result
+DPYD         Unknown/Unknown                No Result
+G6PD         Unknown                        No Result
+HLA-A        Unknown/Unknown                No Result
+HLA-B        Unknown/Unknown                No Result
+IFNL3        Unknown/Unknown                No Result
+MT-RNR1      Unknown                        No Result
+NAT2         Unknown/Unknown                No Result
+NUDT15       Unknown/Unknown                No Result
+RYR1         Unknown/Unknown                No Result
+SLCO1B1      Unknown/Unknown                No Result
+TPMT         Unknown/Unknown                No Result
+UGT1A1       Unknown/Unknown                No Result
+VKORC1       Unknown/Unknown                No Result
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  No gene with a non-normal phenotype.
+
+Genes With More Than One Possible Result:
+------------------------------------------------------------------------
+
+  CYP2B6 -- 4 possible diplotypes with different phenotypes (Normal Metabolizer, Intermediate Metabolizer, Indeterminate).
+  CYP2C19 -- 528 possible diplotypes with different phenotypes (Normal Metabolizer, Intermediate Metabolizer, Likely Intermediate Metabolizer, Indeterminate, Rapid Metabolizer, ...).
+  The data cannot tell them apart (often positions missing from the VCF), so no
+  drug guidance is given for them here. See the PharmCAT HTML report.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  ABCG2 -- No Result (not callable from available data)
+  CACNA1S -- No Result (not callable from available data)
+  CFTR -- No Result (not callable from available data)
+  CYP2C9 -- No Result (not callable from available data)
+  CYP2D6 -- No Result (not callable from available data)
+  CYP3A4 -- No Result (not callable from available data)
+  CYP3A5 -- No Result (not callable from available data)
+  CYP4F2 -- No Result (not callable from available data)
+  DPYD -- No Result (not callable from available data)
+  G6PD -- No Result (not callable from available data)
+  HLA-A -- No Result (not callable from available data)
+  HLA-B -- No Result (not callable from available data)
+  IFNL3 -- No Result (not callable from available data)
+  MT-RNR1 -- No Result (not callable from available data)
+  NAT2 -- No Result (not callable from available data)
+  NUDT15 -- No Result (not callable from available data)
+  RYR1 -- No Result (not callable from available data)
+  SLCO1B1 -- No Result (not callable from available data)
+  TPMT -- No Result (not callable from available data)
+  UGT1A1 -- No Result (not callable from available data)
+  VKORC1 -- No Result (not callable from available data)
+
+Single-Position Fallback (not a PharmCAT call):
+------------------------------------------------------------------------
+
+  CYP4F2 -- PharmCAT has no result, and its report lists no genotype at rs2108622: not callable.
+  VKORC1 -- PharmCAT has no result, and its report lists no genotype at rs9923231: not callable.
+  Read from the genotype PharmCAT lists at the position in its report.json. Confirm
+  it before acting on it: PharmCAT itself made no call for the gene.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

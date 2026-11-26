@@ -1,0 +1,1 @@
+HBA1/HBA2: not assessed: reads of mapping quality 0 make up 1.0% of the depth over HBA1 and HBA2, so the aligner left out the reads that fit both genes (as novoalign does by default) and the count would come out low; realign with minimap2 (step 02) or BWA-MEM (estimate 4.00; HBA2 30.0x, HBA1 30.0x, flanks 30.0x and 30.0x; MAPQ 0 share over the genes 0.010)

@@ -1,0 +1,79 @@
+== rs3003: chrM:73 (GRCh38; from the consumer site table (dbSNP positions))
+  genotype: G/G (homozygous; REF A, ALT G)
+  evidence: depth 900, QUAL 60
+  variant: chrM:73 A>G G/G (homozygous)
+    gene: MT-RNR1
+    consequence: non_coding_transcript_exon_variant
+    impact: MODIFIER
+    known as: rs3003
+  in the reports:
+  Loci (step None):
+    - locus=MT-RNR1, region=chrM:1-2
+
+== chrX:1000: chrX:1000 (GRCh38; from position as given)
+  genotype: A (hemizygous; REF G, ALT A)
+  evidence: depth 12, QUAL 44
+  variant: chrX:1000 G>A A (hemizygous)
+    gene: GENEX
+    consequence: synonymous_variant
+    impact: LOW
+    gnomAD genomes AF: 1e-05
+  in the reports:
+  none of the reports mentions GENEX, rs4004
+
+== GENEZ: chr7:640-660 (GRCh38; GENCODE 50 (GENEZ))
+  gVCF: 2 of 21 bases have a genotype call (9.5%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chr7:650 T>G G/G (homozygous; no rsID; depth 40, genotype quality 50, QUAL 50)
+      gene: GENEZ
+      consequence: intron_variant
+      impact: MODIFIER
+      gnomAD genomes AF: 0.5
+  in the reports:
+  Prose (step None):
+    - gene=SMN exon 7-8 deletion (GENEZ), rsids=rs1001,x
+
+== rs4005: chrX:1000 (GRCh38; from the annotated VCF (a variant called in this sample))
+  genotype: A (hemizygous; REF G, ALT A)
+  evidence: depth 12, QUAL 44
+  variant: chrX:1000 G>A A (hemizygous)
+    gene: GENEX
+    consequence: synonymous_variant
+    impact: LOW
+    gnomAD genomes AF: 1e-05
+  in the reports:
+  none of the reports mentions GENEX, rs4005
+
+== rs2003: chr7:660 (GRCh38; from the annotated VCF (a variant called in this sample))
+  genotype: C|G (heterozygous; REF A, ALT C,G)
+  evidence: depth 18, genotype quality 20, QUAL 30
+  variant: chr7:660 A>C,G C|G (heterozygous)
+    gene: GENEA
+    consequence: stop_gained
+    impact: HIGH
+  in the reports:
+  PharmCAT (step 07):
+    - gene=GENEA, diplotype=*1/*2, phenotype=Intermediate, activity=1.0, alleles=*1,*2,3, calls=a: x; b: 2
+  many (step 99):
+    - gene=GENEA, diplotype=*1/*0, score=0.0, ok=True
+    - gene=GENEA, diplotype=*1/*1, score=0.1, ok=False
+    - gene=GENEA, diplotype=*1/*2, score=0.2, ok=True
+    - gene=GENEA, diplotype=*1/*3, score=0.30000000000000004, ok=False
+    - gene=GENEA, diplotype=*1/*4, score=0.4, ok=True
+    - gene=GENEA, diplotype=*1/*5, score=0.5, ok=False
+    - gene=GENEA, diplotype=*1/*6, score=0.6000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*7, score=0.7000000000000001, ok=False
+    - gene=GENEA, diplotype=*1/*8, score=0.8, ok=True
+    - gene=GENEA, diplotype=*1/*9, score=0.9, ok=False
+    - gene=GENEA, diplotype=*1/*10, score=1.0, ok=True
+    - gene=GENEA, diplotype=*1/*11, score=1.1, ok=False
+    - gene=GENEA, diplotype=*1/*12, score=1.2000000000000002, ok=True
+    - gene=GENEA, diplotype=*1/*13, score=1.3, ok=False
+    - gene=GENEA, diplotype=*1/*14, score=1.4000000000000001, ok=True
+    - gene=GENEA, diplotype=*1/*15, score=1.5, ok=False
+    - gene=GENEA, diplotype=*1/*16, score=1.6, ok=True
+    - gene=GENEA, diplotype=*1/*17, score=1.7000000000000002, ok=False
+    - gene=GENEA, diplotype=*1/*18, score=1.8, ok=True
+    - gene=GENEA, diplotype=*1/*19, score=1.9000000000000001, ok=False
+    - ... and 3 more in many/table.tsv
+

@@ -1,0 +1,1 @@
+ERROR: the SV VCF holds 2 samples (s1, s2); AnnotSV's input must hold one. Pick it first: bcftools view -s <sample>

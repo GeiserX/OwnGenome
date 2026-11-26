@@ -1,0 +1,16 @@
+  mosaic_sex: 
+  mosaic_sex_from: 
+  mosaic_chrom: 
+  mosaic_depth_ratio: 
+  mosaic_depth_ratio_expected: 
+  mosaic_depth_blocks: 
+  mosaic_loss_depth: 
+  mosaic_loss_depth_low: 
+  mosaic_loss_depth_high: 
+  mosaic_x_het_sites: 
+  mosaic_loss_af: 
+  mosaic_loss_af_low: 
+  mosaic_loss_af_high: 
+  mosaic_floor: 0.100
+  mosaic_call: not_estimated
+  mosaic_reason: no sex: none declared and somalier could not tell it from the reads

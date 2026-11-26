@@ -1,0 +1,3 @@
+dad and kid: parent-child; relatedness 0.490 (expected 0.500), 5000 sites: ok
+dad and mum: partners; relatedness 0.010 (expected 0.000), 5000 sites: ok
+kid and mum: parent-child; relatedness 0.510 (expected 0.500), 5000 sites: ok

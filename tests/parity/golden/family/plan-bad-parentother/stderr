@@ -1,0 +1,1 @@
+ERROR: fam-parentother.tsv line 2: the father of 'kid', 'dad', is in family 'fb' (line 3), 'kid' in family 'fa'; a family lists its own parents and partners

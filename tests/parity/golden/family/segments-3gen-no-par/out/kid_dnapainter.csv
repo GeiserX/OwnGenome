@@ -1,0 +1,8 @@
+Chr,Start,End,cM,SNPs,Match,Confidence,Group,Side,Notes,Colour,Ancestor
+1,1012000,19998000,,2665,kid from gpa,,gpa,paternal,"GRCh38 positions; the parent's copy, told by a sequenced grandparent; 3 discordant sites",,1
+1,20006000,40986000,,2980,kid from gma,,gma,paternal,"GRCh38 positions; the parent's copy, told by a sequenced grandparent; 0 discordant sites",,1
+1,1002000,40998000,,7532,kid from mum,,mum,maternal,GRCh38 positions; from the sequenced parent; 0 discordant sites,,1
+2,1000000,10990000,,1423,kid from gma,,gma,paternal,"GRCh38 positions; the parent's copy, told by a sequenced grandparent; 0 discordant sites",,1
+2,21006000,30996000,,1371,kid from gma,,gma,paternal,"GRCh38 positions; the parent's copy, told by a sequenced grandparent; 0 discordant sites",,1
+2,1000000,10994000,,1895,kid from mum,,mum,maternal,GRCh38 positions; from the sequenced parent; 0 discordant sites,,1
+2,21000000,30988000,,1950,kid from mum,,mum,maternal,GRCh38 positions; from the sequenced parent; 0 discordant sites,,1

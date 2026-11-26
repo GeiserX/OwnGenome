@@ -1,0 +1,8 @@
+| chromosome | Chen A (bp) | Chen EUR median | Chen EUR max | x (bp) |
+|---|---|---|---|---|
+| 21 | 100 | 55 | 100 | 0 |
+| 22 | 10 | 55 | 100 | 300 |
+| all | 110 | 110 | 110 | 300 |
+
+Chen et al., 2 EUR people, these 2 chromosomes: lowest 110, median 110, highest 110 bp; A 110 bp.
+x: 300 bp, 2.73 times the released A figure; 0 bp under the released calls, 300 bp only here, 110 bp only released.

@@ -1,0 +1,16 @@
+  mosaic_sex: female
+  mosaic_sex_from: reads
+  mosaic_chrom: chrX
+  mosaic_depth_ratio: 0.999
+  mosaic_depth_ratio_expected: 1.0
+  mosaic_depth_blocks: 130
+  mosaic_loss_depth: 0.002
+  mosaic_loss_depth_low: -0.019
+  mosaic_loss_depth_high: 0.024
+  mosaic_x_het_sites: 600
+  mosaic_loss_af: 0.036
+  mosaic_loss_af_low: 0.000
+  mosaic_loss_af_high: 0.126
+  mosaic_floor: 0.100
+  mosaic_call: not_detected
+  mosaic_reason: the 95% range does not put a loss of one X above 10%; below that nothing can be told at 30x

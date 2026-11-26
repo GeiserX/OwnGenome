@@ -1,0 +1,6 @@
+family	analysis	members	decision	reason
+family	joint_call	kid,mum	runs	GLnexus joint call, somalier relationship check and the family report of kid, mum; left out: dad has no gVCF yet: run run-all.sh dad first (run step 38 again after its run)
+family	trio_phasing	kid	skipped	no child has both parents sequenced (kid has one); phasing by inheritance needs a trio
+family	inheritance_map	kid	runs	the allele each sequenced parent passed on, and the chromosome map, of kid
+family	shared_segments	kid,mum	skipped	no phasing panel: install it with setup.sh --ancestry-fine-panel
+family	couple_carrier	dad,mum	runs	carrier screen of dad and mum

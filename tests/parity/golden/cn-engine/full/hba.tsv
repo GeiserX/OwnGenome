@@ -1,0 +1,10 @@
+metric	value
+status	called
+alpha_globin_genes	4
+estimate	4.26
+hba2_depth	35.77
+hba1_depth	50.39
+flank_left_depth	41.21
+flank_right_depth	39.65
+mapq0_share	0.242
+message	four alpha-globin genes (aa/aa): no deletion seen

@@ -17,19 +17,27 @@
 # scores evaluated only in mixed or unreported ancestries).
 # scripts/ci/check-pgs-labels.sh checks every entry against
 # https://www.pgscatalog.org/rest/performance/<ppm_id>.
-pgs_id	trait_reported	applies_to	ppm_id	ancestry	effect
-PGS000018	Coronary artery disease		PPM000591;PPM000594;PPM000597	EUR;AFR;AMR	HR 1.53;HR 1.27;HR 1.53
-PGS000014	Type 2 diabetes (T2D)		PPM021437;PPM021589;PPM021615;PPM021635	EUR;AFR;EAS;SAS	OR 1.71;OR 1.27;OR 1.28;OR 1.48
-PGS000004	Breast cancer	female	PPM000004	EUR	OR 1.61
-PGS000662	Prostate cancer	male	PPM022982;PPM015482	EUR;AFR	HR 1.72;OR 1.86
-PGS000016	Atrial fibrillation		PPM014988	EUR	HR 1.4
-PGS000334	Late-onset Alzheimer’s disease		PPM022981	EUR	HR 1.93
-PGS000027	Body mass index (BMI)				
-PGS000017	Inflammatory bowel disease				
-PGS000055	Colorectal cancer				
-PGS002257	Systolic blood pressure				
-PGS000065	LDL cholesterol				
-PGS000064	HDL cholesterol				
-PGS000066	Triglycerides (TG)				
-PGS002727	Asthma		PPM014751;PPM014752;PPM014753;PPM014754;PPM014755	EUR;AFR;AMR;EAS;SAS	OR 1.57;OR 1.43;OR 1.63;OR 1.32;OR 1.32
-PGS002802	Height				
+# licence is the terms the PGS Catalog REST API gives in the score's license
+# field: author for its default text (cite the score, use it as its authors
+# allow) and academic-research for "Freely available to the academic
+# community for research use". og prs format scores an academic-research
+# score only with --academic (PRS_ACADEMIC=true, Nextflow --pgs_academic
+# true), and setup.sh downloads it only with --prs-academic or --everything.
+# scripts/ci/check-pgs-labels.sh compares the column with the API and fails
+# on any other licence text.
+pgs_id	trait_reported	applies_to	ppm_id	ancestry	effect	licence
+PGS000018	Coronary artery disease		PPM000591;PPM000594;PPM000597	EUR;AFR;AMR	HR 1.53;HR 1.27;HR 1.53	author
+PGS000014	Type 2 diabetes (T2D)		PPM021437;PPM021589;PPM021615;PPM021635	EUR;AFR;EAS;SAS	OR 1.71;OR 1.27;OR 1.28;OR 1.48	academic-research
+PGS000004	Breast cancer	female	PPM000004	EUR	OR 1.61	author
+PGS000662	Prostate cancer	male	PPM022982;PPM015482	EUR;AFR	HR 1.72;OR 1.86	author
+PGS000016	Atrial fibrillation		PPM014988	EUR	HR 1.4	academic-research
+PGS000334	Late-onset Alzheimer’s disease		PPM022981	EUR	HR 1.93	author
+PGS000027	Body mass index (BMI)					academic-research
+PGS000017	Inflammatory bowel disease					academic-research
+PGS000055	Colorectal cancer					author
+PGS002257	Systolic blood pressure					author
+PGS000065	LDL cholesterol					author
+PGS000064	HDL cholesterol					author
+PGS000066	Triglycerides (TG)					author
+PGS002727	Asthma		PPM014751;PPM014752;PPM014753;PPM014754;PPM014755	EUR;AFR;AMR;EAS;SAS	OR 1.57;OR 1.43;OR 1.63;OR 1.32;OR 1.32	author
+PGS002802	Height					author

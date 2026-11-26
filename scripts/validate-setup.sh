@@ -868,15 +868,28 @@ else
   fi
 
   # --- Step 25 (pgsc_calc, its scores) and its ancestry panel (step 26) ---
-  n_pgs=0 missing_pgs=""
-  while read -r id; do
+  # The four scores free for academic research use only (licence
+  # academic-research) are opt-in: setup.sh --prs-academic, PRS_ACADEMIC=true.
+  n_pgs=0 missing_pgs="" n_acad=0 missing_acad=""
+  while IFS=$'\t' read -r id lic; do
+    if [ "$lic" = academic-research ]; then
+      n_acad=$((n_acad + 1))
+      [ -s "${GENOME_DIR}/prs_scores/${id}.txt.gz" ] || missing_acad="${missing_acad} ${id}"
+      continue
+    fi
     n_pgs=$((n_pgs + 1))
     [ -s "${GENOME_DIR}/prs_scores/${id}.txt.gz" ] || missing_pgs="${missing_pgs} ${id}"
-  done < <(awk -F'\t' '$1 ~ /^PGS[0-9]+$/ {print $1}' "${PGP_ROOT}/assets/pgs_scores.tsv")
+  done < <(awk -F'\t' '!h && $1 == "pgs_id" { for (i = 1; i <= NF; i++) c[$i] = i; h = 1; next }
+    h && $1 ~ /^PGS[0-9]+$/ { print $1 "\t" (c["licence"] ? $c["licence"] : "") }' "${PGP_ROOT}/assets/pgs_scores.tsv")
   if [ -z "$missing_pgs" ]; then
     pass "PGS Catalog scores (step 25): all ${n_pgs} of assets/pgs_scores.tsv present"
   else
     warn "PGS Catalog scores missing (step 25 downloads them, run-all.sh skips PRS until then):${missing_pgs}"
+  fi
+  if [ "$n_acad" -gt 0 ] && [ -z "$missing_acad" ]; then
+    pass "Academic-only PGS Catalog scores (step 25 with PRS_ACADEMIC=true): all ${n_acad} present"
+  elif [ "$n_acad" -gt 0 ]; then
+    info "Academic-only PGS Catalog scores not installed (opt-in, PRS_ACADEMIC=true):${missing_acad}: ./scripts/setup.sh --prs-academic ${GENOME_DIR}"
   fi
   if [ -f "${GENOME_DIR}/tools/pgsc_calc-${PGSC_CALC_VERSION}/main.nf" ]; then
     pass "pgsc_calc ${PGSC_CALC_VERSION} (step 25): present"

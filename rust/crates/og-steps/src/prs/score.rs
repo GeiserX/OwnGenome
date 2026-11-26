@@ -68,6 +68,10 @@ pub struct Options<'a> {
     pub keep_x: bool,
     /// The label of each id, from the score list.
     pub label: &'a dyn Fn(&str) -> Option<String>,
+    /// The ids this run must not write: the academic-only scores without
+    /// `--academic`. Checked on the id the file is written as (its `#pgs_id`),
+    /// which the file name need not match.
+    pub refused: &'a dyn Fn(&str) -> bool,
 }
 
 /// `PGS000018` for `PGS000018.txt.gz`, `PGS000018_hmPOS_GRCh38.txt.gz` and the like.
@@ -413,6 +417,11 @@ pub fn format(
         .filter(|p| !p.is_empty())
         .cloned()
         .unwrap_or_else(|| pgs_id_of(path));
+    if (opts.refused)(&pid) {
+        return Err(format!(
+            "{name} is {pid} by its #pgs_id line, a score free for academic research use only; --academic scores it"
+        ));
+    }
     let label = (opts.label)(&pid)
         .or_else(|| {
             s.header

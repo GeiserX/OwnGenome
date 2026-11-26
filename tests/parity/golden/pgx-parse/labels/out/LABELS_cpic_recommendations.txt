@@ -1,0 +1,48 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: LABELS
+Date: 2026-11-25
+Source: PharmCAT  report (labels.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+VKORC1       rs9923231 reference (C)/rs9923231 variant (T) -1639 GA
+IFNL3        rs12979860 variant (T)/rs12979860 variant (T) unfavorable response genotype
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  VKORC1 -- -1639 GA:
+    Diplotype: rs9923231 reference (C)/rs9923231 variant (T)
+    Drugs (pipeline fallback table; the report names none): warfarin
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Called Genes Without a Function Phenotype:
+------------------------------------------------------------------------
+
+  IFNL3 -- unfavorable response genotype (rs12979860 variant (T)/rs12979860 variant (T))
+  PharmCAT called these genes but its phenotype (n/a, a reference genotype,
+  'no phenotype assigned', an uncertain result) names no changed function, so
+  they are not counted as non-normal and get no drug list here. A variant allele
+  among them can still matter: see the PharmCAT HTML report.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+PharmCAT and pypgx:
+------------------------------------------------------------------------
+
+  No gene that PharmCAT could not call has a pypgx call.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

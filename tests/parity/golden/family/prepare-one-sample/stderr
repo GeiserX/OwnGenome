@@ -1,0 +1,1 @@
+ERROR: the pedigree names 1 of the processed samples (kid); the family analysis needs two or more, each with a row in trio.tsv and a gVCF

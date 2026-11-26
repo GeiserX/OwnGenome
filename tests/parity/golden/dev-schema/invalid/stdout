@@ -1,0 +1,13 @@
+INVALID $.sample: expected string, got int 7
+INVALID $.score: -2 < minimum -1.5
+INVALID $.flags: 4 items > maxItems 3
+INVALID $.flags[0]: expected boolean, got int 1
+INVALID $.flags[2]: expected boolean, got str 'x'
+INVALID $.sections.clinvar.status: 'done' is not one of ['ok', 'missing', 'failed']
+INVALID $.sections.clinvar.n: -1 < minimum 0
+INVALID $.sections.roh: missing required key 'status'
+INVALID $.sections.roh: missing required key 'status'
+INVALID $.sections.roh.n: expected integer, got float 2.5
+INVALID $.sections.pgx: expected object, got list []
+INVALID $.sections.mito.n: expected integer, got str 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+invalid.json: 12 schema error(s)

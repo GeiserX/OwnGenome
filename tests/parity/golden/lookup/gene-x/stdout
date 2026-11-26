@@ -1,0 +1,10 @@
+== GENEX: chrX:900-1100 (GRCh38; GENCODE_50_(GENEX))
+  gVCF: 101 of 201 bases have a genotype call (50.2%); a variant can only be missing from the list below where there is no call
+  variants called in the gene (annotated VCF):
+  - chrX:1000 G>A A (hemizygous; rs4004,rs4005; depth 12, QUAL 44)
+      gene: GENEX
+      consequence: synonymous_variant
+      impact: LOW
+      gnomAD genomes AF: 1e-05
+  in the reports:
+  none of the reports mentions GENEX

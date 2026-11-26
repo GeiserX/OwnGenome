@@ -1,0 +1,20 @@
+metric	value
+status	called
+cyp21a2_copies	1
+module_total	3
+expected_total	4
+estimate	3.00
+finding	deletion
+conversion_sites	.
+psv_PSV_In2G	15 gene, 30 pseudogene, 0 other reads; copies 1 (1.00); ratio 0.50
+psv_PSV_I172N	15 gene, 30 pseudogene, 0 other reads; copies 1 (1.00); ratio 0.50
+psv_PSV_V237E	30 gene, 15 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_V281L	30 gene, 15 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_Q318X	30 gene, 15 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_R356W	30 gene, 15 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+target_depth	45.00
+control_depth	30.00
+reason	.
+reading	one RCCX module fewer and one CYP21A2 copy fewer at the differing sites: the pattern of the 30 kb CYP21A1P/CYP21A2 chimeric deletion, a common cause of carrier status for 21-hydroxylase deficiency (congenital adrenal hyperplasia); unconfirmed: a clinical test (MLPA or long-range PCR) confirms it
+mapq0_share	0.100
+message	.

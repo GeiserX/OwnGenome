@@ -1,0 +1,9 @@
+chrom	pos	end	element	subfamily	copies	filter	confidence	genes	location	benign_af	acmg_class
+chr2	1000	1008	L1	L1HS	2	PASS	H	.	.	.	.
+chr2	2000	2008	L1	.	1	PASS	H	.	.	.	.
+chr9	105639660	105639668	SVA	SVA_F	2	PASS	H	.	.	.	.
+chr20	100	108	Alu	SVA_F	1	PASS	H	.	.	.	.
+chr20	100	108	Alu	SVA_F	1	PASS	H	.	.	.	.
+chr20	5040478	5040486	Alu	AluYb8	1	LC	L	.	.	.	.
+chrX	3000	3008	SVA	SVA_E	1	PASS	H	.	.	.	.
+chrUn_KI270302v1	50	58	Alu	SVA_F	1	PASS	H	.	.	.	.

@@ -1,0 +1,17 @@
+metric	value
+status	assessed
+message	.
+depth	30.0
+het_sites	18000
+phased_het_sites	18000
+het_per_10mb	3000
+analysed_mb	60.0
+chromosomes	chr20
+call_rate	0.9990
+baf_auto	0.0010
+floor_read	0.020
+floor_min	0.05
+floor	0.050
+calls_mocha	1
+calls_reported	1
+phasing	input

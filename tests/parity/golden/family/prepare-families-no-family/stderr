@@ -1,0 +1,1 @@
+ERROR: two_families.tsv holds 2 families (family_a, family_b); name the one to run (--family, or --family_name in Nextflow)

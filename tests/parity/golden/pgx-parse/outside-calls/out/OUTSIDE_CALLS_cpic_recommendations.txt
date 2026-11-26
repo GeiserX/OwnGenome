@@ -1,0 +1,59 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: OUTSIDE_CALLS
+Date: 2026-11-25
+Source: PharmCAT  report (outside-calls.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+MT-RNR1      m.1555A>G                      increased risk of aminoglycoside-induced hearing loss  [outside call]
+CYP2D6       *1/*4                          outside call not confirmed by step 36  [outside call]
+HLA-B        *57:01/*08:01                  *57:01 positive  [outside call]
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  MT-RNR1 -- increased risk of aminoglycoside-induced hearing loss:
+    Diplotype: m.1555A>G
+    Drugs PharmCAT links to MT-RNR1 (no matched guidance text in the report): amikacin, gentamicin
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+  HLA-B -- *57:01 positive:
+    Diplotype: *57:01/*08:01
+    Drugs PharmCAT links to HLA-B (no matched guidance text in the report): abacavir
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Calls From Other Tools (outside calls, step 36):
+------------------------------------------------------------------------
+
+  CYP2D6   *1/*1                    passed to PharmCAT from pypgx and Cyrius agree; PharmCAT's report does not list it as an outside call: rerun step 07.
+           pypgx *1/*1; Cyrius *1/*1
+  HLA-B    *08:01/*57:01            passed to PharmCAT from T1K (step 08); PharmCAT reports it as an outside call.
+           HLA-B*57:01:01 (quality 60)
+  HLA-A    indeterminate            not passed to PharmCAT: T1K gives an allele quality 0.
+           No drug guidance is given for HLA-A here. Drugs affected by HLA-A: carbamazepine, oxcarbazepine.
+  WARNING: PharmCAT's report has the outside call CYP2D6 *1/*4, which the consensus does not pass on: the report is older than step 36's last run.
+           Rerun step 07, then this step. No drug guidance is given for CYP2D6 here. Drugs affected by CYP2D6: codeine.
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  CYP2D6 -- outside call not confirmed by step 36 (not callable from available data)
+
+PharmCAT and pypgx:
+------------------------------------------------------------------------
+
+  WARNING: PharmCAT has no result for CYP2D6, but pypgx (step 32) called *1/*4 (Intermediate Metabolizer). The medications above do not cover CYP2D6.
+    Drugs affected by CYP2D6: codeine
+    Review them with the pypgx call and docs/32-pypgx.md.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

@@ -1,0 +1,4 @@
+outputs (bash): 1 stable files checked under ., 3 problems
+FAIL BREAKING: S1.tsv (contract line 2) has no chrom (it has: comment,line)
+FAIL BREAKING: S1.tsv (contract line 2) has no pos (it has: comment,line)
+FAIL BREAKING: S1.tsv (contract line 2) has no gene (it has: comment,line)

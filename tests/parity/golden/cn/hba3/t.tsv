@@ -1,0 +1,10 @@
+metric	value
+status	called
+alpha_globin_genes	3
+estimate	3.00
+hba2_depth	15.0
+hba1_depth	30.0
+flank_left_depth	30.0
+flank_right_depth	30.0
+mapq0_share	0.250
+message	three alpha-globin genes: one gene lost on one chromosome (-a/aa, as -a3.7 or -a4.2), a silent carrier; unconfirmed: this short-read count has been checked on one real genome only (HG002, four genes), so a count under four needs a clinical test before it means anything

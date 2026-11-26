@@ -1,0 +1,14 @@
+metric	value
+status	not assessed
+confidence	.
+variant	.
+flag	.
+alt_depth	.
+region_depth	.
+depth_score	.
+vntr_mean_depth	.
+vntr_uncovered_pct	.
+coverage_qc	.
+sensitivity	.
+message	VNtyper wrote kestrel/kestrel_result.tsv with no result row.
+advice	A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment still deserves a clinical test (SNaPshot for dupC).

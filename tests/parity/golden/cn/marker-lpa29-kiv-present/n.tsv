@@ -1,0 +1,10 @@
+metric	value
+marker	LPA KIV-2 4925G>A
+rsid	rs1484919544 (first KIV-2 copy)
+status	present
+alt_reads	7
+depth	273
+fraction	0.0256
+copies	0.8
+kiv2_copies	29.3
+message	LPA KIV-2 4925G>A (a splice variant that lowers the Lp(a) made from its chromosome, Coassin 2017): present, 7 of 273 reads at its seven GRCh38 copies carry it (about 0.8 of the 31 copies counted). Carriers had a lower Lp(a) than non-carriers with the same number of repeats, most of all with few repeats. A short-read fraction cannot say which chromosome or which repeat carries it, so it cannot say whether it sits on the small or the large isoform.

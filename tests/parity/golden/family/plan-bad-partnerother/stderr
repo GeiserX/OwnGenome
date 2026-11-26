@@ -1,0 +1,2 @@
+ERROR: fam-partnerother.tsv line 2: the partner of 'dad', 'mum', is in family 'fb' (line 3), 'dad' in family 'fa'; a family lists its own parents and partners
+ERROR: fam-partnerother.tsv line 3: the partner of 'mum', 'dad', is in family 'fa' (line 2), 'mum' in family 'fb'; a family lists its own parents and partners

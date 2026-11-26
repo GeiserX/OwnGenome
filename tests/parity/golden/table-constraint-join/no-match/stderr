@@ -1,0 +1,2 @@
+gnomAD constraint: 2 of 2 rows carry a gene symbol; 0 distinct genes matched
+ERROR: no gene in the table matched the constraint file; check that it is the gnomAD v4.1 constraint table

@@ -1,0 +1,1 @@
+WARNING: could not read the medication list or the inhibitor table (ValueError: inhibitors-short-row.tsv: a row has an empty or missing Drug, Gene or Strength cell); no phenotype is converted

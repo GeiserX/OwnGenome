@@ -1,0 +1,14 @@
+Archaic ancestry of S (IBDmix against the Altai and Vindija Neanderthals and the Altai Denisovan)
+  Analysed: 2 autosomes, 79.8 Mb, 5500 sites; modern frequencies: 1000 Genomes EUR
+  Neanderthal: 2.89% (2.3 Mb in 5 segments)
+  Denisovan:   2.01% (1.6 Mb in 2 segments)
+  The 7 longest segments:
+    chr22:17000000-18100000  1.10 Mb  Neanderthal (Altai/Vindija/Denisova, LOD 22)  genes: ON22
+    chr22:25000000-25900000  0.90 Mb  Denisovan (Denisova, LOD 8)  genes: none
+    chr21:30000000-30700000  0.70 Mb  Denisovan (Denisova, LOD 14)  genes: DENI
+    chr21:1000000-1600000  0.60 Mb  Neanderthal (Altai/Vindija/Denisova, LOD 12)  genes: TOUCHES_START, INSIDE
+    chr21:9000000-9500000  0.50 Mb  Neanderthal (Altai/Vindija, LOD 46)  genes: none
+    chr21:20000000-20060000  0.06 Mb  Neanderthal (Vindija, LOD 4)  genes: none
+    chr22:40000000-40050000  0.05 Mb  Neanderthal (Altai, LOD 9)  genes: none
+  IBDmix finds stretches where your genome matches a Neanderthal or the Denisovan genome more closely than the allele frequencies of a modern population explain. A stretch counts when either of your two copies carries it, and the share is of the analysed span of the autosomes. Some of what it finds in anyone is old ancestry shared with the archaic genomes rather than gene flow from them: Chen et al. 2020 find Neanderthal sequence in every population they studied, Africans included. The numbers move with the cutoffs (LOD 4, 50 kb) and with the frequencies used. An estimate, not a measurement.
+  Every segment: S_archaic_segments.tsv

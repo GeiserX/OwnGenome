@@ -1,0 +1,1 @@
+ERROR: p/current_tree.json not found: install the current Y tree with scripts/setup.sh --yleaf-data <genome_dir>

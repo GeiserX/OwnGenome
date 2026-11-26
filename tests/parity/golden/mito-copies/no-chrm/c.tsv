@@ -1,0 +1,9 @@
+metric	value
+status	not assessed
+reason	no_chrM_reads
+chrm_reads	0
+chrm_length	16569
+autosomal_reads	220000000
+autosomal_length	1100000000
+depth_ratio	.
+mtdna_copies	.

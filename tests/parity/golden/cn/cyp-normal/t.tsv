@@ -1,0 +1,20 @@
+metric	value
+status	called
+cyp21a2_copies	2
+module_total	4
+expected_total	4
+estimate	4.00
+finding	none
+conversion_sites	.
+psv_PSV_In2G	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_I172N	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_V237E	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_V281L	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_Q318X	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+psv_PSV_R356W	30 gene, 30 pseudogene, 0 other reads; copies 2 (2.00); ratio 1.00
+target_depth	60.00
+control_depth	30.00
+reason	.
+reading	no sign of the 30 kb chimeric deletion or of a pseudogene conversion at the six sites read; short reads see neither a change elsewhere in CYP21A2 nor two copies on one chromosome and none on the other
+mapq0_share	0.100
+message	.

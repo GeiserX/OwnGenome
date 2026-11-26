@@ -1,0 +1,8 @@
+rank	group	n	distance	pc1	pc2	date_bp	dates	country	locality
+1	Turkey_N	9	0.00961	0.01063	-0.00007	2725	8010 BCE-300 CE	Country0	Site 0
+2	<Mixed&Group>	9	0.01264	0.01132	-0.00224	2725	5350 BCE-300 CE	Country1	Site 2
+3	Italy_Imperial_Rome	9	0.01883	0.00562	-0.00109	2725	8010 BCE-300 CE	Country0	Site 0
+4	England_BellBeaker	9	0.02033	0.00395	0.00221	2725	8010 BCE-300 CE	Country1	Site 1
+5	Hungary_LBA_with_a_very_long_name_that_runs_past_45	8	0.04028	-0.00481	0.00314	4250	8010 BCE-300 CE	Country0	Site 3
+6	Germany_CordedWare	8	0.04534	-0.00558	-0.00489	4250	8010 BCE-1 CE	Country0	Site 0
+7	Türkiye_Neolithic	8	0.04801	-0.00724	-0.00340	3625	8010 BCE-300 CE	Country0	Site 1

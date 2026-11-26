@@ -1,0 +1,3 @@
+Gene	PharmCAT_diplotype	pypgx_diplotype	Match	Called_by	PharmCAT_phenotype	pypgx_phenotype
+IFNL3	rs12979860 variant (T)/rs12979860 variant (T)	Reference/rs12979860	No	both	unfavorable response genotype	Unfavorable Response
+VKORC1	rs9923231 reference (C)/rs9923231 variant (T)	Reference/rs9923231	Yes	both	-1639 GA	no pypgx phenotype rule

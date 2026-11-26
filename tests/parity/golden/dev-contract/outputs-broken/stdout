@@ -1,0 +1,9 @@
+outputs (nextflow): 7 stable files checked under ., 8 problems
+FAIL BREAKING: S1_cols.tsv (contract line 2) has no clnsig (it has: chrom,pos)
+FAIL S1_bad.json (contract line 3) is not valid json
+FAIL BREAKING: S1_list.json (contract line 4) has no sample (it has: nothing)
+FAIL BREAKING: the stable file S1_gone.tsv (contract line 5, step 06) is missing from .: renamed, moved or not written
+FAIL BREAKING: S1_empty.tsv (contract line 6) has no chrom (it has: nothing)
+FAIL contract line 7: e2e both on a bash row
+FAIL BREAKING: S1_novcf.vcf (contract line 8) has no INFO/AF (it has: nothing)
+FAIL S1_dir (contract line 9) is not a folder

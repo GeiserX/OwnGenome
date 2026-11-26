@@ -1,0 +1,1 @@
+ERROR: rs999 was not found in no consumer site table (setup.sh --consumer-sites builds one), no annotated VCF (step 13). An rsID the sample does not carry is only known through the site table; look it up on dbSNP (https://www.ncbi.nlm.nih.gov/snp/) and ask for its GRCh38 position instead, as chr:pos.

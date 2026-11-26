@@ -1,0 +1,2 @@
+S: 37 table rows; not_covered 38 (APOE line included). Written: traits-out.tsv
+S: 8 genotype rules; APOE not_covered, TAS2R38 not_covered, APOL1 not_covered, SERPINA1 not_covered, HFE not_covered, GC not_covered, CAD9p21 not_covered, MAPT not_covered. Written: rules-out.tsv

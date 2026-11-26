@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	not typed	no	HLA typing (step 08) did not run	-
+HLA-B	not typed	no	HLA typing (step 08) did not run	-
+CYP2D6	indeterminate	no	one caller only: a second caller must agree (Cyrius: setup.sh --cyrius)	pypgx: *1/*2; Cyrius: no call (None, Not_assigned_to_haplotypes); depth check: ok

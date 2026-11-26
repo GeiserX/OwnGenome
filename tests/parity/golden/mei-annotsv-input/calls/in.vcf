@@ -1,0 +1,15 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr20,length=64444167>
+##ALT=<ID=INS:ME,Description="Insertion of mobile element">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S
+chr20	5040478	chr20_5040478_Alu	N	<INS:ME>	.	LC	SVTYPE=INS;END=5040478	GT	0/1
+chr2	1000	chr2_1000_L1	N	<INS:ME>	.	PASS	SVTYPE=INS;END=1000	GT	1/1
+chr2	2000	chr2_2000_L1	N	<INS:ME>	.	PASS	SVTYPE=INS;END=2000	GT	0/1
+chrX	3000	chrX_3000_SVA	N	<INS:ME>	.	PASS	SVTYPE=INS;END=3000	GT	0/1
+chr20	100	chr20_100_Alu	N	<INS:ME>	.	PASS	SVTYPE=INS;END=100	GT	0/1
+chr20	100	chr20_100_Alu_2	N	<INS:ME>	.	PASS	SVTYPE=INS;END=100	GT	0/1
+chrUn_KI270302v1	50	chrUn_KI270302v1_50_Alu	N	<INS:ME>	.	PASS	SVTYPE=INS;END=50	GT	0/1
+chr9	105639660	chr9_105639660_SVA	N	<INS:ME>	.	PASS	SVTYPE=INS;END=105639660	GT	1/1

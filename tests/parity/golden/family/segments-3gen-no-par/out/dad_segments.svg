@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="194" font-family="sans-serif" font-size="11">
+<rect width="100%" height="100%" fill="#16181c"/>
+<text x="10" y="20" fill="#e6e6e6" font-size="14">dad: which copy of each chromosome came from whom (GRCh38)</text>
+<text x="10" y="52" fill="#e6e6e6">1</text>
+<rect x="60" y="40" width="820.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="50" width="820.0" height="9" fill="#2a2d33"/>
+<rect class="seg" x="63.3" y="40" width="131.7" height="9" fill="#3b6fa8"><title>paternal chr1:1000000-40998000, gpa, 7618 sites</title></rect>
+<rect class="seg" x="63.3" y="50" width="131.7" height="9" fill="#a84870"><title>maternal chr1:1002000-40996000, gma, 7544 sites</title></rect>
+<text x="10" y="80" fill="#e6e6e6">2</text>
+<rect x="60" y="68" width="797.7" height="9" fill="#2a2d33"/>
+<rect x="60" y="78" width="797.7" height="9" fill="#2a2d33"/>
+<rect class="seg" x="63.3" y="68" width="32.9" height="9" fill="#3b6fa8"><title>paternal chr2:1006000-10996000, gpa, 1797 sites</title></rect>
+<rect class="seg" x="129.2" y="68" width="32.9" height="9" fill="#3b6fa8"><title>paternal chr2:21004000-30996000, gpa, 1848 sites</title></rect>
+<rect class="seg" x="63.3" y="78" width="32.9" height="9" fill="#a84870"><title>maternal chr2:1000000-10976000, gma, 1847 sites</title></rect>
+<rect class="seg" x="129.2" y="78" width="32.8" height="9" fill="#a84870"><title>maternal chr2:21000000-30968000, gma, 1910 sites</title></rect>
+<text x="10" y="108" fill="#e6e6e6">X</text>
+<rect x="60" y="96" width="514.0" height="9" fill="#2a2d33"/>
+<rect x="60" y="106" width="514.0" height="9" fill="#2a2d33"/>
+<text x="10" y="134" fill="#e6e6e6">Upper bar: the copy from the father. Lower bar: from the mother. Grey: not mapped.</text>
+<rect x="10" y="144" width="12" height="10" fill="#a84870"/><text x="28" y="153" fill="#e6e6e6">maternal side, from the parent</text>
+<rect x="10" y="164" width="12" height="10" fill="#3b6fa8"/><text x="28" y="173" fill="#e6e6e6">paternal side, from the parent</text>
+</svg>

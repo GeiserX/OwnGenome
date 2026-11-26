@@ -1,0 +1,1 @@
+pgx_mito_merge: ERROR: cannot read org/pharmgkb/pharmcat/phenotype/MT_RNR1.json from nomember.jar (KeyError: "There is no item named 'org/pharmgkb/pharmcat/phenotype/MT_RNR1.json' in the archive")

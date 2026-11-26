@@ -1,0 +1,3 @@
+  clinvar: clinvar_mt.vcf.gz (fileDate unknown)
+  gnomad: not annotated (no gnomAD chrM file given)
+  7 chrM alleles: 1 with a ClinVar record, 0 in gnomAD

@@ -1,0 +1,33 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: LAYOUT_RECOMMENDATION
+Date: 2026-11-25
+Source: PharmCAT  report (layout-recommendation.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+DPYD         c.1905+1G>A/Reference          Intermediate Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  DPYD -- Intermediate Metabolizer:
+    Diplotype: c.1905+1G>A/Reference
+    Drugs (pipeline fallback table; the report names none): fluorouracil, capecitabine, tegafur
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

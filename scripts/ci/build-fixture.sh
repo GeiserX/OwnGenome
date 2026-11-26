@@ -237,10 +237,8 @@ fi
 echo "  ${CYRIUS_BINS} normalisation bins on ${CYRIUS_CONTIGS} contigs"
 # Step 21's depth check compares CYP2D6 with two 50 kb flanks; without reads
 # there it can only say "no reads in the flanks". The flanks come from the
-# check itself, so the two cannot drift apart. OG_SHADOW is cleared for this
-# call: the e2e workflow sets it for the cases, this job materialises no
-# oracle, and bin/og refuses every shadowed tool that has none.
-OG_SHADOW='' "${REPO}/bin/og" pgx cyp2d6-bed | awk -F'\t' '$4 == "flank"' > "${WORK}/cyp2d6_flanks.bed"
+# check itself, so the two cannot drift apart.
+"${REPO}/bin/og" pgx cyp2d6-bed | awk -F'\t' '$4 == "flank"' > "${WORK}/cyp2d6_flanks.bed"
 if [ "$(wc -l < "${WORK}/cyp2d6_flanks.bed" | tr -d ' ')" -ne 2 ]; then
   echo "ERROR: og pgx cyp2d6-bed did not print two flank regions" >&2
   exit 1

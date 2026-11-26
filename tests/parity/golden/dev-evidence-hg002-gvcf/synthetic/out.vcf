@@ -1,0 +1,18 @@
+##fileformat=VCFv4.2
+##contig=<ID=chrA,length=50>
+##contig=<ID=chrB,length=30>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End of the reference block">
+##ALT=<ID=*,Description="Any other allele">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	HG002
+chrA	3	.	G	T	50	PASS	.	GT	0/1
+chrA	10	.	CGT	C	50	PASS	.	GT	0/1
+chrB	8	.	C	T	50	PASS	.	GT	0/1
+chrC	1	.	A	G	50	PASS	.	GT	0/1
+chrA	13	.	A	<*>	.	.	END=13	GT	0/0
+chrA	15	.	G	<*>	.	.	END=15	GT	0/0
+chrA	19	.	G	<*>	.	.	END=19	GT	0/0
+chrA	27	.	A	<*>	.	.	END=27	GT	0/0
+chrA	45	.	G	<*>	.	.	END=45	GT	0/0
+chrB	10	.	T	<*>	.	.	END=10	GT	0/0
+chrB	30	.	A	<*>	.	.	END=30	GT	0/0
+chrA	1	.	A	<*>	.	.	END=1	GT	0/0

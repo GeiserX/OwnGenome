@@ -1,0 +1,14 @@
+metric	value
+status	not assessed
+confidence	Negative
+variant	.
+flag	.
+alt_depth	.
+region_depth	.
+depth_score	.
+vntr_mean_depth	.
+vntr_uncovered_pct	0.00
+coverage_qc	NOT_EVALUATED
+sensitivity	Sensitivity not known: VNtyper measured no depth over the VNTR.
+message	VNtyper calls no frameshift, but its coverage check is NOT_EVALUATED (no measured depth over the VNTR, 50x is its floor on GRCh38), so a frameshift cannot be ruled out.
+advice	A negative here lowers the chance of the frameshifts VNtyper looks for; it does not rule ADTKD-MUC1 out. A family history of kidney failure with gout or a bland urine sediment still deserves a clinical test (SNaPshot for dupC).

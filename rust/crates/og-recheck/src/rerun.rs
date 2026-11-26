@@ -136,6 +136,7 @@ pub const SWITCHES: &[&str] = &[
     "TOOLS",
     "KIR",
     "HLA_QC",
+    "PRS_ACADEMIC",
     "HPO",
     "CPSR_SECONDARY_FINDINGS",
     "REF_FASTA",

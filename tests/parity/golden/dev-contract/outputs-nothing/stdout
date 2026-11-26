@@ -1,0 +1,2 @@
+outputs (bash): 0 stable files checked under ., 0 problems
+FAIL no stable row has e2e bash: the check checked nothing

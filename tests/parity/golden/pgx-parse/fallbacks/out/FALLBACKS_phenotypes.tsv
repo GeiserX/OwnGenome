@@ -1,0 +1,6 @@
+Gene	Diplotype	Phenotype	Status
+CYP2C19	*2/*2	Poor Metabolizer	non-normal
+ABCG2	rs2231142 variant (T)/rs2231142 variant (T)	Poor Function	non-normal
+NEWGENE	*1/*7	Decreased Function	non-normal
+CYP4F2	*1/*3	Decreased Function	non-normal
+SLCO1B1	*1/*1	Normal Function	normal

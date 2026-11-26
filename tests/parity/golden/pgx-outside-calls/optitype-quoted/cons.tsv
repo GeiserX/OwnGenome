@@ -1,0 +1,4 @@
+Gene	Result	Outside_call	Reason	Evidence
+HLA-A	*01:01/*26:01	yes	T1K and OptiType (step 08), which agree at two fields	T1K: HLA-A*01:01:01 (quality 60); HLA-A*26:01:01 (quality 60); OptiType: *01:01/*26:01
+HLA-B	*57:01/*38:01	yes	T1K and OptiType (step 08), which agree at two fields	T1K: HLA-B*57:01:01 (quality 60); HLA-B*38:01:01 (quality 48); OptiType: *57:01/*38:01
+CYP2D6	indeterminate	no	no caller made a call	pypgx: not run; Cyrius: not run; depth check: not run

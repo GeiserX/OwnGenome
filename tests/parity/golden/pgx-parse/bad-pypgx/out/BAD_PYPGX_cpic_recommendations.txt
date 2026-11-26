@@ -1,0 +1,39 @@
+Pharmacogenomic Drug Recommendations
+=====================================
+Sample: BAD_PYPGX
+Date: 2026-11-25
+Source: PharmCAT  report (bad-pypgx.json)
+
+Gene Results:
+------------------------------------------------------------------------
+Gene         Diplotype                      Phenotype
+CYP2C19      *2/*2                          Poor Metabolizer
+
+Affected Medications:
+------------------------------------------------------------------------
+
+  CYP2C19 -- Poor Metabolizer:
+    Diplotype: *2/*2
+    Drugs (pipeline fallback table; the report names none): clopidogrel, voriconazole, escitalopram, citalopram, sertraline, amitriptyline, clomipramine, doxepin, imipramine, trimipramine, lansoprazole, omeprazole, pantoprazole, dexlansoprazole
+    Action: Consult CPIC guidelines at https://cpicpgx.org/guidelines/
+
+Uncallable Genes:
+------------------------------------------------------------------------
+
+  None -- all genes were successfully called.
+
+PharmCAT and pypgx:
+------------------------------------------------------------------------
+
+  Could not read the pypgx summary (UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 15: invalid start byte); no comparison was made.
+  Run step 32 again, then this step.
+
+NOTE: Uncallable genes may lack coverage, have complex structural
+variants, or require data not present in your VCF. Their absence
+from the recommendations section does NOT mean normal function.
+
+------------------------------------------------------------------------
+DISCLAIMER: These recommendations are based on CPIC clinical
+guidelines. Always consult your healthcare provider before
+making any medication changes. This is NOT medical advice.
+------------------------------------------------------------------------

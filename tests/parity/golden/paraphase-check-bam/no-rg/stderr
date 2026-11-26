@@ -1,0 +1,1 @@
+ERROR: no_rg.bam has no @RG line, so nothing says the reads are PacBio HiFi. Paraphase needs a BAM of PacBio HiFi reads with PL:PACBIO in each read group (step 02b with PLATFORM=hifi writes one, as pbmm2 does).

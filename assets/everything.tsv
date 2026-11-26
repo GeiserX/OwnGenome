@@ -62,6 +62,7 @@ input	exomiser	setup.sh --exomiser-data	-	step 48 runs when HPO (or --hpo) names
 excluded	cram_archive	-	-	a CRAM copy of each BAM for the archive: it costs disk and adds no result
 switch	KIR	true	--kir true	step 08 types the KIR genes too; setup.sh --kir-data
 switch	HLA_QC	true	--hla_qc true	step 08 runs OptiType beside T1K
+switch	PRS_ACADEMIC	true	--pgs_academic true	step 25 also scores the four PGS Catalog scores free for academic research use only; setup.sh --prs-academic
 switch	CPSR_SECONDARY_FINDINGS	true	--cpsr_secondary_findings true	step 17 also screens the ACMG SF genes
 switch	GRIDSS	true	-	script 04b after the pipeline
 switch	TIDDIT	true	-	script 04a after the pipeline
@@ -109,6 +110,7 @@ excluded	--allow_unfiltered	-	-	accepts a VCF with no FILTER=PASS record: an inp
 excluded	--skip_trim	-	-	skips fastp, so it removes a step
 excluded	--prs_keep_ambiguous	-	-	changes which rows of a score count, not which steps run
 setup	--cyrius	cyrius	-	Cyrius, under its non-commercial licence
+setup	--prs-academic	PRS_ACADEMIC	-	the four PGS Catalog scores free for academic research use only
 setup	--parascopy-data	parascopy	-	Parascopy's table and models
 setup	--kir-data	KIR	-	IPD-KIR
 setup	--ancestry-panel	ancestry	-	pgsc_calc's ancestry panel

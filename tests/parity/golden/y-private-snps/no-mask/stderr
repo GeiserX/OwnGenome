@@ -1,0 +1,1 @@
+ERROR: no chrY callable mask at t/callable_mask_chrY.fasta.gz: install the current Y tree with scripts/setup.sh --yleaf-data <genome_dir>

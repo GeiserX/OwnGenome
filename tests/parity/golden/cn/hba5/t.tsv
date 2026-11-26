@@ -1,0 +1,10 @@
+metric	value
+status	called
+alpha_globin_genes	5
+estimate	5.00
+hba2_depth	45.0
+hba1_depth	30.0
+flank_left_depth	30.0
+flank_right_depth	30.0
+mapq0_share	0.250
+message	5 alpha-globin genes: more than four, a triplication (as aaa/aa)

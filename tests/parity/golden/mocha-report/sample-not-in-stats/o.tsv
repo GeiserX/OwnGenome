@@ -1,0 +1,2 @@
+chrom	start	end	length_mb	arms	type	cell_fraction	bdev	rel_cov	n_hets	lod_baf_phase	lod_lrr_baf	reported	reason
+chr20	60000	20000000	19.94	20p, to the p telomere	CN-LOH	0.150	0.0750	2.0000	6600	900.0	nan	yes	.

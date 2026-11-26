@@ -1,0 +1,9 @@
+chrom	start	end	length_mb	arms	type	cell_fraction	bdev	rel_cov	n_hets	lod_baf_phase	lod_lrr_baf	reported	reason
+chr20	60000	20000000	19.94	20p, to the p telomere	CNP_Loss	0.150	0.0750	2.0000	6600	900.0	nan	no	germline copy-number polymorphism (MoChA type CNP_Loss)
+chr20	60000	20000000	19.94	20p, to the p telomere	CN-LOH	0.400	0.2000	2.0000	6600	900.0	nan	no	likely constitutional (BAF deviation 0.1 or more with sparse heterozygous sites)
+chr20	60000	20000000	19.94	20p, to the p telomere	gain	0.600	0.1600	3.0000	6600	900.0	nan	no	likely germline duplication (relative coverage 2.1 or more)
+chrX	60000	20000000	19.94	Xp, to the p telomere	CN-LOH	0.150	0.0750	2.0000	6600	900.0	nan	no	not an autosome (mosaic loss of Y and X: step 33)
+chr20	60000	20000000	19.94	20p, to the p telomere	CN-LOH	.	0.0750	2.0000	6600	900.0	nan	no	cell fraction not estimated
+chr20	30000000	60000000	30.00	20q, to the q telomere	loss	0.120	0.0300	2.0000	6600	900.0	nan	yes	.
+20	1000	64000000	64.00	20p and 20q, to the p telomere and q telomere	gain	0.300	0.0750	2.4000	6600	900.0	nan	yes	.
+chr1	120000000	130000000	10.00	1 (interstitial)	undetermined	0.200	0.0750	2.0000	6600	900.0	nan	yes	.

@@ -1,0 +1,3 @@
+  clinvar: not annotated (no nowhere.vcf.gz with its .tbi)
+  gnomad: not annotated (no nowhere.bgz)
+  7 chrM alleles: 0 with a ClinVar record, 0 in gnomAD
