@@ -9,7 +9,7 @@ no person. The same arguments give the same files. The e2e case
 `tests/e2e/comphet-phasing-1-reads.sh` builds the BAM from `reads.sam` with
 samtools. The `og comphet phase` parity cases keep the BAMs it gives, plain and
 `--swap`, in `rust/crates/og-bam/tests/data/reads/in/` (made by
-`rust/crates/og-bam/tests/make_reads_parity.py`).
+`make_reads_parity.py` at commit 182811a7).
 
 | Gene | Variants | Copies | Expected phase |
 |---|---|---|---|

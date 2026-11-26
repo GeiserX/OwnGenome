@@ -29,6 +29,37 @@ impl Drop for Temp {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+/// The exit status (true = success) the replaced CPython assertions of
+/// tests/smoke/commands.tsv at 669a8196 gave on each control input. They were
+/// recorded once, from those assertions themselves, into
+/// tests/rust/vectors/ci_readers.jsonl.gz (see tests/rust/vectors/README.md).
+fn python_passed(key: &str) -> bool {
+    use pycompat::json::Value;
+    use std::collections::HashMap;
+    use std::io::BufRead;
+    static TABLE: std::sync::LazyLock<HashMap<String, bool>> = std::sync::LazyLock::new(|| {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/rust/vectors/ci_readers.jsonl.gz");
+        let mut table = HashMap::new();
+        for line in og_io::open(&path).unwrap().lines() {
+            let line = line.unwrap();
+            let Value::Array(row) = pycompat::json::loads(&line).unwrap() else {
+                panic!("ci_readers: {line}");
+            };
+            let [Value::Str(key), Value::Bool(answer)]: [Value; 2] = row.try_into().unwrap() else {
+                panic!("ci_readers: {line}");
+            };
+            assert!(
+                table.insert(key, answer).is_none(),
+                "ci_readers: a key twice"
+            );
+        }
+        table
+    });
+    *TABLE
+        .get(key)
+        .unwrap_or_else(|| panic!("no committed CPython answer in ci_readers.jsonl.gz for {key:?}"))
+}
 type Cli = fn(&[String], &mut dyn std::io::Write, &mut dyn std::io::Write) -> u8;
 fn run(cli: Cli, args: &[&str]) -> (u8, String, String) {
     let mut out = Vec::new();
@@ -396,40 +427,12 @@ fn trace_integer_policy() {
     assert_eq!(run(nf_trace::cli, &args).0, 2);
 }
 
-/// Run explicitly with a full git history and Python available. The oracle
-/// is the actual replaced assertion, not a second maintained implementation.
+/// The replaced CPython assertions of the ibdmix and rfmix smoke rows against
+/// the Rust reader, on every coordinate spelling the two disagree about most.
 #[test]
-#[ignore = "requires archived source and a local Python interpreter"]
 fn differential_coordinate_controls() {
-    use std::process::Command;
     let t = Temp::new();
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let archived = Command::new("git")
-        .arg("-C")
-        .arg(&repo)
-        .args([
-            "show",
-            "669a8196cf4c377200f9b4af9c235ef85fb774a1:tests/smoke/commands.tsv",
-        ])
-        .output()
-        .unwrap();
-    assert!(archived.status.success());
-    let table = String::from_utf8(archived.stdout).unwrap();
-    for (kind, var, name) in [
-        ("ibdmix", "IBDMIX_IMAGE", "o.txt"),
-        ("rfmix", "RFMIX_IMAGE", "o.msp.tsv"),
-    ] {
-        let row = table
-            .lines()
-            .find(|l| l.starts_with(&format!("{var}\t")))
-            .unwrap();
-        let expect = row.split('\t').nth(4).unwrap();
-        let code = expect
-            .split("\" \"")
-            .nth(1)
-            .unwrap()
-            .strip_suffix('"')
-            .unwrap();
+    for (kind, name) in [("ibdmix", "o.txt"), ("rfmix", "o.msp.tsv")] {
         for value in [
             "2000000",
             "+2_000_000",
@@ -453,21 +456,16 @@ fn differential_coordinate_controls() {
                     )
                 };
                 let p = t.file(name, &text);
-                let old = Command::new("python3")
-                    .args(["-I", "-c", code])
-                    .current_dir(&t.0)
-                    .output()
-                    .unwrap();
+                let old = python_passed(&format!("coord:{kind}:{column}:{value}"));
                 let new = run(smoke::cli, &["check", kind, &p]);
                 assert_eq!(
-                    old.status.success(),
+                    old,
                     new.0 == 0,
                     "{kind} col={column} value={value}: {}",
                     new.2
                 );
                 println!(
-                    "{kind} col={column} value={value}: Python={} Rust={}",
-                    old.status.success(),
+                    "{kind} col={column} value={value}: Python={old} Rust={}",
                     new.0
                 );
             }
@@ -475,23 +473,14 @@ fn differential_coordinate_controls() {
     }
 }
 
+/// The replaced CPython assertions of five JSON smoke rows against the jq
+/// filters of tests/smoke/commands.tsv, run through image-smoke.sh's own
+/// jqcheck. Needs bash and jq.
 #[test]
-#[ignore = "requires archived source, jq and a local Python interpreter"]
 fn differential_json_controls() {
     use std::process::Command;
     let t = Temp::new();
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let archived = Command::new("git")
-        .arg("-C")
-        .arg(&repo)
-        .args([
-            "show",
-            "669a8196cf4c377200f9b4af9c235ef85fb774a1:tests/smoke/commands.tsv",
-        ])
-        .output()
-        .unwrap();
-    assert!(archived.status.success());
-    let old_table = String::from_utf8(archived.stdout).unwrap();
     let new_table = std::fs::read_to_string(repo.join("tests/smoke/commands.tsv")).unwrap();
     let script = std::fs::read_to_string(repo.join("scripts/ci/image-smoke.sh")).unwrap();
     let helper = script
@@ -541,28 +530,13 @@ fn differential_json_controls() {
             "20",
         ),
     ] {
-        let row = |table: &str| {
-            table
-                .lines()
-                .find(|l| l.starts_with(&format!("{var}\t")))
-                .unwrap()
-                .split('\t')
-                .nth(4)
-                .unwrap()
-                .to_owned()
-        };
-        let old = row(&old_table);
-        let code = old
-            .split("py \"")
-            .nth(index + 1)
+        let new = new_table
+            .lines()
+            .find(|l| l.starts_with(&format!("{var}\t")))
             .unwrap()
-            .split("\" \"")
-            .nth(1)
-            .unwrap()
-            .split('"')
-            .next()
+            .split('\t')
+            .nth(4)
             .unwrap();
-        let new = row(&new_table);
         let filter = new
             .split("jqcheck \"")
             .nth(index + 1)
@@ -583,11 +557,7 @@ fn differential_json_controls() {
         ] {
             let json = template.replace("VALUE", value);
             let p = t.file(file, &json);
-            let python = Command::new("python3")
-                .args(["-I", "-c", code])
-                .current_dir(&t.0)
-                .output()
-                .unwrap();
+            let python = python_passed(&format!("json:{var}:{index}:{value}"));
             let rust = Command::new("bash")
                 .args(["-c", &helper, "_", &p, filter])
                 .output()
@@ -599,30 +569,16 @@ fn differential_json_controls() {
             if deliberate {
                 assert!(!rust.status.success(), "typed policy: {var} {value}");
             } else {
-                assert_eq!(
-                    python.status.success(),
-                    rust.status.success(),
-                    "{var} {index} {value}: {}",
-                    String::from_utf8_lossy(&python.stderr)
-                );
+                assert_eq!(python, rust.status.success(), "{var} {index} {value}");
             }
             println!(
-                "{var}/{index} {value}: Python={} jq={} deliberate={deliberate}",
-                python.status.success(),
+                "{var}/{index} {value}: Python={python} jq={} deliberate={deliberate}",
                 rust.status.success()
             );
         }
         let valid = template.replace("VALUE", good);
         let p = t.file(file, &format!("{valid}\n{valid}\n"));
-        assert!(
-            !Command::new("python3")
-                .args(["-I", "-c", code])
-                .current_dir(&t.0)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        assert!(!python_passed(&format!("json-twice:{var}:{index}")));
         assert!(
             !Command::new("bash")
                 .args(["-c", &helper, "_", &p, filter])

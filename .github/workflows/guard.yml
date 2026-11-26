@@ -303,7 +303,9 @@ jobs:
           run_tests tests "$SHARD" "$SHARDS"
 
   # OwnGenome's Rust code (rust/, docs/rust.md): format, lint, unit tests
-  # with planted failures that must go red, and pycompat against CPython.
+  # with planted failures that must go red. The tests hold pycompat, the
+  # personal-data scanner and the old Python tools' parity cases to CPython's
+  # answers, recorded once in tests/rust/vectors; nothing here installs Python.
   # The Chrome tests run beside it in the chrome job, and the musl builds
   # with the checks that run bin/og in the og-musl job. With all three in
   # one job it took 30 to 45 minutes on a cold fork runner and hit its
@@ -318,30 +320,6 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Keep Python 3.9's regex cases and the newer Unicode tables available. The
-      # scanner fails closed on version-dependent scalars; span iteration
-      # intentionally uses Python 3.14+ semantics for empty-text \B.
-      # Standalone builds also provide Python 3.9 on newer ubuntu-latest
-      # images where actions/setup-python has no matching distribution.
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: '0.12.18'
-          enable-cache: false
-
-      - name: Install all three Unicode oracle interpreters
-        run: |
-          uv python install --no-bin 3.9 3.12 3.15
-          interpreters=""
-          for version in 3.9 3.12 3.15; do
-            python=$(uv python find --managed-python "$version")
-            "$python" -I -c 'import sys,unicodedata; print(sys.version.split()[0],unicodedata.unidata_version)'
-            interpreters="${interpreters:+$interpreters:}$python"
-          done
-          echo "PERSONAL_DATA_PYTHONS=$interpreters" >> "$GITHUB_ENV"
-          echo "PERSONAL_DATA_REQUIRE_PYTHONS=3.9:3.12:3.15" >> "$GITHUB_ENV"
-          # Span iteration intentionally follows the newest interpreter.
-          dirname "$python" >> "$GITHUB_PATH"
 
       - name: Install the toolchain rust/rust-toolchain.toml pins, with rustfmt and clippy
         run: |
@@ -853,7 +831,7 @@ jobs:
           cat "$log"
           [ "$rc" -ne 0 ]
           grep 'checked-in regex table misses a differing pair' "$log"
-          echo "Control: real regex engines rejected the incomplete table."
+          echo "Control: the recorded CPython answers rejected the incomplete table."
 
       - name: Scanner matcher controls (word classes and swallowed errors must be caught)
         run: |
@@ -881,12 +859,6 @@ jobs:
 
       - name: Evidence offset regression in release mode
         run: cargo test --release --locked -p og-dev --no-fail-fast fai_offsets_reject_overflow_and_out_of_file_before_publication
-
-      - name: pycompat against CPython (python3 -I in PYTHON_IMAGE, 100000 cases per operation)
-        if: ${{ !cancelled() }}   # runs even when a step above failed, so each result shows
-        run: |
-          OG_TREE_HASH=$(./og.sh tree-hash) cargo build --release --locked -p og
-          ../tests/rust/pycompat-diff.sh "${PWD}/target/release/og" 100000
 
   # The tests that start Chrome: the whole og-browser crate, so a new
   # browser target lands here, and og-live's targets that call

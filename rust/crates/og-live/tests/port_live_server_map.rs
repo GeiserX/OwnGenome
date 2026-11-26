@@ -379,4 +379,19 @@ fn a_finding_page_is_served_only_for_a_finding_of_the_run() {
             .unwrap()
             .contains(FINDING)
     );
+    // One row for the page served, and its section column says nothing
+    // about the result: not the id, not the gene.
+    let opened: Vec<_> = rows
+        .iter()
+        .filter(|r| r[3] == "finding" && r[6] == "200")
+        .collect();
+    assert_eq!(opened.len(), 1, "{rows:?}");
+    assert_eq!(
+        opened[0][5], "-",
+        "the finding row's section names a result"
+    );
+    let log = fs::read_to_string(m.w.state().join("access.log"))
+        .unwrap()
+        .to_lowercase();
+    assert!(!log.contains("plantgene1"), "the gene in the access log");
 }
