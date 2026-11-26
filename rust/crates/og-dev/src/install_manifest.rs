@@ -310,29 +310,9 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
             digests.push(("jellyfish", d));
         }
     } else {
-        let mut h = Sha256::new();
-        let mut buf = vec![0u8; 1 << 20];
-        loop {
-            let n = f.read(&mut buf).map_err(&e)?;
-            if n == 0 {
-                break;
-            }
-            h.update(&buf[..n]);
-        }
-        sha = hex(h);
-        if gz {
-            f.seek(SeekFrom::Start(0)).map_err(&e)?;
-            digests.extend(gzip_stream_digests(&f));
-        } else if head.starts_with(b"##fileformat=VCF") {
-            f.seek(SeekFrom::Start(0)).map_err(&e)?;
-            digests.push(("vcf", vcf_digest(BufReader::new(&f)).map_err(&e)?));
-        }
-        if is_jellyfish(head) {
-            f.seek(SeekFrom::Start(0)).map_err(&e)?;
-            if let Some(d) = jellyfish_digest(BufReader::new(&f)).map_err(&e)? {
-                digests.push(("jellyfish", d));
-            }
-        }
+        let (s, d) = stream_digests(BufReader::with_capacity(1 << 20, &f), head).map_err(&e)?;
+        sha = s;
+        digests.extend(d);
     }
     drop_cache(&f);
     if name.ends_with(b".tbi") || name.ends_with(b".csi") {
@@ -361,13 +341,54 @@ fn read_full(f: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
     Ok(n)
 }
 
+/// A reader that hashes every byte it hands on, so the one read a decoder
+/// makes of a file also gives the file's sha256.
+struct Hashing<R> {
+    inner: R,
+    h: Sha256,
+}
+
+impl<R: Read> Read for Hashing<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let k = self.inner.read(buf)?;
+        self.h.update(&buf[..k]);
+        Ok(k)
+    }
+}
+
+/// The sha256 and the mode digests of a large file, from one read of `r`:
+/// a full install is hundreds of GB, and a second read doubles the time.
+fn stream_digests(
+    r: impl Read,
+    head: &[u8],
+) -> std::io::Result<(String, Vec<(&'static str, String)>)> {
+    let mut hr = Hashing {
+        inner: r,
+        h: Sha256::new(),
+    };
+    let mut digests = Vec::new();
+    if head.starts_with(&[0x1f, 0x8b]) {
+        digests.extend(gzip_stream_digests(&mut hr));
+    } else if head.starts_with(b"##fileformat=VCF") {
+        digests.push((
+            "vcf",
+            vcf_digest(BufReader::with_capacity(1 << 20, &mut hr))?,
+        ));
+    } else if is_jellyfish(head)
+        && let Some(d) = jellyfish_digest(BufReader::with_capacity(1 << 20, &mut hr))?
+    {
+        digests.push(("jellyfish", d));
+    }
+    // Whatever a decoder left (bytes after the gzip stream, the end of a
+    // file it stopped reading) still counts in the sha256.
+    std::io::copy(&mut hr, &mut std::io::sink())?;
+    Ok((hex(hr.h), digests))
+}
+
 /// The gzip and, for a VCF, the vcf digest of a large gzip file, in one
 /// streaming pass.
-fn gzip_stream_digests(f: &fs::File) -> Vec<(&'static str, String)> {
-    let mut r = BufReader::with_capacity(
-        1 << 20,
-        MultiGzDecoder::new(BufReader::with_capacity(1 << 20, f)),
-    );
+fn gzip_stream_digests(f: impl Read) -> Vec<(&'static str, String)> {
+    let mut r = BufReader::with_capacity(1 << 20, MultiGzDecoder::new(f));
     let mut raw = Sha256::new();
     let mut vcf = Sha256::new();
     let mut is_vcf = None;
@@ -1212,6 +1233,52 @@ mod tests {
         let d = numeric_digest(b"id1 Pop 0.1236 -0.000001234\n12345678 x\n").unwrap();
         assert_ne!(a, d, "a change in the fourth digit counts");
         assert!(numeric_digest(b"no numbers 12 here\n").is_none());
+    }
+
+    /// The digests a small file gets in memory.
+    fn small(bytes: &[u8]) -> (String, Vec<(&'static str, String)>) {
+        let mut d = Vec::new();
+        if bytes.starts_with(&[0x1f, 0x8b]) {
+            let mut plain = Vec::new();
+            MultiGzDecoder::new(bytes).read_to_end(&mut plain).unwrap();
+            d.push(("gzip", sha_of(&plain)));
+            d.push(("vcf", vcf_digest(&plain[..]).unwrap()));
+        } else {
+            d.push(("vcf", vcf_digest(bytes).unwrap()));
+        }
+        (sha_of(bytes), d)
+    }
+
+    #[test]
+    fn a_large_file_is_read_once_for_all_its_digests() {
+        // A reader that hands out each byte once and cannot go back.
+        struct Once<'a>(&'a [u8], usize);
+        impl Read for Once<'_> {
+            fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+                let k = b.len().min(self.0.len() - self.1).min(7);
+                b[..k].copy_from_slice(&self.0[self.1..self.1 + k]);
+                self.1 += k;
+                Ok(k)
+            }
+        }
+        let vcf =
+            b"##fileformat=VCFv4.2\n##fileDate=20261126\n#CHROM\tPOS\n1\t5\n1\t9\n".repeat(50);
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut gz, &vcf).unwrap();
+        let gz = gz.finish().unwrap();
+        for bytes in [&vcf[..], &gz[..]] {
+            let mut r = Once(bytes, 0);
+            let got = stream_digests(&mut r, &bytes[..64]).unwrap();
+            assert_eq!(got, small(bytes));
+            assert_eq!(r.1, bytes.len());
+        }
+        // Bytes after the gzip stream end the decoding; they still count in the sha.
+        let mut bad = gz.clone();
+        bad.extend_from_slice(b"not gzip at all");
+        let mut r = Once(&bad, 0);
+        let (sha, _) = stream_digests(&mut r, &bad[..64]).unwrap();
+        assert_eq!(sha, sha_of(&bad));
+        assert_eq!(r.1, bad.len());
     }
 
     #[test]
