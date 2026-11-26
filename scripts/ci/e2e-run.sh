@@ -788,6 +788,7 @@ trap 'kill "$LOW_PID" 2> /dev/null || true' EXIT
 #     points its builder's cache at E2E_DATA_CACHE/catalogs/<its folder>.
 data_name() {
   # shellcheck source=../../versions.env
+  # shellcheck disable=SC2031  # GENOME_DIR is the case's own; data_fetch changes it only in its subshell
   case "$1" in
     mocha-1.sh) echo "mocha ${GENOME_DIR}/downloads/mocha-$(. "${REPO}/versions.env" && echo "$MOCHA_PANEL_VERSION")" ;;
     archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/downloads/archaic-$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")" ;;

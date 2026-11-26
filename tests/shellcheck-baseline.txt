@@ -33,8 +33,6 @@ scripts/ci/e2e-run.sh	SC2031	"${GENOME_DIR}/${SAMPLE}/fastq" "${GENOME_DIR}/${SA
 scripts/ci/e2e-run.sh	SC2031	-o -path "${GENOME_DIR}/tools/cyrius-*" -o -path "${GENOME_DIR}/reference/pypgx-bundle" \) -prune \
 scripts/ci/e2e-run.sh	SC2031	-o -path "${GENOME_DIR}/tools/cyrius-*" -o -path "${GENOME_DIR}/reference/pypgx-bundle" \) -prune \
 scripts/ci/e2e-run.sh	SC2031	REF="${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set"
-scripts/ci/e2e-run.sh	SC2031	archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/reference/archaic/$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")/download" ;;
-scripts/ci/e2e-run.sh	SC2031	bash-step-08-hla.sh) echo "hla ${GENOME_DIR} offline" ;;
 scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${SAMPLE}_R1.fastq.gz" "${FIXTURE_DIR}/${SAMPLE}_R2.fastq.gz" "${GENOME_DIR}/${SAMPLE}/fastq/"
 scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${SAMPLE}_vep.vcf" "${GENOME_DIR}/${SAMPLE}/vep/"
 scripts/ci/e2e-run.sh	SC2031	cp "${FIXTURE_DIR}/${f}" "${FIXTURE_DIR}/${f}.tbi" "${GENOME_DIR}/clinvar/"
@@ -44,7 +42,6 @@ scripts/ci/e2e-run.sh	SC2031	echo "=== Layout ${GENOME_DIR} ==="
 scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
 scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
 scripts/ci/e2e-run.sh	SC2031	mkdir -p "${GENOME_DIR}/reference" "${GENOME_DIR}/clinvar" "${GENOME_DIR}/annotations" \
-scripts/ci/e2e-run.sh	SC2031	mocha-1.sh) echo "mocha ${GENOME_DIR}/reference/mocha-$(. "${REPO}/versions.env" && echo "$MOCHA_PANEL_VERSION")" ;;
 scripts/ci/oracle-diff.sh	SC2001	else echo "WRONG ${label} (exit ${rc}, wanted ${want})"; sed 's/^/ /' <<< "$out"; bad=$((bad + 1)); fi
 scripts/ci/oracle-diff.sh	SC2016	printf '#!/bin/sh\ncp "$1" "$2"\necho copied\n' > "${st}/oracle/fake/run"
 scripts/ci/oracle-diff.sh	SC2016	printf '#!/bin/sh\nexec %s "$(dirname "$0")/prog" "$@"\n' "$interp" > "${dir}/${tool}/run"
