@@ -3035,7 +3035,8 @@ mod tests {
     }
 
     /// The CPython versions an answer file was made with, in the order the
-    /// interpreters ran (3.9, 3.12 and 3.15, as CI installed them).
+    /// interpreters ran (3.9, 3.12 and 3.15, as CI installed them, then the
+    /// recording image's own python3, 3.13.5).
     fn oracle_versions(name: &str) -> Vec<String> {
         use pycompat::json::Value;
         let Value::Array(v) = crate::lookaround::vectors::get(name, "versions") else {
