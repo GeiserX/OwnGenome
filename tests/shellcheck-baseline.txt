@@ -216,9 +216,6 @@ tests/fake-docker/single-source-downloads.sh	SC2012	mode() { ls -ld "$1" | cut -
 tests/fake-docker/single-source-sample-name.sh	SC2016	for bad in '../x' '..' '.' 'a b' 'x;id' 'x$(id)' '-x' ''; do
 tests/fake-docker/str-catalog-setup-and-steps.sh	SC2015	[ "$(wc -c < "${BAD}/${EH_FILE}")" = "$(wc -c < "${SERVED}/${EH_FILE}")" ] && ! cmp -s "${SERVED}/${EH_FILE}" "${BAD}/${EH_FILE}" \
 tests/fake-docker/str-catalog-setup-and-steps.sh	SC2059	{ head -c "$h" "$1"; printf "\\$(printf %03o $((b ^ 1)))"; tail -c $((n - h - 1)) "$1"; } > "$2"
-tests/parity/inputs/ci-readers/oracle.sh	SC2329	at_least() { :; }
-tests/parity/inputs/ci-readers/oracle.sh	SC2329	py() { python3 -I -c "$2" > /dev/null; }
-tests/parity/inputs/ci-readers/oracle.sh	SC2329	same() { :; }
 tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
 tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
 tests/parity/inputs/clinvar-join-adjacent/oracle.sh	SC1007	mode= window= fasta= file=
