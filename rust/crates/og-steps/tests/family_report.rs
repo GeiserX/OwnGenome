@@ -728,13 +728,15 @@ fn report_alleles_de_novo_compound_het_phase() {
             "a second run writes the same bytes (exit {rc2}): {out2}"
         );
 
-        // A low-quality copy of the planted site: still listed, quality low
+        // A low-quality copy of the planted site: still listed, quality low.
+        // The father has GQ 50 but 5 reads, under MIN_DP (10): the row is
+        // low by depth alone.
         let low_rows: Vec<Site> = vec![(
             "chr1",
             300,
             "G",
             "A",
-            vec!["0/0:5:5,0:10", "0/1:30:14,16:50", "0/0:30:30,0:50"],
+            vec!["0/0:5:5,0:50", "0/1:30:14,16:50", "0/0:30:30,0:50"],
         )];
         let low = joint(&d.j("low.vcf.gz"), &low_rows, &samples, false);
         let low_out = d.j("low");
