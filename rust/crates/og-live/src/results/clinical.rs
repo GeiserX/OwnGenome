@@ -450,12 +450,20 @@ pub(super) fn family_findings(summary: &Summary, found: &mut Vec<Finding>) {
                         Level::Review,
                         format!("{name}: possible two hits"),
                         format!(
-                            "This genome has two different changes in {g}, {}. No read-backed phase links them, so they may sit on the same copy: both copies may be hit, or only one, as in a carrier.{} A genetic counsellor reads it.",
+                            "This genome has two different changes in {g}, {}. {} A genetic counsellor reads it.",
                             of(),
-                            if p.contains("low-confidence") {
-                                " One of the calls has low confidence, so confirm it first."
-                            } else {
-                                ""
+                            // A trans proof that needs a low-confidence call
+                            // is a phase, just not a sure one.
+                            match (
+                                p.contains("low-confidence"),
+                                text_or(val(c, "phase"), "").contains("in trans")
+                            ) {
+                                (true, true) =>
+                                    "Phase puts them on different copies only through a call with low confidence, so both copies may be hit: confirm that call first.",
+                                (true, false) =>
+                                    "No read-backed phase links them, so they may sit on the same copy: both copies may be hit, or only one, as in a carrier. One of the calls has low confidence, so confirm it first.",
+                                _ =>
+                                    "No read-backed phase links them, so they may sit on the same copy: both copies may be hit, or only one, as in a carrier.",
                             }
                         ),
                     ),
@@ -766,9 +774,10 @@ mod tests {
         }
     }
 
-    /// A HIGH-impact row the card lists apart (a weak call, a call with no
-    /// GQ, DP or AD, unknown frequency) is not said to be counted by the
-    /// gene's rule; a sound rare call is.
+    /// A ClinVar hit with a low-confidence call, and a HIGH-impact row the
+    /// card lists apart (a weak call, a call with no GQ, DP or AD, unknown
+    /// frequency), are not said to be counted by the gene's rule; a sound
+    /// call is.
     #[test]
     fn an_sf_row_listed_apart_is_not_said_to_count() {
         let row = |gene: &str, marks: &str| {
@@ -790,7 +799,11 @@ mod tests {
         .join(", ");
         let summary = parse(&format!(
             r#""clinical": {{"state": "ok", "data": {{"variants": 4, "acmg_sf": {{
-                "version": "ACMG SF v3.3", "genes_on_list": 84, "clinvar_hits": [],
+                "version": "ACMG SF v3.3", "genes_on_list": 84, "clinvar_hits": [
+                  {{"gene": "BRCA2", "variant": "chr13:100 C>T", "genotype": "het",
+                    "significance": "Pathogenic", "low_confidence": true}},
+                  {{"gene": "BRCA1", "variant": "chr17:100 C>T", "genotype": "het",
+                    "significance": "Pathogenic", "low_confidence": false}}],
                 "high_impact": [{high}], "high_impact_checked": true}}}}}}"#
         ));
         let mut found = Vec::new();
@@ -802,11 +815,54 @@ mod tests {
                 .map(|f| f.text.clone())
                 .expect("the SF finding")
         };
-        for gene in ["MSH2", "MYBPC3", "PKP2"] {
+        for gene in ["BRCA2", "MSH2", "MYBPC3", "PKP2"] {
             let t = text(gene);
             assert!(!t.contains("reporting rule counts"), "{gene}: {t}");
             assert!(t.contains("needs checking first"), "{gene}: {t}");
         }
-        assert!(text("MLH1").contains("the gene's reporting rule counts"));
+        for gene in ["BRCA1", "MLH1"] {
+            assert!(
+                text(gene).contains("the gene's reporting rule counts"),
+                "{gene}"
+            );
+        }
+    }
+    /// A pair whose trans proof needs a low-confidence call does have a
+    /// phase: the row says so, asks to confirm the call, and never claims
+    /// that no phase links the two or that both copies are hit.
+    #[test]
+    fn a_trans_pair_through_a_weak_call_asks_to_confirm_it() {
+        let phase = "a call below the call floor (low confidence) is one of them, so confirm it \
+                     first; in trans: read-backed phase puts them on different copies (phase set 5)";
+        let mut found = Vec::new();
+        family_findings(
+            &carriers(&[
+                (
+                    "RPE65",
+                    Some("possible two hits (low-confidence call)"),
+                    Some(phase),
+                ),
+                (
+                    "RPE65",
+                    Some("possible two hits (low-confidence call)"),
+                    Some(phase),
+                ),
+            ]),
+            &mut found,
+        );
+        let pair: Vec<_> = found.iter().filter(|f| f.gene == s("RPE65")).collect();
+        assert_eq!(pair.len(), 2);
+        for f in pair {
+            assert!(f.level == Level::Review, "{}", f.title);
+            assert!(
+                f.text.contains("only through a call with low confidence"),
+                "{}",
+                f.text
+            );
+            assert!(f.text.contains("confirm that call first"), "{}", f.text);
+            assert!(!f.text.contains("No read-backed phase"), "{}", f.text);
+            assert!(!f.text.contains("both copies are hit"), "{}", f.text);
+            assert!(!f.text.contains("not affected"), "{}", f.text);
+        }
     }
 }

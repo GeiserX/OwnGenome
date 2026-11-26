@@ -171,8 +171,8 @@ pub fn listed_condition(sf: &D<'_>, gene: &str) -> Result<Option<String>, Malfor
 
 /// The opening sentence of a secondary finding, in plain words: what the
 /// gene is, why it is reported, and what the result is not. `counted` is
-/// false for a row the card lists apart (see [`counted`]): its call or its
-/// frequency needs checking before the rule counts it. The list's name,
+/// false for a row whose call or frequency needs checking first (see
+/// [`counted`]). The list's name,
 /// its version and the ClinVar class stay in the evidence rows.
 pub fn lede(gene: &str, condition: Option<&str>, counted: bool) -> String {
     let health = match condition {
@@ -192,11 +192,16 @@ pub fn lede(gene: &str, condition: Option<&str>, counted: bool) -> String {
     )
 }
 
-/// Whether the gene's rule counts each row of [`rows`], in the same order:
-/// false for a HIGH-impact record the card lists apart (a weak call, a call
-/// with no GQ, DP or AD, or unknown frequency), true for every other row.
+/// Whether the gene's rule counts each row of [`rows`] as it stands, in the
+/// same order: false for a row whose call or frequency needs checking first
+/// (a ClinVar hit with a low-confidence call, or a HIGH-impact record the
+/// card lists apart: a weak call, a call with no GQ, DP or AD, or unknown
+/// frequency), true for every other row.
 pub fn counted(sf: &D<'_>) -> Result<Vec<bool>, Malformed> {
-    let mut out = vec![true; sf.at("clinvar_hits")?.len()?];
+    let mut out = Vec::new();
+    for x in sf.at("clinvar_hits")?.items()? {
+        out.push(!x.flag("low_confidence")?);
+    }
     for x in sf.at("high_impact")?.items()? {
         out.push(high_marks(&x, "")?.is_empty());
     }
