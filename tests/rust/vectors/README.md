@@ -22,7 +22,7 @@ A `.jsonl.gz` file holds one `[key, answer]` JSON array per line, sorted, gzippe
 Commit 00596ca8 ("test(rust): record the CPython answers the oracle tests compare against") still runs the Python and writes each answer it compares against when `OG_RECORD_VECTORS` is set. Its `tests/rust/vectors/make.sh` ran:
 
 1. the pycompat oracle (`tests/rust/pycompat_oracle.py`) with `python3 -I` in `PYTHON_IMAGE`, 1000 cases per operation and seed 20261126, then GNU find over the folder it built;
-2. the tests above in `rust:1.93.0-trixie` with CPython 3.9, 3.12 and 3.15 from uv 0.12.18, the old tools fetched from their commits;
+2. the tests above in the official Rust image (Debian trixie) of the release in `rust/rust-toolchain.toml`, with CPython 3.9, 3.12 and 3.15 from uv 0.12.18, the old tools fetched from their commits;
 3. `sort -u` and `gzip -9 -n` into this folder.
 
 To record a new answer, check out that commit (or one built on it), change the test there, and run `tests/rust/vectors/make.sh` with Docker. Then bring the vectors and the replaying test to the current branch.

@@ -563,15 +563,17 @@ mod vectors {
 
     /// `%T@` of GNU find (seconds, ten decimals, maybe negative) as a time.
     fn find_time(s: &str) -> SystemTime {
-        let (neg, s) = s.strip_prefix('-').map_or((false, s), |s| (true, s));
+        // GNU find prints the floor second and a positive fraction, so
+        // "-5.25" is -5 s + 0.25 s, not -5.25 s.
         let (sec, frac) = s.split_once('.').unwrap();
-        let ns = sec.parse::<u64>().unwrap() * 1_000_000_000 + frac[..9].parse::<u64>().unwrap();
+        let ns = i128::from(sec.parse::<i64>().unwrap()) * 1_000_000_000
+            + i128::from(frac[..9].parse::<i64>().unwrap());
         assert!(
             frac[9..].bytes().all(|b| b == b'0'),
             "{s}: finer than a nanosecond"
         );
-        let d = Duration::from_nanos(ns);
-        if neg { UNIX_EPOCH - d } else { UNIX_EPOCH + d }
+        let d = Duration::from_nanos(u64::try_from(ns.unsigned_abs()).unwrap());
+        if ns < 0 { UNIX_EPOCH - d } else { UNIX_EPOCH + d }
     }
 
     /// The oracle's tree again under `root`: folders, empty files, symlinks
@@ -641,7 +643,7 @@ mod vectors {
         match op {
             "glob" => {
                 fn sorted(s: &str) -> Vec<&str> {
-                    let mut v: Vec<&str> = s.split('|').collect();
+                    let mut v: Vec<&str> = s.split("\\|").collect();
                     v.sort_unstable();
                     v
                 }
