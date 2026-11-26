@@ -27,6 +27,9 @@ export REF_FASTA_URL="https://fake.invalid/reference/GRCh38_no_alt_analysis_set.
 REF_FASTA_MD5=$(fake_body "$REF_FASTA_URL" | fake_md5)
 REF_FAI_MD5=$(fake_body "${REF_FASTA_URL}.fai" | fake_md5)
 export REF_FASTA_MD5 REF_FAI_MD5
+# The fake downloads are placeholders, not the sizes assets/data-sources.tsv
+# records: setup.sh's disk check of the kept downloads is off here.
+export SETUP_DISK_CHECK=false
 
 # Clinical setup uses real archive layouts, served by the existing fake curl
 # and wget. CHECKSUMS is shared by basename, so it lists both VEP archives.

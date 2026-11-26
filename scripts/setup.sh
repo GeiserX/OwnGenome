@@ -135,6 +135,19 @@ REFRESH=""
 SAMPLE_QC_ONLY=false
 OPT_IN=""
 CLINICAL_DATA=true
+# --no-keep-downloads, anywhere among the arguments, is SETUP_KEEP_DOWNLOADS=false:
+# each raw download is deleted once installed instead of kept in the
+# downloads folder (OG_DOWNLOADS, default <genome_dir>/downloads).
+SETUP_KEEP_DOWNLOADS=${SETUP_KEEP_DOWNLOADS:-true}
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = --no-keep-downloads ]; then SETUP_KEEP_DOWNLOADS=false; else ARGS+=("$a"); fi
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+case "$SETUP_KEEP_DOWNLOADS" in
+  true|false) export SETUP_KEEP_DOWNLOADS ;;
+  *) echo "ERROR: SETUP_KEEP_DOWNLOADS must be true or false, got '${SETUP_KEEP_DOWNLOADS}'" >&2; exit 2 ;;
+esac
 case "${1:-}" in
   --everything)
     EVERYTHING_SETUP=true
@@ -188,6 +201,11 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  --cnvpytor-data      Install CNVpytor reference files (step 18)."
   echo "  --pypgx-data         Install the upstream PyPGx bundle (step 32)."
   echo "  --no-clinical-data  Skip both VEP caches and the PCGR/CPSR bundle."
+  echo "  --no-keep-downloads  Delete each raw download once it is installed (SETUP_KEEP_DOWNLOADS=false)."
+  echo "                Without it every raw download stays in the downloads folder, OG_DOWNLOADS"
+  echo "                (default <genome_dir>/downloads), so a rerun downloads nothing again; this keeps"
+  echo "                about 300 GB more for --everything. bin/og setup plan lists what a setup downloads,"
+  echo "                and bin/og setup prune deletes the kept downloads. Goes with any other flag."
   echo "  --clinical-data     Install only those three downloads for an existing setup."
   echo "  --pull-only   Pull the Docker images listed in versions.env and exit."
   echo "  --og          Put OwnGenome's og binaries in bin/.og, for Linux and for a macOS live-site host"
@@ -214,13 +232,13 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  --yleaf-data  Install Yleaf ${YLEAF_DATA_VERSION:-}'s Y marker tables and trees and the current YFull tree (step 37, about 210 MB to download, 220 MB on disk), pull its image and exit."
   echo "  --consumer-sites"
   echo "                Build the site table of the raw-data export (step 40): the 23andMe v5 site list joined with"
-  echo "                dbSNP ${CONSUMER_DBSNP_BUILD:-}'s GRCh38 VCF (~30 GB download, deleted once the table is built); then exit."
+  echo "                dbSNP ${CONSUMER_DBSNP_BUILD:-}'s GRCh38 VCF (~30 GB download, kept in the downloads folder); then exit."
   echo "  --archaic     Build the archaic table of step 43: the Altai and Vindija Neanderthals and the Altai Denisovan"
-  echo "                (MPI-EVA, ~165 GB read one chromosome at a time) with 1000 Genomes frequencies, lifted to GRCh38"
-  echo "                (only the table is kept; hours on a home connection); then exit."
+  echo "                (MPI-EVA, ~165 GB, kept in the downloads folder) with 1000 Genomes frequencies, lifted to GRCh38"
+  echo "                (hours on a home connection; --no-keep-downloads keeps 13 GB at most at a time); then exit."
   echo "  --ancient-panel"
   echo "                Build the panel of step 44 from the Allen Ancient DNA Resource ${AADR_VERSION:-} (1240K, ~7.3 GB download,"
-  echo "                deleted once built; needs about 12 GB of free RAM) and pull EIGENSOFT; then exit."
+  echo "                kept in the downloads folder; needs about 12 GB of free RAM) and pull EIGENSOFT; then exit."
   echo "  --viral-data  Install the human viral genomes and phiX of step 47 (NCBI RefSeq, VIRAL_REF_ACCESSIONS, ~2 MB) and exit."
   echo "  --masked-reference"
   echo "                Build the default reference with the false duplications of GRCh38 masked (KCNE1, CBS, U2AF1, CRYAA"
@@ -270,6 +288,35 @@ export GENOME_DIR
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 if [ -n "$PCGR_SHA_OVERRIDE" ]; then PCGR_DATA_SHA256=$PCGR_SHA_OVERRIDE; fi
+
+# Every download goes through og (og setup fetch), so og is built before the
+# first one. Then, when the raw downloads are kept, the sources this run
+# downloads must fit in the downloads folder: og setup plan --check refuses
+# up front instead of filling the disk halfway (--no-keep-downloads, or
+# OG_DOWNLOADS on a larger disk, are the ways out it names). SETUP_DISK_CHECK=false
+# skips that check: the test harnesses set it, as their sources are small
+# fixtures, not the sizes the table records.
+if ! $PULL_ONLY; then
+  # OG names another og (the tests set it); otherwise bin/og is built when it
+  # is stale or does not run here. The downloads need only this machine's og,
+  # so a missing Linux pair is need_og's matter, for the installers that run
+  # og in a container.
+  if [ -n "${OG:-}" ]; then
+    [ -x "$OG" ] || { echo "ERROR: OG=${OG} is not an executable og" >&2; exit 1; }
+  elif { ! "${PGP_ROOT}/rust/og.sh" check > /dev/null 2>&1 || ! "${PGP_ROOT}/bin/og" version > /dev/null 2>&1; } \
+      && ! "${PGP_ROOT}/rust/og.sh" install; then
+    echo "ERROR: could not build og, which does every download of setup: run ${0} --og and look at its error." >&2
+    exit 1
+  fi
+  if [ "$SETUP_KEEP_DOWNLOADS" = true ] && [ "${SETUP_DISK_CHECK:-true}" != false ] && [ -z "$REFRESH" ] && [ "${SETUP_EVERYTHING_SCOPE:-}" != row ]; then
+    if $EVERYTHING_SETUP; then PLAN_FOR=(--all)
+    elif [ -n "$OPT_IN" ]; then PLAN_FOR=(--for "$OPT_IN")
+    elif $SAMPLE_QC_ONLY; then PLAN_FOR=(--for sample-qc-data)
+    elif $CLINICAL_DATA; then PLAN_FOR=(--for setup)
+    else PLAN_FOR=(--for setup --skip clinical-data); fi
+    og_setup plan "${PLAN_FOR[@]}" --check > /dev/null || exit 1
+  fi
+fi
 
 # What a full setup could not install, one "what|retry command" entry each.
 # The summary lists them, and a run with any left exits SETUP_PARTIAL_EXIT.
@@ -372,7 +419,8 @@ install_cyrius() {
   echo "Installing Cyrius ${CYRIUS_VERSION} from ${lock} (hash-locked) into ${dest}"
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
-  # --net: pip downloads the locked wheels from PyPI.
+  # net: pip installs the locked wheels from PyPI, each checked by its hash
+  # (a package install, not a data source).
   if ! run_in --net --rw "${GENOME_DIR}/tools" -v "${lock}:/lock.txt:ro" "${PYTHON_IMAGE}" \
       pip install --no-cache-dir --disable-pip-version-check -q --require-hashes --no-deps \
         --only-binary :all: --target "$(cpath "${dest}.part")" -r /lock.txt; then
@@ -401,15 +449,15 @@ install_parascopy_data() {
   rm -rf "${dest}.part"
   mkdir -p "${dest}.part"
   while read -r name md5; do
-    if ! fetch "https://zenodo.org/records/${PARASCOPY_DATA_RECORD}/files/${name}" "${dest}.part/${name}" md5 "$md5" \
-        || ! tar -xzf "${dest}.part/${name}" -C "${dest}.part"; then
+    if ! fetch "https://zenodo.org/records/${PARASCOPY_DATA_RECORD}/files/${name}" "$(dl "parascopy/${name}")" md5 "$md5" \
+        || ! tar -xzf "$(dl "parascopy/${name}")" -C "${dest}.part"; then
       rm -rf "${dest}.part"
       echo "[WARN] Could not install Parascopy's data. Step 35 needs it; run: $0 --parascopy-data ${GENOME_DIR}"
       return 1
     fi
-    rm -f "${dest}.part/${name}"
+    done_with "$(dl "parascopy/${name}")"
   done <<<"$PARASCOPY_FILES"
-  rm -rf "$dest"
+  rm -rf "$dest"  # not kept: the older install, replaced
   mv "${dest}.part" "$dest"
   echo "[OK] Parascopy ${PARASCOPY_DATA_VERSION} homology table and models (step 35): ${dest}"
 }
@@ -431,7 +479,7 @@ install_kir_data() {
     return 1
   fi
   if ! grep -q "IPD-KIR Release Version ${KIR_DB_RELEASE}" "$dest"; then
-    rm -f "$dest"
+    rm -f "$dest"  # not kept: the wrong release, which step 08 must not read
     echo "[WARN] ${url}/kir.dat does not say IPD-KIR Release Version ${KIR_DB_RELEASE}; removed it."
     return 1
   fi
@@ -456,7 +504,7 @@ install_yleaf_data() {
   if [ -s "${dest}/data/hg38/new_positions.txt" ] && [ -s "${dest}/data/hg_prediction_tables/tree.json" ]; then
     echo "[OK] Yleaf ${YLEAF_DATA_VERSION} marker tables (step 37) already present."
   else
-    tgz="${dest}.tar.gz"
+    tgz=$(dl "yleaf-${YLEAF_DATA_VERSION}.tar.gz")
     if ! fetch "https://github.com/genid/Yleaf/archive/refs/tags/v${YLEAF_DATA_VERSION}.tar.gz" "$tgz" sha256 "$YLEAF_DATA_SHA256"; then
       echo "[WARN] Could not download Yleaf ${YLEAF_DATA_VERSION}."
       return 1
@@ -465,13 +513,13 @@ install_yleaf_data() {
     mkdir -p "${dest}.part"
     tar -xzf "$tgz" -C "${dest}.part" --strip-components 2 \
       "Yleaf-${YLEAF_DATA_VERSION}/yleaf/data/hg38" "Yleaf-${YLEAF_DATA_VERSION}/yleaf/data/hg_prediction_tables"
-    rm -f "$tgz"
+    done_with "$tgz"
     if [ ! -s "${dest}.part/data/hg38/new_positions.txt" ] || [ ! -s "${dest}.part/data/hg_prediction_tables/tree.json" ]; then
       echo "[WARN] The Yleaf ${YLEAF_DATA_VERSION} archive has no yleaf/data/hg38/new_positions.txt or hg_prediction_tables/tree.json."
       rm -rf "${dest}.part"
       return 1
     fi
-    rm -rf "$dest"
+    rm -rf "$dest"  # not kept: the older install, replaced
     mv "${dest}.part" "$dest"
     echo "[OK] Yleaf ${YLEAF_DATA_VERSION} marker tables and trees (step 37): ${dest}/data"
   fi
@@ -496,7 +544,7 @@ install_yleaf_data() {
     # The tables are current but the mask is missing or fails its sha256:
     # fetch it alone. Without it step 37 skips the private SNP list.
     echo "[WARN] ${mask} is missing or fails its sha256; downloading it again."
-    rm -f "$mask"
+    rm -f "$mask"  # not kept: an installed mask that fails its sha256
     if fetch "$mask_url" "$mask" sha256 "$YCALLABLE_MASK_SHA256"; then
       echo "[OK] Current Y tree (${label}, step 37) present, chrY callable mask downloaded again."
     else
@@ -527,12 +575,12 @@ install_yleaf_data() {
     if $mask_ok; then
       find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +
     else
-      rm -rf "$yt"
+      rm -rf "$yt"  # not kept: the installed tree of an older pin
     fi
     return 0
   fi
   printf '%s\n' "$want" > "${yt}.part/version.txt"
-  rm -rf "$yt"
+  rm -rf "$yt"  # not kept: the installed tree of an older pin, replaced
   mv "${yt}.part" "$yt"
   echo "[OK] Current Y tree (${label}) and Yleaf ${YTREE_POSITIONS_VERSION}'s SNP positions (step 37): ${yt}"
 }
@@ -639,7 +687,7 @@ install_masked_reference() {
 # EXOMISER_DATA_VERSION (step 48) into reference/exomiser-<release>/, the
 # folder Exomiser reads as its data directory. Each archive is checked against
 # its sha256 in versions.env, unpacked by og (`og setup unzip`, so no unzip
-# on the host is needed; each member streams to disk), and deleted. A
+# on the host is needed; each member streams to disk), and kept in the downloads folder. A
 # folder is moved into place only once whole.
 install_exomiser_data() {
   local dest="${GENOME_DIR}/reference/exomiser-${EXOMISER_DATA_VERSION}" part sha zip
@@ -651,7 +699,7 @@ install_exomiser_data() {
   mkdir -p "$dest"
   while read -r part sha; do
     [ -d "${dest}/${EXOMISER_DATA_VERSION}_${part}" ] && continue
-    zip="${dest}/${EXOMISER_DATA_VERSION}_${part}.zip"
+    zip=$(dl "exomiser/${EXOMISER_DATA_VERSION}_${part}.zip")
     # A zip kept by an unpack that failed is used again once its sha256 still matches.
     if [ -f "$zip" ] && [ "$(_digest sha256 "$zip")" = "$sha" ]; then
       echo "Using the checked ${zip##*/} kept from the last run."
@@ -670,7 +718,8 @@ install_exomiser_data() {
       return 1
     fi
     mv "${dest}/unpack.part/${EXOMISER_DATA_VERSION}_${part}" "${dest}/${EXOMISER_DATA_VERSION}_${part}"
-    rm -rf "${dest}/unpack.part" "$zip"
+    rm -rf "${dest}/unpack.part"
+    done_with "$zip"
   done <<EOF2
 hg38 ${EXOMISER_HG38_SHA256}
 phenotype ${EXOMISER_PHENOTYPE_SHA256}
@@ -688,7 +737,7 @@ install_chip_data() {
     echo "[OK] Ensembl ${ENSEMBL_GFF_RELEASE} gene annotation (step 49) already present."
     return 0
   fi
-  rm -f "$dest"
+  rm -f "$dest"  # not kept: an installed file that fails its sha256
   if ! fetch "https://ftp.ensembl.org/pub/release-${ENSEMBL_GFF_RELEASE}/gff3/homo_sapiens/${name}" "$dest" sha256 "$ENSEMBL_GFF_SHA256"; then
     echo "[WARN] Could not download Ensembl ${ENSEMBL_GFF_RELEASE}'s gene annotation. Step 49 needs it; run setup.sh --chip-data again."
     return 1
@@ -783,7 +832,7 @@ install_strchive_data() {
   for url in "${eh_url}|${STRCHIVE_EH_SHA256}" "${loci_url}|${STRCHIVE_LOCI_SHA256}"; do
     sha=${url#*|} url=${url%%|*} name=${url##*/}
     [ -s "${dir}/${name}" ] && [ "$(_digest sha256 "${dir}/${name}")" = "$sha" ] && continue
-    rm -f "${dir}/${name}"
+    rm -f "${dir}/${name}"  # not kept: an installed file that fails its sha256
     if ! fetch "$url" "${dir}/${name}" sha256 "$sha"; then
       echo "[WARN] Could not install STRchive's ${name}. Steps 09 and 9b use the catalogs inside their images; re-run setup.sh to try again."
       return 1
@@ -839,7 +888,7 @@ install_tandem_repeats() {
 # BGZF file on 4 cores and looks at the ID column of a line before anything
 # else, so no grep pass runs first. It runs in OG_IMAGE with bin/
 # mounted, so og is built first when it is missing or stale.
-# The dbSNP file is deleted once the table is built. The table built is then
+# The dbSNP file stays in the downloads folder (done_with). The table built is then
 # compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
 install_consumer_sites() {
   local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped
@@ -855,25 +904,14 @@ install_consumer_sites() {
     echo "[WARN] Could not download the 23andMe v5 site list."
     return 1
   fi
-  db="${dir}/dbsnp_${CONSUMER_DBSNP_BUILD}_GRCh38.vcf.gz"
-  # A run after a failed build reuses the download, once its md5 matches the
-  # pin again: a file under that name that is not the pinned one is removed
-  # and downloaded anew, so the table is never built from another file.
-  if [ -s "$db" ]; then
-    echo "Checking the md5 of the dbSNP ${CONSUMER_DBSNP_BUILD} file already downloaded: ${db}"
-    if [ "$(_digest md5 "$db")" != "$CONSUMER_DBSNP_MD5" ]; then
-      echo "[WARN] ${db} is not the pinned dbSNP ${CONSUMER_DBSNP_BUILD} (md5 differs): removing it and downloading it again."
-      rm -f "$db"
-    fi
-  fi
-  if [ -s "$db" ]; then
-    echo "dbSNP ${CONSUMER_DBSNP_BUILD} for GRCh38 already downloaded and checked: ${db}"
-  else
-    echo "Downloading dbSNP ${CONSUMER_DBSNP_BUILD} for GRCh38 (about 30 GB; deleted once the table is built)..."
-    if ! fetch "https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD}/VCF/GCF_000001405.40.gz" "$db" md5 "$CONSUMER_DBSNP_MD5"; then
-      echo "[WARN] Could not download dbSNP ${CONSUMER_DBSNP_BUILD}. Run this command again: the download resumes."
-      return 1
-    fi
+  # In the downloads folder: fetch reuses a copy whose md5 matches the pin
+  # (a rerun after a failed build, another install) and refuses one that does
+  # not, so the table is never built from another file.
+  db=$(dl "dbsnp_${CONSUMER_DBSNP_BUILD}_GRCh38.vcf.gz")
+  echo "dbSNP ${CONSUMER_DBSNP_BUILD} for GRCh38 (about 30 GB, kept in ${OG_DOWNLOADS}; a copy already there with the pinned md5 is used)..."
+  if ! fetch "https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD}/VCF/GCF_000001405.40.gz" "$db" md5 "$CONSUMER_DBSNP_MD5"; then
+    echo "[WARN] Could not download dbSNP ${CONSUMER_DBSNP_BUILD}. Run this command again: the download resumes."
+    return 1
   fi
   if ! "${PGP_ROOT}/rust/og.sh" check --required > /dev/null 2>&1 && ! "${PGP_ROOT}/rust/og.sh" install; then
     echo "[WARN] Could not build og, which builds the site table: run ${0} --og and look at its error."
@@ -889,7 +927,7 @@ install_consumer_sites() {
     echo "[WARN] Could not build the site table of step 40; the dbSNP download is kept: run this command again."
     return 1
   fi
-  rm -f "$db"
+  done_with "$db"
   consumer_sites_pin_check "$out" "built (dropped sites and their reasons: ${dropped})"
 }
 
@@ -925,8 +963,8 @@ consumer_sites_pin_check() {
 #        the same axes, which is how step 44 runs.
 # smartpca holds the whole genotype file in memory (7.1 GB for the 23,089
 # people of v66.p1), so the install gives it a 12 GB container and needs that
-# much free RAM. The AADR downloads (7.3 GB) are deleted once the panel is
-# built. ANCIENT_SOURCE_DIR=<folder> takes the four files (.anno, .ind, .snp,
+# much free RAM. The AADR downloads (7.3 GB) stay in the downloads folder
+# (done_with). ANCIENT_SOURCE_DIR=<folder> takes the four files (.anno, .ind, .snp,
 # .geno) from that folder instead, unchecked (the tests' synthetic panel).
 HG19_TO_HG38_CHAIN_URL=https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 install_ancient_panel() {
@@ -946,6 +984,7 @@ install_ancient_panel() {
   echo "Installing the ancient populations panel, AADR ${AADR_VERSION} 1240K (step 44) in ${dir}"
   ensure_image EIGENSOFT_IMAGE 44 || return 1
   need_og "chooses the ancient panel's people and places its sites" || return 1
+  raw=$(dl "aadr-${AADR_VERSION}")
   mkdir -p "$raw"
   for e in anno ind snp geno; do
     f="${raw}/aadr.${e}"
@@ -1017,9 +1056,9 @@ install_ancient_panel() {
   rm -f "${part}/check.evec" "${part}/check.eval"
   printf 'release\t%s\nsites_grch38\t%s\nbuilt\t%s\n' "$AADR_VERSION" "$(($(wc -l < "${part}/sites_grch38.tsv") - 1))" \
     "$(date -u '+%Y-%m-%d')" > "${part}/DONE"
-  rm -rf "$dir"
+  rm -rf "$dir"  # not kept: the older panel, replaced
   mv "$part" "$dir"
-  rm -rf "$raw"
+  done_with "$raw"
   echo "[OK] ancient populations panel AADR ${AADR_VERSION} (step 44): ${dir} ($(wc -l < "${dir}/moderns.ind" | tr -d ' ') present-day people, $(($(wc -l < "${dir}/ancients.tsv") - 1)) ancient people)"
 }
 
@@ -1041,15 +1080,16 @@ PGSC_RESOURCES=https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources
 # install_pgsc_calc DIR: GitHub's archive of pgsc_calc PGSC_CALC_VERSION,
 # checked against PGSC_CALC_SHA256, unpacked into DIR. Step 25 holds the same.
 install_pgsc_calc() {
-  local dir=$1 tgz="${1}.tar.gz"
+  local dir=$1 tgz
+  tgz=$(dl "pgsc_calc-${PGSC_CALC_VERSION}.tar.gz")
   fetch "https://github.com/PGScatalog/pgsc_calc/archive/refs/tags/${PGSC_CALC_VERSION}.tar.gz" "$tgz" \
       sha256 "$PGSC_CALC_SHA256" || return 1
   rm -rf "${dir}.part"
   mkdir -p "${dir}.part"
   tar -xzf "$tgz" -C "${dir}.part" --strip-components 1 || { rm -rf "${dir}.part"; return 1; }
-  rm -f "$tgz"
+  done_with "$tgz"
   # An incomplete folder left by an earlier run would receive the new one inside it.
-  rm -rf "$dir"
+  rm -rf "$dir"  # not kept: an incomplete folder of an earlier run
   mv "${dir}.part" "$dir"
 }
 
@@ -1283,7 +1323,7 @@ install_ancestry_fine_panel() {
   local dir=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
   local regions=${ANCESTRY_FINE_REGIONS:-} exclude=${ANCESTRY_FINE_EXCLUDE:-} smap=${ANCESTRY_FINE_SAMPLE_MAP:-}
   local thin=${ANCESTRY_FINE_THIN:-2kb}
-  local v c e k fit rstamp="" pstamp mstamp tmp chroms=""
+  local v c e k m fit rstamp="" pstamp mstamp tmp chroms="" src bcf net
   cpath "$dir" >/dev/null || return 1
   echo "Installing the fine-grained ancestry panel ${ANCESTRY_FINE_PANEL} (step 26b) in ${dir}"
   echo "  Step 26b finds the fractions and paints the chromosomes with og."
@@ -1330,8 +1370,9 @@ install_ancestry_fine_panel() {
   fi
 
   # samples.tsv: from the metadata, or the table given.
-  # --net: the sample list is the header of a panel file in gnomAD's bucket.
-  # shellcheck disable=SC2016  # $1 belongs to the inner sh
+  # net: slice, the header only: the sample list of a panel file in gnomAD's
+  # bucket, saved as bcf_samples.txt. SC2016: $1 belongs to the inner sh.
+  # shellcheck disable=SC2016
   if ! run_in --net --rw "$dir" "$BCFTOOLS_HTTPS_IMAGE" sh -c 'bcftools query -l "$1" 2>/dev/null' \
         _ "$ANCESTRY_FINE_CHR22_URL" > "${dir}/bcf_samples.txt.part" \
      || [ ! -s "${dir}/bcf_samples.txt.part" ]; then
@@ -1368,13 +1409,26 @@ install_ancestry_fine_panel() {
     rm -f "${dir}/panel/DONE" "${dir}/model/DONE"
     for c in $chroms; do
       [ ! -s "${dir}/panel/${c}.vcf.gz.tbi" ] || [ "$(cat "${dir}/panel/${c}.stamp" 2>/dev/null)" != "$pstamp" ] || continue
+      # A whole panel: each chromosome's file is downloaded to the downloads
+      # folder, checked by the crc32c pins.tsv holds, and read there (kept,
+      # done_with). With ANCESTRY_FINE_REGIONS only those regions are read
+      # over https (htslib stores the remote index in the working directory,
+      # so the container works in panel/ and deletes it after).
+      src="${ANCESTRY_FINE_URL}/hgdp1kgp_${c}${ANCESTRY_FINE_SUFFIX}" net=(--net) bcf=""
+      if [ -z "$rstamp" ]; then
+        bcf=$(dl "ancestry-fine-${ANCESTRY_FINE_PANEL}/hgdp1kgp_${c}${ANCESTRY_FINE_SUFFIX}")
+        if ! fetch "$src" "$bcf" crc32c "$(awk -F'\t' -v c="$c" '$1 == c {print $2}' "${dir}/pins.tsv")"; then
+          echo "[WARN] Could not download ${c} of the panel; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
+          return 1
+        fi
+        src=$(cpath "$bcf") net=()
+      fi
       echo "  ${c}: reading the panel's common SNVs..."
-      # --net: the panel is read from gnomAD's bucket over https. htslib
-      # stores the remote index in the working directory, so the container
-      # works in panel/ and deletes it after. bcftools warns about the files'
-      # PP header line on every read; those lines go.
+      # bcftools warns about the files' PP header line on every read; those
+      # lines go.
+      # net: slice, the regions of ANCESTRY_FINE_REGIONS only (a whole panel is read from the downloads folder).
       # shellcheck disable=SC2016  # $1 to $5 belong to the inner bash
-      if ! run_in --net --rw "$dir" "$BCFTOOLS_HTTPS_IMAGE" bash -euo pipefail -c '
+      if ! run_in ${net[@]+"${net[@]}"} --rw "$dir" "$BCFTOOLS_HTTPS_IMAGE" bash -euo pipefail -c '
             cd "$(dirname "$3")"; trap "rm -f ./*.bcf.csi" EXIT
             r=(); [ -z "$4" ] || r=(-R "$4" --regions-overlap pos)
             { bcftools view "${r[@]}" --force-samples -S "$2" -m2 -M2 -v snps -Ou "$1" \
@@ -1383,13 +1437,14 @@ install_ancestry_fine_panel() {
                 | bcftools +prune -n 1 -w "$5" -N maxAF -Oz -o "$3.part"; } 2> >(grep -v bcf_hdr_check_sanity >&2)
             bcftools index -t "$3.part"
             mv "$3.part.tbi" "$3.tbi"; mv "$3.part" "$3"' \
-            _ "${ANCESTRY_FINE_URL}/hgdp1kgp_${c}${ANCESTRY_FINE_SUFFIX}" \
+            _ "$src" \
             "$(cpath "${dir}/panel/keep.txt")" "$(cpath "${dir}/panel/${c}.vcf.gz")" \
             "$([ -z "$rstamp" ] || cpath "${dir}/regions.bed")" "$thin"; then
         echo "[WARN] Could not read ${c} of the panel; run: $0 --ancestry-fine-panel ${GENOME_DIR}"
         return 1
       fi
       echo "$pstamp" > "${dir}/panel/${c}.stamp"
+      [ -z "$bcf" ] || done_with "$bcf"
     done
     # sites.tsv: chrN, position, REF and ALT of every SNV; positions.tsv: the
     # first two columns, the form bcftools -R and -T read.
@@ -1444,7 +1499,7 @@ install_ancestry_fine_panel() {
 # panel's VCF is downloaded, checked against the md5 of the release's manifest
 # (itself checked against MOCHA_PANEL_MANIFEST_SHA256), cut to its biallelic
 # SNVs seen at least twice with their genotypes only (panel/chrN.vcf.gz, what
-# Beagle reads) and deleted. Before it is deleted, its common germline
+# Beagle reads), and kept in the downloads folder. From it, its common germline
 # deletions and duplications go to panel/chrN.cnp.bed (the MoChA README's
 # GRCh38 recipe: AC>1, over 10 kb, SVTYPE CNV, DEL or DUP), joined into
 # cnps.bed, the --cnp list of step 51. maps/chrN.map is the GRCh38 genetic map
@@ -1456,7 +1511,9 @@ install_mocha_data() {
   cpath "$dir" >/dev/null || return 1
   echo "Installing MoChA's phasing panel ${MOCHA_PANEL_VERSION} (step 51) in ${dir}"
   for c in MOCHA_IMAGE BEAGLE_IMAGE; do ensure_image "$c" 51 || return 1; done
-  mkdir -p "${dir}/panel" "${dir}/maps" "${dir}/raw"
+  local raw
+  raw=$(dl "mocha-${MOCHA_PANEL_VERSION}")
+  mkdir -p "${dir}/panel" "${dir}/maps" "$raw"
   if ! { [ -s "${dir}/manifest.txt" ] && [ "$(_digest sha256 "${dir}/manifest.txt")" = "$MOCHA_PANEL_MANIFEST_SHA256" ]; } \
      && ! fetch "${MOCHA_PANEL_URL}/20220804_manifest.txt" "${dir}/manifest.txt" sha256 "$MOCHA_PANEL_MANIFEST_SHA256"; then
     echo "[WARN] Could not read the panel's manifest (${MOCHA_PANEL_URL}); run: $0 --mocha-data ${GENOME_DIR}"
@@ -1481,8 +1538,8 @@ install_mocha_data() {
     for e in "" .tbi; do
       md5=$(awk -v n="${f}${e}" '$1 == n {print $2}' "${dir}/manifest.txt")
       [ -n "$md5" ] || { echo "[WARN] ${f}${e} is not in the panel's manifest"; return 1; }
-      [ -s "${dir}/raw/${f}${e}" ] && [ "$(_digest md5 "${dir}/raw/${f}${e}")" = "$md5" ] && continue
-      fetch "${MOCHA_PANEL_URL}/${f}${e}" "${dir}/raw/${f}${e}" md5 "$md5" \
+      [ -s "${raw}/${f}${e}" ] && [ "$(_digest md5 "${raw}/${f}${e}")" = "$md5" ] && continue
+      fetch "${MOCHA_PANEL_URL}/${f}${e}" "${raw}/${f}${e}" md5 "$md5" \
         || { echo "[WARN] Could not download ${f}${e}; run: $0 --mocha-data ${GENOME_DIR}"; return 1; }
     done
     echo "  ${c}: the biallelic SNVs seen twice or more, genotypes only, and the common CNVs..."
@@ -1495,13 +1552,13 @@ install_mocha_data() {
             | bcftools annotate --no-version -x ID,QUAL,FILTER,INFO,^FMT/GT -Oz -o "$2.part"
           bcftools index -f -t "$2.part"
           mv "$4.part" "$4"; mv "$2.part.tbi" "$2.tbi"; mv "$2.part" "$2"' \
-          _ "$(cpath "${dir}/raw/${f}")" "$(cpath "${dir}/panel/${c}.vcf.gz")" "$([ -z "$regions" ] || cpath "${dir}/regions.bed")" \
+          _ "$(cpath "${raw}/${f}")" "$(cpath "${dir}/panel/${c}.vcf.gz")" "$([ -z "$regions" ] || cpath "${dir}/regions.bed")" \
           "$(cpath "${dir}/panel/${c}.cnp.bed")"; then
       echo "[WARN] Could not cut ${c} of the panel"
       return 1
     fi
     echo "$stamp" > "${dir}/panel/${c}.stamp"
-    rm -f "${dir}/raw/${f}" "${dir}/raw/${f}.tbi"
+    done_with "${raw}/${f}" "${raw}/${f}.tbi"
   done
   # The genetic map: the PLINK GRCh38 map of step 26b, from its host or the mirror.
   local map="${dir}/maps/plink.GRCh38.map.zip"
@@ -1546,7 +1603,7 @@ install_mocha_data() {
 # DONE names the inputs, so a changed one builds again.
 install_locityper_data() {
   local dir=${LOCITYPER_DATA:-${GENOME_DIR}/reference/locityper-${LOCITYPER_PANEL_VERSION}}
-  local loci=${LOCITYPER_LOCI:-${PGP_ROOT}/assets/locityper_loci.bed} stamp jstamp n regions bad name hsize
+  local loci=${LOCITYPER_LOCI:-${PGP_ROOT}/assets/locityper_loci.bed} stamp jstamp n regions bad name hsize key saved
   case "$dir" in /*) ;; *) dir="${GENOME_DIR}/${dir}" ;; esac
   cpath "$dir" >/dev/null || return 1
   if [ ! -s "$REF_FASTA" ] || [ ! -s "${REF_FASTA}.fai" ]; then
@@ -1599,9 +1656,19 @@ install_locityper_data() {
     | sort -k1,1 -k2,2n \
     | awk -F'\t' '$1 == c && $2 <= e {if ($3 > e) e = $3; next} {if (c != "") print c ":" s + 1 "-" e; c = $1; s = $2; e = $3}
                   END {if (c != "") print c ":" s + 1 "-" e}' | tr '\n' ' ')
+  # What the regions read: kept in the downloads folder by the panel URL and
+  # the regions (with its sha256 beside it), so a rerun over the same loci
+  # reads nothing again.
+  key=$(printf '%s %s\n' "$LOCITYPER_PANEL_URL" "${regions% }" | _digest sha256 -)
+  saved=$(dl "locityper-${LOCITYPER_PANEL_VERSION}/panel-${key:0:16}.vcf.gz")
+  if [ -s "$saved" ] && [ -s "${saved}.tbi" ] && [ "$(_digest sha256 "$saved")" = "$(cat "${saved}.sha256" 2>/dev/null)" ]; then
+    echo "  The panel's haplotypes over these loci are already in ${saved} (sha256 matches); not read again."
+    cp "$saved" "${dir}/panel.vcf.gz.part" && cp "${saved}.tbi" "${dir}/panel.vcf.gz.tbi" \
+      && mv "${dir}/panel.vcf.gz.part" "${dir}/panel.vcf.gz" || return 1
+  else
   echo "  The panel's haplotypes over ${regions% }..."
-  # --net: the panel is read over https. SC2016: $1 to $3 belong to the
-  # inner bash; SC2086: one argument per region.
+  # net: slice, the regions of the loci only, saved below. SC2016: $1 to $3
+  # belong to the inner bash; SC2086: one argument per region.
   # shellcheck disable=SC2016,SC2086
   if ! run_in --net --rw "$dir" "$LOCITYPER_IMAGE" bash -euo pipefail -c '
         url=$1 idx=$2 out=$3; shift 3
@@ -1612,6 +1679,13 @@ install_locityper_data() {
     rm -f "${dir}/panel.vcf.gz.part" "${dir}/panel.vcf.gz.part.tbi"
     echo "[WARN] Could not read the panel over https; run: $0 --locityper-data ${GENOME_DIR}"
     return 1
+  fi
+  if [ "${SETUP_KEEP_DOWNLOADS:-true}" != false ]; then
+    mkdir -p "$(dirname "$saved")" \
+      && cp "${dir}/panel.vcf.gz" "${saved}.part" && cp "${dir}/panel.vcf.gz.tbi" "${saved}.tbi" \
+      && _digest sha256 "${saved}.part" > "${saved}.sha256" && mv "${saved}.part" "$saved" \
+      || echo "[WARN] Could not keep the panel's haplotypes in ${saved}; the next run reads them again."
+  fi
   fi
 
   echo "  locityper target and augment on ${n} loci (the pairwise alignments take the longest)..."
@@ -1688,7 +1762,7 @@ keep_image() {
 ANNOTSV_DIR="${GENOME_DIR:+${GENOME_DIR}/annotsv_annotations}"
 ANNOTSV_NAME="Annotations_Human_${ANNOTSV_ANNOTATIONS_VERSION}.tar.gz"
 ANNOTSV_URL="https://www.lbgi.fr/~geoffroy/Annotations/${ANNOTSV_NAME}"
-ANNOTSV_TARBALL="${GENOME_DIR:+${GENOME_DIR}/${ANNOTSV_NAME}}"
+ANNOTSV_TARBALL="${OG_DOWNLOADS:+${OG_DOWNLOADS}/${ANNOTSV_NAME}}"
 GNOMAD_SV_URL="https://storage.googleapis.com/gcp-public-data--gnomad/release/${GNOMAD_SV_VERSION}/genome_sv/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz"
 MANE_SUMMARY_URL="https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_${MANE_RELEASE}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz"
 
@@ -1720,13 +1794,14 @@ install_annotsv_bundle() {
     return 1
   fi
   if [ ! -d "${ANNOTSV_DIR}.part/Annotations_Human/Genes/GRCh38" ]; then
-    rm -rf "${ANNOTSV_DIR}.part" "$ANNOTSV_TARBALL"
+    rm -rf "${ANNOTSV_DIR}.part"
+    rm -f "$ANNOTSV_TARBALL"  # not kept: it holds no AnnotSV bundle, so the next run downloads it again
     echo "[WARN] ${ANNOTSV_TARBALL} holds no Annotations_Human/Genes/GRCh38; removed it. Step 5 (AnnotSV) will be skipped until it is in place."
     return 1
   fi
-  rm -rf "$ANNOTSV_DIR"
+  rm -rf "$ANNOTSV_DIR"  # not kept: the older bundle, replaced
   mv "${ANNOTSV_DIR}.part" "$ANNOTSV_DIR"
-  rm -f "$ANNOTSV_TARBALL"
+  done_with "$ANNOTSV_TARBALL"
   echo "[OK] AnnotSV annotation data: ${ANNOTSV_DIR}/ ($(du -sh "$ANNOTSV_DIR" | cut -f1))"
 }
 
@@ -1744,7 +1819,8 @@ install_annotsv_gnomad_sv() {
   local benign="${ANNOTSV_DIR}/Annotations_Human/SVincludedInFt/BenignSV/GRCh38"
   local stamp="${benign}/gnomad-sv.installed"
   local want="gnomAD-SV ${GNOMAD_SV_VERSION} sha256 ${GNOMAD_SV_SHA256}"
-  local src="${ANNOTSV_DIR}/gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz"
+  local src
+  src=$(dl "gnomad.v${GNOMAD_SV_VERSION}.sv.sites.vcf.gz")
   local out="${benign}/gnomad.v4.0.sv.chrAll.from-v${GNOMAD_SV_VERSION}-sites.vcf.gz"
   local n
   if [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
@@ -1796,7 +1872,8 @@ install_annotsv_gnomad_sv() {
   fi
   n=$(gzip -dc "${out}.part" | grep -vc '^#' || true)
   if [ "$n" -eq 0 ]; then
-    rm -f "${out}.part" "$src"
+    rm -f "${out}.part"
+    rm -f "$src"  # not kept: it gave no record, so the next run downloads it again
     echo "[WARN] ${src} gave no record AnnotSV can use; removed it. Run setup.sh again."
     return 1
   fi
@@ -1807,7 +1884,7 @@ install_annotsv_gnomad_sv() {
     return 1
   fi
   printf '%s\n' "$want" > "$stamp"
-  rm -f "$src"
+  done_with "$src"
   echo "[OK] gnomAD-SV ${GNOMAD_SV_VERSION}: ${n} common SVs merged into AnnotSV's benign set (${benign})"
 }
 
@@ -1860,7 +1937,8 @@ install_annotsv_mane() {
   local out="${ANNOTSV_DIR}/mane_select_refseq.txt"
   local stamp="${ANNOTSV_DIR}/mane_select_refseq.release"
   local want="MANE ${MANE_RELEASE} sha256 ${MANE_SUMMARY_SHA256}"
-  local src="${ANNOTSV_DIR}/MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz"
+  local src
+  src=$(dl "MANE.GRCh38.v${MANE_RELEASE}.summary.txt.gz")
   local n
   if [ -s "$out" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
     echo "[OK] MANE ${MANE_RELEASE} Select transcripts for AnnotSV already present."
@@ -1881,13 +1959,14 @@ install_annotsv_mane() {
   fi
   n=$(wc -l < "${out}.part" | tr -d ' ')
   if [ "$n" -eq 0 ]; then
-    rm -f "${out}.part" "$src"
+    rm -f "${out}.part"
+    rm -f "$src"  # not kept: it lists no transcript, so the next run downloads it again
     echo "[WARN] ${src} lists no MANE Select RefSeq transcript; removed it. Run setup.sh again."
     return 1
   fi
   mv "${out}.part" "$out"
   printf '%s\n' "$want" > "$stamp"
-  rm -f "$src"
+  done_with "$src"
   echo "[OK] MANE ${MANE_RELEASE}: ${n} MANE Select transcripts for AnnotSV (${out})"
 }
 
@@ -1973,10 +2052,11 @@ ARCHAIC_TABLE_PYTHON_SHA256=6bdc4c99a8d80d96179551e37022a3cd5324f650577b9fd64e27
 # own generate_gt would keep from the same files, each archaic genome read
 # only inside its own FilterBed and every row inside the 1000 Genomes GRCh38
 # strict mask. Per chromosome: the three
-# archaic files are downloaded (about 165 GB in all, 13 GB at most at a time)
-# and deleted once the chromosome is built, so an interrupted install
-# resumes at the chromosome it stopped in. The 1000 Genomes file (1.5 GB) is
-# deleted at the end. ARCHAIC_REGIONS (a GRCh37 BED, chromosomes named 1 to
+# archaic files are downloaded (about 165 GB in all) to the downloads folder
+# and kept there (done_with; with SETUP_KEEP_DOWNLOADS=false each is deleted
+# once the chromosome is built, 13 GB at most at a time); an interrupted
+# install resumes at the chromosome it stopped in. The 1000 Genomes file
+# (1.5 GB) is kept the same way. ARCHAIC_REGIONS (a GRCh37 BED, chromosomes named 1 to
 # 22) keeps only those regions: the e2e case builds chr22 alone with it.
 install_archaic() {
   local dir=${ARCHAIC_DIR:-${GENOME_DIR}/reference/archaic/${ARCHAIC_DATA_VERSION}}
@@ -1989,7 +2069,9 @@ install_archaic() {
   for v in BCFTOOLS_IMAGE PICARD_IMAGE OG_IMAGE IBDMIX_IMAGE; do ensure_image "$v" 43 || return 1; done
   need_og "builds the archaic table" || return 1
   [ -s "$REF_DICT" ] || { echo "[WARN] ${REF_DICT} is missing: run $0 ${GENOME_DIR} first (it writes the sequence dictionary)"; return 1; }
-  mkdir -p "${dir}/md5" "${dir}/download" "${dir}/work" "${dir}/mask" "${dir}/exclude"
+  local adl
+  adl=$(dl "archaic-${ARCHAIC_DATA_VERSION}")
+  mkdir -p "${dir}/md5" "$adl" "${dir}/work" "${dir}/mask" "${dir}/exclude"
   for v in "Altai|${ARCHAIC_ALTAI_MD5SUMS_SHA256}" "Vindija33.19|${ARCHAIC_VINDIJA_MD5SUMS_SHA256}" "Denisova|${ARCHAIC_DENISOVA_MD5SUMS_SHA256}"; do
     IFS='|' read -r g k <<< "$v"
     [ -s "${dir}/md5/${g}.txt" ] && [ "$(_digest sha256 "${dir}/md5/${g}.txt")" = "$k" ] && continue
@@ -2040,7 +2122,7 @@ install_archaic() {
     return 0
   fi
   rm -f "${dir}/DONE"
-  local sites="${dir}/download/1kg_sites.vcf.gz"
+  local sites="${adl}/1kg_sites.vcf.gz"
   for c in $chroms; do
     [ -s "${dir}/chr${c}.tsv.gz" ] && [ "$(cat "${dir}/chr${c}.stamp" 2>/dev/null)" = "$stamp" ] && continue
     if [ ! -s "${sites}.tbi" ]; then
@@ -2048,7 +2130,7 @@ install_archaic() {
       { [ -s "$sites" ] && [ "$(_digest md5 "$sites")" = "$ARCHAIC_1KG_SITES_MD5" ]; } \
         || fetch "$ARCHAIC_1KG_SITES_URL" "$sites" md5 "$ARCHAIC_1KG_SITES_MD5" \
         || { echo "[WARN] Could not download the 1000 Genomes sites file; run: $0 --archaic ${GENOME_DIR}"; return 1; }
-      run_in --rw "$dir" "$BCFTOOLS_IMAGE" bcftools index -t -f "$(cpath "$sites")" \
+      run_in --rw "$adl" "$BCFTOOLS_IMAGE" bcftools index -t -f "$(cpath "$sites")" \
         || { echo "[WARN] Could not index ${sites}"; return 1; }
     fi
     wk="${dir}/work/${c}"
@@ -2086,7 +2168,7 @@ install_archaic() {
     echo "  chr${c}: ${n} excluded regions (segmental duplications and indel neighbourhoods)"
     for v in $genomes; do
       g=${v%%:*}
-      fetch "${ARCHAIC_URL}/${g}/chr${c}_mq25_mapab100.vcf.gz" "${dir}/download/${g}.chr${c}.vcf.gz" md5 "file://${dir}/md5/${g}.txt" \
+      fetch "${ARCHAIC_URL}/${g}/chr${c}_mq25_mapab100.vcf.gz" "${adl}/${g}.chr${c}.vcf.gz" md5 "file://${dir}/md5/${g}.txt" \
         || { echo "[WARN] Could not download chr${c} of ${g}; run: $0 --archaic ${GENOME_DIR} (it resumes)"; return 1; }
       k=$(archaic_filterbed_sha "${v##*:}" "$c") || return 1
       { [ -s "${dir}/mask/${g}.chr${c}.bed.gz" ] && [ "$(_digest sha256 "${dir}/mask/${g}.chr${c}.bed.gz")" = "$k" ]; } \
@@ -2162,7 +2244,7 @@ install_archaic() {
     mv "${dir}/chr${c}.tsv.gz.part" "${dir}/chr${c}.tsv.gz"
     echo "$stamp" > "${dir}/chr${c}.stamp"
     echo "  chr${c}: ${n} sites ($(awk '!/^#/ {n++} END {print n+0}' "${wk}/rejected.vcf" 2>/dev/null || echo 0) not lifted)"
-    for v in $genomes; do rm -f "${dir}/download/${v%%:*}.chr${c}.vcf.gz"; done
+    for v in $genomes; do done_with "${adl}/${v%%:*}.chr${c}.vcf.gz"; done
     rm -rf "$wk"
   done
   # A table of other chromosomes left by an earlier install with other regions goes.
@@ -2171,7 +2253,8 @@ install_archaic() {
     c=$(basename "$v" .tsv.gz); c=${c#chr}
     [[ " ${chroms} " == *" ${c} "* ]] || rm -f "$v" "${dir}/chr${c}.stamp" "${dir}/mask/"*".chr${c}.bed.gz" "${dir}/exclude/chr${c}.bed.gz"
   done
-  rm -rf "${dir}/download" "${dir}/work"
+  rm -rf "${dir}/work"
+  done_with "$sites" "${sites}.tbi"
   echo "$stamp" > "${dir}/DONE"
   echo "[OK] archaic data ${ARCHAIC_DATA_VERSION} (step 43): ${dir} ($(echo "$chroms" | wc -w | tr -d ' ') chromosomes)"
 }
@@ -2186,7 +2269,7 @@ install_vep_cache_opt_in() {
     echo "[OK] VEP ${VEP_CACHE_RELEASE} cache already present: ${dir}/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
     return 0
   fi
-  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "${dir}/$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")" || return 1
+  clinical_disk_ok "$dir" 56 "VEP ${VEP_CACHE_RELEASE} cache" "$(dl "$(basename "$(vep_cache_url "$VEP_CACHE_RELEASE")")")" || return 1
   echo "Installing the VEP ${VEP_CACHE_RELEASE} cache: ~26 GB download, ~30 GB unpacked, both on disk until it ends."
   if ! install_vep_cache "$dir" "$VEP_CACHE_RELEASE"; then
     echo "[WARN] Could not install the VEP ${VEP_CACHE_RELEASE} cache. Run this command again: the download resumes."
@@ -2205,7 +2288,7 @@ install_clinical_data() {
     if [ "${SETUP_EVERYTHING_SCOPE:-}" = row ] && [ "$rel" = "$VEP_CACHE_RELEASE" ]; then continue; fi
     if [ "$rel" = bundle ]; then
       [ ! -d "${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}/data" ] || { echo "[OK] PCGR/CPSR bundle already present."; continue; }
-      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "${GENOME_DIR}/pcgr_data/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"; then
+      if clinical_disk_ok "${GENOME_DIR}/pcgr_data" 15 'PCGR/CPSR bundle' "$(dl "pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz")"; then
         install_pcgr_bundle "${GENOME_DIR}/pcgr_data" || { missing=1; echo "[WARN] Could not install PCGR/CPSR. Step 17 needs it; run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\""; }
       else
         missing=1
@@ -2216,7 +2299,7 @@ install_clinical_data() {
       [ ! -f "${dir}/homo_sapiens/${rel}_GRCh38/info.txt" ] || { echo "[OK] VEP ${rel} cache already present."; continue; }
       peak=56
       [ "$rel" != "$PCGR_VEP_CACHE_RELEASE" ] || peak=52
-      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "${dir}/$(basename "$(vep_cache_url "$rel")")"; then
+      if clinical_disk_ok "$dir" "$peak" "VEP ${rel} cache" "$(dl "$(basename "$(vep_cache_url "$rel")")")"; then
         if ! install_vep_cache "$dir" "$rel"; then
           missing=1
           echo "[WARN] Could not install VEP ${rel}. Run: ./scripts/setup.sh --clinical-data \"${GENOME_DIR}\" (interrupted downloads resume)."
@@ -2260,9 +2343,9 @@ install_indexed_downloads() (
     if [ -s "$dest" ] && [ -s "${dir}/${index}" ]; then
       continue
     fi
-    rm -f "${dir}/${index}" || exit 1
-    if ! { [ -s "$dest" ] && _fetch_check "$kind" "$pin" "$dest" "$dest" "$file" >&2; } \
-        && ! fetch "${base}/${file}" "$dest" "$kind" "$pin"; then
+    rm -f "${dir}/${index}" || exit 1  # not kept: an index without its data, fetched again below
+    # fetch keeps a data file that matches its pin and downloads it otherwise.
+    if ! fetch "${base}/${file}" "$dest" "$kind" "$pin"; then
       rc=1
       continue
     fi
@@ -2280,13 +2363,13 @@ annotation_score_terms() {
 }
 
 install_revel() (
-  local dir=$1 dest="${1}/revel_grch38.tsv.gz" zip="${1}/${REVEL_URL##*/}" stage tsv bgz
+  local dir=$1 dest="${1}/revel_grch38.tsv.gz" zip stage tsv bgz
   [ -s "$dest" ] && [ -s "${dest}.tbi" ] && exit 0
   need_og "converts the REVEL scores" || exit 1
   ensure_image GATK_IMAGE 30 || exit 1
-  if [ ! -s "$zip" ] || [ "$(_digest sha256 "$zip")" != "$REVEL_SHA256" ]; then
-    fetch "$REVEL_URL" "$zip" sha256 "$REVEL_SHA256" || exit 1
-  fi
+  # The zip and its pin are row revel of assets/data-sources.tsv.
+  zip=$(source_of revel path) || exit 1
+  og_setup fetch --source revel > /dev/null || exit 1
   stage=$(mktemp -d "${dir}/.revel.XXXXXX") || exit 1
   trap 'rm -rf "$stage"' EXIT
   tsv=$(cpath "${stage}/revel_grch38.tsv") || exit 1
@@ -2298,16 +2381,18 @@ install_revel() (
   [ -s "${stage}/${dest##*/}" ] && [ -s "${stage}/${dest##*/}.tbi" ] || exit 1
   rm -f "${dest}.tbi" || exit 1
   mv -f "${stage}/${dest##*/}" "$dest" && mv -f "${stage}/${dest##*/}.tbi" "${dest}.tbi" || exit 1
-  rm -f "$zip"
+  done_with "$zip"
 )
 
 install_alphamissense() (
-  local dir=$1 dest="${1}/AlphaMissense_hg38.tsv.gz" stage
+  local dir=$1 dest="${1}/AlphaMissense_hg38.tsv.gz" stage url sha
   [ -s "$dest" ] && [ -s "${dest}.tbi" ] && exit 0
   ensure_image GATK_IMAGE 30 || exit 1
-  if [ ! -s "$dest" ] || [ "$(_digest sha256 "$dest")" != "$ALPHAMISSENSE_SHA256" ]; then
+  # The URL and its pin are row alphamissense of assets/data-sources.tsv.
+  url=$(source_of alphamissense url) && sha=$(source_of alphamissense value) || exit 1
+  if [ ! -s "$dest" ] || [ "$(_digest sha256 "$dest")" != "$sha" ]; then
     rm -f "${dest}.tbi" || exit 1
-    fetch "$ALPHAMISSENSE_URL" "$dest" sha256 "$ALPHAMISSENSE_SHA256" || exit 1
+    fetch "$url" "$dest" sha256 "$sha" || exit 1
   fi
   stage=$(mktemp -d "${dir}/.alphamissense.XXXXXX") || exit 1
   trap 'rm -rf "$stage"' EXIT
@@ -2772,7 +2857,7 @@ else
 
   if [ ! -f "$FASTA" ]; then
     case "$REF_FASTA_URL" in
-      *.gz) DL="${FASTA}.download.gz" ;;
+      *.gz) DL=$(dl "${REF_FASTA_URL##*/}") ;;
       *) DL="$FASTA" ;;
     esac
     # shellcheck disable=SC2046  # the checksum arguments are dropped when REF_FASTA_MD5 is empty
@@ -2784,9 +2869,10 @@ else
       echo "  Unpacking $(basename "$REF_FASTA_URL")..."
       if gzip -dc "$DL" > "${FASTA}.tmp"; then
         mv -f "${FASTA}.tmp" "$FASTA"
-        rm -f "$DL"
+        done_with "$DL"
       else
-        rm -f "${FASTA}.tmp" "$DL"
+        rm -f "${FASTA}.tmp"
+        rm -f "$DL"  # not kept: it does not unpack, so the next run downloads it again
         echo "ERROR: could not unpack $(basename "$REF_FASTA_URL"); removed it, run setup.sh again." >&2
         exit 1
       fi

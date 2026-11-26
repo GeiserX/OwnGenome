@@ -84,6 +84,9 @@ export E2E_WORK="${E2E_WORK:-${RUNNER_TEMP:-/tmp}/e2e-work}"
 export FIXTURE_DIR="${E2E_WORK}/fixture"
 export GENOME_DIR="${E2E_WORK}/genome"
 export E2E_NOTES="${E2E_WORK}/notes.md"
+# The cases install small fixtures, not the sizes assets/data-sources.tsv
+# records, so setup.sh's disk check of the kept downloads would refuse them.
+export SETUP_DISK_CHECK=false
 LOG_DIR="${E2E_WORK}/logs"
 CASE_TIMEOUT=${CASE_TIMEOUT:-3600}
 GH_REPO=${GITHUB_REPOSITORY:-GeiserX/OwnGenome}
@@ -278,10 +281,10 @@ data_ok() {
 # (archaic-ancestry-1, about 1.5 GB). With E2E_DATA_CACHE set (the e2e
 # workflow restores it from the Actions cache), the runner gives each of
 # these cases its files before it starts, at the paths setup.sh reads them
-# from, so setup.sh finds them and downloads nothing. A file missing from
+# from (the raw downloads in the downloads folder, GENOME_DIR/downloads), so
+# setup.sh finds them and downloads nothing. A file missing from
 # E2E_DATA_CACHE is downloaded there first, checked against its pin. The
-# files are hard links where they can be (setup.sh deletes its copy, the
-# cache keeps its own). Without E2E_DATA_KEEP=true (the workflow sets it on
+# files are hard links where they can be (the cache keeps its own copy). Without E2E_DATA_KEEP=true (the workflow sets it on
 # a run that saves the cache) a case's cached files are deleted after it,
 # to give the disk back.
 # E2E_DATA_MIRROR, when set, is a folder URL (a GitHub release) holding copies
@@ -361,8 +364,8 @@ data_fetch() (
       for e in "" .tbi; do
         md5=$(awk -v n="${f}${e}" '$1 == n {print $2}' "$m")
         [ -n "$md5" ] || { echo "ERROR: ${f}${e} is not in the panel manifest" >&2; exit 1; }
-        [ -s "${d}/raw/${f}${e}" ] && [ "$(_digest md5 "${d}/raw/${f}${e}")" = "$md5" ] && continue
-        mfetch "${MOCHA_PANEL_URL}/${f}${e}" "${d}/raw/${f}${e}" md5 "$md5" || exit 1
+        [ -s "${d}/${f}${e}" ] && [ "$(_digest md5 "${d}/${f}${e}")" = "$md5" ] && continue
+        mfetch "${MOCHA_PANEL_URL}/${f}${e}" "${d}/${f}${e}" md5 "$md5" || exit 1
       done ;;
     archaic)
       url=$(sed -n 's/^ARCHAIC_1KG_SITES_URL=//p' "${REPO}/scripts/setup.sh")
@@ -785,8 +788,8 @@ trap 'kill "$LOW_PID" 2> /dev/null || true' EXIT
 data_name() {
   # shellcheck source=../../versions.env
   case "$1" in
-    mocha-1.sh) echo "mocha ${GENOME_DIR}/reference/mocha-$(. "${REPO}/versions.env" && echo "$MOCHA_PANEL_VERSION")" ;;
-    archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/reference/archaic/$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")/download" ;;
+    mocha-1.sh) echo "mocha ${GENOME_DIR}/downloads/mocha-$(. "${REPO}/versions.env" && echo "$MOCHA_PANEL_VERSION")" ;;
+    archaic-ancestry-1.sh) echo "archaic ${GENOME_DIR}/downloads/archaic-$(. "${REPO}/versions.env" && echo "$ARCHAIC_DATA_VERSION")" ;;
     bash-step-08-hla.sh) echo "hla ${GENOME_DIR} offline" ;;
     prs-scores-and-run-options-1-strand-sex.sh) echo "pgs -" ;;
     callability-1-catalog.sh|cn-intervals-1-catalog.sh|followups-ci-3-sv-rule-regions.sh) echo "catalogs -" ;;

@@ -43,7 +43,7 @@ docker_log_has "^curl ${NCBI//./\\.}/${NAME//./\\.}\\.fai -> " "setup.sh did not
 REF="${G}/reference/GRCh38_no_alt_analysis_set.fasta"
 cmp -s "$REF" "${CASE_WORK}/ref.fa" || fail "${REF} is not the unpacked download"
 cmp -s "${REF}.fai" "${CASE_WORK}/served/${NAME}.fai" || fail "${REF}.fai is not NCBI's .fai"
-[ ! -e "${REF}.download.gz" ] || fail "setup.sh kept the compressed download"
+[ -s "${G}/downloads/${NAME}.gz" ] || fail "setup.sh did not keep the compressed download in the downloads folder"
 output_has setup "\\[OK\\] Reference: ${REF//./\\.} \\(3 sequences\\)"
 
 # --- a download whose md5 is not the listed one ---------------------------------------

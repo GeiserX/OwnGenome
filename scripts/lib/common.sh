@@ -73,7 +73,8 @@ cpath() {
   case "$1" in
     "${GENOME_DIR:?}") printf '/genome' ;;
     "${GENOME_DIR}"/*) printf '/genome%s' "${1#"$GENOME_DIR"}" ;;
-    *) echo "ERROR: ${1} is outside GENOME_DIR (${GENOME_DIR}); containers only see GENOME_DIR." >&2
+    "${OG_DOWNLOADS:-/nonexistent}"/*) printf '/downloads%s' "${1#"$OG_DOWNLOADS"}" ;;
+    *) echo "ERROR: ${1} is outside GENOME_DIR (${GENOME_DIR}); containers only see GENOME_DIR (and OG_DOWNLOADS)." >&2
        return 1 ;;
   esac
 }
@@ -81,6 +82,12 @@ cpath() {
 # shellcheck disable=SC2034  # REF_DICT and REF_FASTA_C are read by the scripts
 if [ -n "${GENOME_DIR:-}" ]; then
   GENOME_DIR=${GENOME_DIR%/}
+  # The downloads folder: every raw download of setup, kept (og setup fetch,
+  # scripts/lib/common.sh fetch). OG_DOWNLOADS may name one folder that
+  # several installs share; og reads the same variable.
+  OG_DOWNLOADS=${OG_DOWNLOADS:-}
+  export OG_DOWNLOADS="${OG_DOWNLOADS:-${GENOME_DIR}/downloads}"
+  OG_DOWNLOADS=${OG_DOWNLOADS%/}
   # A new file name on purpose: a reference with ALT contigs left from an
   # older version is never picked up by accident (docs/realignment.md).
   REF_FASTA=${REF_FASTA:-${GENOME_DIR}/reference/GRCh38_no_alt_analysis_set.fasta}
@@ -140,6 +147,10 @@ run_in() {
     args+=(--user "$(id -u):$(id -g)" -e HOME=/tmp)
   fi
   args+=(-v "${GENOME_DIR:?}:/genome:ro")
+  case "${OG_DOWNLOADS:-}" in
+    ""|"${GENOME_DIR}"/*) ;;
+    *) [ ! -d "$OG_DOWNLOADS" ] || args+=(-v "${OG_DOWNLOADS}:/downloads:ro") ;;
+  esac
   if [ -n "${SAMPLE:-}" ]; then
     mkdir -p "${GENOME_DIR}/${SAMPLE}"
     args+=(-v "${GENOME_DIR}/${SAMPLE}:/genome/${SAMPLE}")
@@ -399,149 +410,61 @@ consumer_sites_digest() {
   _digest sha256 <(gzip -dc "$1")
 }
 
-# _get URL OUT: download URL to OUT (resuming a partial OUT), curl first and
-# wget when curl is missing. OUT "-" writes to stdout. A server that cannot
-# resume (curl exit 33) gets the partial OUT dropped and one fresh download.
-#
-# A stalled transfer fails instead of hanging: curl gives up on a connection
-# that takes over 30 s, or a transfer slower than 1 KB/s for FETCH_STALL
-# seconds (default 120); wget on a connection over 30 s, or no data for
-# FETCH_STALL seconds, with no retry of its own. fetch then tries again,
-# resuming the partial OUT.
+# og_bin: the og that downloads, OG when set (the unit tests set it),
+# else bin/og of this checkout.
+og_bin() { printf '%s' "${OG:-${PGP_ROOT}/bin/og}"; }
+
+# og_setup TOOL ARGS: `og setup TOOL ARGS`, reading the table and versions.env
+# of this checkout (PGP_ROOT).
+og_setup() {
+  PGP_ROOT=$PGP_ROOT "$(og_bin)" setup "$@"
+}
+
+# _get URL OUT: one transfer of URL to OUT (resuming a partial OUT), or to
+# stdout when OUT is "-", with no retry: `og setup fetch --get`. curl does it,
+# or wget when there is no curl, each from PATH; a transfer slower than 1 KB/s
+# for FETCH_STALL seconds (default 120) fails instead of hanging.
 _get() {
-  local rc=0 stall=${FETCH_STALL:-120}
-  # 10# so 00, 08 and 09 read as decimal; curl and wget take 0 as no bound.
-  case "$stall" in ''|*[!0-9]*) stall=0 ;; esac
-  [ "$((10#$stall))" -gt 0 ] || { echo "ERROR: FETCH_STALL must be a whole number of seconds above 0, got '${FETCH_STALL}'" >&2; return 1; }
-  # The URL stays the last argument (scripts/ci/fake-docker/curl takes it from there).
-  local cbound=(--connect-timeout 30 --speed-limit 1024 --speed-time "$stall")
-  if command -v curl >/dev/null 2>&1; then
-    if [ "$2" = "-" ]; then
-      curl -fsSL "${cbound[@]}" "$1"
-    else
-      curl -fL "${cbound[@]}" -C - -o "$2" "$1" || rc=$?
-      if [ "$rc" -eq 33 ]; then
-        rm -f "$2"
-        curl -fL "${cbound[@]}" -o "$2" "$1"
-      else
-        return "$rc"
-      fi
-    fi
-  elif command -v wget >/dev/null 2>&1; then
-    # --tries=1: fetch does the retries, as it does for curl.
-    local wbound=(--connect-timeout=30 "--read-timeout=${stall}" --tries=1)
-    if [ "$2" = "-" ]; then wget -q "${wbound[@]}" -O - "$1"; else wget -c "${wbound[@]}" -O "$2" "$1"; fi
-  else
-    echo "ERROR: neither curl nor wget is installed." >&2
-    return 1
-  fi
+  og_setup fetch --get "$@"
 }
 
-# fetch URL DEST [md5|sha256|sum|gzip-ends VALUE|CHECKSUM_URL]
+# fetch URL DEST [md5|sha256|sum|gzip-ends|crc32c VALUE|CHECKSUM_URL]
 #
-# Downloads URL to DEST.part (resuming one left by an interrupted run), checks
-# it, then renames it to DEST. Nothing ever writes DEST directly, so a DEST
-# that exists is whole. The check is the checksum when one is given (VALUE, or
-# the file at CHECKSUM_URL: its only line, or the line naming URL's file), else
-# `gzip -t` for a .gz file, else non-empty.
-# For gzip-ends, VALUE is bytes:first-MiB-sha256:last-MiB-sha256.
-#
-# Each try downloads, then checks. A transfer that broke keeps DEST.part, and
-# the next try resumes it. A download that fails its check is deleted, and the
-# next try downloads it from the start: one bad transfer, or a bad .part left
-# by an earlier run, does not fail the call. The file and its CHECKSUM_URL are
-# each tried FETCH_TRIES times (default 3), FETCH_WAIT seconds apart (default
-# 5, then 10, ...); after the last try fetch returns 1. A larger FETCH_TRIES
-# and FETCH_WAIT wait out a server that answers 404 for minutes at a time and
-# then comes back.
+# Every download of setup, through `og setup fetch` (rust/crates/og-setup/src/
+# fetch.rs, which says it all): URL goes to DEST.part (an interrupted one is
+# resumed), is checked, and only then renamed to DEST, so a DEST that exists
+# is whole. A DEST already there that matches its checksum is used with no
+# request. One that does not match is downloaded again, with a message, or,
+# in the downloads folder (OG_DOWNLOADS), refused and left as it is. A failed
+# try is tried FETCH_TRIES times (default 3), FETCH_WAIT seconds apart
+# (default 5, then 10, ...).
 fetch() {
-  local url=$1 dest=$2 kind=${3:-} want=${4:-} part="${2}.part" name line i rc bad=""
-  local tries=${FETCH_TRIES:-3} wait=${FETCH_WAIT:-}
-  case "$tries" in ''|*[!0-9]*) tries=0 ;; *) tries=$((10#$tries)) ;; esac
-  [ "$tries" -gt 0 ] || { echo "ERROR: FETCH_TRIES must be a whole number above 0, got '${FETCH_TRIES}'" >&2; return 1; }
-  case "$wait" in *[!0-9]*) echo "ERROR: FETCH_WAIT must be a whole number of seconds, got '${wait}'" >&2; return 1 ;; esac
-  name=$(basename "$url")
-  if [ -n "$kind" ]; then
-    case "$want" in
-      http://*|https://*|ftp://*|file://*)
-        # A read that worked but names no checksum is not retried.
-        for ((i = 1; i <= tries; i++)); do
-          if line=$(_get "$want" - | awk -v n="$name" '
-                NF { lines++; first = $1; f = $NF; sub(/.*\//, "", f); if (f == n) hit = $1 }
-                END { if (lines == 1) print first; else if (hit != "") print hit }'); then
-            break
-          fi
-          line=""
-          echo "  Checksum download attempt ${i}/${tries} failed: ${want}" >&2
-          [ "$i" -lt "$tries" ] && sleep "${wait:-$((i * 5))}"
-        done
-        if [ -z "$line" ]; then
-          echo "ERROR: could not read the checksum of ${name} from ${want}" >&2
-          return 1
-        fi
-        want=$line ;;
-    esac
-  fi
-  mkdir -p "$(dirname "$dest")"
-  for ((i = 1; i <= tries; i++)); do
-    if _get "$url" "$part"; then
-      rc=0
-      bad=$(_fetch_check "$kind" "$want" "$part" "$dest" "$name") || rc=$?
-      [ "$rc" -eq 0 ] && { mv -f "$part" "$dest"; return; }
-      [ "$rc" -eq 2 ] && return 1
-      rm -f "$part"
-      echo "  Download attempt ${i}/${tries} failed its check: ${bad}. Removed it." >&2
-    else
-      bad=""
-      echo "  Download attempt ${i}/${tries} failed: ${url}" >&2
-    fi
-    [ "$i" -lt "$tries" ] && sleep "${wait:-$((i * 5))}"
-  done
-  if [ -n "$bad" ]; then
-    echo "ERROR: ${bad}. Removed the download after ${tries} tries; run again to fetch it anew." >&2
-  else
-    echo "ERROR: could not download ${url} (the partial file ${part} is kept and resumed next time)" >&2
-  fi
-  return 1
+  og_setup fetch "$@"
 }
 
-# _fetch_check KIND WANT PART DEST NAME: fetch's check of one download. Exit 0
-# when PART is good; 1 with the reason on stdout when it is not, and fetch
-# downloads it again; 2 for an error a new download cannot fix.
-_fetch_check() {
-  local kind=$1 want=$2 part=$3 dest=$4 name=$5 got
-  if [ "$kind" = gzip-ends ]; then
-    local bytes first last size
-    IFS=: read -r bytes first last <<< "$want"
-    size=$(stat -L -c %s "$part" 2>/dev/null || stat -L -f %z "$part") || return 2
-    if [ "$size" != "$bytes" ] \
-        || [ "$(head -c 1048576 "$part" | _digest sha256 -)" != "$first" ] \
-        || [ "$(tail -c 1048576 "$part" | _digest sha256 -)" != "$last" ] \
-        || ! gzip -t "$part" 2>/dev/null; then
-      echo "${name} failed its pinned size, SHA-256 range or gzip check"
-      return 1
-    fi
-  elif [ -n "$kind" ]; then
-    got=$(_digest "$kind" "$part") || return 2
-    if [ "$kind" = sum ]; then
-      case "$want" in
-        ''|*[!0-9]*) echo "ERROR: '${want}' is not a sum checksum for ${name}" >&2; return 2 ;;
-      esac
-      want=$((10#${want}))
-    fi
-    if [ "$got" != "$want" ]; then
-      echo "${kind} checksum of ${name} is ${got}, expected ${want}"
-      return 1
-    fi
-  elif [[ "$dest" == *.gz ]]; then
-    if ! gzip -t "$part" 2>/dev/null; then
-      echo "${name} is not a complete gzip file"
-      return 1
-    fi
-  elif [ ! -s "$part" ]; then
-    echo "${name} downloaded empty"
-    return 1
-  fi
+# source_of ID FIELD: one field (path, url, check, value, bytes) of row ID of
+# assets/data-sources.tsv, expanded: `og setup source`.
+source_of() {
+  og_setup source "$@"
+}
+
+# dl NAME: where setup keeps the raw download NAME, in the downloads folder.
+dl() {
+  printf '%s/%s' "${OG_DOWNLOADS:?GENOME_DIR or OG_DOWNLOADS must be set}" "$1"
+}
+
+# done_with FILE...: each FILE, a raw download, is installed. It stays in the
+# downloads folder, so a rerun, another install sharing OG_DOWNLOADS or
+# another use of the same data does not download it again; og setup prune
+# deletes the kept downloads later. With SETUP_KEEP_DOWNLOADS=false
+# (setup.sh --no-keep-downloads) each is deleted here instead.
+done_with() {
+  [ "${SETUP_KEEP_DOWNLOADS:-true}" = false ] || return 0
+  local f
+  for f in "$@"; do
+    [ -e "$f" ] || continue
+    rm -rf -- "$f" "${f}.part" && echo "  Deleted the raw download ${f} (SETUP_KEEP_DOWNLOADS=false)."
+  done
 }
 
 # --- Pinned data files ----------------------------------------------------------
@@ -589,7 +512,7 @@ data_file() {
 # assets/reference) and store data file NAME unless it is installed. Progress
 # goes to stderr. Returns 1 when it cannot.
 install_data_file() {
-  local out url gz md5
+  local out url gz md5 zip
   out=$(data_file "$1") && return 0
   [ -n "$out" ] || return 2
   case "$1" in
@@ -615,19 +538,20 @@ install_data_file() {
         echo "ERROR: no md5 for hla.dat.zip in ${url}/md5checksum.txt (is ${HLA_DB_RELEASE} an IPD-IMGT/HLA release?)" >&2
         return 1
       fi
-      fetch "${url}/hla.dat.zip" "${out}.zip" md5 "$md5" >&2 || return 1
+      zip=$(dl "IPD-IMGT-HLA_${HLA_DB_RELEASE}_hla.dat.zip")
+      fetch "${url}/hla.dat.zip" "$zip" md5 "$md5" >&2 || return 1
       # The T1K image has Perl's unzip module; the host may have no unzip.
       # shellcheck disable=SC2154  # T1K_IMAGE comes from versions.env
       run_in --rw "$(dirname "$out")" "$T1K_IMAGE" perl -e \
         'use IO::Uncompress::Unzip qw(unzip $UnzipError); unzip($ARGV[0] => $ARGV[1]) or die "unzip failed: $UnzipError\n";' \
-        "$(cpath "${out}.zip")" "$(cpath "${out}.tmp")" >&2 || { rm -f "${out}.tmp"; return 1; }
+        "$(cpath "$zip")" "$(cpath "${out}.tmp")" >&2 || { rm -f "${out}.tmp"; return 1; }
       if ! grep -q 'IPD-IMGT/HLA' "${out}.tmp" 2>/dev/null; then
         rm -f "${out}.tmp"
-        echo "ERROR: ${out}.zip held no IPD-IMGT/HLA hla.dat" >&2
+        echo "ERROR: ${zip} held no IPD-IMGT/HLA hla.dat" >&2
         return 1
       fi
       mv -f "${out}.tmp" "$out"
-      rm -f "${out}.zip" ;;
+      done_with "$zip" >&2 ;;
     gencode_genes|gencode_exons)
       _install_gencode || return 1 ;;
   esac
@@ -635,14 +559,14 @@ install_data_file() {
 }
 
 # _install_gencode: download GENCODE's basic annotation once and write from it
-# each of gencode_genes and gencode_exons that is missing, then delete the
-# download. Fails when one of them cannot be written.
+# each of gencode_genes and gencode_exons that is missing; the download is
+# kept (done_with). Fails when one of them cannot be written.
 _install_gencode() {
   local genes exons url gz rc=0
   genes=$(data_file gencode_genes) || true
   exons=$(data_file gencode_exons) || true
   url="https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${GENCODE_RELEASE}/gencode.v${GENCODE_RELEASE}.basic.annotation.gtf.gz"
-  gz="${genes}.download.gz"
+  gz=$(dl "${url##*/}")
   fetch "$url" "$gz" md5 "$(dirname "$url")/MD5SUMS" >&2 || return 1
   if [ ! -s "$genes" ]; then
     _gz_to "$gz" "$genes" awk -F'\t' '$3 == "gene"' || rc=1
@@ -650,7 +574,7 @@ _install_gencode() {
   if [ ! -s "$exons" ]; then
     _gz_to "$gz" "$exons" _gtf_exons || rc=1
   fi
-  rm -f "$gz"
+  [ "$rc" -ne 0 ] || done_with "$gz" >&2
   return "$rc"
 }
 
@@ -694,11 +618,12 @@ vep_cache_url() {
 
 # install_vep_cache DIR RELEASE: download the cache (checked against Ensembl's
 # CHECKSUMS file), unpack it in a temporary directory and move it to
-# DIR/homo_sapiens/RELEASE_GRCh38 only when complete. The tarball is deleted.
+# DIR/homo_sapiens/RELEASE_GRCh38 only when complete. The tarball is kept in
+# the downloads folder (done_with).
 install_vep_cache() {
   local dir=$1 rel=$2 url tarball tmp final
   url=$(vep_cache_url "$rel")
-  tarball="${dir}/$(basename "$url")"
+  tarball=$(dl "$(basename "$url")")
   final="${dir}/homo_sapiens/${rel}_GRCh38"
   if [ -f "${final}/info.txt" ]; then
     echo "[OK] VEP ${rel} cache already present."
@@ -710,9 +635,9 @@ install_vep_cache() {
     return 1
   fi
   mkdir -p "${dir}/homo_sapiens"
-  # fetch publishes the tarball only after its check, so one already here is
-  # whole: an install stopped during extraction unpacks it again.
-  [ -f "$tarball" ] || fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
+  # fetch uses a kept tarball that matches its CHECKSUMS line with no
+  # request, so an install stopped during extraction unpacks it again.
+  fetch "$url" "$tarball" sum "$(dirname "$url")/CHECKSUMS" || return 1
   echo "  Extracting $(basename "$tarball")..."
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX")
@@ -725,7 +650,8 @@ install_vep_cache() {
     rm -rf "$tmp"
     return 1
   fi
-  rm -rf "$tmp" "$tarball"
+  rm -rf "$tmp"
+  done_with "$tarball"
 }
 
 # clinical_disk_ok DIR PEAK_GB LABEL [ARCHIVE]: GB as du counts them
@@ -764,7 +690,8 @@ clinical_disk_ok() {
 
 # install_pcgr_bundle DIR: check the pinned archive before extracting into a
 # staging tree. Upstream ships data/ at the root; CPSR reads BUNDLE/data/.
-# The shared fetch helper resumes interrupted transfers and deletes bad ones.
+# fetch resumes an interrupted transfer, deletes a bad one, uses a kept
+# archive that matches the pin and refuses one that does not.
 # shellcheck disable=SC2154  # PCGR_DATA_BUNDLE and PCGR_DATA_SHA256 are pins in versions.env
 install_pcgr_bundle() {
   local dir=$1 url tarball tmp
@@ -776,15 +703,9 @@ install_pcgr_bundle() {
   echo "  https://sigven.github.io/pcgr/articles/annotation_resources.html"
   echo "  Review those terms before use; --no-clinical-data skips this download."
   url="https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz"
-  tarball="${dir}/${url##*/}"
+  tarball=$(dl "${url##*/}")
   mkdir -p "$dir" || return 1
-  # A retained archive may have changed since fetch checked it. Verify it
-  # against the pin again before reuse, replacing a mismatch through fetch.
-  if [ -f "$tarball" ] && ! _fetch_check sha256 "$PCGR_DATA_SHA256" "$tarball" "$tarball" "${url##*/}"; then
-    echo "[WARN] Removing PCGR/CPSR archive that failed its checksum; downloading it again."
-    rm -f "$tarball" || return 1
-  fi
-  [ -f "$tarball" ] || fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
+  fetch "$url" "$tarball" sha256 "$PCGR_DATA_SHA256" || return 1
   rm -rf "${dir}"/.extract.*
   tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1
   if ! tar xzf "$tarball" -C "$tmp" || [ ! -d "${tmp}/data/grch38" ]; then
@@ -802,7 +723,7 @@ install_pcgr_bundle() {
     rm -rf "$tmp"
     return 1
   fi
-  rm -f "$tarball"
+  done_with "$tarball"
   echo "[OK] PCGR/CPSR ${PCGR_DATA_BUNDLE} bundle installed."
 }
 
