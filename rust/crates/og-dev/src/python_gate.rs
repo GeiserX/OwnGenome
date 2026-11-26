@@ -20,7 +20,9 @@
 //!   are python, python3, pythonX.Y and the package runners pip, pip3,
 //!   pipx, uv and uvx. A workflow step that `uses:` a `setup-python` or
 //!   `setup-uv` action (in a block or a flow mapping) is a call too. A shell
-//!   quote may span lines (a `#` inside it is text), a Nextflow `"""` or
+//!   quote may span lines (a `#` inside it is text) but never opens inside
+//!   a heredoc body, where an apostrophe is data. A `//` comment may follow
+//!   a token with no blank (`"ok";// note`). A Nextflow `"""` or
 //!   `'''` body is shell (`rm cache/*` is a glob, not a comment), and a
 //!   Make or just recipe drops its `@`, `-` and `+` prefixes first;
 //! - `heredoc`: a heredoc whose delimiter says it holds Python (`<<'PY'`,
@@ -297,7 +299,7 @@ struct Open {
 }
 
 /// A Nextflow line without its comments, read in order: `/* */` (`st`
-/// carries a block that spans lines), `//` at the start or after a blank,
+/// carries a block that spans lines), `//` anywhere but after a `:` (a URL scheme),
 /// and, with `nf`, a `#` shell comment. With `nf`, a `"""` or `'''` opens
 /// and closes a shell body, where only `#` comments count (`rm cache/*` is
 /// a glob). Only a marker outside quotes counts, and a `/*` after `//` is
@@ -324,7 +326,9 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
             i += 3;
             continue;
         }
-        let after_blank = i == 0 || b[i - 1] == b' ' || b[i - 1] == b'\t';
+        // `//` right after a token is a comment too (`"ok";// note`); after
+        // a `:` it is the `//` of a URL scheme.
+        let after_scheme = i > 0 && b[i - 1] == b':';
         match b[i] {
             b'\\' if !single => {
                 i += 2;
@@ -338,7 +342,7 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
                 i += 2;
                 continue;
             }
-            b'/' if !quoted && !st.body && after_blank && b.get(i + 1) == Some(&b'/') => {
+            b'/' if !quoted && !st.body && !after_scheme && b.get(i + 1) == Some(&b'/') => {
                 out.push_str(&line[seg..i]);
                 return out;
             }
@@ -440,13 +444,15 @@ fn setup_python(code: &str) -> bool {
     false
 }
 
-/// Does this code line open a heredoc whose delimiter says Python? Only a
-/// `<<` outside quotes is an operator (`printf 'x <<PY'` prints text); the
-/// delimiter after it may be quoted (`<<'PY'`). `<<<` is a here-string. A
+/// The heredocs a code line opens, in order: each delimiter with its quotes
+/// and backslashes removed (`<<'EOF'` ends at `EOF`), and whether `<<-`
+/// lets the closing line start with tabs. Only a `<<` outside quotes is an
+/// operator (`printf 'x <<PY'` prints text), and `<<<` is a here-string. A
 /// Groovy `"""` or `'''` opens a string whose body is shell, so it does not
 /// count as a quote.
-fn python_heredoc(code: &str) -> bool {
+fn heredoc_delims(code: &str) -> Vec<(String, bool)> {
     let b = code.as_bytes();
+    let mut out = Vec::new();
     let (mut single, mut double) = (false, false);
     let mut i = 0;
     while i < b.len() {
@@ -466,24 +472,59 @@ fn python_heredoc(code: &str) -> bool {
                     i += 3;
                     continue;
                 }
-                let t = code[i + 2..].trim_start_matches(['-', '~']).trim_start();
-                let t = t.trim_start_matches(['\'', '"']);
-                let word: String = t
-                    .chars()
-                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                    .collect();
-                let up = word.to_ascii_uppercase();
-                if up.starts_with("PY") || up.contains("PYTHON") || up == "EOPY" {
-                    return true;
-                }
                 i += 2;
+                let dash = b.get(i) == Some(&b'-');
+                while i < b.len() && (b[i] == b'-' || b[i] == b'~' || b[i] == b' ' || b[i] == b'\t')
+                {
+                    i += 1;
+                }
+                let mut word = String::new();
+                let mut q = 0u8;
+                while i < b.len() {
+                    let c = b[i];
+                    if q != 0 {
+                        if c == q {
+                            q = 0;
+                        } else {
+                            word.push(c as char);
+                        }
+                    } else if c == b'\'' || c == b'"' {
+                        q = c;
+                    } else if c == b'\\' {
+                        if let Some(&n) = b.get(i + 1) {
+                            word.push(n as char);
+                        }
+                        i += 1;
+                    } else if c.is_ascii_whitespace() || b";|&<>()".contains(&c) {
+                        break;
+                    } else {
+                        word.push(c as char);
+                    }
+                    i += 1;
+                }
+                if !word.is_empty() {
+                    out.push((word, dash));
+                }
                 continue;
             }
             _ => {}
         }
         i += 1;
     }
-    false
+    out
+}
+
+/// Does this code line open a heredoc whose delimiter says Python
+/// (`<<'PY'`, `<<-EOF_PYTHON`, `<<EOPY`)?
+fn python_heredoc(code: &str) -> bool {
+    heredoc_delims(code).iter().any(|(d, _)| {
+        let word: String = d
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let up = word.to_ascii_uppercase();
+        up.starts_with("PY") || up.contains("PYTHON") || up == "EOPY"
+    })
 }
 
 fn excerpt(line: &str) -> String {
@@ -555,6 +596,11 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             // A shell quote can span lines; the other kinds start each line
             // outside quotes.
             let mut quotes = Quotes::default();
+            // Heredoc bodies still to read, in order. A body is data: its quotes
+            // stay on their own line and never open a quote in the shell
+            // around it (`It's ready.` inside `cat <<EOF`).
+            let mut bodies: std::collections::VecDeque<(String, bool)> =
+                std::collections::VecDeque::new();
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
@@ -584,11 +630,29 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 let code = if slashes {
                     stripped = strip_nf_comments(field, &mut open, l == Lang::Nextflow);
                     stripped.as_str()
+                } else if l == Lang::Shell && !bodies.is_empty() {
+                    strip_line_comment(field)
                 } else if l == Lang::Shell {
                     strip_line_comment_in(field, &mut quotes)
                 } else {
                     strip_line_comment(field)
                 };
+                if l == Lang::Shell {
+                    match bodies.front() {
+                        Some((end, dash)) => {
+                            let close = if *dash {
+                                field.trim_start_matches('\t')
+                            } else {
+                                field
+                            };
+                            if close == end {
+                                bodies.pop_front();
+                                continue;
+                            }
+                        }
+                        None => bodies.extend(heredoc_delims(code)),
+                    }
+                }
                 // The marks of a command-table row may name its image column.
                 let marked = match column {
                     Some(_) => format!("{}\t{code}", line.split('\t').next().unwrap_or("")),
@@ -1687,6 +1751,31 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
         assert_eq!(k("s.sh", sh), [(2, "call")]);
         // A real comment after a closed quote is still a comment.
         assert!(k("s.sh", "echo 'a\nb' # @p3 later\n").is_empty());
+    }
+
+    #[test]
+    fn a_heredoc_body_opens_no_shell_quote() {
+        // The apostrophe in the body is data; python3 after the body runs.
+        let sh = "cat <<'EOF'\nIt's ready.\nEOF\nprintf '%s' 'a # b'; @p3 -V\n";
+        assert_eq!(k("s.sh", sh), [(4, "call")]);
+        // <<- lets the closing line start with tabs; a substitution in the
+        // body still runs.
+        let sh = "cat <<-EOF\n\tdon't\n\tv=$(@p3 -V)\n\tEOF\necho 'a # b'; @p3 -V\n";
+        assert_eq!(k("s.sh", sh), [(3, "call"), (5, "call")]);
+        // Two heredocs on one line are read in order.
+        let sh = "cat <<A <<\"B\"\nit's\nA\nit's\nB\necho 'x # y'; @p3 -V\n";
+        assert_eq!(k("s.sh", sh), [(6, "call")]);
+    }
+
+    #[test]
+    fn a_javascript_line_comment_right_after_a_token() {
+        let js = "const label = \"ok\";// Example: /*\nspawn(\"@p3\", [\"-V\"]);\n";
+        assert_eq!(k("a.js", js), [(2, "call")]);
+        // The // of a URL scheme is not a comment.
+        assert_eq!(
+            k("a.js", "const u = `http://x`; spawn(\"@p3\");\n"),
+            [(1, "call")]
+        );
     }
 
     #[test]
