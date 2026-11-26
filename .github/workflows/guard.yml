@@ -1054,9 +1054,14 @@ jobs:
           printf '#!/usr/bin/env bash\npython3 -c "print(1)"\n' > scripts/planted-gate-probe.sh
           expect_red 'a planted Python call' 'FAIL scripts/planted-gate-probe.sh:2: call'
           rm -f scripts/planted-gate-probe.sh
-          row=$(grep -v -m 1 -E '^(#|$)' tests/python-allow.tsv)
-          grep -vxF -- "$row" tests/python-allow.tsv > "${ctl}/allow.tsv"
-          expect_red 'the list without its first row' "FAIL ${row%%$'\t'*}:" --allow "${ctl}/allow.tsv"
+          # The gate's own rule for a row: not blank, not a # comment.
+          row=$(grep -v -m 1 -E '^(#|[[:space:]]*$)' tests/python-allow.tsv || true)
+          if [ -n "$row" ]; then
+            grep -vxF -- "$row" tests/python-allow.tsv > "${ctl}/allow.tsv"
+            expect_red 'the list without its first row' "FAIL ${row%%$'\t'*}:" --allow "${ctl}/allow.tsv"
+          else
+            echo "The allow list has no row, so there is no row to remove."
+          fi
           bin/og dev python-gate
 
       # EVERYTHING=true and -profile everything run every optional step from

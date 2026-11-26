@@ -10,14 +10,16 @@
 //!   any line of a shell, Nextflow or workflow file (a script a heredoc or a
 //!   Nextflow `script:` block writes);
 //! - `call`: the word python, python3 or pythonX.Y outside a comment in a
-//!   shell script, a Nextflow file or config, a GitHub workflow or action,
-//!   or a `command` column of a TSV command table (`tests/smoke/commands.tsv`):
-//!   a `python3 -c`, a `python3 - <<EOF`, a `python3 tool` run in an image;
+//!   shell script (by its suffix, or by a shell `#!` line whatever the
+//!   suffix), a Nextflow file or config, a GitHub workflow or action (not
+//!   its `name:` and `description:` labels), or the `command` field of a
+//!   TSV command table (`tests/smoke/commands.tsv`): a `python3 -c`, a
+//!   `python3 - <<EOF`, a `python3 tool` run in an image;
 //! - `heredoc`: a heredoc whose delimiter says it holds Python (`<<'PY'`,
-//!   `<<PYTHON`, `<<EOF_PYTHON`);
-//! - `rust`: a `Command::new("python3")` (any python program, any path)
-//!   or the variable that named a Python oracle, in Rust code outside
-//!   comments.
+//!   `<<PYTHON`, `<<EOF_PYTHON`), not a `<<PY` inside quotes;
+//! - `rust`: a `Command::new("python3")` (any python program, any path, an
+//!   ordinary or raw string) or the variable that named a Python oracle, in
+//!   Rust code outside comments.
 //!
 //! A comment, a doc sentence and a Markdown, text, JSON or image file are
 //! prose: they never count. `python:3.15` (an image), `python=...` (a
@@ -27,17 +29,24 @@
 //! `tests/python-allow.tsv` names, one row per file, the files whose
 //! findings are third-party Python: a tool run inside its own pinned image
 //! (PharmCAT's preprocessor, eKLIPse, Cyrius in `PYTHON_IMAGE`), or the
-//! docs builder. Each row is `file<TAB>reason`, and the gate fails when
+//! docs builder. Each row is `file<TAB>uses<TAB>reason`, where `uses` is the
+//! number of lines with a finding, and the gate fails when
 //!
 //! - a finding is in a file no row names;
 //! - a row names a missing file, a directory or a glob, or has no reason;
-//! - a reason names an `*_IMAGE` variable that `versions.env` does not set;
+//! - a reason names an `*_IMAGE` variable that `versions.env` does not set,
+//!   or sets to "";
 //! - a row covers nothing (the Python left that file: delete the row);
+//! - the file holds more or fewer uses than the row says (a new use is
+//!   checked against the reason before the count changes);
 //! - a row names a Python file (a `file` or `shebang` finding): every Python
 //!   file in the repository is owned code, so none can be allowed, and an
 //!   allowed file can never import a module from `bin/` or the demo
 //!   builders;
 //! - a file is named twice.
+//!
+//! A symlink is not read, but one named like a Python file is a `file`
+//! finding. A path git lists that is not UTF-8 is an error.
 //!
 //! `--list` prints every finding, allowed or not. Exit 0 when all is
 //! allowed, 1 when a check fails, 2 on a usage or read error.
@@ -77,8 +86,11 @@ pub struct Finding {
 /// How the gate reads a file's lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lang {
-    /// Shell, workflow YAML: `#` comments.
+    /// Shell: `#` comments.
     Shell,
+    /// A GitHub workflow or action: shell, but a `name:` or `description:`
+    /// line is a label, not code.
+    Workflow,
     /// Nextflow and Groovy: `//` and `/* */` comments, and `#` comments in
     /// the shell of `script:` blocks.
     Nextflow,
@@ -98,37 +110,50 @@ fn lang(rel: &str, text: &str) -> Lang {
         "sh" | "bash" | "ksh" | "zsh" => return Lang::Shell,
         "nf" | "config" | "groovy" => return Lang::Nextflow,
         "rs" => return Lang::Rust,
-        "yml" | "yaml" if rel.starts_with(".github/") => return Lang::Shell,
+        "yml" | "yaml" if rel.starts_with(".github/") => return Lang::Workflow,
         "tsv" if is_command_table(text) => return Lang::CommandTable,
         _ => {}
     }
     if name.starts_with("Dockerfile") || name.starts_with("Containerfile") || name == "Makefile" {
         return Lang::Shell;
     }
+    // A shell shebang makes a shell script, whatever the name's suffix
+    // (`bin/report.local`).
     let shell_script = shebang_program(first_line)
         .is_some_and(|p| matches!(p.as_str(), "sh" | "bash" | "dash" | "ksh" | "zsh"));
-    if ext.is_empty() && shell_script {
+    if shell_script {
         return Lang::Shell;
     }
     Lang::Other
 }
 
-/// Does this TSV have a `command` column? Its header is one of the leading
+/// Does this TSV have a `command` column?
+fn is_command_table(text: &str) -> bool {
+    command_column(text).is_some()
+}
+
+/// The index of a TSV's `command` column. Its header is one of the leading
 /// `#` lines (`#var<TAB>opts<TAB>needs<TAB>command<TAB>expect`) or the
 /// first line after them.
-fn is_command_table(text: &str) -> bool {
-    let mut header = Vec::new();
+fn command_column(text: &str) -> Option<usize> {
     for line in text.lines().take(20) {
-        header.push(line);
-        if !line.starts_with('#') {
-            break;
+        let col = line
+            .trim_start_matches('#')
+            .split('\t')
+            .position(|c| c.trim() == "command");
+        if col.is_some() || !line.starts_with('#') {
+            return col;
         }
     }
-    header.iter().any(|l| {
-        l.trim_start_matches('#')
-            .split('\t')
-            .any(|c| c.trim() == "command")
-    })
+    None
+}
+
+/// A workflow line that is a label: `name:` or `description:`, also as
+/// the first key of a list item.
+fn yaml_label(line: &str) -> bool {
+    let t = line.trim_start();
+    let t = t.strip_prefix("- ").unwrap_or(t).trim_start();
+    t.starts_with("name:") || t.starts_with("description:")
 }
 
 /// The program a `#!` line runs: the base name of its first word, or of the
@@ -172,32 +197,84 @@ fn shebang_is_python(line: &str) -> bool {
     shebang_program(line).is_some_and(|p| is_python_program(&p))
 }
 
-/// The line without its comment: `#` at the start or after a blank, outside
-/// quotes opened on this line. `nf` also strips `//` after a blank or at the
-/// start. A `#!` line is kept whole (the caller reads it first).
-fn strip_line_comment(line: &str, nf: bool) -> &str {
+/// Does a `#` at `i` start a shell comment? It does at the start of a word:
+/// at the start of the line, after a blank, or after `;`, `&` or `|`.
+fn comment_start(b: &[u8], i: usize) -> bool {
+    i == 0 || matches!(b[i - 1], b' ' | b'\t' | b';' | b'&' | b'|')
+}
+
+/// A shell line without its comment, outside quotes opened on this line.
+fn strip_line_comment(line: &str) -> &str {
     let b = line.as_bytes();
     let (mut single, mut double) = (false, false);
     let mut i = 0;
     while i < b.len() {
-        let c = b[i];
-        let after_blank = i == 0 || b[i - 1] == b' ' || b[i - 1] == b'\t';
-        match c {
+        match b[i] {
             b'\\' if !single => {
                 i += 2;
                 continue;
             }
             b'\'' if !double => single = !single,
             b'"' if !single => double = !double,
-            b'#' if !single && !double && after_blank => return &line[..i],
-            b'/' if nf && !single && !double && after_blank && b.get(i + 1) == Some(&b'/') => {
-                return &line[..i];
-            }
+            b'#' if !single && !double && comment_start(b, i) => return &line[..i],
             _ => {}
         }
         i += 1;
     }
     line
+}
+
+/// A Nextflow line without its comments, read in order: `/* */` (`open`
+/// carries a block that spans lines), `//` at the start or after a blank,
+/// and a `#` shell comment in a `script:` block. Only a marker outside
+/// quotes counts, and a `/*` after `//` is part of the line comment.
+fn strip_nf_comments(line: &str, open: &mut bool) -> String {
+    let b = line.as_bytes();
+    let mut out = String::new();
+    let (mut single, mut double) = (false, false);
+    let (mut i, mut seg) = (0, 0);
+    while i < b.len() {
+        if *open {
+            if b[i] == b'*' && b.get(i + 1) == Some(&b'/') {
+                *open = false;
+                seg = i + 2;
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        let quoted = single || double;
+        let after_blank = i == 0 || b[i - 1] == b' ' || b[i - 1] == b'\t';
+        match b[i] {
+            b'\\' if !single => {
+                i += 2;
+                continue;
+            }
+            b'\'' if !double => single = !single,
+            b'"' if !single => double = !double,
+            b'/' if !quoted && b.get(i + 1) == Some(&b'*') => {
+                out.push_str(&line[seg..i]);
+                *open = true;
+                i += 2;
+                continue;
+            }
+            b'/' if !quoted && after_blank && b.get(i + 1) == Some(&b'/') => {
+                out.push_str(&line[seg..i]);
+                return out;
+            }
+            b'#' if !quoted && comment_start(b, i) => {
+                out.push_str(&line[seg..i]);
+                return out;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if !*open {
+        out.push_str(&line[seg.min(line.len())..]);
+    }
+    out
 }
 
 /// The python program words of a code line, as calls.
@@ -218,9 +295,11 @@ fn python_words(code: &str) -> bool {
         while e < b.len() && (b[e].is_ascii_digit() || b[e] == b'.') {
             e += 1;
         }
+        // A redirection may follow at once (`python3</dev/null`); a `/`
+        // may not (`site-packages/python3.12/`).
         let after_ok = e == b.len() || {
             let n = b[e];
-            n.is_ascii_whitespace() || b"\"'`;|&)}".contains(&n)
+            n.is_ascii_whitespace() || b"\"'`;|&)}<>".contains(&n)
         };
         if after_ok && is_python_program(&code[s..e]) {
             return true;
@@ -229,21 +308,48 @@ fn python_words(code: &str) -> bool {
     false
 }
 
-/// Does this code line open a heredoc whose delimiter says Python?
+/// Does this code line open a heredoc whose delimiter says Python? Only a
+/// `<<` outside quotes is an operator (`printf 'x <<PY'` prints text); the
+/// delimiter after it may be quoted (`<<'PY'`). `<<<` is a here-string. A
+/// Groovy `"""` or `'''` opens a string whose body is shell, so it does not
+/// count as a quote.
 fn python_heredoc(code: &str) -> bool {
-    let mut rest = code;
-    while let Some(k) = rest.find("<<") {
-        rest = &rest[k + 2..];
-        let t = rest.trim_start_matches(['-', '~']).trim_start();
-        let t = t.trim_start_matches(['\'', '"']);
-        let word: String = t
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        let up = word.to_ascii_uppercase();
-        if up.starts_with("PY") || up.contains("PYTHON") || up == "EOPY" {
-            return true;
+    let b = code.as_bytes();
+    let (mut single, mut double) = (false, false);
+    let mut i = 0;
+    while i < b.len() {
+        if b[i..].starts_with(b"\"\"\"") || b[i..].starts_with(b"'''") {
+            i += 3;
+            continue;
         }
+        match b[i] {
+            b'\\' if !single => {
+                i += 2;
+                continue;
+            }
+            b'\'' if !double => single = !single,
+            b'"' if !single => double = !double,
+            b'<' if !single && !double && b.get(i + 1) == Some(&b'<') => {
+                if b.get(i + 2) == Some(&b'<') {
+                    i += 3;
+                    continue;
+                }
+                let t = code[i + 2..].trim_start_matches(['-', '~']).trim_start();
+                let t = t.trim_start_matches(['\'', '"']);
+                let word: String = t
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                let up = word.to_ascii_uppercase();
+                if up.starts_with("PY") || up.contains("PYTHON") || up == "EOPY" {
+                    return true;
+                }
+                i += 2;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
     }
     false
 }
@@ -258,18 +364,23 @@ fn excerpt(line: &str) -> String {
     }
 }
 
-/// The findings in one file's text.
-pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
-    let mut out = Vec::new();
+/// The `file` finding of a path whose name is a Python file's.
+fn python_name(rel: &str) -> Option<Finding> {
     let name = rel.rsplit('/').next().unwrap_or(rel);
-    if [".py", ".pyw", ".pyi"].iter().any(|e| name.ends_with(e)) {
-        out.push(Finding {
+    [".py", ".pyw", ".pyi"]
+        .iter()
+        .any(|e| name.ends_with(e))
+        .then(|| Finding {
             file: rel.to_owned(),
             line: 0,
             kind: "file",
             text: "a Python file".into(),
-        });
-    }
+        })
+}
+
+/// The findings in one file's text.
+pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
+    let mut out: Vec<Finding> = python_name(rel).into_iter().collect();
     let first = text.lines().next().unwrap_or("");
     if shebang_is_python(first) {
         out.push(Finding {
@@ -290,23 +401,39 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
     match lang(rel, text) {
         Lang::Other => {}
         Lang::Rust => scan_rust(rel, text, &mut out),
-        l @ (Lang::Shell | Lang::Nextflow | Lang::CommandTable) => {
+        l @ (Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable) => {
             let nf = l == Lang::Nextflow;
+            // A command table: only its `command` field is shell.
+            let column = if l == Lang::CommandTable {
+                command_column(text)
+            } else {
+                None
+            };
             let mut block = false;
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
-                if n > 1 && shebang_is_python(line) {
-                    push(&mut out, n, "shebang", line);
-                    continue;
-                }
                 if l == Lang::CommandTable && line.starts_with('#') {
                     continue;
                 }
-                let mut code = line.to_owned();
-                if nf {
-                    code = strip_block_comments(&code, &mut block);
+                if l == Lang::Workflow && yaml_label(line) {
+                    continue;
                 }
-                let code = strip_line_comment(&code, nf);
+                let field = match column {
+                    Some(c) => line.split('\t').nth(c).unwrap_or(""),
+                    None => line,
+                };
+                // A `#!` line inside a Nextflow block comment is prose.
+                if n > 1 && !block && shebang_is_python(field) {
+                    push(&mut out, n, "shebang", line);
+                    continue;
+                }
+                let stripped;
+                let code = if nf {
+                    stripped = strip_nf_comments(field, &mut block);
+                    stripped.as_str()
+                } else {
+                    strip_line_comment(field)
+                };
                 if python_heredoc(code) {
                     push(&mut out, n, "heredoc", line);
                 } else if python_words(code) {
@@ -316,54 +443,6 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
         }
     }
     out
-}
-
-/// A Nextflow line without its `/* */` parts; `open` carries a block that
-/// spans lines.
-fn strip_block_comments(line: &str, open: &mut bool) -> String {
-    let mut out = String::new();
-    let mut rest = line;
-    loop {
-        if *open {
-            match rest.find("*/") {
-                Some(k) => {
-                    rest = &rest[k + 2..];
-                    *open = false;
-                }
-                None => return out,
-            }
-        } else {
-            // Only a `/*` outside quotes on this line opens a block.
-            match block_start(rest) {
-                Some(k) => {
-                    out.push_str(&rest[..k]);
-                    rest = &rest[k + 2..];
-                    *open = true;
-                }
-                None => {
-                    out.push_str(rest);
-                    return out;
-                }
-            }
-        }
-    }
-}
-
-fn block_start(s: &str) -> Option<usize> {
-    let b = s.as_bytes();
-    let (mut single, mut double) = (false, false);
-    let mut i = 0;
-    while i + 1 < b.len() {
-        match b[i] {
-            b'\\' => i += 1,
-            b'\'' if !double => single = !single,
-            b'"' if !single => double = !double,
-            b'/' if !single && !double && b[i + 1] == b'*' => return Some(i),
-            _ => {}
-        }
-        i += 1;
-    }
-    None
 }
 
 /// What each byte of Rust source is.
@@ -500,7 +579,9 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         }
     };
     // Command::new("…python3") with the call in code and the program a
-    // string literal.
+    // string literal, ordinary or raw (`r"…"`, `r#"…"#`), after any blanks
+    // and comments.
+    let b = src.as_bytes();
     let needle = "Command::new(";
     let mut from = 0;
     while let Some(k) = src[from..].find(needle) {
@@ -509,16 +590,26 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         if part[s] != Part::Code {
             continue;
         }
-        let rest = &src[from..];
-        let skip = rest.len() - rest.trim_start().len();
-        let q = from + skip;
-        if src.as_bytes().get(q) != Some(&b'"') || part[q] != Part::Code {
+        let mut q = from;
+        while q < b.len() && (b[q].is_ascii_whitespace() || part[q] == Part::Comment) {
+            q += 1;
+        }
+        let mut open = q;
+        if b.get(open) == Some(&b'r') {
+            open += 1;
+            while b.get(open) == Some(&b'#') {
+                open += 1;
+            }
+        }
+        if b.get(open) != Some(&b'"') || part[q] != Part::Code {
             continue;
         }
-        let Some(len) = src[q + 1..].find('"') else {
-            continue;
-        };
-        let prog = &src[q + 1..q + 1 + len];
+        let body = open + 1;
+        let mut end = body;
+        while end < b.len() && part[end] == Part::Str {
+            end += 1;
+        }
+        let prog = &src[body..end];
         let base = prog.rsplit('/').next().unwrap_or(prog);
         if is_python_program(base) {
             hit(s, out);
@@ -544,11 +635,13 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
 #[derive(Debug)]
 struct Row {
     file: String,
+    /// How many Python uses (lines with a finding) the file holds.
+    uses: usize,
     reason: String,
     line: usize,
 }
 
-fn read_allow(path: &Path) -> Result<(Vec<Row>, Vec<String>), String> {
+fn read_allow(path: &Path, label: &str) -> Result<(Vec<Row>, Vec<String>), String> {
     let text =
         fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let mut rows = Vec::new();
@@ -558,22 +651,42 @@ fn read_allow(path: &Path) -> Result<(Vec<Row>, Vec<String>), String> {
             continue;
         }
         let cols: Vec<&str> = line.split('\t').collect();
-        if cols.len() != 2 {
+        if cols.len() != 3 {
             bad.push(format!(
-                "{}:{}: a row is file<TAB>reason, this one has {} columns",
-                path.display(),
+                "{label}:{}: a row is file<TAB>uses<TAB>reason, this one has {} columns",
                 i + 1,
                 cols.len()
             ));
             continue;
         }
+        let Some(uses) = cols[1].trim().parse::<usize>().ok().filter(|&n| n > 0) else {
+            bad.push(format!(
+                "{label}:{}: uses is the number of Python uses in {}, a whole number above 0, not '{}'",
+                i + 1,
+                cols[0].trim(),
+                cols[1].trim()
+            ));
+            continue;
+        };
         rows.push(Row {
             file: cols[0].trim().to_owned(),
-            reason: cols[1].trim().to_owned(),
+            uses,
+            reason: cols[2].trim().to_owned(),
             line: i + 1,
         });
     }
     Ok((rows, bad))
+}
+
+/// A path from `git ls-files -z`, which must be UTF-8: a path the gate
+/// cannot name exactly is an error, never a replaced byte.
+fn git_path(p: &[u8]) -> Result<String, String> {
+    String::from_utf8(p.to_vec()).map_err(|_| {
+        format!(
+            "git lists a path that is not UTF-8 ({}): rename it",
+            String::from_utf8_lossy(p)
+        )
+    })
 }
 
 /// The files to scan: tracked, plus new files that are not ignored.
@@ -602,7 +715,7 @@ fn repo_files(root: &Path) -> Result<Vec<String>, String> {
         if p.is_empty() {
             continue;
         }
-        files.insert(String::from_utf8_lossy(p).into_owned());
+        files.insert(git_path(p)?);
     }
     Ok(files.into_iter().collect())
 }
@@ -615,20 +728,31 @@ pub struct Report {
     pub code_files: usize,
     pub rust_files: usize,
     pub rows: usize,
+    /// The allow list, as the messages name it.
+    pub allow: String,
 }
 
 /// Runs the gate on ROOT with the allow list ALLOW.
 pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
+    let al = if allow == root.join(ALLOW) {
+        ALLOW.to_owned()
+    } else {
+        allow.display().to_string()
+    };
     let files = repo_files(root)?;
     let mut findings = Vec::new();
     let (mut scanned, mut code_files, mut rust_files) = (0, 0, 0);
     for rel in &files {
         let p = root.join(rel);
-        // A deleted file still in the index, a symlink, a submodule: skip.
+        // A deleted file still in the index, a submodule: skip. A symlink's
+        // target is not read, but a symlink named like a Python file is one.
         let Ok(meta) = fs::symlink_metadata(&p) else {
             continue;
         };
         if !meta.is_file() {
+            if meta.file_type().is_symlink() {
+                findings.extend(python_name(rel));
+            }
             continue;
         }
         let bytes = fs::read(&p).map_err(|e| format!("cannot read {rel}: {e}"))?;
@@ -636,7 +760,7 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
         scanned += 1;
         match lang(rel, &text) {
             Lang::Rust => rust_files += 1,
-            Lang::Shell | Lang::Nextflow | Lang::CommandTable => code_files += 1,
+            Lang::Shell | Lang::Workflow | Lang::Nextflow | Lang::CommandTable => code_files += 1,
             Lang::Other => {}
         }
         findings.extend(scan_text(rel, &text));
@@ -648,9 +772,11 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
             root.display()
         ));
     }
-    let (rows, mut failures) = read_allow(allow)?;
+    let (rows, mut failures) = read_allow(allow, &al)?;
+    // A variable set to "" names no image.
     let pins: BTreeSet<String> = versions_env::read(&root.join("versions.env"))?
         .into_iter()
+        .filter(|p| !p.value.trim().is_empty())
         .map(|p| p.name)
         .collect();
     let mut by_file: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
@@ -658,7 +784,6 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
         by_file.entry(f.file.as_str()).or_default().push(f);
     }
     let mut named: BTreeMap<String, usize> = BTreeMap::new();
-    let al = allow.display();
     for r in &rows {
         let at = format!("{al}:{}", r.line);
         if let Some(first) = named.insert(r.file.clone(), r.line) {
@@ -697,6 +822,15 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
                 "{at}: {} holds no Python any more: delete the row",
                 r.file
             ));
+        } else if fs_here.len() != r.uses {
+            // A use added to (or gone from) an allowed file is reviewed
+            // against the row's reason before the count is changed.
+            failures.push(format!(
+                "{at}: {} holds {} Python uses, the row says {}: check each use against the reason, then set the count",
+                r.file,
+                fs_here.len(),
+                r.uses
+            ));
         }
         if fs_here
             .iter()
@@ -711,8 +845,8 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
     for f in &findings {
         if !named.contains_key(&f.file) {
             failures.push(format!(
-                "{}:{}: {}: {} (not in {})",
-                f.file, f.line, f.kind, f.text, ALLOW
+                "{}:{}: {}: {} (not in {al})",
+                f.file, f.line, f.kind, f.text
             ));
         }
     }
@@ -723,6 +857,7 @@ pub fn check(root: &Path, allow: &Path) -> Result<Report, String> {
         code_files,
         rust_files,
         rows: rows.len(),
+        allow: al,
     })
 }
 
@@ -799,7 +934,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             r.rust_files,
             r.findings.len(),
             files.len(),
-            ALLOW,
+            r.allow,
             r.rows
         );
         0
@@ -808,7 +943,7 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             out,
             "{} problems: owned Python, or a row of {} that is wrong",
             r.failures.len(),
-            ALLOW
+            r.allow
         );
         1
     }
@@ -952,5 +1087,159 @@ mod tests {
             ["PHARMCAT_IMAGE"]
         );
         assert!(image_vars("the docs builder, no _IMAGE").is_empty());
+    }
+
+    #[test]
+    fn shell_shebangs_comments_heredocs_and_redirections() {
+        // A shell #! line makes a shell script, whatever the suffix.
+        assert_eq!(
+            kinds("bin/report.local", "#!/bin/sh\npython3 x\n"),
+            [(2, "call")]
+        );
+        // `#` after `;`, `&` or `|` starts a comment.
+        assert!(kinds("s.sh", ":;# python3 is not needed\n").is_empty());
+        assert!(kinds("s.sh", "true &# python3 later\n").is_empty());
+        assert!(kinds("s.sh", "echo \"${#arr[@]}\"\n").is_empty());
+        // A <<PY inside quotes is text; a quoted delimiter after a real
+        // operator is a heredoc, also in a Groovy """ line.
+        assert!(kinds("s.sh", "printf '%s\\n' 'expected <<PY'\n").is_empty());
+        assert!(kinds("s.sh", "echo \"a <<PYTHON b\"\n").is_empty());
+        assert_eq!(kinds("s.sh", "cat <<\"PY\"\n"), [(1, "heredoc")]);
+        assert_eq!(
+            kinds("m.nf", "    \"\"\"cat > x <<'PY'\n"),
+            [(1, "heredoc")]
+        );
+        assert!(kinds("s.sh", "cat <<<PY\n").is_empty());
+        // A redirection right after the program; a path part stays out.
+        assert_eq!(kinds("s.sh", "python3</dev/null\n"), [(1, "call")]);
+        assert_eq!(kinds("s.sh", "x=$(python3>/dev/null)\n"), [(1, "call")]);
+        assert!(kinds("s.sh", "ls lib/python3.12/x\n").is_empty());
+    }
+
+    #[test]
+    fn nextflow_comments_in_source_order() {
+        // `// … /*` is a line comment: it opens no block, so the call
+        // below is still read.
+        let nf =
+            "// Example: /*\nprocess P {\n    script:\n    \"\"\"\n    python3 x\n    \"\"\"\n}\n";
+        assert_eq!(kinds("m.nf", nf), [(5, "call")]);
+        // A #! line inside a block comment is prose; after it, code again.
+        let nf = "/*\n#!/usr/bin/env python3\n*/\nprocess P {\n    script:\n    \"\"\"\n    #!/usr/bin/env python3\n    \"\"\"\n}\n";
+        assert_eq!(kinds("m.nf", nf), [(7, "shebang")]);
+        // A block that closes and a call after it on the same line.
+        assert_eq!(kinds("m.nf", "/* x */ python3 y\n"), [(1, "call")]);
+        assert!(kinds("m.nf", "x = 1 /* python3 */\n").is_empty());
+    }
+
+    #[test]
+    fn command_fields_and_workflow_labels() {
+        let tsv = "#var\topts\tneeds\tcommand\texpect\n\
+                   X_IMAGE\t-\t-\tprintf ok\trequires python3 on the old runner\n\
+                   Y_IMAGE\t-\t-\tpython3 -V\tPython 3\n";
+        assert_eq!(kinds("tests/smoke/commands.tsv", tsv), [(3, "call")]);
+        let yml = "name: python3 checks\non: push\njobs:\n  a:\n    steps:\n      - name: No python3 is needed\n        run: echo ok\n      - name: x\n        description: python3 only in a label\n        run: python3 -V\n";
+        assert_eq!(kinds(".github/workflows/x.yml", yml), [(10, "call")]);
+    }
+
+    #[test]
+    fn rust_raw_strings_and_comments_before_the_program() {
+        let rs = "fn a() { let _ = Command::new(r\"python3\"); }\n\
+                  fn b() { let _ = Command::new(/* the program */ \"python3\"); }\n\
+                  fn c() { let _ = Command::new(r#\"/usr/bin/python3\"#); }\n\
+                  fn d() { let _ = Command::new(// next line\n\"python3\"); }\n\
+                  fn e() { let _ = Command::new(r\"og\"); }\n";
+        assert_eq!(
+            kinds("x.rs", rs),
+            [(1, "rust"), (2, "rust"), (3, "rust"), (4, "rust")]
+        );
+    }
+
+    #[test]
+    fn a_path_that_is_not_utf8_is_an_error() {
+        assert_eq!(git_path(b"bin/x.py").as_deref(), Ok("bin/x.py"));
+        let e = git_path(b"bin/x\xff.py").unwrap_err();
+        assert!(e.contains("not UTF-8"), "{e}");
+    }
+
+    /// A git repository in a temporary folder with these files, and the
+    /// gate's failures on it with the allow list `allow`.
+    fn gate(name: &str, files: &[(&str, &str)], allow: &str) -> Vec<String> {
+        let d = std::env::temp_dir().join(format!("og-python-gate-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let ok = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git init");
+        let base = [
+            (
+                "versions.env",
+                "TOOL_IMAGE=\"t/tool:1\"\nEMPTY_IMAGE=\"\"\n",
+            ),
+            ("a.rs", "fn main() {}\n"),
+            ("b.sh", "echo ok\n"),
+        ];
+        for (rel, text) in base.iter().chain(files) {
+            let p = d.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, text).unwrap();
+        }
+        fs::write(d.join("allow.tsv"), allow).unwrap();
+        #[cfg(unix)]
+        if name == "symlink" {
+            std::os::unix::fs::symlink("tool", d.join("bin/tool.py")).unwrap();
+        }
+        let r = check(&d, &d.join("allow.tsv")).unwrap();
+        let _ = fs::remove_dir_all(&d);
+        r.failures
+    }
+
+    #[test]
+    fn allow_rows_count_uses_and_name_set_images() {
+        let one = [("s.sh", "docker run x python3 a\n")];
+        let two = [("s.sh", "docker run x python3 a\npython3 -c 'print(1)'\n")];
+        let row = "s.sh\t1\tTOOL_IMAGE: the tool's own Python\n";
+        assert_eq!(gate("ok", &one, row), Vec::<String>::new());
+        // A new use in an allowed file fails until the count changes.
+        let f = gate("added", &two, row);
+        assert!(
+            f.len() == 1 && f[0].contains("s.sh holds 2 Python uses, the row says 1"),
+            "{f:?}"
+        );
+        assert!(gate("counted", &two, "s.sh\t2\tTOOL_IMAGE: x\n").is_empty());
+        // The old two-column row, a count that is not a number.
+        let f = gate("cols", &one, "s.sh\tTOOL_IMAGE: x\n");
+        assert!(
+            f.iter().any(|f| f.contains("file<TAB>uses<TAB>reason")),
+            "{f:?}"
+        );
+        let f = gate("nan", &one, "s.sh\tsome\tTOOL_IMAGE: x\n");
+        assert!(f.iter().any(|f| f.contains("not 'some'")), "{f:?}");
+        // An image variable set to "" is not set.
+        let f = gate("empty", &one, "s.sh\t1\tEMPTY_IMAGE: x\n");
+        assert!(
+            f.iter()
+                .any(|f| f.contains("names EMPTY_IMAGE, which versions.env does not set")),
+            "{f:?}"
+        );
+        // A finding names the allow list the gate read.
+        let f = gate("other", &one, "");
+        assert!(
+            f.len() == 1 && f[0].ends_with("allow.tsv)") && !f[0].contains(ALLOW),
+            "{f:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_named_like_a_python_file_is_one() {
+        let f = gate("symlink", &[("bin/tool", "x\n")], "");
+        assert!(
+            f.len() == 1 && f[0].starts_with("bin/tool.py:0: file:"),
+            "{f:?}"
+        );
     }
 }

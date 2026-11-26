@@ -3,19 +3,21 @@
 # named by its versions.env variable, or the docs builder. One file per row,
 # never a directory or a pattern; a row that covers nothing fails the gate.
 # A Python file is owned code and can never be listed here.
-# file<TAB>reason
-.github/workflows/docs.yml	zensical, the third-party docs builder, pinned in docs/requirements-docs.txt and run as python -m zensical on the runner's setup-python
-modules/local/cyrius/main.nf	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image
-modules/local/mito_variants/main.nf	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3
-modules/local/pharmcat/main.nf	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3
-scripts/07-pharmacogenomics.sh	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3
-scripts/20-mtoolbox.sh	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3
-scripts/21-cyrius.sh	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image
-tests/e2e/pharmcat-indel-refblocks-1.sh	PHARMCAT_IMAGE: the case's control runs PharmCAT's own preprocessor in its image
-tests/fake-docker/pgx-opt-in-steps.sh	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs and its python3 -m cyrius call; runs no Python
-tests/fake-docker/single-source-run-in.sh	PYTHON_IMAGE: checks that setup.sh --cyrius ran the python image; runs no Python
-tests/parity/gen/report-corpus.sh	PYTHON_IMAGE: names the python image in a made-up run manifest; runs no Python
-tests/smoke/commands.tsv	PHARMCAT_IMAGE, EKLIPSE_IMAGE, WHATSHAP_IMAGE, PGSC_FRAPOSA_IMAGE, PGSC_PYYAML_IMAGE: each row runs Python that ships in that image (PharmCAT's preprocessor, eKLIPse, pysam, fraposa, PyYAML)
-tests/smoke/cyrius.sh	PYTHON_IMAGE: the Cyrius smoke run in the python image
-tests/smoke/hipstr.sh	HIPSTR_IMAGE: prints the image's own python3 version for its smoke row
-tests/test_owngenome_view.sh	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python
+# uses is the number of lines with a Python use in the file: a new use is
+# checked against the reason before the count changes.
+# file<TAB>uses<TAB>reason
+.github/workflows/docs.yml	1	zensical, the third-party docs builder, pinned in docs/requirements-docs.txt and run as python -m zensical on the runner's setup-python
+modules/local/cyrius/main.nf	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image
+modules/local/mito_variants/main.nf	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3
+modules/local/pharmcat/main.nf	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3
+scripts/07-pharmacogenomics.sh	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3
+scripts/20-mtoolbox.sh	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3
+scripts/21-cyrius.sh	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image
+tests/e2e/pharmcat-indel-refblocks-1.sh	1	PHARMCAT_IMAGE: the case's control runs PharmCAT's own preprocessor in its image
+tests/fake-docker/pgx-opt-in-steps.sh	4	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs and its python3 -m cyrius call; runs no Python
+tests/fake-docker/single-source-run-in.sh	1	PYTHON_IMAGE: checks that setup.sh --cyrius ran the python image; runs no Python
+tests/parity/gen/report-corpus.sh	1	PYTHON_IMAGE: names the python image in a made-up run manifest; runs no Python
+tests/smoke/commands.tsv	5	PHARMCAT_IMAGE, EKLIPSE_IMAGE, WHATSHAP_IMAGE, PGSC_FRAPOSA_IMAGE, PGSC_PYYAML_IMAGE: each row runs Python that ships in that image (PharmCAT's preprocessor, eKLIPse, pysam, fraposa, PyYAML)
+tests/smoke/cyrius.sh	1	PYTHON_IMAGE: the Cyrius smoke run in the python image
+tests/smoke/hipstr.sh	1	HIPSTR_IMAGE: prints the image's own python3 version for its smoke row
+tests/test_owngenome_view.sh	2	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python

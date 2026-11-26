@@ -131,14 +131,14 @@ To add a primitive: write it in `pycompat` with unit tests and add an operation 
 
 OwnGenome's own code is Rust, plus the shell and Nextflow glue of the steps. `og dev python-gate` (Guard, job `og-musl`) keeps it that way. It reads every tracked file, and every new file git does not ignore. It fails on:
 
-- a `*.py` file, or a file whose `#!` line runs python;
-- the word `python`, `python3` or `pythonX.Y` in the code of a shell script, a Nextflow file, a workflow, or the `command` column of `tests/smoke/commands.tsv`. That covers `python3 -c`, `python3 - <<EOF` and a tool run in an image;
+- a `*.py` file (a symlink too), or a file whose `#!` line runs python;
+- the word `python`, `python3` or `pythonX.Y` in the code of a shell script (by its suffix, or by a shell `#!` line), a Nextflow file, a workflow, or the `command` column of `tests/smoke/commands.tsv`. That covers `python3 -c`, `python3 - <<EOF`, `python3</dev/null` and a tool run in an image;
 - a heredoc whose delimiter says Python, such as `<<'PY'`;
-- `Command::new("python3")`, or the variable that named a Python oracle, in Rust code.
+- `Command::new("python3")` or `Command::new(r"python3")`, or the variable that named a Python oracle, in Rust code.
 
-Comments and docs are prose and never count. An image name or its variable, such as `PYTHON_IMAGE`, or a `site-packages/python3.12/` path is not a call either.
+Comments and docs are prose and never count, and neither do a workflow step's `name:` and the other columns of a command table. An image name or its variable, such as `PYTHON_IMAGE`, or a `site-packages/python3.12/` path is not a call either.
 
-Third-party Python passes when `tests/python-allow.tsv` names its file with a reason. PharmCAT's preprocessor, eKLIPse and Cyrius run Python inside their own pinned images, and the docs builder is a pinned pip package. A row names one file, never a directory or a pattern. The gate also fails when a row covers nothing, when a reason names an `*_IMAGE` variable that `versions.env` does not set, and when a row names a Python file: a Python file in this repository is owned code, so no row can allow it. Write new code in Rust, and a test as a cargo test or a `tests/test_*.sh`.
+Third-party Python passes when `tests/python-allow.tsv` names its file. A row is `file<TAB>uses<TAB>reason`: one file, never a directory or a pattern; the number of lines in it with a Python use; and why that Python is not ours. PharmCAT's preprocessor, eKLIPse and Cyrius run Python inside their own pinned images, and the docs builder is a pinned pip package. A new use in a listed file fails the gate until someone checks it against the reason and changes the count. The gate also fails when a row covers nothing, and when a reason names an `*_IMAGE` variable that `versions.env` does not set or sets to "". No row can name a Python file: a Python file in this repository is owned code. Write new code in Rust, and a test as a cargo test or a `tests/test_*.sh`.
 
 ## CI
 

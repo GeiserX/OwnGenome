@@ -34,7 +34,7 @@ Before implementing a new step, open an issue to discuss it. Include:
 
 ### Code
 
-OwnGenome's own code is Rust: the `og` binary under [`rust/`](rust/) ([docs/rust.md](docs/rust.md)), with shell and Nextflow glue in the step scripts and modules. Write new code in Rust, and write a test as a cargo test or a `tests/test_*.sh`. Do not add Python. Guard's `og dev python-gate` fails on any Python file, Python heredoc or python call that [`tests/python-allow.tsv`](tests/python-allow.tsv) does not name, and that list holds only third-party tools that run Python inside their own pinned images.
+OwnGenome's own code is Rust: the `og` binary under [`rust/`](rust/) ([docs/rust.md](docs/rust.md)), with shell and Nextflow glue in the step scripts and modules. Write new code in Rust, and write a test as a cargo test or a `tests/test_*.sh`. Do not add Python. Guard's `og dev python-gate` fails on any Python file, and no row can allow one. It also fails on a Python heredoc or python call in a file that [`tests/python-allow.tsv`](tests/python-allow.tsv) does not name. That list holds only third-party Python: tools that run Python inside their own pinned images, and the pinned docs builder. If your change needs a Python call, port it to Rust; add a row only for a third-party tool's own Python.
 
 ### Scripts
 
