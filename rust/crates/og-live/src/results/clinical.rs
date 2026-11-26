@@ -326,7 +326,13 @@ pub(super) fn clinical_findings<'a>(
     let sf_record = D::new(sf, "clinical.acmg_sf");
     let sf_list = text_or(val(sf, "version"), "ACMG SF");
     match sf_rows(summary, sf).and_then(|rows| {
-        let counted = acmg_sf::counted(&sf_record)?;
+        // No rows means no card to read the marks from (step 23 did not
+        // run, or the card is unavailable).
+        let counted = if rows.is_empty() {
+            Vec::new()
+        } else {
+            acmg_sf::counted(&sf_record)?
+        };
         rows.into_iter()
             .zip(counted)
             .map(|(r, counted)| {
