@@ -1648,11 +1648,12 @@ fn the_blood_group_and_couple_cards() {
 
 /// The card titles of DEMO-001's HTML report: the chapters move cards, they
 /// never add, drop or rename one.
-const GOLDEN_TITLES: [&str; 47] = [
+const GOLDEN_TITLES: [&str; 48] = [
     "Quality Control",
     "Mosaic Loss of Chromosome Y or X",
     "Variant Calling",
     "ClinVar Screening",
+    "Conflicting classifications with a P/LP submission: review, not counted (1 of 1)",
     "Carrier List (this sample)",
     "Couple Carrier Screen",
     "Pharmacogenomics",
