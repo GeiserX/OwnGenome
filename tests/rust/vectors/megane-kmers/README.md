@@ -44,7 +44,7 @@ Then index them and run MEGAnE's builder. This needs Docker. MEGAnE's image is a
 tests/rust/vectors/megane-kmers/record.sh
 ```
 
-`record.sh` runs `samtools faidx` in `SAMTOOLS_IMAGE`, edits `twice.fa.fai`, and runs `build_kmerset -fa <name>.fa -prefix <name> -outdir out` in `MEGANE_IMAGE` for each FASTA. Then it prints the sha256 of every file. The folder must be visible to Docker. On a Docker VM that shares only the home folder, copy `versions.env` and this folder (at the same relative path) under home, and run it there.
+`record.sh` runs `samtools faidx` in `SAMTOOLS_IMAGE`, edits `twice.fa.fai`, and runs `build_kmerset -fa <name>.fa -prefix <name> -outdir out` in `MEGANE_IMAGE` for each FASTA. Then it prints the sha256 of every file. The repo's `.gitignore` ignores `*.fa` and `*.fa.fai`, so stage a new recording with `git add -f`, or the FASTAs and their indexes stay out of the commit without a word. The folder must be visible to Docker. On a Docker VM that shares only the home folder, copy `versions.env` and this folder (at the same relative path) under home, and run it there.
 
 The recording of 2026-11-26 gave:
 
