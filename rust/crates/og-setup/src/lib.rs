@@ -11,6 +11,7 @@
 //! revel`) and [`roh_af`] (`og setup roh-af`) are not ported yet.
 
 pub mod genetic_map;
+pub mod megane_kmers;
 pub mod revel;
 pub mod roh_af;
 pub mod strchive;

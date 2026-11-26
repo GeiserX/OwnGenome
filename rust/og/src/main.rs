@@ -51,6 +51,7 @@ Pipeline helpers (the steps run these):
   og setup mask-fasta SRC BED DEST
   og setup unzip ZIP DEST
   og setup genetic-map --zip ZIP --out DIR CHROM...
+  og setup megane-kmers --fa FASTA --out DIR [--prefix P] [--mem GB] [--threads N]
   og setup chrm-shift [args]
   og setup revel [args]
   og setup roh-af [args]
@@ -357,6 +358,7 @@ fn main() -> ExitCode {
             Some("mask-fasta") => ExitCode::from(og_intervals::mask::cli(&rest[1..])),
             Some("unzip") => ExitCode::from(og_setup::unzip::cli(&rest[1..])),
             Some("genetic-map") => ExitCode::from(og_setup::genetic_map::cli(&rest[1..])),
+            Some("megane-kmers") => ExitCode::from(og_setup::megane_kmers::cli(&rest[1..])),
             Some("chrm-shift") => io(og_vcf::shift::chrm_shift_cli, &rest[1..]),
             Some("revel") => io(og_setup::revel::cli, &rest[1..]),
             Some("roh-af") => io(og_setup::roh_af::cli, &rest[1..]),
