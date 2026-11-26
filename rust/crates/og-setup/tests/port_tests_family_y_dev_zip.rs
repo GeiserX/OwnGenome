@@ -12,10 +12,10 @@
 //!    climbs out of the folder (`../x`, `/x`), where `extractall` silently
 //!    writes it elsewhere; and a member with a flipped byte fails its CRC
 //!    check (exit 2);
-//! 3. genetic-map: CHROM.map is the member byte for byte and
-//!    CHROM.rfmix.map fields 1, 4 and 3 of each non-blank line (whitespace
-//!    runs, tabs, CRLF and a last line without a newline), for two
-//!    chromosomes in one call; without `--rfmix` only the .map is written;
+//! 3. genetic-map: CHROM.map is the member byte for byte (whitespace runs,
+//!    tabs, CRLF and a last line without a newline), for two chromosomes in
+//!    one call, and nothing else is written: the `.rfmix.map` of `--rfmix`
+//!    went with RFMix, and `--rfmix` is now an unknown option (exit 2);
 //! 4. genetic-map stops with exit 2 on a row with fewer than four fields
 //!    and on a chromosome the zip lacks, and leaves the files of that
 //!    chromosome as they were;
@@ -376,53 +376,41 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
         zs,
         "--out",
         ours.to_str().unwrap(),
-        "--rfmix",
         "chr20",
         "chr21",
     ]);
-    assert_eq!(code, 0, "genetic-map --rfmix chr20 chr21: exit 0: {err}");
-    // What setup.sh's inline program wrote before og: the member as it is,
-    // and fields 1, 4 and 3 of each non-blank line.
-    let want: BTreeMap<String, Option<Vec<u8>>> = [
-        ("chr20.map", MAP20),
-        (
-            "chr20.rfmix.map",
-            "chr20\t60000\t0.0\nchr20\t70001\t0.12\nchr20\t80000\t1.5\n",
-        ),
-        ("chr21.map", MAP21),
-        (
-            "chr21.rfmix.map",
-            "chr21\t1\t0\nchr21\t2\t0.5\nchr21\t3\t1.25\n",
-        ),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_owned(), file(v.as_bytes())))
-    .collect();
+    assert_eq!(code, 0, "genetic-map chr20 chr21: exit 0: {err}");
+    // What setup.sh's inline program wrote before og: the member as it is.
+    let want: BTreeMap<String, Option<Vec<u8>>> = [("chr20.map", MAP20), ("chr21.map", MAP21)]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), file(v.as_bytes())))
+        .collect();
     let got = tree(&ours);
     assert!(
         got == want,
-        "genetic-map: the same .map and .rfmix.map files as the Python: {:?}",
+        "genetic-map: the same .map files as the Python, and no .rfmix.map: {:?}",
         diff(&got, &want)
     );
 
-    let only = tmp.join("only-map");
-    fs::create_dir_all(&only).unwrap();
+    let gone = tmp.join("no-rfmix");
+    fs::create_dir_all(&gone).unwrap();
     let (code, err) = og_setup(&[
         "genetic-map",
         "--zip",
         zs,
         "--out",
-        only.to_str().unwrap(),
+        gone.to_str().unwrap(),
+        "--rfmix",
         "chr20",
     ]);
     assert!(
-        code == 0 && tree(&only).keys().collect::<Vec<_>>() == ["chr20.map"],
-        "genetic-map without --rfmix writes only chr20.map: {code} {err}"
+        code == 2 && err.contains("unknown option --rfmix") && tree(&gone).is_empty(),
+        "genetic-map --rfmix is an unknown option and writes nothing: {code} {err}"
     );
 
     let keep = tmp.join("keep");
     fs::create_dir_all(&keep).unwrap();
-    fs::write(keep.join("chr22.rfmix.map"), "old\n").unwrap();
+    fs::write(keep.join("chr22.map"), "old\n").unwrap();
     let before = tree(&keep);
     let (code, err) = og_setup(&[
         "genetic-map",
@@ -430,7 +418,6 @@ fn genetic_map_cuts_the_maps_setup_cut_before_og() {
         zs,
         "--out",
         keep.to_str().unwrap(),
-        "--rfmix",
         "chr22",
     ]);
     assert!(

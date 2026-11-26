@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 # og-leg: OG_REQUIRED
 # setup.sh's install_fine_maps (step 26b's genetic maps) rebuilds a map an
-# older install left cut short. Before og, setup.sh skipped every chromosome
-# whose .rfmix.map was not empty, so a map a kill had cut short stayed
-# forever. Now maps/DONE, written last, names the map and the chromosomes,
-# and without it every map is written again. The test runs the function out
-# of setup.sh with og on the host in place of the container (run_in runs the
-# command after the image name, with /pgp-bin/og pointing at OG):
-#   1. A folder as an install from before og leaves it: the zip, chr22.map
-#      whole and chr22.rfmix.map cut short, no maps/DONE. The function
-#      rewrites both maps, so they equal a fresh install's, and writes
-#      maps/DONE.
+# older install left cut short, and writes only what step 26b reads. Before
+# og, setup.sh skipped every chromosome whose map was not empty, so a map a
+# kill had cut short stayed forever. Now maps/DONE, written last, names the
+# map and the chromosomes, and without it every map is written again. The
+# test runs the function out of setup.sh with og on the host in place of the
+# container (run_in runs the command after the image name, with /pgp-bin/og
+# pointing at OG):
+#   1. A folder as an install from before og leaves it: the zip, chr21.map
+#      whole and chr22.map cut short, no maps/DONE. The function rewrites
+#      the maps, so they equal a fresh install's, and writes maps/DONE.
 #   2. With maps/DONE in place a second call runs og no more (a planted
 #      byte stays), so a finished install is not redone.
 #   3. A maps/DONE of another chromosome list counts as none, and so does a
 #      map file removed after the install: the maps are written again.
-#   4. The control: the rule of before (skip a non-empty .rfmix.map), run on
-#      the folder of 1, keeps the cut-short map, so check 1 can fail.
+#   4. No chrN.rfmix.map is written (RFMix left step 26b), and the ones an
+#      older install wrote, beside a maps/DONE that still matches, are left
+#      as they are and do not make the install run again.
+#   5. The control: the rule of before (skip a non-empty map), run on the
+#      folder of 1, keeps the cut-short map, so check 1 can fail.
 # Run: OG=bin/og bash tests/test_setup_fine_maps.sh (skips without og; with
 # OG_REQUIRED set, the skip is a failure, as guard.yml's og-musl job sets it).
 set -euo pipefail
@@ -77,20 +80,20 @@ FRESH="${WORK}/fresh"
 mkdir -p "${FRESH}/maps"
 mkzip "${FRESH}/maps/plink.GRCh38.map.zip"
 install_fine_maps "$FRESH" "chr21 chr22 " > "${WORK}/fresh.log" 2>&1 || { echo "FAIL: the fresh install failed: $(cat "${WORK}/fresh.log")"; exit 1; }
-for f in chr21.map chr21.rfmix.map chr22.map chr22.rfmix.map; do
+for f in chr21.map chr22.map; do
   [ -s "${FRESH}/maps/${f}" ] || { echo "FAIL: the fresh install wrote no ${f}"; exit 1; }
 done
 
 # old_install DIR: the folder an install from before og left after a kill
-# in the middle of chr22.rfmix.map.
+# in the middle of chr22.map.
 old_install() {
   mkdir -p "$1/maps"
-  cp "${FRESH}/maps/plink.GRCh38.map.zip" "${FRESH}/maps/chr21.map" "${FRESH}/maps/chr21.rfmix.map" "${FRESH}/maps/chr22.map" "$1/maps/"
-  head -c 200 "${FRESH}/maps/chr22.rfmix.map" > "$1/maps/chr22.rfmix.map"
+  cp "${FRESH}/maps/plink.GRCh38.map.zip" "${FRESH}/maps/chr21.map" "$1/maps/"
+  head -c 200 "${FRESH}/maps/chr22.map" > "$1/maps/chr22.map"
 }
 same_maps() {
   local f
-  for f in chr21.map chr21.rfmix.map chr22.map chr22.rfmix.map; do cmp -s "${FRESH}/maps/${f}" "$1/maps/${f}" || return 1; done
+  for f in chr21.map chr22.map; do cmp -s "${FRESH}/maps/${f}" "$1/maps/${f}" || return 1; done
 }
 
 # 1. The cut-short map is written again.
@@ -101,9 +104,9 @@ install_fine_maps "$OLD" "chr21 chr22 " > "${WORK}/old.log" 2>&1 || rc=$?
 if [ "$rc" -ne 0 ]; then
   bad "install_fine_maps failed on the old folder (exit ${rc}): $(tr '\n' ' ' < "${WORK}/old.log")"
 elif ! same_maps "$OLD"; then
-  bad "the cut-short chr22.rfmix.map was not written again ($(wc -c < "${OLD}/maps/chr22.rfmix.map") bytes, want $(wc -c < "${FRESH}/maps/chr22.rfmix.map"))"
+  bad "the cut-short chr22.map was not written again ($(wc -c < "${OLD}/maps/chr22.map") bytes, want $(wc -c < "${FRESH}/maps/chr22.map"))"
 else
-  ok "a cut-short chr22.rfmix.map with no maps/DONE is written again, byte for byte as a fresh install"
+  ok "a cut-short chr22.map with no maps/DONE is written again, byte for byte as a fresh install"
 fi
 if [ "$(cat "${OLD}/maps/DONE" 2>/dev/null)" = "map=${ANCESTRY_FINE_MAP_SHA256} chroms=chr21 chr22" ]; then
   ok "maps/DONE names the map and the chromosomes"
@@ -133,25 +136,42 @@ fi
 
 # 3b. A map file removed after the install is written again, maps/DONE or not.
 : > "$OG_CALLS"
-rm -f "${OLD}/maps/chr21.rfmix.map"
+rm -f "${OLD}/maps/chr21.map"
 install_fine_maps "$OLD" "chr21 chr22 " > /dev/null 2>&1 || bad "the call with a map missing failed"
 if [ -s "$OG_CALLS" ] && same_maps "$OLD"; then
   ok "a map file missing under maps/DONE is written again"
 else
-  bad "a missing chr21.rfmix.map was not written again"
+  bad "a missing chr21.map was not written again"
 fi
 
-# 4. The control: the rule of before keeps the cut-short map.
+# 4. No RFMix map is written; an older install's stays as it is and is not a
+# reason to run again.
+rfmix_maps=$(find "${FRESH}/maps" "${OLD}/maps" -name '*.rfmix.map')
+if [ -n "$rfmix_maps" ]; then
+  bad "install_fine_maps wrote a .rfmix.map: $(tr '\n' ' ' <<< "$rfmix_maps")"
+else
+  ok "install_fine_maps writes no .rfmix.map"
+fi
+: > "$OG_CALLS"
+printf 'old\n' > "${OLD}/maps/chr21.rfmix.map"
+install_fine_maps "$OLD" "chr21 chr22 " > /dev/null 2>&1 || bad "the call beside an old .rfmix.map failed"
+if [ ! -s "$OG_CALLS" ] && [ "$(cat "${OLD}/maps/chr21.rfmix.map")" = old ]; then
+  ok "an older install's .rfmix.map is left as it is, and the matching maps/DONE still counts"
+else
+  bad "an older install's .rfmix.map made the install run again or was changed: $(tr '\n' ' ' < "$OG_CALLS")"
+fi
+
+# 5. The control: the rule of before keeps the cut-short map.
 CTRL="${WORK}/control"
 old_install "$CTRL"
 for c in chr21 chr22; do
-  [ -s "${CTRL}/maps/${c}.rfmix.map" ] && continue
-  run_in --rw "$CTRL" "$OG_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" --rfmix "$c" > /dev/null
+  [ -s "${CTRL}/maps/${c}.map" ] && continue
+  run_in --rw "$CTRL" "$OG_IMAGE" /pgp-bin/og setup genetic-map --zip "${CTRL}/maps/plink.GRCh38.map.zip" --out "${CTRL}/maps" "$c" > /dev/null
 done
 if same_maps "$CTRL"; then
   bad "control: the rule of before also left whole maps, so check 1 cannot fail"
 else
-  ok "control: the rule of before (skip a non-empty .rfmix.map) keeps the cut-short map"
+  ok "control: the rule of before (skip a non-empty map) keeps the cut-short map"
 fi
 
 if [ "$FAILS" -ne 0 ]; then

@@ -162,9 +162,7 @@ image	LOCITYPER_IMAGE	locityper	-	step 53
 image	GLNEXUS_IMAGE	FAMILIES	-	step 38
 image	HAP_IBD_IMAGE	FAMILIES	-	step 38
 image	EXOMISER_IMAGE	exomiser	-	step 48
-image	ADMIXTURE_IMAGE	ancestry_fine	-	step 26b
 image	BEAGLE_IMAGE	ancestry_fine,mocha	-	steps 26b and 51
-image	RFMIX_IMAGE	ancestry_fine	-	step 26b
 image	BCFTOOLS_HTTPS_IMAGE	--ancestry-fine-panel	-	setup.sh --ancestry-fine-panel
 image	MOCHA_IMAGE	mocha	-	step 51
 image	IBDMIX_IMAGE	archaic	-	step 43
