@@ -85,9 +85,9 @@ jobs:
           # The helper must still finish: a failed run is not a caught mistake.
           planted="${RUNNER_TEMP}/fetch-planted.tsv"
           OG_FETCH_PLANT=deletion rust/crates/og-bam/tests/samtools_fetch.sh "$SAMTOOLS_IMAGE" > "$planted"
-          if cmp -s "$planted" "${d}/fetch.pysam.tsv"; then
-            echo "ERROR: the samtools check passed a planted CIGAR mistake"; exit 1
-          fi
+          # cmp: 1 is a difference, 0 a passed mistake, 2 a comparison error.
+          rc=0; cmp -s "$planted" "${d}/fetch.pysam.tsv" || rc=$?
+          [ "$rc" -eq 1 ] || { echo "ERROR: the samtools check did not catch a planted CIGAR mistake (cmp exit $rc)"; exit 1; }
           echo "Control: a planted CIGAR mistake differs from fetch.pysam.tsv."
           for p in amd64:x86_64 arm64:aarch64; do
             docker run --rm --platform "linux/${p%:*}" -v "${PWD}:/w:ro" -w /w "$PYTHON_IMAGE" \
