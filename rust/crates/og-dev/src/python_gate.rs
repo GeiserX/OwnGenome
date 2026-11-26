@@ -594,8 +594,10 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                     Some(_) => format!("{}\t{code}", line.split('\t').next().unwrap_or("")),
                     None => code.to_owned(),
                 };
+                // A heredoc line holds at least the heredoc; a second command
+                // beside it is a second use.
                 let uses = if python_heredoc(code) {
-                    (1, "heredoc")
+                    (python_words(code).max(1), "heredoc")
                 } else {
                     let words = python_words(code);
                     let setup = usize::from(l == Lang::Workflow && setup_python(code));
@@ -819,8 +821,10 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
             let mut piece_at = at;
             for piece in real.split("\\n") {
                 let code = strip_line_comment(piece);
-                let k = if shebang_is_python(piece) || python_heredoc(code) {
+                let k = if shebang_is_python(piece) {
                     1
+                } else if python_heredoc(code) {
+                    python_words(code).max(1)
                 } else {
                     python_words(code)
                 };
@@ -1663,6 +1667,16 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
             k("x.rs", "fn a() { Command::new(\"@p3\"); }\n"),
             [(1, "rust")]
         );
+        // A Python heredoc line counts its own program words too: a second
+        // command beside the heredoc is a second use.
+        assert_eq!(
+            k("s.sh", "docker run tool @p3 /tool/pre a; @p3 -V <<@P\n@P\n"),
+            [(1, "heredoc"), (1, "heredoc")]
+        );
+        assert_eq!(k("s.sh", "@p3 - <<@P\n@P\n"), [(1, "heredoc")]);
+        assert_eq!(k("s.sh", "cat <<@P\n@P\n"), [(1, "heredoc")]);
+        let rs = t("fn a() { let _ = \"@p3 x; @p3 - <<@P\"; }\n");
+        assert_eq!(kinds("x.rs", &rs), [(1, "rust"), (1, "rust")]);
     }
 
     #[test]
