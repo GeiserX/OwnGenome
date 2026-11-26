@@ -353,7 +353,8 @@ data_fetch() (
   . "${REPO}/scripts/lib/common.sh" || exit 1
   # More and longer-spaced tries than a user's run: EBI and GitHub's raw host
   # stayed down for minutes at a time on 2026-11-04 (curl exit 7 and 28).
-  FETCH_TRIES=${E2E_FETCH_TRIES:-6} FETCH_WAIT=${E2E_FETCH_WAIT:-30}
+  # Exported: og setup fetch, a child process, reads them.
+  export FETCH_TRIES=${E2E_FETCH_TRIES:-6} FETCH_WAIT=${E2E_FETCH_WAIT:-30}
   case "$1" in
     mocha)
       m="${d}/manifest.txt"
