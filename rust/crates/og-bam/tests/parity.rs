@@ -1,8 +1,9 @@
 //! og against the Python it replaced: each row of
 //! `tests/data/parity/cases.tsv` runs `og pgx cyp2d6-*` or `og str motif` on
-//! the inputs `make_parity.py` made, and each row of
+//! its inputs (`tests/data/parity/in/`), and each row of
 //! `tests/data/reads/cases.tsv` runs `og cdna check|scan`, `og comphet
-//! phase` or `og bam contigs` on the inputs `make_reads_parity.py` made.
+//! phase` or `og bam contigs` on its inputs (`tests/data/reads/in/`).
+//! `tests/data/README.md` says how they were made.
 //! Each must give the Python's exit code,
 //! stdout and output files (`want/<case>/`), byte for byte. stderr is not
 //! compared: it carries Python's exception texts.

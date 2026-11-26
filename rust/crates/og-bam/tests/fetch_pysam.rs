@@ -1,6 +1,7 @@
 //! The fetch smoke: og-bam on a slice of the public test fixture writes,
-//! byte for byte, what pysam writes (`tests/data/fetch.pysam.tsv`, made by
-//! `tests/pysam_fetch.py`; `tests/data/README.md` says how).
+//! byte for byte, what pysam wrote (`tests/data/fetch.pysam.tsv`;
+//! `tests/data/README.md` says how). CI checks that samtools returns the same
+//! reads (`tests/samtools_fetch.sh`).
 
 use std::fs::File;
 use std::io::BufReader;

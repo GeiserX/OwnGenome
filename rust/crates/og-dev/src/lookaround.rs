@@ -622,8 +622,88 @@ fn fold_class(class: &str) -> Result<String, ()> {
     Ok(out)
 }
 
+/// The CPython answers the scanner tests compare against, committed under
+/// `tests/rust/vectors/scanner/` (gzipped JSON lines, one `[key, answer]`
+/// array per line; `tests/rust/vectors/README.md` says how they were made).
+#[cfg(test)]
+pub(crate) mod vectors {
+    use pycompat::json::{Value, loads};
+    use std::collections::HashMap;
+    use std::io::BufRead;
+    use std::path::PathBuf;
+    use std::sync::{LazyLock, Mutex};
+
+    fn dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/rust/vectors/scanner")
+    }
+
+    type Table = &'static HashMap<String, Value>;
+
+    /// Every row of `<name>.jsonl.gz`, by key.
+    pub(crate) fn table(name: &str) -> Table {
+        static TABLES: LazyLock<Mutex<HashMap<String, Table>>> = LazyLock::new(Default::default);
+        let mut tables = TABLES.lock().unwrap();
+        if let Some(t) = tables.get(name) {
+            return t;
+        }
+        let path = dir().join(format!("{name}.jsonl.gz"));
+        let mut rows = HashMap::new();
+        let reader = og_io::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        for (n, line) in reader.lines().enumerate() {
+            let line = line.unwrap();
+            let Value::Array(mut row) =
+                loads(&line).unwrap_or_else(|e| panic!("{}:{}: {e:?}", path.display(), n + 1))
+            else {
+                panic!("{}:{}: not an array", path.display(), n + 1);
+            };
+            let (Some(answer), Some(Value::Str(key))) = (row.pop(), row.pop()) else {
+                panic!("{}:{}: not [key, answer]", path.display(), n + 1);
+            };
+            assert!(
+                rows.insert(key, answer).is_none(),
+                "{}:{}: a key twice",
+                path.display(),
+                n + 1
+            );
+        }
+        let t: Table = Box::leak(Box::new(rows));
+        tables.insert(name.to_owned(), t);
+        t
+    }
+
+    /// The answer of `key` in `<name>`. A missing key fails: the inputs of
+    /// the test changed since the vectors were made.
+    pub(crate) fn get(name: &str, key: &str) -> &'static Value {
+        table(name).get(key).unwrap_or_else(|| {
+            panic!("no committed CPython answer in {name}.jsonl.gz for {key:?}: the test's input changed")
+        })
+    }
+
+    /// The answer of `key` as text.
+    pub(crate) fn text(name: &str, key: &str) -> &'static str {
+        match get(name, key) {
+            Value::Str(s) => s,
+            other => panic!("{name}: {key:?} is not text: {other:?}"),
+        }
+    }
+
+    /// FNV-1a, 64 bits, as 16 hex digits: the fingerprint of a long answer.
+    pub(crate) fn fnv(s: &str) -> String {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in s.bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}")
+    }
+}
+
+/// The matcher against the spans CPython's `re.finditer` found
+/// ([`vectors`]): `spans` holds each pattern and text of the named tests,
+/// `model` a fingerprint of each model pattern's spans over its texts.
 #[cfg(test)]
 mod python_tests {
+    use super::vectors::{fnv, text as answer};
     use super::*;
 
     #[test]
@@ -647,9 +727,7 @@ mod python_tests {
             r"(?x) a + # comment",
         ] {
             for text in ["", "aa", "a\n", "a\n\n", "\u{301}aİıſK9\u{1c}\u{345}Ιι"] {
-                let output = std::process::Command::new("python3").args(["-I", "-c",
-                    "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
-                assert!(output.status.success(), "span oracle failed");
+                let python = answer("spans", &format!("{pattern}\u{0}{text}"));
                 let rule = PythonRule::compile(pattern, false).expect("supported span pattern");
                 let actual = rule
                     .find_iter(text)
@@ -663,7 +741,7 @@ mod python_tests {
                     })
                     .collect::<Vec<_>>()
                     .join(",");
-                assert_eq!(actual, String::from_utf8(output.stdout).unwrap().trim());
+                assert_eq!(actual, python, "{pattern:?} on {text:?}");
             }
         }
     }
@@ -674,10 +752,7 @@ mod python_tests {
             ("(a*|b*?){1,3}", "ba", "0:0,0:2,2:2"),
             ("(?:a*|[ab]{0,2}){0,3}", "baa", "0:0,0:3,3:3"),
         ] {
-            let output = std::process::Command::new("python3").args(["-I", "-c",
-                "import re,sys; print(','.join(str(m.start())+':'+str(m.end()) for m in re.finditer(sys.argv[1],sys.argv[2])))", pattern, text]).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), spans);
+            assert_eq!(answer("spans", &format!("{pattern}\u{0}{text}")), spans);
             assert!(
                 PythonRule::compile(pattern, false).is_err(),
                 "unsupported span case accepted"
@@ -782,77 +857,24 @@ mod python_tests {
             .join(",")
     }
 
+    /// Each pattern the matcher accepts, against every text: its spans,
+    /// joined in text order, must have the fingerprint CPython's spans had.
+    /// A pattern with no committed answer fails (the matcher accepts more
+    /// than when the answers were made). Returns the pairs compared.
     fn compare_model(label: &str, patterns: &[String], texts: &[String]) -> usize {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
         let (mut accepted, mut refused) = (0, 0);
-        for (batch, chunk) in patterns.chunks(128).enumerate() {
-            let rules: Vec<_> = chunk
-                .iter()
-                .filter_map(|p| match PythonRule::compile(p, false) {
-                    Ok(r) => Some((p, r)),
-                    Err(()) => {
-                        refused += 1;
-                        None
-                    }
-                })
-                .collect();
-            if rules.is_empty() {
+        for (index, pattern) in patterns.iter().enumerate() {
+            let Ok(rule) = PythonRule::compile(pattern, false) else {
+                refused += 1;
                 continue;
-            }
-            accepted += rules.len();
-            let array = |items: Vec<&str>| {
-                let mut out = String::from("[");
-                for (i, item) in items.iter().enumerate() {
-                    if i != 0 {
-                        out.push(',');
-                    }
-                    pycompat::json::quote(&mut out, item, true);
-                }
-                out.push(']');
-                out
             };
-            let input = format!(
-                "[{},{}]",
-                array(rules.iter().map(|(p, _)| p.as_str()).collect()),
-                array(texts.iter().map(String::as_str).collect())
+            accepted += 1;
+            let spans: Vec<String> = texts.iter().map(|text| span_list(&rule, text)).collect();
+            assert_eq!(
+                fnv(&spans.join("\n")),
+                answer("model", &format!("{}:{pattern}", texts.len())),
+                "{label}: pattern {index} {pattern:?}: its spans differ from CPython's"
             );
-            let mut child = Command::new("python3")
-                .args([
-                    "-I",
-                    "-c",
-                    r#"
-import json,re,sys
-patterns,texts=json.load(sys.stdin)
-for p in patterns:
-    r=re.compile(p)
-    for text in texts:
-        print(','.join(str(m.start())+':'+str(m.end()) for m in r.finditer(text)))
-"#,
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut stdin = child.stdin.take().unwrap();
-            let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
-            let output = child.wait_with_output().unwrap();
-            writer.join().unwrap().unwrap();
-            assert!(output.status.success(), "model oracle failed");
-            assert!(output.stderr.is_empty(), "model oracle diagnostic");
-            let oracle = String::from_utf8(output.stdout).unwrap();
-            let mut spans = oracle.lines();
-            for (index, (_, rule)) in rules.iter().enumerate() {
-                for (t, text) in texts.iter().enumerate() {
-                    assert_eq!(
-                        Some(span_list(rule, text).as_str()),
-                        spans.next(),
-                        "{label}: batch {batch}, accepted pattern {index}, text {t}"
-                    );
-                }
-            }
-            assert!(spans.next().is_none(), "extra oracle rows");
         }
         let pairs = accepted * texts.len();
         println!(
