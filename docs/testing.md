@@ -248,6 +248,39 @@ How long `scripts/setup.sh --og` takes to build both binaries:
 
 The cold build downloads the crates once; pulling `OG_BUILDER` the first time adds about 1 GB. The Rust workflow's `images` job prints both times for `ubuntu-latest` in its summary.
 
+## Comparing setup installs
+
+`scripts/setup.sh` moves to `og setup install` one component at a time. A full install takes about 19 hours, so a slice cannot be proven by running the whole setup again. Each slice runs [`tests/setup/ab.sh`](https://github.com/GeiserX/OwnGenome/blob/main/tests/setup/ab.sh) instead. It installs one component twice into the same empty folder, with bash (side A, `OG_SETUP=bash scripts/setup.sh --<component>`) and with og (side B, `OG_SETUP=og og setup install --<component>`), and compares what each run left:
+
+- the install trees, file by file, with `og dev install-manifest` (below);
+- the exit codes;
+- the two logs, with times, durations, speeds, curl progress and image pull progress masked, and the missing list (`Missing (...)`, each item and its `retry:` line) line by line;
+- the images and tags the engine holds after each side. Before side B it untags the `localhost/pgp-pinned/` tags side A added, so side B must add them again;
+- each side's own `NXF_HOME`, where setup puts the nf-schema plugin;
+- `bin/.og`.
+
+Side B calls og itself and never `setup.sh`, so it cannot run bash in og's place. When og has no `setup install`, ab.sh stops before side A. `--bash-vs-bash` runs side A's command twice. It finds what changes from one run to the next with no code change, and its result says that no og side ran. Every run ends with a control: ab.sh flips one bit of the smallest file compared byte for byte in tree B, and the compare must turn red and name that file. A run whose control stays green exits 2.
+
+A component that needs another one first, as most need the reference, gets it from `AB_SEED`. That folder is put into each side's empty folder before the side runs: as hard links on Linux, as APFS clones on macOS, never as symlinks, which a container cannot follow out of `GENOME_DIR`. The seed must be unchanged at the end. `OG_DOWNLOADS` is shared by both sides, so side B reuses side A's downloads where setup reads that folder. Other variables exported before the call, such as `ARCHAIC_REGIONS`, reach both sides.
+
+### The manifest and its compare modes
+
+`og dev install-manifest DIR` lists every file, folder and symlink under DIR with its type, size, sha256 and permission bits, by path relative to DIR. It leaves out the `downloads` folder at the top and every `*.log` file. A file of a kind with volatile bytes also gets the digest of what its compare mode reads, so a manifest can be compared after its tree is gone. `og dev install-manifest --compare A.tsv B.tsv --allow tests/setup/install-manifest-allow.tsv` prints one `DIFF` line per difference and exits 1 when there is one.
+
+By default every file is compared byte for byte. A row of [`tests/setup/install-manifest-allow.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/tests/setup/install-manifest-allow.tsv) names a path pattern, a compare mode, the component that writes the file and the reason. A row lets through only the bytes its mode is for:
+
+| Mode | What is compared |
+|---|---|
+| `gzip` | the decompressed content; the header's time and OS byte are ignored |
+| `vcf` | the VCF with the value of `##fileDate=` and the `Date=` part of each `##bcftools_<cmd>Command=` line masked; the bcftools version and command lines still count |
+| `index` | a `.tbi` or `.csi`: its header and sequence names. The index must also fit the data file beside it: every chunk ends inside that file, and each checked chunk start begins a BGZF block. Bins and offsets move with any byte of the data file, which has its own row |
+| `jellyfish` | the counts after the JSON header and its padding; the header holds the host, folder and time of the count |
+| `numeric` | the lines and words of a text file; a word with a decimal point or an exponent is rounded to 4 significant digits, every other word is compared as it is. For a multithreaded float program such as smartpca. A value on a rounding edge makes the compare red, never green |
+| `skip` | nothing; the row must also say, in `cannot_compare`, why no other mode can compare the file |
+| `perm` | added to any mode, or alone: the permission bits may differ |
+
+A stamp (`DONE`, `INSTALLED`, `RELEASE`, `version.txt`, `*.stamp`, `*.installed`, `*.release`) is always compared byte for byte, because its bytes decide whether the next setup run installs the component again. A row that can match a stamp name is refused. Each mode has a test with a real change inside a file of its kind that must turn the compare red (`rust/crates/og-dev/tests/install_manifest.rs`).
+
 ## The parity harness
 
 [`scripts/ci/oracle-diff.sh`](https://github.com/GeiserX/OwnGenome/blob/main/scripts/ci/oracle-diff.sh) runs the cases in [`tests/parity/cases.tsv`](https://github.com/GeiserX/OwnGenome/blob/main/tests/parity/cases.tsv) and compares their exit codes, stdout, stderr, named outputs, and new files with frozen goldens. It compares an input changed in place only when the case names it as an output. The goldens capture archived outputs and deliberate changes in the Rust ports. See the [parity case guide](https://github.com/GeiserX/OwnGenome/blob/main/tests/parity/README.md).
