@@ -19,7 +19,10 @@
 //!   or `${PYTHON:-python3}` that picks the interpreter. The program words
 //!   are python, python3, pythonX.Y and the package runners pip, pip3,
 //!   pipx, uv and uvx. A workflow step that `uses:` a `setup-python` or
-//!   `setup-uv` action is a call too;
+//!   `setup-uv` action (in a block or a flow mapping) is a call too. A shell
+//!   quote may span lines (a `#` inside it is text), a Nextflow `"""` or
+//!   `'''` body is shell (`rm cache/*` is a glob, not a comment), and a
+//!   Make or just recipe drops its `@`, `-` and `+` prefixes first;
 //! - `heredoc`: a heredoc whose delimiter says it holds Python (`<<'PY'`,
 //!   `<<PYTHON`, `<<EOF_PYTHON`), not a `<<PY` inside quotes;
 //! - `rust`: in Rust code outside comments, a `Command::new("python3")`
@@ -43,9 +46,10 @@
 //! findings are third-party Python: a tool run inside its own pinned image
 //! (PharmCAT's preprocessor, eKLIPse, Cyrius and the docs builder Zensical
 //! in `PYTHON_IMAGE`). Each row is `file<TAB>uses<TAB>reason[<TAB>marks]`,
-//! where `uses` is the number of lines with a finding and `marks`, if
-//! given, is a `|`-separated list of texts one of which every such line
-//! must hold (`/pharmcat/pharmcat_vcf_preprocessor`), so a use swapped for
+//! where `uses` is the number of findings (one per use: a line with two
+//! Python commands holds two) and `marks`, if given, is a `|`-separated
+//! list of texts one of which the code of every such line, without its
+//! comments, must hold (`/pharmcat/pharmcat_vcf_preprocessor`), so a use swapped for
 //! another at the same count fails too. The gate fails when
 //!
 //! - a finding is in a file no row names;
@@ -248,20 +252,28 @@ fn comment_start(b: &[u8], i: usize) -> bool {
     i == 0 || matches!(b[i - 1], b' ' | b'\t' | b';' | b'&' | b'|')
 }
 
-/// A shell line without its comment, outside quotes opened on this line.
-fn strip_line_comment(line: &str) -> &str {
+/// Shell quotes a line leaves open, carried to the next line.
+#[derive(Clone, Copy, Default)]
+struct Quotes {
+    single: bool,
+    double: bool,
+}
+
+/// A shell line without its comment. `q` carries the quotes a line leaves
+/// open, so a `#` inside a quoted string that spans lines is text, and the
+/// command after the quote closes is still read.
+fn strip_line_comment_in<'a>(line: &'a str, q: &mut Quotes) -> &'a str {
     let b = line.as_bytes();
-    let (mut single, mut double) = (false, false);
     let mut i = 0;
     while i < b.len() {
         match b[i] {
-            b'\\' if !single => {
+            b'\\' if !q.single => {
                 i += 2;
                 continue;
             }
-            b'\'' if !double => single = !single,
-            b'"' if !single => double = !double,
-            b'#' if !single && !double && comment_start(b, i) => return &line[..i],
+            b'\'' if !q.double => q.single = !q.single,
+            b'"' if !q.single => q.double = !q.double,
+            b'#' if !q.single && !q.double && comment_start(b, i) => return &line[..i],
             _ => {}
         }
         i += 1;
@@ -269,19 +281,36 @@ fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-/// A Nextflow line without its comments, read in order: `/* */` (`open`
+/// A shell line without its comment, outside quotes opened on this line.
+fn strip_line_comment(line: &str) -> &str {
+    strip_line_comment_in(line, &mut Quotes::default())
+}
+
+/// What a Nextflow or JavaScript file leaves open at the end of a line.
+#[derive(Clone, Copy, Default)]
+struct Open {
+    /// A `/* */` block comment.
+    block: bool,
+    /// A Nextflow `"""` or `'''` string: the shell body of a `script:`
+    /// block, where `/*` and `//` are a glob and a path, not comments.
+    body: bool,
+}
+
+/// A Nextflow line without its comments, read in order: `/* */` (`st`
 /// carries a block that spans lines), `//` at the start or after a blank,
-/// and, with `hash`, a `#` shell comment in a `script:` block (JavaScript
-/// has none). Only a marker outside quotes counts, and a `/*` after `//` is part of the line comment.
-fn strip_nf_comments(line: &str, open: &mut bool, hash: bool) -> String {
+/// and, with `nf`, a `#` shell comment. With `nf`, a `"""` or `'''` opens
+/// and closes a shell body, where only `#` comments count (`rm cache/*` is
+/// a glob). Only a marker outside quotes counts, and a `/*` after `//` is
+/// part of the line comment. JavaScript (`nf` false) has neither.
+fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
     let b = line.as_bytes();
     let mut out = String::new();
     let (mut single, mut double) = (false, false);
     let (mut i, mut seg) = (0, 0);
     while i < b.len() {
-        if *open {
+        if st.block {
             if b[i] == b'*' && b.get(i + 1) == Some(&b'/') {
-                *open = false;
+                st.block = false;
                 seg = i + 2;
                 i += 2;
             } else {
@@ -290,6 +319,11 @@ fn strip_nf_comments(line: &str, open: &mut bool, hash: bool) -> String {
             continue;
         }
         let quoted = single || double;
+        if nf && !quoted && (b[i..].starts_with(b"\"\"\"") || b[i..].starts_with(b"'''")) {
+            st.body = !st.body;
+            i += 3;
+            continue;
+        }
         let after_blank = i == 0 || b[i - 1] == b' ' || b[i - 1] == b'\t';
         match b[i] {
             b'\\' if !single => {
@@ -298,17 +332,17 @@ fn strip_nf_comments(line: &str, open: &mut bool, hash: bool) -> String {
             }
             b'\'' if !double => single = !single,
             b'"' if !single => double = !double,
-            b'/' if !quoted && b.get(i + 1) == Some(&b'*') => {
+            b'/' if !quoted && !st.body && b.get(i + 1) == Some(&b'*') => {
                 out.push_str(&line[seg..i]);
-                *open = true;
+                st.block = true;
                 i += 2;
                 continue;
             }
-            b'/' if !quoted && after_blank && b.get(i + 1) == Some(&b'/') => {
+            b'/' if !quoted && !st.body && after_blank && b.get(i + 1) == Some(&b'/') => {
                 out.push_str(&line[seg..i]);
                 return out;
             }
-            b'#' if hash && !quoted && comment_start(b, i) => {
+            b'#' if nf && !quoted && comment_start(b, i) => {
                 out.push_str(&line[seg..i]);
                 return out;
             }
@@ -316,7 +350,7 @@ fn strip_nf_comments(line: &str, open: &mut bool, hash: bool) -> String {
         }
         i += 1;
     }
-    if !*open {
+    if !st.block {
         out.push_str(&line[seg.min(line.len())..]);
     }
     out
@@ -346,10 +380,11 @@ fn word_start(b: &[u8], s: usize) -> bool {
     }
 }
 
-/// The Python program words of a code line (python, python3, pythonX.Y,
-/// pip, pip3, pipx, uv, uvx), as calls.
-fn python_words(code: &str) -> bool {
+/// How many Python program words a code line holds (python, python3,
+/// pythonX.Y, pip, pip3, pipx, uv, uvx): each is a use.
+fn python_words(code: &str) -> usize {
     let b = code.as_bytes();
+    let mut uses = 0;
     for s in 0..b.len() {
         if !matches!(b[s], b'p' | b'u') || !word_start(b, s) {
             continue;
@@ -371,23 +406,38 @@ fn python_words(code: &str) -> bool {
         let braced = s > 0 && b[s - 1] == b'{' && b.get(e) == Some(&b'}');
         let word = &code[s..e];
         if after_ok && !braced && (is_python_program(word) || is_runner_program(word)) {
+            uses += 1;
+        }
+    }
+    uses
+}
+
+/// A workflow step that installs a Python: its `uses:` key, in a block
+/// mapping (`- uses: x`) or a flow mapping (`- {name: n, uses: x}`), names
+/// a `setup-python` or `setup-uv` action, at any owner and ref.
+fn setup_python(code: &str) -> bool {
+    let mut from = 0;
+    while let Some(k) = code[from..].find("uses:") {
+        let s = from + k;
+        from = s + 5;
+        // The key starts the line (after `- `) or follows `{` or `,`: not a
+        // `- uses:` inside a printed string.
+        let before = code[..s].trim();
+        if !(before.is_empty() || before == "-" || before.ends_with('{') || before.ends_with(',')) {
+            continue;
+        }
+        let value = code[from..].trim_start();
+        let value = value.trim_start_matches(['"', '\'']);
+        let action = value
+            .split(['@', ',', '}', '"', '\'', ' ', '\t'])
+            .next()
+            .unwrap_or("");
+        let name = action.rsplit('/').next().unwrap_or("");
+        if name == ["setup-", PYTHON].concat() || name == ["setup-", RUNNERS[1]].concat() {
             return true;
         }
     }
     false
-}
-
-/// A workflow step that installs a Python: `uses:` a `setup-python` or
-/// `setup-uv` action, at any owner and ref.
-fn setup_python(code: &str) -> bool {
-    let t = code.trim_start();
-    let t = t.strip_prefix("- ").unwrap_or(t).trim_start();
-    t.strip_prefix("uses:").is_some_and(|r| {
-        let action = r.trim().trim_matches(['"', '\'']);
-        let action = action.split('@').next().unwrap_or("");
-        let name = action.rsplit('/').next().unwrap_or("");
-        name == ["setup-", PYTHON].concat() || name == ["setup-", RUNNERS[1]].concat()
-    })
 }
 
 /// Does this code line open a heredoc whose delimiter says Python? Only a
@@ -446,14 +496,16 @@ fn excerpt(line: &str) -> String {
     }
 }
 
-/// A finding on line `line` (1-based, 0 for the file) of `rel`.
-fn finding(rel: &str, line: usize, kind: &'static str, text: &str) -> Finding {
+/// A finding on line `line` (1-based, 0 for the file) of `rel`: `text` is
+/// the whole line, `code` the part a row's marks are looked for in (the
+/// line without its comments).
+fn finding(rel: &str, line: usize, kind: &'static str, text: &str, code: &str) -> Finding {
     Finding {
         file: rel.to_owned(),
         line,
         kind,
         text: excerpt(text),
-        code: text.trim().to_owned(),
+        code: code.trim().to_owned(),
     }
 }
 
@@ -463,19 +515,28 @@ fn python_name(rel: &str) -> Option<Finding> {
     [".py", ".pyw", ".pyi", ".ipynb"]
         .iter()
         .any(|e| name.ends_with(e))
-        .then(|| finding(rel, 0, "file", "a Python file"))
+        .then(|| finding(rel, 0, "file", "a Python file", ""))
 }
 
-/// The findings in one file's text.
+/// A Makefile or a justfile: an indented recipe line may start with `@`,
+/// `-` or `+`, which make and just take off before the shell runs it.
+fn recipe_file(rel: &str) -> bool {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    name.ends_with(".mk")
+        || matches!(
+            name,
+            "Makefile" | "makefile" | "GNUmakefile" | "justfile" | "Justfile" | ".justfile"
+        )
+}
+
+/// The findings in one file's text: one per use, so a line with two
+/// Python commands has two.
 pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
     let mut out: Vec<Finding> = python_name(rel).into_iter().collect();
     let first = text.lines().next().unwrap_or("");
     if shebang_is_python(first) {
-        out.push(finding(rel, 1, "shebang", first));
+        out.push(finding(rel, 1, "shebang", first, first));
     }
-    let push = |out: &mut Vec<Finding>, n: usize, kind, line: &str| {
-        out.push(finding(rel, n, kind, line));
-    };
     match lang(rel, text) {
         Lang::Other => {}
         Lang::Rust => scan_rust(rel, text, &mut out),
@@ -483,13 +544,17 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             // `//` and `/* */` comments; Nextflow's script blocks also have
             // shell `#` comments, JavaScript has none.
             let slashes = matches!(l, Lang::Nextflow | Lang::Script);
+            let recipes = recipe_file(rel);
             // A command table: only its `command` field is shell.
             let column = if l == Lang::CommandTable {
                 command_column(text)
             } else {
                 None
             };
-            let mut block = false;
+            let mut open = Open::default();
+            // A shell quote can span lines; the other kinds start each line
+            // outside quotes.
+            let mut quotes = Quotes::default();
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
@@ -498,26 +563,46 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 if l == Lang::Workflow && yaml_label(line) {
                     continue;
                 }
-                let field = match column {
+                let mut field = match column {
                     Some(c) => line.split('\t').nth(c).unwrap_or(""),
                     None => line,
                 };
+                if recipes && field.starts_with([' ', '\t']) {
+                    field = field.trim_start().trim_start_matches(['@', '-', '+']);
+                }
                 // A `#!` line inside a Nextflow block comment is prose.
-                if n > 1 && !block && shebang_is_python(field) {
-                    push(&mut out, n, "shebang", line);
+                if n > 1
+                    && !open.block
+                    && !quotes.single
+                    && !quotes.double
+                    && shebang_is_python(field)
+                {
+                    out.push(finding(rel, n, "shebang", line, field));
                     continue;
                 }
                 let stripped;
                 let code = if slashes {
-                    stripped = strip_nf_comments(field, &mut block, l == Lang::Nextflow);
+                    stripped = strip_nf_comments(field, &mut open, l == Lang::Nextflow);
                     stripped.as_str()
+                } else if l == Lang::Shell {
+                    strip_line_comment_in(field, &mut quotes)
                 } else {
                     strip_line_comment(field)
                 };
-                if python_heredoc(code) {
-                    push(&mut out, n, "heredoc", line);
-                } else if python_words(code) || (l == Lang::Workflow && setup_python(code)) {
-                    push(&mut out, n, "call", line);
+                // The marks of a command-table row may name its image column.
+                let marked = match column {
+                    Some(_) => format!("{}\t{code}", line.split('\t').next().unwrap_or("")),
+                    None => code.to_owned(),
+                };
+                let uses = if python_heredoc(code) {
+                    (1, "heredoc")
+                } else {
+                    let words = python_words(code);
+                    let setup = usize::from(l == Lang::Workflow && setup_python(code));
+                    (words + setup, "call")
+                };
+                for _ in 0..uses.0 {
+                    out.push(finding(rel, n, uses.1, line, &marked));
                 }
             }
         }
@@ -646,12 +731,24 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         let e = src[pos..].find('\n').map_or(src.len(), |k| pos + k);
         &src[s..e]
     };
-    let mut seen = BTreeSet::new();
-    let mut hit = |pos: usize, out: &mut Vec<Finding>| {
-        let n = line_of(pos);
-        if seen.insert(n) {
-            out.push(finding(rel, n, "rust", line_text(pos)));
-        }
+    // The line without its comments, where a row's marks are looked for.
+    let line_code = |pos: usize| {
+        let s = src[..pos].rfind('\n').map_or(0, |k| k + 1);
+        let e = src[pos..].find('\n').map_or(src.len(), |k| pos + k);
+        let kept: Vec<u8> = (s..e)
+            .filter(|&p| part[p] != Part::Comment)
+            .map(|p| src.as_bytes()[p])
+            .collect();
+        String::from_utf8_lossy(&kept).into_owned()
+    };
+    // Uses per line (at a position on it): each python word of a string, a
+    // heredoc or #! line, the oracle variable. A Command::new of a python
+    // program is one use at least on its line; its program string is that
+    // same use, not a second one.
+    let mut uses: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
+    let mut calls: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut add = |pos: usize, k: usize| {
+        uses.entry(line_of(pos)).or_insert((0, pos)).0 += k;
     };
     // Command::new("…python3") with the call in code and the program a
     // string literal, ordinary or raw (`r"…"`, `r#"…"#`), after any blanks
@@ -687,7 +784,7 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         let prog = &src[body..end];
         let base = prog.rsplit('/').next().unwrap_or(prog);
         if is_python_program(base) {
-            hit(s, out);
+            calls.entry(line_of(s)).or_insert(s);
         }
     }
     // The oracle variable, in code or in a string (env::var("…")).
@@ -701,7 +798,7 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
             && !word(s.checked_sub(1).and_then(|p| src.as_bytes().get(p)))
             && !word(src.as_bytes().get(from))
         {
-            hit(s, out);
+            add(s, 1);
         }
     }
     // Every string literal, read with the shell rules on each of its lines
@@ -722,22 +819,35 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
             let mut piece_at = at;
             for piece in real.split("\\n") {
                 let code = strip_line_comment(piece);
-                if shebang_is_python(piece) || python_heredoc(code) || python_words(code) {
-                    hit(piece_at, out);
+                let k = if shebang_is_python(piece) || python_heredoc(code) {
+                    1
+                } else {
+                    python_words(code)
+                };
+                if k > 0 {
+                    add(piece_at, k);
                 }
                 piece_at += piece.len() + 2;
             }
             at += real.len() + 1;
         }
     }
-    out.sort_by_key(|f| f.line);
+    for (n, pos) in calls {
+        let e = uses.entry(n).or_insert((0, pos));
+        e.0 = e.0.max(1);
+    }
+    for (n, (k, pos)) in uses {
+        for _ in 0..k {
+            out.push(finding(rel, n, "rust", line_text(pos), &line_code(pos)));
+        }
+    }
 }
 
 /// One row of the allow list.
 #[derive(Debug)]
 struct Row {
     file: String,
-    /// How many Python uses (lines with a finding) the file holds.
+    /// How many Python uses (findings) the file holds.
     uses: usize,
     reason: String,
     /// Texts one of which every line with a finding must hold; empty: any.
@@ -1523,6 +1633,85 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
         assert!(f.iter().any(|f| f.contains("has 5 columns")), "{f:?}");
         let f = g("mark-empty", &one, "s.sh\t1\tTOOL_IMAGE: x\t/tool/pre||\n");
         assert!(f.iter().any(|f| f.contains("an empty mark")), "{f:?}");
+        // A second Python on an allowed line is a second use.
+        let more = [("s.sh", t("docker run x @p3 /tool/pre a; @p3 -V\n"))];
+        let f = g("mark-more", &more, row);
+        assert!(
+            f.len() == 1 && f[0].contains("s.sh holds 2 Python uses, the row says 1"),
+            "{f:?}"
+        );
+        // A mark in a comment does not count: it must be in the code.
+        let commented = [("s.sh", t("@p3 -V # /tool/pre\n"))];
+        let f = g("mark-comment", &commented, row);
+        assert!(
+            f.len() == 1 && f[0].contains("s.sh:1 holds none of the row's marks"),
+            "{f:?}"
+        );
+    }
+
+    #[test]
+    fn each_program_word_on_a_line_is_a_use() {
+        assert_eq!(
+            k("s.sh", "@p3 a; @p3 b | @i install c\n"),
+            [(1, "call"), (1, "call"), (1, "call")]
+        );
+        let rs = t("fn a() { let _ = [\"@p3 a\", \"sh -c '@p3 b; @ux c'\"]; }\n");
+        assert_eq!(kinds("x.rs", &rs), [(1, "rust"), (1, "rust"), (1, "rust")]);
+        // Command::new("python3") is one use, not one for the call and one
+        // for its string.
+        assert_eq!(
+            k("x.rs", "fn a() { Command::new(\"@p3\"); }\n"),
+            [(1, "rust")]
+        );
+    }
+
+    #[test]
+    fn a_quote_that_spans_lines_hides_no_command() {
+        // The # on line 2 is inside the quote opened on line 1; python3
+        // runs after the quote closes.
+        let sh = "printf '%s\\n' 'first\n# second'; @p3 -V\n";
+        assert_eq!(k("s.sh", sh), [(2, "call")]);
+        // A real comment after a closed quote is still a comment.
+        assert!(k("s.sh", "echo 'a\nb' # @p3 later\n").is_empty());
+    }
+
+    #[test]
+    fn a_glob_in_a_nextflow_shell_body_opens_no_comment() {
+        let nf =
+            "process P {\n    script:\n    \"\"\"\n    rm -f cache/*\n    @p3 -V\n    \"\"\"\n}\n";
+        assert_eq!(k("m.nf", nf), [(5, "call")]);
+        // Outside the body, /* still opens a Groovy block comment.
+        let nf = "/* cache/\n@p3 -V\n*/\nprocess P {\n    script:\n    '''\n    ls a//b\n    @p3 x\n    '''\n}\n";
+        assert_eq!(k("m.nf", nf), [(8, "call")]);
+    }
+
+    #[test]
+    fn setup_python_in_a_flow_mapping() {
+        let yml = "jobs:\n  a:\n    steps:\n      - {uses: actions/setup-@p@v7}\n      \
+                   - {name: x, uses: 'astral-sh/setup-@u@v1'}\n      - {name: setup-@p, run: echo}\n";
+        assert_eq!(
+            k(".github/workflows/x.yml", yml),
+            [(4, "call"), (5, "call")]
+        );
+        // A step printed into a file by a control runs nothing.
+        let yml = "        run: |\n          printf '      - uses: actions/setup-@p@v7\\n' >> f.yml\n          check '- uses: actions/setup-@p@v7'\n";
+        assert!(k(".github/workflows/x.yml", yml).is_empty());
+    }
+
+    #[test]
+    fn make_and_just_recipe_prefixes() {
+        // Make drops @, - and + before it hands the line to the shell; so
+        // does just with @ and -.
+        assert_eq!(
+            k("Makefile", "x:\n\t@@p3 -V\n\t-@p3 a\n\t+@@i install x\n"),
+            [(2, "call"), (3, "call"), (4, "call")]
+        );
+        assert_eq!(
+            k("justfile", "serve:\n    @@p3 -m http.server\n"),
+            [(2, "call")]
+        );
+        // In a shell script, -python3 stays an option name.
+        assert!(k("s.sh", "\t-@p3 a\n").is_empty());
     }
 
     #[cfg(unix)]

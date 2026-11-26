@@ -4,10 +4,12 @@
 # check of a log, a stub, an image name). One file per row, never a directory
 # or a pattern; a row that covers nothing fails the gate. A Python file is
 # owned code and can never be listed here.
-# uses is the number of lines with a Python use in the file: a new use is
-# checked against the reason before the count changes. marks (optional) are
-# texts separated by |; every use line must hold one of them, so a use
-# swapped for another at the same count fails too.
+# uses is the number of Python uses in the file (each python or package
+# runner word, Python heredoc and python #! line; one line can hold two): a
+# new use is checked against the reason before the count changes. marks
+# (optional) are texts separated by |; the code of every use line (without
+# its comments) must hold one of them, so a use swapped for another at the
+# same count fails too.
 # file<TAB>uses<TAB>reason<TAB>marks
 .github/workflows/docs.yml	3	PYTHON_IMAGE: Zensical, the docs site builder, pip-installed from docs/requirements-docs.txt (every wheel hash-locked) and run inside the pinned python image	/tmp/docs
 modules/local/cyrius/main.nf	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image	-m cyrius
@@ -19,16 +21,16 @@ rust/crates/og-fresh/src/registry.rs	2	PYTHON_IMAGE: the python image's Docker H
 rust/crates/og-fresh/src/selftest.rs	1	PYTHON_IMAGE: the python image's Docker Hub repository (library/python) in the pin reader's self-test; runs no Python	library/python
 rust/crates/og-setup/tests/strchive_catalog.rs	1	STRANGER_IMAGE: Stranger's own Python, run inside its image to find the catalog it ships	exec stranger
 rust/crates/og-steps/src/pypgx_summary.rs	1	PYPGX_IMAGE: reads the pythonX.Y folder name of PyPGx's install in its image to find its tables; runs no Python	strip_prefix(
-rust/crates/og-steps/tests/pgx_outside_calls.rs	2	PYPGX_IMAGE: builds a fake PyPGx install tree (a python3.12 folder link and a #! line) for that reader; runs no Python	python3.1"|#!/usr/local/bin/
+rust/crates/og-steps/tests/pgx_outside_calls.rs	3	PYPGX_IMAGE: builds a fake PyPGx install tree (a python3.12 folder link and a #! line) for that reader; runs no Python	python3.1"|#!/usr/local/bin/
 scripts/07-pharmacogenomics.sh	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3	/pharmcat/pharmcat_vcf_preprocessor
 scripts/20-mtoolbox.sh	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3	$EK
 scripts/21-cyrius.sh	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image	-m cyrius
 scripts/setup.sh	1	PYTHON_IMAGE: install_cyrius pip-installs the hash-locked Cyrius wheels (scripts/cyrius-constraints.txt) inside the pinned python image	--require-hashes
 tests/e2e/pharmcat-indel-refblocks-1.sh	1	PHARMCAT_IMAGE: the case's control runs PharmCAT's own preprocessor in its image	/pharmcat/pharmcat_vcf_preprocessor
-tests/fake-docker/pgx-opt-in-steps.sh	5	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs, its python3 -m cyrius call and the pip install it must no longer run; runs no Python	run_lines python|grep
+tests/fake-docker/pgx-opt-in-steps.sh	6	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs, its python3 -m cyrius call and the pip install it must no longer run; runs no Python	run_lines python|grep
 tests/fake-docker/single-source-run-in.sh	2	PYTHON_IMAGE: checks that setup.sh --cyrius ran the python image, and names its pip install in a failure message; runs no Python	docker_log_has|fail "
 tests/parity/gen/report-corpus.sh	1	PYTHON_IMAGE: names the python image in a made-up run manifest; runs no Python	"PYTHON_IMAGE"
 tests/smoke/commands.tsv	5	PHARMCAT_IMAGE, EKLIPSE_IMAGE, WHATSHAP_IMAGE, PGSC_FRAPOSA_IMAGE, PGSC_PYYAML_IMAGE: each row runs Python that ships in that image (PharmCAT's preprocessor, eKLIPse, pysam, fraposa, PyYAML)	PHARMCAT_IMAGE|EKLIPSE_IMAGE|WHATSHAP_IMAGE|PGSC_FRAPOSA_IMAGE|PGSC_PYYAML_IMAGE
 tests/smoke/cyrius.sh	2	PYTHON_IMAGE: the Cyrius smoke run pip-installs the hash-locked wheels, then runs python3 -m cyrius, in the python image	--require-hashes|-m cyrius
 tests/smoke/hipstr.sh	1	HIPSTR_IMAGE: prints the image's own python3 version for its smoke row	python_version.txt
-tests/test_owngenome_view.sh	2	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python	NOPY
+tests/test_owngenome_view.sh	3	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python	NOPY
