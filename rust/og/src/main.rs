@@ -50,7 +50,7 @@ Pipeline helpers (the steps run these):
   og map svg [args]
   og setup mask-fasta SRC BED DEST
   og setup unzip ZIP DEST
-  og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...
+  og setup genetic-map --zip ZIP --out DIR CHROM...
   og setup chrm-shift [args]
   og setup revel [args]
   og setup roh-af [args]

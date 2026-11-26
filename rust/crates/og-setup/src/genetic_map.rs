@@ -1,21 +1,20 @@
-//! `og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...`: the PLINK
-//! GRCh38 genetic map of each chromosome, out of Beagle's
-//! `plink.GRCh38.map.zip`, for step 26b (Beagle and RFMix) and step 51
-//! (MoChA).
+//! `og setup genetic-map --zip ZIP --out DIR CHROM...`: the PLINK GRCh38
+//! genetic map of each chromosome, out of Beagle's `plink.GRCh38.map.zip`,
+//! for step 26b (Beagle and og's painting) and step 51 (MoChA).
 //!
 //! For each CHROM it writes `DIR/CHROM.map`, the member
-//! `chr_in_chrom_field/plink.chrCHROM.GRCh38.map` (CHROM is `chr20`, so the member is `plink.chrchr20...`) byte for byte, and with
-//! `--rfmix` also `DIR/CHROM.rfmix.map`, RFMix's column order: chromosome,
-//! position, cM (fields 1, 4 and 3 of each non-blank line, split on
-//! whitespace as Python's `str.split()` splits). The zip is opened once.
+//! `chr_in_chrom_field/plink.chrCHROM.GRCh38.map` (CHROM is `chr20`, so the member is `plink.chrchr20...`) byte for byte. The zip is opened once.
 //!
-//! Each file is written under a temporary name and renamed into place, the
-//! `.rfmix.map` last, and only after every row of the chromosome has been
-//! read: a kill or an error leaves the old file or none, never half of one.
-//! The Python this replaces wrote both with a plain `open().write()`, so a
-//! kill could leave a truncated `.rfmix.map` that the next setup took as
-//! done. A row with fewer than four fields now stops with its line number
-//! (it was a traceback after `.map` was written and `.rfmix.map` emptied).
+//! The file is written under a temporary name and renamed into place only
+//! after every row of the chromosome has been read and checked: a kill or an
+//! error leaves the old file or none, never half of one. A non-blank row
+//! with fewer than four fields (split on whitespace as Python's
+//! `str.split()` splits) stops it with its line number and writes nothing
+//! for that chromosome.
+//!
+//! It wrote RFMix's column order to `DIR/CHROM.rfmix.map` too, with
+//! `--rfmix`; RFMix left step 26b when og took over the painting, and the
+//! option went with it.
 
 use crate::zip::{Archive, ZipError};
 use og_io::AtomicFile;
@@ -50,29 +49,19 @@ fn splitlines(s: &str) -> Vec<&str> {
     out
 }
 
-/// RFMix's columns of a PLINK map: `chrom\tpos\tcM\n` per non-blank line.
-pub fn rfmix_rows(text: &str) -> Result<String, String> {
-    let mut out = String::with_capacity(text.len());
+/// Checks that every non-blank row of a PLINK map has four fields.
+pub fn check_rows(text: &str) -> Result<(), String> {
     for (n, line) in splitlines(text).into_iter().enumerate() {
         let r = pycompat::text::split(line, None, None);
-        if r.is_empty() {
-            continue;
-        }
-        if r.len() < 4 {
+        if !r.is_empty() && r.len() < 4 {
             return Err(format!(
                 "line {}: {} fields, a PLINK map row has 4",
                 n + 1,
                 r.len()
             ));
         }
-        out.push_str(r[0]);
-        out.push('\t');
-        out.push_str(r[3]);
-        out.push('\t');
-        out.push_str(r[2]);
-        out.push('\n');
     }
-    Ok(out)
+    Ok(())
 }
 
 fn write(path: &Path, bytes: &[u8]) -> Result<AtomicFile, String> {
@@ -82,7 +71,7 @@ fn write(path: &Path, bytes: &[u8]) -> Result<AtomicFile, String> {
     Ok(f)
 }
 
-fn run(zip: &str, out: &str, rfmix: bool, chroms: &[String]) -> Result<(), (u8, String)> {
+fn run(zip: &str, out: &str, chroms: &[String]) -> Result<(), (u8, String)> {
     let mut a = Archive::open(zip).map_err(|e| (2, format!("{zip}: {e}")))?;
     for c in chroms {
         let name = format!("chr_in_chrom_field/plink.chr{c}.GRCh38.map");
@@ -101,41 +90,27 @@ fn run(zip: &str, out: &str, rfmix: bool, chroms: &[String]) -> Result<(), (u8, 
         })?;
         let text = std::str::from_utf8(&bytes)
             .map_err(|err| (2, format!("{zip}: {name} is not UTF-8: {err}")))?;
-        let rows = if rfmix {
-            Some(rfmix_rows(text).map_err(|m| (2, format!("{zip}: {name}: {m}")))?)
-        } else {
-            None
-        };
+        check_rows(text).map_err(|m| (2, format!("{zip}: {name}: {m}")))?;
         let dir = Path::new(out);
-        let map = write(&dir.join(format!("{c}.map")), &bytes).map_err(|m| (1, m))?;
-        let rf = match &rows {
-            Some(r) => {
-                Some(write(&dir.join(format!("{c}.rfmix.map")), r.as_bytes()).map_err(|m| (1, m))?)
-            }
-            None => None,
-        };
-        map.commit()
+        write(&dir.join(format!("{c}.map")), &bytes)
+            .map_err(|m| (1, m))?
+            .commit()
             .map_err(|err| (1, format!("{}/{c}.map: {err}", dir.display())))?;
-        if let Some(f) = rf {
-            f.commit()
-                .map_err(|err| (1, format!("{}/{c}.rfmix.map: {err}", dir.display())))?;
-        }
     }
     Ok(())
 }
 
-const USAGE: &str = "usage: og setup genetic-map --zip ZIP --out DIR [--rfmix] CHROM...";
+const USAGE: &str = "usage: og setup genetic-map --zip ZIP --out DIR CHROM...";
 
 /// The command line; returns the exit code: 0, 1 on an I/O error, 2 on a
 /// bad zip, a missing chromosome, a bad row or a wrong command line.
 pub fn cli(args: &[String]) -> u8 {
-    let (mut zip, mut out, mut rfmix, mut chroms) = (None, None, false, Vec::new());
+    let (mut zip, mut out, mut chroms) = (None, None, Vec::new());
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--zip" => zip = it.next().cloned(),
             "--out" => out = it.next().cloned(),
-            "--rfmix" => rfmix = true,
             s if s.starts_with('-') => {
                 eprintln!("{USAGE}\nog setup genetic-map: unknown option {s}");
                 return 2;
@@ -151,7 +126,7 @@ pub fn cli(args: &[String]) -> u8 {
         eprintln!("{USAGE}");
         return 2;
     }
-    match run(&zip, &out, rfmix, &chroms) {
+    match run(&zip, &out, &chroms) {
         Ok(()) => 0,
         Err((code, msg)) => {
             eprintln!("og setup genetic-map: {msg}");
@@ -194,20 +169,18 @@ mod tests {
     }
 
     #[test]
-    fn rfmix_columns_are_chrom_pos_cm_and_blank_lines_go() {
+    fn rows_need_four_fields_and_blank_lines_go() {
+        assert_eq!(check_rows(MAP), Ok(()));
+        assert_eq!(check_rows("a b c d\r\ne f g h"), Ok(()));
         assert_eq!(
-            rfmix_rows(MAP).unwrap(),
-            "chr20\t60000\t0.0\nchr20\t70001\t0.12\nchr20\t80000\t1.5\n"
-        );
-        assert_eq!(
-            rfmix_rows("a b c d\r\ne f g h").unwrap(),
-            "a\td\tc\ne\th\tg\n"
+            check_rows("a b c d\n\ne f g").unwrap_err(),
+            "line 3: 3 fields, a PLINK map row has 4"
         );
         assert_eq!(splitlines("a\r\nb\rc\n\nd"), ["a", "b", "c", "", "d"]);
     }
 
     #[test]
-    fn writes_the_member_byte_for_byte_and_the_rfmix_file() {
+    fn writes_the_member_byte_for_byte_and_nothing_else() {
         let d = scratch("ok");
         let z = zip_with(
             &d,
@@ -217,17 +190,29 @@ mod tests {
                 true,
             )],
         );
-        assert_eq!(cli(&args(&z, &d, &["--rfmix", "chr20"])), 0);
+        assert_eq!(cli(&args(&z, &d, &["chr20"])), 0);
         assert_eq!(fs::read_to_string(d.join("chr20.map")).unwrap(), MAP);
-        assert_eq!(
-            fs::read_to_string(d.join("chr20.rfmix.map")).unwrap(),
-            "chr20\t60000\t0.0\nchr20\t70001\t0.12\nchr20\t80000\t1.5\n"
-        );
+        assert!(!d.join("chr20.rfmix.map").exists(), "no RFMix map");
         assert_eq!(
             fs::read_dir(&d).unwrap().count(),
-            3,
-            "no temporary file left"
+            2,
+            "the zip and chr20.map, no temporary file left"
         );
+    }
+
+    #[test]
+    fn the_rfmix_option_is_gone() {
+        let d = scratch("rfmix");
+        let z = zip_with(
+            &d,
+            &[(
+                "chr_in_chrom_field/plink.chrchr20.GRCh38.map",
+                MAP.as_bytes(),
+                true,
+            )],
+        );
+        assert_eq!(cli(&args(&z, &d, &["--rfmix", "chr20"])), 2);
+        assert!(!d.join("chr20.map").exists());
     }
 
     #[test]
@@ -241,13 +226,9 @@ mod tests {
                 false,
             )],
         );
-        fs::write(d.join("chr21.rfmix.map"), "old\n").unwrap();
-        assert_eq!(cli(&args(&z, &d, &["--rfmix", "chr21"])), 2);
-        assert!(!d.join("chr21.map").exists());
-        assert_eq!(
-            fs::read_to_string(d.join("chr21.rfmix.map")).unwrap(),
-            "old\n"
-        );
+        fs::write(d.join("chr21.map"), "old\n").unwrap();
+        assert_eq!(cli(&args(&z, &d, &["chr21"])), 2);
+        assert_eq!(fs::read_to_string(d.join("chr21.map")).unwrap(), "old\n");
     }
 
     #[test]

@@ -3239,10 +3239,11 @@ mod tests {
         );
     }
 
-    // The BMP re.IGNORECASE relations that differ between CPython 3.9, 3.12
-    // and 3.15 (`differing` in regex_case.jsonl.gz: real fullmatch results of
-    // each interpreter on every candidate pair its own case tables named, in
-    // both directions and many compiler shapes) must all be in the table.
+    // The BMP re.IGNORECASE relations that differ between CPython 3.9, 3.12,
+    // 3.15 and the image's own 3.13.5 (`differing` in regex_case.jsonl.gz:
+    // real fullmatch results of each interpreter on every candidate pair its
+    // own case tables named, in both directions and many compiler shapes)
+    // must all be in the table.
     #[test]
     fn round5_regex_case_table_matches_interpreters() {
         let differing: std::collections::BTreeSet<_> = oracle_pairs("regex_case", "differing")
@@ -3279,9 +3280,9 @@ mod tests {
     #[test]
     fn round4_guard_agrees_with_available_pythons() {
         // Each scalar whose isalnum/isdecimal/isspace or lower/upper/casefold
-        // differs between CPython 3.9, 3.12 and 3.15 (`differ` in
-        // unicode.jsonl.gz), and each scalar Unicode 17 leaves unassigned
-        // (`unassigned17`), must be in VERSION_DEPENDENT.
+        // differs between CPython 3.9, 3.12, 3.15 and the image's own 3.13.5
+        // (`differ` in unicode.jsonl.gz), and each scalar Unicode 17 leaves
+        // unassigned (`unassigned17`), must be in VERSION_DEPENDENT.
         let guarded = |c: u32| {
             let at = VERSION_DEPENDENT.partition_point(|&(_, end)| end < c);
             VERSION_DEPENDENT

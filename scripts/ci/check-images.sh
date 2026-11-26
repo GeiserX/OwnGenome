@@ -65,6 +65,8 @@ docs/08-hla-typing.md             jiachenzdocker/hla-la@sha256:ecca23de6635aa85e
 docs/stylesheets/theme.css        quay.io/biocontainers/expansionhunter:5.0.0   example in a CSS comment
 scripts/cyrius-constraints.txt    python:3.11   the image pip resolved these constraints in
 docs/troubleshooting.md           quay.io/biocontainers/toolname:tag   a placeholder, not an image
+tests/bench/ancestry-engines.sh   quay.io/biocontainers/rfmix:2.03.r0.9505bfa--h503566f_8   the bench pins it: og replaced RFMix in step 26b
+tests/bench/ancestry-engines.sh   quay.io/biocontainers/admixture:1.3.0--0   the bench pins it: og replaced ADMIXTURE in step 26b
 '
 
 # scan: print one line per literal image in the tree at $ROOT; exit 1 if any.

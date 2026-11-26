@@ -19,9 +19,7 @@
 #   5. og ancestry-fine report writes the fractions table, the painting
 #      (BED and PNG) and a plain-text summary.
 # A group name is ours: a set of reference populations, not a nationality.
-# docs/26b-ancestry-fine.md says where the resolution ends. RFMix is for
-# academic research use only, and any other use, a personal one included,
-# needs a licence from Stanford.
+# docs/26b-ancestry-fine.md says where the resolution ends.
 #
 # Without the panel the step says so in one line and exits 0.
 # Env: ANCESTRY_FINE_DIR (another panel folder inside GENOME_DIR, or none to
@@ -35,7 +33,7 @@ THREADS=${THREADS:-4}
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
 validate_sample "$SAMPLE"
-require_image BCFTOOLS_IMAGE OG_IMAGE BEAGLE_IMAGE RFMIX_IMAGE
+require_image BCFTOOLS_IMAGE OG_IMAGE BEAGLE_IMAGE
 
 PANEL=${ANCESTRY_FINE_DIR:-${GENOME_DIR}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}}
 S="${GENOME_DIR}/${SAMPLE}"

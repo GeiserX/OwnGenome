@@ -18,14 +18,14 @@ OwnGenome's own tools, ported from `bin/*.py` one at a time into one static bina
 | `crates/og-lookup` | the genotype lookup of `scripts/owngenome-lookup.sh`: `og lookup query`, `og lookup resolve`, `og lookup report` |
 | `crates/og-filters` | the VCF filters of steps 04, 05 and 07: `og sv svlen-fix`, `og sv inv-filter`, `og pgx refblock-fill`, `og pgx mito-merge` |
 | `crates/og-setup` | what `scripts/setup.sh` runs once: `og str catalog` (the STRchive catalog of steps 09 and 9b), `og setup unzip` (Exomiser's zips), `og setup genetic-map` (the genetic map of steps 26b and 51) |
-| `crates/og-ancestry` | step 26b, fine-grained ancestry: `og ancestry-fine panel-map`, `check-map`, `order`, `sample-bed`, `chroms`, `report`; step 43's `og archaic table`, `strict`, `genotypes`, `report`; step 44's `og ancient select`, `lift`, `person-geno`, `align`, `report` |
+| `crates/og-ancestry` | step 26b, fine-grained ancestry: `og ancestry-fine panel-map`, `check-map`, `freqs`, `chroms`, `project`, `paint`, `simulate`, `report`; step 43's `og archaic table`, `strict`, `genotypes`, `report`; step 44's `og ancient select`, `lift`, `person-geno`, `align`, `report` |
 | `crates/og-steps` | step helpers, among them `og pgx outside-calls`, `og pgx hla-concordance` (steps 08, 36), `og pgx pypgx-summary` (step 32) and `og paraphase check-bam`, `og paraphase table` (step 35b) |
 | `crates/og-fresh` | `og dev freshness`: the upstream lookups of the monthly freshness issue, each answer typed, HTTP through the host's `curl` |
 | `crates/og-recheck` | `og recheck`: which of a finished sample's results a newer ClinVar or catalog would change, `--rerun`, `--affected`, `--launch-dir` |
 | `crates/og-render` | `og report render`, `og report index`, `og report charts`: the reports from summary.json (render: both reports, every section, called by steps 24, HTML_REPORT and `generate-report.sh`; charts and index: ported, and the steps get the charts from `og report render --charts-json`) |
 | `crates/og-live` | `og live serve`, `og live results`, `og live family`, `og live demo`, `og view serve`: the live site (`og live family`, `og view serve` and `og live serve` ported (`og live serve` without login or results); results and demo not ported yet) |
 | `crates/og-couple` | `og couple screen`, `og couple genes`: step 39's couple screen and its carrier list |
-| `crates/og-admix` | what the fine-ancestry engines share: the panel's haplotypes, the genetic map, `model/ref.geno`, a seeded RNG and the admixed-genome simulator of `og ancestry-fine simulate`; our own painting and projection (not ported yet) |
+| `crates/og-admix` | what the fine-ancestry engines share: the panel's haplotypes, the genetic map, `model/ref.geno`, a seeded RNG and the admixed-genome simulator of `og ancestry-fine simulate`; our own painting and projection |
 | `og` | the binary: `og <tool> [args]`, `og version`, `og --tree-hash` |
 | `og.sh` | build or download `bin/.og/og-linux-{x86_64,aarch64}`, and check they match this `rust/` |
 | `rust-toolchain.toml` | the Rust release, the one `OG_BUILDER` (`versions.env`) ships |
