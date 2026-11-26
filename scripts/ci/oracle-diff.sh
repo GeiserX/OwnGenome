@@ -9,6 +9,8 @@
 # keeps the staged inputs and actual outputs in the given absolute directory.
 set -euo pipefail
 export LC_ALL=C TZ=UTC
+# The consumer export writes its date into the file; pin it to the day the goldens were captured.
+export SOURCE_DATE_EPOCH=1795608000
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PARITY=${PARITY_DIR:-"$ROOT/tests/parity"}
