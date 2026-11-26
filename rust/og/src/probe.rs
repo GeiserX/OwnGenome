@@ -462,8 +462,8 @@ pub fn run(input: impl BufRead, output: impl Write) -> io::Result<()> {
 }
 
 /// `og pycompat-probe` against what CPython (`python3 -I` in PYTHON_IMAGE)
-/// answered: 1000 cases per operation, drawn once by the oracle of the
-/// commit that recorded them, frozen in `tests/rust/vectors/pycompat` (see
+/// answered: the oracle's hand-picked hard cases, then 1000 random cases
+/// per operation, drawn once by the oracle of the commit that recorded them, frozen in `tests/rust/vectors/pycompat` (see
 /// its README). `cases.tsv.gz` holds each case line and the answer line
 /// after it; a `chars` answer is `@CHARS@`, spelled out from the table
 /// `chars.tsv.gz` (`R lo hi F`: a run of code points that are their own
@@ -751,6 +751,96 @@ mod vectors {
         assert!(
             bad.is_empty(),
             "{report}og pycompat-probe differs from CPython: {bad:?}"
+        );
+    }
+
+    /// The float operations, whose cases must hold every hard float.
+    const FLOAT_OPS: [&str; 8] = ["repr", "f", "e", "g", "pct", "grpf", "round0", "round"];
+
+    /// SPECIAL of the recorder's `tests/rust/pycompat_oracle.py`: the floats
+    /// where a formatting or rounding bug shows (binary ties, the layout
+    /// switches of `repr`, the float limits). The recording writes each one
+    /// and its negation as a case of every float operation.
+    fn special() -> Vec<f64> {
+        vec![
+            0.0,
+            -0.0,
+            f64::NAN,
+            f64::INFINITY,
+            -f64::INFINITY,
+            0.125,
+            0.375,
+            2.675,
+            0.35,
+            0.5,
+            1.5,
+            2.5,
+            -0.5,
+            -2.5,
+            1e-05,
+            1e-04,
+            1e16,
+            1e15,
+            1e17,
+            1e22,
+            1e23,
+            5e-324,
+            2.2250738585072014e-308,
+            2.225073858507201e-308,
+            1.7976931348623157e308,
+            9.9999995,
+            999999.5,
+            0.1 + 0.2,
+            1.0 / 3.0,
+            2.0 / 3.0,
+            123456789012345678.0,
+            0.05,
+            0.15,
+            0.25,
+            1.005,
+            1.115,
+            4.35,
+            8.345,
+            99.995,
+            1234.5,
+            2f64.powi(52) + 0.5,
+            2f64.powi(53),
+            2f64.powi(60),
+            1e300,
+            -1e-300,
+        ]
+    }
+
+    #[test]
+    fn every_hard_float_is_a_case_of_every_float_operation() {
+        let want: std::collections::BTreeSet<String> = special()
+            .into_iter()
+            .flat_map(|v| [v, -v])
+            .map(|x| format!("{:016x}", x.to_bits()))
+            .collect();
+        assert_eq!(want.len(), 82, "the distinct hard bit patterns");
+        let mut seen: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+        for pair in gz_lines("cases.tsv.gz").chunks(2) {
+            let case = String::from_utf8(pair[0].clone()).unwrap();
+            let mut f = case.split('\t');
+            let op = f.next().unwrap();
+            if FLOAT_OPS.contains(&op) {
+                let x = f.next().unwrap().to_owned();
+                seen.entry(op.to_owned()).or_default().insert(x);
+            }
+        }
+        let missing: Vec<String> = FLOAT_OPS
+            .iter()
+            .filter_map(|op| {
+                let have = seen.get(*op).cloned().unwrap_or_default();
+                let gone: Vec<&String> = want.difference(&have).collect();
+                (!gone.is_empty()).then(|| format!("{op}: {} missing, {gone:?}", gone.len()))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "hard floats with no case:\n{}",
+            missing.join("\n")
         );
     }
 }
