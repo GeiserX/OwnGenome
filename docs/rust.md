@@ -34,7 +34,7 @@ rust/
   crates/og-render/     og report render|index|charts: the reports from summary.json (render: both reports, every section, called by steps 24, HTML_REPORT and generate-report.sh; a section that cannot be written says so in place and the rest is written)
   crates/og-live/       og live serve|results|family|demo, og view serve: the live site, all ported (serve with its login, ingest port and results)
   crates/og-couple/     og couple screen|genes: step 39's couple screen (not ported yet)
-  crates/og-admix/      what the fine-ancestry engines share: panel, map, ref.geno, RNG, simulator; painting and projection (not ported yet)
+  crates/og-admix/      what the fine-ancestry engines share (panel, map, ref.geno, RNG, simulator), and the painting and the projection
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-darwin-<arch> on a Mac)
 tests/rust/             the differential test against CPython, the image test

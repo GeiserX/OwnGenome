@@ -94,7 +94,7 @@ GATK Mutect2 in mitochondrial mode detects variants with heteroplasmy fractions 
 
 **Where to look:** `${SAMPLE}/ancestry_fine/${SAMPLE}_ancestry_fine.tsv` holds your fraction of each continental and regional group, with a bootstrap range (`low` to `high`). `${SAMPLE}/ancestry_fine/${SAMPLE}_painting.png` shows your chromosomes, each segment coloured by the continental group it is most similar to.
 
-A fraction says how similar your genome is to a reference group, not what share of your ancestors came from a country. Read it with its range: a regional fraction with a wide range is not supported by the data. The continental level is well supported. The regional level is weaker, and splits within Iberia are weak for every method. In the painting, long segments are the stronger evidence, and a short segment of another group can be a real recent ancestor or noise. [Step 26b](../26b-ancestry-fine.md#interpreting-results) explains the groups, the engines and their limits.
+A fraction says how similar your genome is to a reference group, not what share of your ancestors came from a country. Read it with its range: a regional fraction with a wide range is not supported by the data. The continental level is well supported for the groups the panel models. Oceania is not one of them on the default panel, so an Oceanian ancestry is spread over the other groups. The regional level is weaker, and splits within Iberia are weak for every method. In the painting, long segments are the stronger evidence, and a short segment of another group can be a real recent ancestor or noise. [Step 26b](../26b-ancestry-fine.md#interpreting-results) explains the groups, the engines and their limits.
 
 ## Ancient Populations (Step 44, opt-in)
 
