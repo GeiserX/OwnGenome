@@ -22,7 +22,7 @@ run_expect 0 imputation "${SCRIPTS}/14-imputation-prep.sh" sample1
 n=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [ "$n" -eq 1 ] || fail "step 14 started ${n} containers, want 1"
 docker_log_has '^run .* chr22 chrX( |$)' "step 14 did not prepare chrX"
-docker_log_has "^run .*bcftools view -f PASS,\\\\. -r " "step 14 does not select PASS records per chromosome in one bcftools view"
+docker_log_has '^run .*bcftools view -f PASS,\. -r ' "step 14 does not select PASS records per chromosome in one bcftools view"
 
 # --- benchmark: one normalisation per caller --------------------------------------------
 S="${GENOME_DIR}/sample1"
