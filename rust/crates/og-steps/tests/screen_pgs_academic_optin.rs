@@ -109,7 +109,7 @@ fn a_folder_with_all_15_scores_11_by_default_and_15_with_academic() {
         );
     }
     assert!(said.contains(
-        "  PGS000014: not scored, academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include) (Type 2 diabetes (T2D))\n"
+        "  PGS000014: not scored, academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, or --pgs_academic true in Nextflow, to include) (Type 2 diabetes (T2D))\n"
     ));
     // The scores' own files never name the four.
     let notes = fs::read_to_string(c.0.join("pgs/score_notes.tsv")).expect("notes");

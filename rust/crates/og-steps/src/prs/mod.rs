@@ -57,7 +57,7 @@ const USAGE: &str = "usage: og prs format --scores DIR [--ids A,B] [--labels TSV
 
 /// Why a score was left out without `--academic`.
 pub const ACADEMIC_REASON: &str =
-    "academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, to include)";
+    "academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, or --pgs_academic true in Nextflow, to include)";
 
 // Keep the shipped restrictions when the standalone CLI has no licence
 // labels. The formatter tests compare this behaviour to assets/pgs_scores.tsv.
