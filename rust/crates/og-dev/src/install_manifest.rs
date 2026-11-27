@@ -1521,10 +1521,11 @@ static DATE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// A line with each date or timestamp masked, but not a date inside a
-/// name, such as `release-2026-11-26.tar.gz`: a letter, digit, `_`, `.` or
-/// `-` right before it, or a letter, digit or `_` right after it, or a `.`
-/// or `-` then a letter or digit, makes it part of the name. A `.` that
-/// ends a sentence does not.
+/// name or a path, such as `release-2026-11-26.tar.gz` or
+/// `releases/2026-11-26/x`: a letter, digit, `_`, `.`, `-` or `/` right
+/// before it, or a letter, digit, `_` or `/` right after it, or a `.` or `-`
+/// then a letter or digit, makes it part of the name. A `.` that ends a
+/// sentence does not.
 fn mask_dates(line: &str) -> String {
     let word = |c: char| c.is_alphanumeric() || c == '_';
     let mut out = String::with_capacity(line.len());
@@ -1533,11 +1534,11 @@ fn mask_dates(line: &str) -> String {
         let before = line[..m.start()]
             .chars()
             .next_back()
-            .is_some_and(|c| word(c) || matches!(c, '.' | '-'));
+            .is_some_and(|c| word(c) || matches!(c, '.' | '-' | '/'));
         let mut rest = line[m.end()..].chars();
         let after = match rest.next() {
             Some('.' | '-') => rest.next().is_some_and(word),
-            c => c.is_some_and(word),
+            c => c.is_some_and(|c| word(c) || c == '/'),
         };
         if before || after {
             continue;

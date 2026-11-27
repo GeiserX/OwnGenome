@@ -149,7 +149,7 @@ seed() {
 }
 
 # named REF: whether side A's log names REF whole, not as part of a longer
-# name or tag (repo:v1 does not name repo:v10).
+# name, tag or path (repo:v1 names neither repo:v10 nor reg.example/repo:v1).
 named() {
   awk -v t="$1" '
     {
@@ -157,7 +157,7 @@ named() {
       while ((i = index(s, t)) > 0) {
         a = (off + i > 1) ? substr($0, off + i - 1, 1) : ""
         b = substr($0, off + i + length(t), 1)
-        if (a !~ /[[:alnum:]_.-]/ && b !~ /[[:alnum:]_.-]/) { found = 1; exit }
+        if (a !~ "[[:alnum:]_./-]" && b !~ "[[:alnum:]_./-]") { found = 1; exit }
         off += i; s = substr(s, i + 1)
       }
     }

@@ -1412,6 +1412,26 @@ fn the_log_compare_masks_times_and_sees_the_missing_list() {
         code, 1,
         "file names that differ by a date are green:\n{out}"
     );
+    // So is a date that is a whole folder of a path.
+    let k = log(
+        "k.log",
+        &base.replace(
+            "Downloading x",
+            "Downloading https://example.org/releases/2026-11-26/m.tar.gz",
+        ),
+    );
+    let l = log(
+        "l.log",
+        &base.replace(
+            "Downloading x",
+            "Downloading https://example.org/releases/2026-11-27/m.tar.gz",
+        ),
+    );
+    let (code, out, _) = run(&["--compare-logs", &k, &l]);
+    assert_eq!(
+        code, 1,
+        "paths that differ by a date folder are green:\n{out}"
+    );
     // A timestamp that ends a sentence is still a time.
     let i = log(
         "i.log",
@@ -1485,12 +1505,13 @@ case "$AB_STUB" in
   images)
     mkdir -p "$dir/kir"
     printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
-    printf 'example/kir:1.0\tid1\n' >>"$AB_ENGINE_STATE"
-    echo "Status: Downloaded newer image for example/kir:1.0"
-    # Another job on the engine adds a tag of the same name, once.
+    printf 'registry.example/example/kir:1.0\tid1\n' >>"$AB_ENGINE_STATE"
+    echo "Status: Downloaded newer image for registry.example/example/kir:1.0"
+    # Another job on the engine adds, once, another tag of the same name
+    # and the same name and tag from another registry.
     if [ ! -e "$AB_ENGINE_STATE.other" ]; then
       : >"$AB_ENGINE_STATE.other"
-      printf 'example/kir:2.0\tid2\n' >>"$AB_ENGINE_STATE"
+      printf 'registry.example/example/kir:2.0\tid2\nexample/kir:1.0\tid3\n' >>"$AB_ENGINE_STATE"
     fi ;;
   nothing)
     echo "nothing to do" ;;
@@ -1651,10 +1672,12 @@ fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
     );
     assert!(out.contains("removed 1 image tag(s)"), "{out}");
     let left = fs::read_to_string(&state).unwrap();
-    assert!(
-        left.contains("example/kir:2.0\t"),
-        "another job's tag was removed:\n{left}\n{out}"
-    );
+    for tag in ["registry.example/example/kir:2.0\t", "\nexample/kir:1.0\t"] {
+        assert!(
+            format!("\n{left}").contains(tag),
+            "another job's tag {tag:?} was removed:\n{left}\n{out}"
+        );
+    }
 }
 
 #[test]
