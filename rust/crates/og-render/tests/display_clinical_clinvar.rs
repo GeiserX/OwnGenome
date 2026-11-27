@@ -209,3 +209,22 @@ fn a_share_under_any_bar_never_prints_the_bar() {
         assert_eq!(percent(min, min), bar);
     }
 }
+
+#[test]
+fn an_exon_table_with_no_catalog_exon_says_no_exon_was_checked() {
+    // Step 16b's exon table can hold no coding exon of the catalog genes:
+    // then no exon was checked, and the line must not ask 0 exons to pass.
+    let [text, html] = reports(&callability(NEAR, "", r#", "exons_checked": 0"#));
+    for report in [&text, &html] {
+        assert!(!report.contains("the 0 coding exons"), "{report}");
+        assert!(
+            report.contains("the exon table from step 16b holds no coding exon of these genes, so no exon was checked."),
+            "{report}"
+        );
+    }
+    let [text, _] = reports(&callability(NEAR, "", r#", "exons_checked": 812"#));
+    assert!(
+        text.contains("the 812 coding exons checked must pass too"),
+        "{text}"
+    );
+}

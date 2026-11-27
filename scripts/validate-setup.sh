@@ -774,6 +774,23 @@ else
     pass "gnomAD v3.1 mitochondrial sites (step 20): present"
   fi
 
+  # --- Step 11's allele-frequency panel (setup.sh installs it under roh_af/) ---
+  # Missing is a warning: step 11 runs, with AF 0.4 at every site. A file that
+  # is not the pinned one is a failure; a panel with no index is not used.
+  ROH_AF_PANEL="${GENOME_DIR}/roh_af/${ROH_AF_PANEL_URL##*/}"
+  if [ ! -s "$ROH_AF_PANEL" ]; then
+    warn "ROH allele-frequency panel (step 11 gives every site AF 0.4 without it) not found at: ${ROH_AF_PANEL}"
+    echo "       Install it: ./scripts/setup.sh ${GENOME_DIR}"
+  elif [ "$(_digest sha256 "$ROH_AF_PANEL")" != "$ROH_AF_PANEL_SHA256" ]; then
+    fail "ROH allele-frequency panel (step 11): ${ROH_AF_PANEL} is not the pinned file (sha256 differs from ROH_AF_PANEL_SHA256)"
+    echo "       Delete it and reinstall: ./scripts/setup.sh ${GENOME_DIR}"
+  elif [ ! -s "${ROH_AF_PANEL}.tbi" ]; then
+    warn "ROH allele-frequency panel (step 11) has no index, so step 11 gives every site AF 0.4: ${ROH_AF_PANEL}.tbi"
+    echo "       Index it: ./scripts/setup.sh ${GENOME_DIR}"
+  else
+    pass "ROH allele-frequency panel (step 11): present"
+  fi
+
   # --- somalier's sites and VerifyBamID2's panel, for step 33 (setup.sh installs them) ---
   QC_MISSING=""
   for f in somalier/sites.hg38.vcf.gz verifybamid2/1000g.phase3.100k.b38.vcf.gz.dat.UD \

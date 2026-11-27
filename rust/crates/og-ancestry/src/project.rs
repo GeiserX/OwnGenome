@@ -190,7 +190,7 @@ pub fn a2_copies(alleles: &[&str], idx: [&str; 2], a1: &str, a2: &str) -> Option
 
 /// The A2 copies at each `.bim` row, streamed from the VCF: the last
 /// record with a called GT at a row's position decides it.
-fn genotypes_at(bim: &Bim, vcf: &Path) -> Result<Vec<Option<u8>>> {
+fn genotypes_at(bim: &Bim, vcf: &Path, sample: &str) -> Result<Vec<Option<u8>>> {
     // Every row by (chromosome, position), sorted, so a record finds its
     // rows by binary search (a .bim may list two SNVs at one position).
     let mut names: HashMap<&str, u32> = HashMap::new();
@@ -204,19 +204,36 @@ fn genotypes_at(bim: &Bim, vcf: &Path) -> Result<Vec<Option<u8>>> {
     index.sort_unstable();
     let mut out: Vec<Option<u8>> = vec![None; bim.rows.len()];
     let mut n = 0u64;
+    // The sample's column: the only one of a one-sample VCF, whatever its
+    // name, else the one the header names `sample`.
+    let mut col = 9usize;
     crate::for_each_line(vcf, |line| {
         n += 1;
+        if let Some(head) = line.strip_prefix("#CHROM\t") {
+            let names: Vec<&str> = head.split('\t').skip(8).collect();
+            if names.len() > 1 {
+                col = 9 + names.iter().position(|s| *s == sample).ok_or_else(|| {
+                    Fail(format!(
+                        "{} holds {} samples and none is named {}: pass the sample's own name with --sample, or a one-sample VCF",
+                        vcf.display(),
+                        names.len(),
+                        repr(sample)
+                    ))
+                })?;
+            }
+            return Ok(());
+        }
         if line.starts_with('#') {
             return Ok(());
         }
         let c: Vec<&str> = line.split('\t').collect();
-        if c.len() < 10 {
+        if c.len() <= col {
             return Ok(());
         }
         let Some(gt_at) = c[8].split(':').position(|f| f == "GT") else {
             return Ok(());
         };
-        let Some(idx) = c[9].split(':').nth(gt_at).and_then(gt_alleles) else {
+        let Some(idx) = c[col].split(':').nth(gt_at).and_then(gt_alleles) else {
             return Ok(());
         };
         let pos = crate::int(c[1]).ok_or_else(|| {
@@ -467,7 +484,7 @@ pub(crate) fn main(a: &Args, out: &mut dyn Write) -> Result<()> {
     if bim.rows.is_empty() {
         return Err(Fail(format!("{} has no SNV", bim_path.display())));
     }
-    let calls = genotypes_at(&bim, vcf)?;
+    let calls = genotypes_at(&bim, vcf, sample)?;
     let (keep, genotypes): (Vec<usize>, Vec<u8>) = calls
         .iter()
         .enumerate()
@@ -721,8 +738,55 @@ mod tests {
         );
         let bim = read_bim(&d.0.join("ref.bim")).unwrap();
         assert_eq!(
-            genotypes_at(&bim, &d.0.join("g.vcf")).unwrap(),
+            genotypes_at(&bim, &d.0.join("g.vcf"), "S").unwrap(),
             vec![Some(0), None]
+        );
+    }
+
+    #[test]
+    fn a_multi_sample_vcf_is_read_in_the_named_samples_column() {
+        // --sample picks its column in a VCF of several samples; a name the
+        // header lacks stops with an error instead of reading the first
+        // sample. A one-sample VCF is read whatever its column's name.
+        let d = Dir::new("proj-multi");
+        d.put(
+            "ref.bim",
+            "22\t22:100\t0\t100\tG\tA\n22\t22:200\t0\t200\tG\tA\n",
+        );
+        d.put(
+            "g.vcf",
+            "##fileformat=VCFv4.2\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tMOTHER\tCHILD\n\
+             chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t0/0\t1/1\n\
+             chr22\t200\t.\tA\tG\t.\t.\t.\tGT\t1/1\t0/1\n",
+        );
+        let bim = read_bim(&d.0.join("ref.bim")).unwrap();
+        let vcf = d.0.join("g.vcf");
+        assert_eq!(
+            genotypes_at(&bim, &vcf, "CHILD").unwrap(),
+            vec![Some(0), Some(1)],
+            "red on main: the first sample's genotypes were read"
+        );
+        assert_eq!(
+            genotypes_at(&bim, &vcf, "MOTHER").unwrap(),
+            vec![Some(2), Some(0)]
+        );
+        let Err(Fail(e)) = genotypes_at(&bim, &vcf, "FATHER") else {
+            panic!("a sample the VCF lacks was read")
+        };
+        assert!(
+            e.contains("holds 2 samples and none is named 'FATHER'"),
+            "{e}"
+        );
+        d.put(
+            "one.vcf",
+            "##fileformat=VCFv4.2\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n\
+             chr22\t100\t.\tA\tG\t.\t.\t.\tGT\t0/1\n",
+        );
+        assert_eq!(
+            genotypes_at(&bim, &d.0.join("one.vcf"), "sample1").unwrap(),
+            vec![Some(1), None]
         );
     }
 
@@ -903,7 +967,7 @@ mod tests {
         // Fixed frequencies: the same block draws, through the engine.
         let model = w.d.0.join("panel/model");
         let bim = read_bim(&model.join("ref.bim")).unwrap();
-        let calls = genotypes_at(&bim, &w.d.0.join("g.vcf")).unwrap();
+        let calls = genotypes_at(&bim, &w.d.0.join("g.vcf"), "S").unwrap();
         let (keep, g): (Vec<usize>, Vec<u8>) = calls
             .iter()
             .enumerate()

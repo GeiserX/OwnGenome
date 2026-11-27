@@ -441,6 +441,18 @@ pub fn build(
         Some(v) if truthy(v) => return Err("summary.sections is not an object".to_owned()),
         _ => None,
     };
+    // The clinical section holds the ACMG card (step 23 ran and wrote one):
+    // the index reads the card there, so the card of its own section, the
+    // same card, is skipped. Without it the reports show `sections.acmg_sf`,
+    // step 6's card alone (`acmg_sf::standalone`), and the index reads that.
+    let clinical_card = match sections.and_then(|m| m.get("clinical")) {
+        Some(Value::Object(c)) => {
+            matches!(c.get("state"), Some(Value::Str(st)) if st == "ok" || st == "stale")
+                && matches!(c.get("data"), Some(Value::Object(d))
+                    if d.get("acmg_sf").is_some_and(|sf| !matches!(sf, Value::Null)))
+        }
+        _ => false,
+    };
     let mut terms: BTreeMap<String, Vec<Item>> = BTreeMap::new();
     for (key, sec) in sections.into_iter().flatten() {
         let Value::Object(s) = sec else {
@@ -450,10 +462,9 @@ pub fn build(
             continue;
         }
         // The ACMG card of its own section is the card the clinical section
-        // also holds (`clinical.data.acmg_sf`), which the index already reads.
-        // Skip it so a gene is not listed twice, until the report readers
-        // move from the nested card to this section (i411-display-sf).
-        if key == "acmg_sf" {
+        // also holds (`clinical.data.acmg_sf`) when step 23 wrote one: skip
+        // it then, so a gene is not listed twice.
+        if key == "acmg_sf" && clinical_card {
             continue;
         }
         let field = |k: &str| s.get(k).cloned().unwrap_or(Value::Null);

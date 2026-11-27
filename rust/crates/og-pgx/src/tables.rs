@@ -97,10 +97,29 @@ pub fn read_pypgx(path: &str) -> Result<HashMap<String, PypgxCall>, PyErr> {
 /// case and in any form: pypgx writes it for a gene it could not call,
 /// step 32 writes it for CYP2D6 when the depth check fails, and a
 /// diplotype with an Indeterminate allele (`*1/Indeterminate`) names no
-/// diplotype either.
+/// diplotype either. The rule is `og_steps::pgx_rules::is_call`, the one
+/// summary.json counts with (og-pgx cannot depend on og-steps): two
+/// alleles, neither a no-call text, and one diplotype, not pypgx's
+/// `;`-joined list of possible ones.
 pub fn pypgx_called(diplotype: &str) -> bool {
+    const NO_CALL: [&str; 9] = [
+        "",
+        "none",
+        "n/a",
+        "na",
+        "failed",
+        "indeterminate",
+        "not called",
+        "unknown",
+        ".",
+    ];
+    let no_call = |a: &str| NO_CALL.contains(&lower(strip(a, None)).as_str());
     let d = strip(diplotype, None);
-    !matches!(d, "" | "FAILED" | "N/A" | "Not called") && !lower(d).contains("indeterminate")
+    !no_call(d)
+        && d.contains('/')
+        && !d.contains(';')
+        && !d.split('/').any(no_call)
+        && !lower(d).contains("indeterminate")
 }
 
 // --- step 36 -------------------------------------------------------------
@@ -554,6 +573,15 @@ mod tests {
             " INDETERMINATE ",
             "*1/Indeterminate",
             "Indeterminate/Indeterminate",
+            // The shapes summary.json's count refuses, refused here too.
+            "failed",
+            "none",
+            "unknown",
+            ".",
+            "*1",
+            "*1/",
+            "*1/.",
+            "*1/*2;*1/*3",
         ] {
             assert!(!pypgx_called(d), "{d}");
         }

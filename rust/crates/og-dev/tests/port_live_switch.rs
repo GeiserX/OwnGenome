@@ -162,6 +162,16 @@ fn each_check_fails_on_its_planted_mistake() {
             code.clone(),
         ),
         (
+            // PRS may sit in steps 25 and 26 only: a third row is a mistake.
+            "every module process belongs to one step",
+            edit(&|r| {
+                if r.step == "45" {
+                    r.processes.push("PRS".into());
+                }
+            }),
+            code.clone(),
+        ),
+        (
             "the tools are main.nf's known tools",
             edit(&|r| {
                 if r.step == "34" {
@@ -237,6 +247,21 @@ fn each_check_fails_on_its_planted_mistake() {
     }
     // Control: the unchanged catalogue passes, so the cases test the mistake.
     assert_eq!(failing(&checks(rows, code)), Vec::<&str>::new());
+}
+
+/// A run-all.sh line commented out is no step: its plan, its by-hand skip
+/// and its script call must not ask for a row.
+#[test]
+fn a_commented_out_step_in_run_all_needs_no_row() {
+    let (rows, code) = real();
+    let code = Code {
+        run_all: format!(
+            "{}\n# plan \"98 Commented out\" commented \"$X\"\n  #   printf 'step\\t97\\tskipped\\n'\n# run COMMENTED:96-commented\n",
+            code.run_all
+        ),
+        ..code.clone()
+    };
+    assert_eq!(failing(&checks(rows, &code)), Vec::<&str>::new());
 }
 
 /// A checkout that is this one but for a planted row in assets/steps.tsv:

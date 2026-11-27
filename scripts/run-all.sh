@@ -453,9 +453,9 @@ if [[ ",${T// /}," == *",locityper,"* ]]; then plan "53 Hard loci (Locityper)" l
   && NF+=(--locityper_data "$LD") && { [ -z "${LOCITYPER_BG_REGION:-}" ] || NF+=(--locityper_bg_region "$LOCITYPER_BG_REGION"); } || true; else KNOWN+=" locityper"; fi
 for t in ${T//,/ }; do [[ "${KNOWN} " == *" ${t} "* ]] || { echo "ERROR: unknown step '${t}' in TOOLS. Known:${KNOWN}" >&2; exit 2; }; done
 # Step 4b (GRIDSS=true) runs after the pipeline, and GRIDSS needs the classic BWA index beside the reference, which
-# setup.sh does not build: check it now, so the run stops here and not after hours of pipeline.
+# setup.sh builds only when asked (--bwa-index): check it now, so the run stops here and not after hours of pipeline.
 if [ -n "$EV" ] && [ -n "$NOBAM" ]; then for e in amb ann bwt pac sa; do [ -f "${REF_FASTA}.${e}" ] || {
-  EVMISS+=("04b GRIDSS (GRIDSS=true): classic BWA index not installed: ${REF_FASTA#"$G"/}.${e}; install: bwa index (docs/04b-gridss.md)"); break; }; done; fi
+  EVMISS+=("04b GRIDSS (GRIDSS=true): classic BWA index not installed: ${REF_FASTA#"$G"/}.${e}; install: ./scripts/setup.sh --bwa-index (docs/04b-gridss.md)"); break; }; done; fi
 if [ "${#EVMISS[@]}" -gt 0 ]; then
   { echo "ERROR: EVERYTHING=true runs every optional step, and ${#EVMISS[@]} cannot run (Nextflow did not start):"; printf '  %s\n' "${EVMISS[@]}"
     echo "Install what is missing, or run without EVERYTHING=true to skip them."; } >&2
