@@ -23,6 +23,9 @@ How it was made:
    its dbSNP position and its GRCh37 base is a dbSNP allele on both
    strands. Its row was removed: 7,622 sites kept, 45 dropped. Every other
    row is the one the full table has.
+4. build-sites now writes `## table_format: 2 (...)` as the second line,
+   and `og consumer export` refuses a table without it. The same line was
+   added to the slice; no row changed.
 
 Check of the GRCh37 side: the 7,623 sites kept in step 2 were looked up in
 dbSNP b157's GRCh37 VCF (`GCF_000001405.25.gz`) at their GRCh37 position.

@@ -28,7 +28,7 @@ Most questions about a genome are about one variant or one gene, often one a doc
 | `${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz` (step 3) | yes (else the VCF) | the genotype at any position |
 | `${SAMPLE}/vep/${SAMPLE}_annotated.vcf.gz` (step 30) or `_vep.vcf.gz` (step 13) | no | gene, consequence, HGVS, ClinVar, gnomAD of your variants |
 | `${SAMPLE}/summary.json` (`generate-report.sh`) | no | what the reports say |
-| `reference/consumer/23andme_v5_sites_dbsnp<build>.tsv.gz` (`setup.sh --consumer-sites`) | no | the position of 614,138 rsIDs, also where you match the reference |
+| `reference/consumer/23andme_v5_sites_dbsnp<build>.tsv.gz` (`setup.sh --consumer-sites`) | no | the position of 613,971 rsIDs, also where you match the reference |
 | `reference/gencode.v<release>.basic.genes.gtf` (`setup.sh`) | for gene queries | the gene's GRCh38 span |
 
 Without a gVCF the command reads the VCF and says so: a site where you match the reference then reads as a no call.

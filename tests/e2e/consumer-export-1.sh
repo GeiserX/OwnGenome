@@ -27,7 +27,9 @@
 #      positions, so those sites would land one or two bases off;
 #   5. red controls: the table shifted by one GRCh38 position stops the
 #      export (reference bases differ); shifted by one GRCh37 position, the
-#      export runs and the round trip fails;
+#      export runs and the round trip fails; without its "## table_format: 2"
+#      line, as og wrote the table before each site's strand came from the
+#      liftover chain, the export stops (exit 2) and names the rebuild;
 #   6. the Nextflow module on the same gVCF writes the same files.
 . "$(dirname "$0")/lib.sh"
 
@@ -259,6 +261,16 @@ echo "$X38" | tail -n 3
 check "control: the table shifted by one GRCh38 position stops the export" has 'exit=1$' "$X38"
 check "control: it names the reference bases" has 'another reference base than the site table' "$X38"
 check "control: it writes nothing" test ! -e "${G}/reference/consumer/out38/S38_23andme_v5.zip"
+# The table without its format line, as og wrote it before each site's strand came from the liftover chain.
+SOLD="${G}/reference/consumer/old-format.tsv.gz"
+gzip -dc "$SITES" | grep -v '^## table_format:' | gzip -c > "$SOLD"
+XOLD=$(docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" /repo/bin/og consumer export \
+  --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --sites /genome/reference/consumer/old-format.tsv.gz --sample SOLD --sex male \
+  --par /repo/assets/par_grch38.bed --out-dir /genome/reference/consumer/outold 2>&1; echo "exit=$?")
+echo "$XOLD" | tail -n 2
+check "control: the table without its '## table_format: 2' line stops the export" has 'exit=2$' "$XOLD"
+check "control: it names the rebuild" has 'setup\.sh --consumer-sites' "$XOLD"
+check "control: it writes nothing" test ! -e "${G}/reference/consumer/outold/SOLD_23andme_v5.zip"
 docker run --rm --user "$(id -u):$(id -g)" -v "${G}:/genome" -v "${REPO}:/repo:ro" "$PYTHON_IMAGE" /repo/bin/og consumer export \
   --gvcf "/genome/${SAMPLE}/vcf/${SAMPLE}.g.vcf.gz" --sites /genome/reference/consumer/shift37.tsv.gz --sample S37 --sex male \
   --par /repo/assets/par_grch38.bed --out-dir /genome/reference/consumer/out37
@@ -268,7 +280,7 @@ read -r _ s_got _ _ _ s_bad <<< "$RS"
 echo "control, GRCh37 positions shifted by one: ${RS}"
 check "control: with GRCh37 positions shifted by one the round trip fails (lifted ${s_got:-?} of ${CALLED:-?}, ${s_bad:-?} mismatches)" \
   test "$(( ${s_got:-0} * 100 / (${CALLED:-0} > 0 ? CALLED : 1) ))" -lt 95 -o "${s_bad:-0}" -gt 0
-rm -rf "${G:?}/reference/consumer/out38" "${G:?}/reference/consumer/out37" "${G:?}/HG002RT" "${G:?}/HG002RA" "${G:?}/HG002RS" "${G:?}/reference_hg19" "${G:?}/liftover" "$S38" "$S37"
+rm -rf "${G:?}/reference/consumer/out38" "${G:?}/reference/consumer/out37" "${G:?}/reference/consumer/outold" "$SOLD" "${G:?}/HG002RT" "${G:?}/HG002RA" "${G:?}/HG002RS" "${G:?}/reference_hg19" "${G:?}/liftover" "$S38" "$S37"
 
 # --- 6. the Nextflow module on the same gVCF ------------------------------------------
 if command -v nextflow >/dev/null; then

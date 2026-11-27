@@ -41,6 +41,16 @@ pub const X: u8 = 22;
 pub const Y: u8 = 23;
 pub const MT: u8 = 24;
 
+/// The format of the site table, the first word of its `## table_format:`
+/// line. Format 2 takes each site's strand from UCSC's hg19ToHg38 chain. A
+/// table with no such line was built before that, from the alleles alone,
+/// and has the wrong strand at sites on inverted blocks: `og consumer
+/// export` refuses it.
+pub const TABLE_FORMAT: &str = "2";
+/// The whole `## table_format:` line `og consumer build-sites` writes.
+pub const TABLE_FORMAT_LINE: &str =
+    "## table_format: 2 (each site's strand from UCSC's hg19ToHg38 liftover chain)";
+
 /// The place of a 23andMe chromosome name in [`CHROMS`].
 pub fn chrom_index(name: &str) -> Option<u8> {
     CHROMS

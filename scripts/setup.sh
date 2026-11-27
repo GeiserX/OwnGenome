@@ -915,16 +915,18 @@ install_tandem_repeats() {
 # BGZF file on 4 cores and looks at the ID column of a line before anything
 # else, so no grep pass runs first. It runs in OG_IMAGE with bin/
 # mounted, so og is built first when it is missing or stale.
-# The dbSNP file stays in the downloads folder (done_with). The table built is then
-# compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
+# The dbSNP file stays in the downloads folder (done_with). A table already
+# there is kept only when it is the pinned build (CONSUMER_SITES_TABLE_SHA256);
+# any other table, such as one built before the strand came from the chain, is
+# built again in its place. A built table that differs from the pin fails.
 install_consumer_sites() {
   local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped url chain
   out="${dir}/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
   dropped="${dir}/23andme_v5_dropped_dbsnp${CONSUMER_DBSNP_BUILD}.tsv"
   chain="${GENOME_DIR}/reference/liftover/hg19ToHg38.over.chain.gz"
   if [ -s "$out" ]; then
-    consumer_sites_pin_check "$out" "already present"
-    return 0
+    if consumer_sites_pin_check "$out" "already present"; then return 0; fi
+    echo "       It was built by another version of og consumer build-sites: building it again in its place."
   fi
   tpl=$(source_of consumer_sites_template path) && url=$(source_of consumer_sites_template url) || return 1
   if ! fetch "$url" "$tpl" sha256 "$CONSUMER_SITES_SHA256"; then
@@ -961,22 +963,25 @@ install_consumer_sites() {
     return 1
   fi
   done_with "$db"
-  consumer_sites_pin_check "$out" "built (dropped sites and their reasons: ${dropped})"
+  if ! consumer_sites_pin_check "$out" "built (dropped sites and their reasons: ${dropped})"; then
+    echo "       The inputs match their pins, so this checkout's og consumer build-sites does not give the pinned table."
+    return 1
+  fi
 }
 
 # consumer_sites_pin_check TABLE WHAT: compare the site table with
-# CONSUMER_SITES_TABLE_SHA256 and say so. A difference is a warning: both
-# inputs are checked against their own pins, so it means build-sites changed
-# since the pin was taken, and step 40 can still use the table.
+# CONSUMER_SITES_TABLE_SHA256 and say so; false when it differs. All three
+# inputs are checked against their own pins, so a difference means another
+# version of og consumer build-sites built the table.
 consumer_sites_pin_check() {
   local got
   got=$(consumer_sites_digest "$1")
   if [ "$got" = "$CONSUMER_SITES_TABLE_SHA256" ]; then
     echo "[OK] Site table of step 40 $2: $1, the same as the pinned build"
-  else
-    echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
-    echo "       It was built by another version of og consumer build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
+    return 0
   fi
+  echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
+  return 1
 }
 
 # --- Step 44: the ancient populations panel (opt-in) ---------------------------------

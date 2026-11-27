@@ -432,6 +432,8 @@ pub fn build_sites(a: &BuildArgs, workers: std::num::NonZero<usize>) -> Result<S
 
     let mut table = String::new();
     table.push_str("## consumer sites: 23andMe v5 chip, GRCh37 positions from the site list, GRCh38 positions from dbSNP\n");
+    table.push_str(super::TABLE_FORMAT_LINE);
+    table.push('\n');
     let source = if a.source.is_empty() { "." } else { a.source };
     table.push_str(&format!("## source: {source}\n"));
     table.push_str(&format!("## template_sites: {}\n", template.len()));
@@ -625,20 +627,33 @@ mod tests {
                    chr1\t1000\trs2\tA\n\
                    chr1\t1200\trs5\tA\n\
                    chr2\t5000\trs3\tA\n\
-                   chr2\t6000\trs4\tC\n";
+                   chr2\t6000\trs4\tC\n\
+                   chr3\t2500\trs7\tA\n\
+                   chr1\t5500\trs8\tA\n";
         let dbsnp = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
                      NC_000001.11\t144965621\trs11249375\tC\tG,T\t.\t.\tVC=SNV\n\
                      NC_000001.11\t900\trs2\tA\tT\t.\t.\tVC=SNV\n\
                      NC_000001.11\t1100\trs5\tT\tC\t.\t.\tVC=SNV\n\
                      NC_000002.12\t5100\trs3\tT\tC\t.\t.\tVC=SNV\n\
-                     NC_000002.12\t6100\trs4\tC\tG\t.\t.\tVC=SNV\n";
+                     NC_000002.12\t6100\trs4\tC\tG\t.\t.\tVC=SNV\n\
+                     NC_000003.12\t198294960\trs7\tA\tG\t.\t.\tVC=SNV\n\
+                     NC_000001.11\t4500\trs8\tT\tC\t.\t.\tVC=SNV\n";
         // chr1:144043000-144044000 onto GRCh38's - strand: GRCh37 144043486
         // lands on GRCh38 144965621. chr1:500-1500 onto 400-1400, + strand.
-        // chr2 has no block.
+        // chr2 has no block. chr3:2000-3000 onto the - strand: GRCh37 2500
+        // lands on GRCh38 198294960. chr1:5000-6000 onto another contig,
+        // chr1_KI270706v1_random 4000-5000: GRCh37 5500 lands on its 4500,
+        // the number of rs8's chr1 position in dbSNP.
         let chain = "chain 1000 chr1 249250621 + 144043000 144044000 chr1 248956422 - 103990316 103991316 1\n\
                      1000\n\
                      \n\
                      chain 1000 chr1 249250621 + 500 1500 chr1 248956422 + 400 1400 2\n\
+                     1000\n\
+                     \n\
+                     chain 1000 chr3 198022430 + 2000 3000 chr3 198295559 - 100 1100 3\n\
+                     1000\n\
+                     \n\
+                     chain 1000 chr1 249250621 + 5000 6000 chr1_KI270706v1_random 175055 + 4000 5000 4\n\
                      1000\n";
         let (rows, dropped) = build("inverted", tpl, dbsnp, chain);
         let strand = |id: &str| {
@@ -661,6 +676,16 @@ mod tests {
         assert!(dropped.contains(
             "rs5\t1\t1200\tits GRCh37 base is not a dbSNP allele on the strand of the liftover chain"
         ));
+        // A - block at dbSNP's position where only the + strand fits (A is
+        // an allele, its complement T is not): dropped, never kept as -.
+        assert_eq!(strand("rs7"), "dropped");
+        assert!(dropped.contains(
+            "rs7\t3\t2500\tits GRCh37 base is not a dbSNP allele on the strand of the liftover chain"
+        ));
+        // A block onto another contig says nothing about a chr1 site, even
+        // at the same position number: the alleles decide (T is A's
+        // complement and A is no allele), where that + block would drop it.
+        assert_eq!(strand("rs8"), "-");
     }
 
     /// A block that places the site away from dbSNP's position says nothing

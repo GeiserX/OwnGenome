@@ -87,3 +87,15 @@ consumer	build-sites-bgzf	stdout	the strand of a site comes from the hg19ToHg38 
 consumer	build-sites-edge	stdout	the strand of a site comes from the hg19ToHg38 chain where it places the site at its dbSNP position (rs19 sits on an inverted block: -, where its alleles fit both strands), and the summary counts where each kept site's strand came from
 consumer	build-sites-same-position	stdout	the strand of a site comes from the hg19ToHg38 chain where it places the site at its dbSNP position (rs19 sits on an inverted block: -, where its alleles fit both strands), and the summary counts where each kept site's strand came from
 consumer	build-sites-none-kept	stdout	the strand of a site comes from the hg19ToHg38 chain where it places the site at its dbSNP position (rs19 sits on an inverted block: -, where its alleles fit both strands), and the summary counts where each kept site's strand came from
+
+# Intentional consumer expectations: the site table carries its format, and export refuses a table built before.
+consumer	build-sites-unit	sites.tsv.gz	the table opens with a '## table_format: 2' line after its title, which og consumer export requires
+consumer	build-sites-bgzf	sites.tsv.gz	the table opens with a '## table_format: 2' line after its title, which og consumer export requires
+consumer	build-sites-edge	sites.tsv.gz	the table opens with a '## table_format: 2' line after its title, which og consumer export requires
+consumer	build-sites-same-position	sites.tsv.gz	the table opens with a '## table_format: 2' line after its title, which og consumer export requires
+consumer	build-sites-none-kept	sites.tsv.gz	the table opens with a '## table_format: 2' line after its title, which og consumer export requires
+consumer	export-old-table	exit	og consumer export refuses a site table without the '## table_format: 2' line (built before the strand came from the liftover chain) with exit 2 and the rebuild command, where the oracle exported it
+consumer	export-old-table	stderr	og consumer export refuses a site table without the '## table_format: 2' line (built before the strand came from the liftover chain) with exit 2 and the rebuild command, where the oracle exported it
+consumer	export-old-table	out/S_23andme_v5.zip	og consumer export refuses a site table without the '## table_format: 2' line (built before the strand came from the liftover chain) with exit 2 and the rebuild command, where the oracle exported it
+consumer	export-old-table	out/S_ancestrydna_layout.zip	og consumer export refuses a site table without the '## table_format: 2' line (built before the strand came from the liftover chain) with exit 2 and the rebuild command, where the oracle exported it
+consumer	export-old-table	out/S_consumer_export.tsv	og consumer export refuses a site table without the '## table_format: 2' line (built before the strand came from the liftover chain) with exit 2 and the rebuild command, where the oracle exported it
