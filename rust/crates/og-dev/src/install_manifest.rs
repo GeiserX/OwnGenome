@@ -31,16 +31,19 @@
 //! - `vcf`: a VCF (plain or gzip) with the value of its `##fileDate=` line
 //!   and the `Date=` part of each `##bcftools_<cmd>Command=` line masked.
 //!   Everything else, the bcftools version and command lines included, is
-//!   compared.
+//!   compared. A header line longer than 16 MiB is compared as it is.
 //! - `index`: a `.tbi` or `.csi`: its header (format, columns, the CSI shift
 //!   and depth) and its sequence names, when the index is valid for the data
 //!   file beside it; `invalid` when it is not. Valid means every chunk ends
 //!   inside the data file and the chunk starts checked (up to 32, spread over
 //!   the index) begin a BGZF block. Bins and offsets are left out: they move
 //!   with any byte of the data file, which the data file's own row compares.
-//! - `jellyfish`: a jellyfish file (9 digits, then its JSON header) without
-//!   that header and its alignment padding: the header holds the host name,
-//!   the folder and the time of the count.
+//! - `jellyfish`: a jellyfish file (9 digits, then its JSON header of at
+//!   most 16 MiB): the header with the values of `hostname`, `pwd` and
+//!   `time` masked (the host, the folder and the time of the count), then
+//!   the counts after its alignment padding. The rest of the header (the
+//!   layout, the hash matrix, the command line) is compared: it decides how
+//!   the counts are read.
 //! - `numeric`: a text file of at most 16 MiB with a decimal number in it:
 //!   its lines and whitespace-separated words, each word with a decimal
 //!   point or an exponent rounded to 4 significant digits, every other word
@@ -54,8 +57,10 @@
 //! kind `removed` (in A only), `added` (in B only), `type`, `content` (a
 //! file's bytes, or what its compare mode reads, or a symlink's target) or
 //! `mode`. A difference in bytes that the path's compare mode finds equal is
-//! printed as `ALLOWED` with the mode and the row's reason. Lines starting
-//! with `#` are comments in every input.
+//! printed as `ALLOWED` with the mode and the row's reason. A manifest has
+//! no comments: after its first two lines every line is a row, and a path
+//! may start with `#`. In the allowlist, lines starting with `#` are
+//! comments.
 //!
 //! The allowlist (`tests/setup/install-manifest-allow.tsv`) has the columns
 //! `path mode component reason cannot_compare`. `path` is a pattern over the
@@ -68,17 +73,18 @@
 //! otherwise. A stamp (`DONE`, `INSTALLED`, `RELEASE`, `version.txt`,
 //! `*.stamp`, `*.installed`, `*.release`) is always compared byte for byte:
 //! its bytes decide whether the next setup run reinstalls, so a row whose
-//! last segment can match a stamp name is refused, and no row applies to a
-//! stamp.
+//! last segment can match any stamp name is refused, and no row applies to
+//! a stamp.
 //!
 //! # For tests/setup/ab.sh
 //!
 //! `--control B.tsv [--allow ALLOW.tsv]` prints the smallest non-empty file
 //! compared byte for byte; `--flip DIR PATH` flips one bit of the byte in
-//! the middle of DIR/PATH (twice restores it). `--compare-logs A B` compares
+//! the middle of DIR/PATH (twice restores it); PATH must name a regular file
+//! inside DIR, reached through folders only. `--compare-logs A B` compares
 //! two setup logs with times, durations, speeds and download progress
 //! masked, and the missing list (`Missing (...)`, `  - item`, `retry:`)
-//! line by line.
+//! line by line, unmasked.
 //!
 //! Exit 0 when nothing differs outside the allowlist, 1 when something
 //! does, 2 when an argument, a manifest or the allowlist is wrong or a file
@@ -90,7 +96,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -106,21 +112,15 @@ const MAGIC: &str = "#og-install-manifest 1";
 const COLUMNS: &str = "path\ttype\tsize\tsha256\tmode\tdigests";
 const ALLOW_COLUMNS: &str = "path\tmode\tcomponent\treason\tcannot_compare";
 /// Files up to this size are read once into memory; larger ones are
-/// streamed, a second time for their gzip digests.
+/// streamed. Decompressed content is always streamed.
 const SMALL: u64 = 16 << 20;
-/// Names a row may never cover: a sample of every stamp shape.
-const STAMP_SAMPLES: [&str; 10] = [
-    "DONE",
-    "INSTALLED",
-    "RELEASE",
-    "version.txt",
-    "catalog.stamp",
-    "chr1.stamp",
-    "counts.stamp",
-    "gnomad-sv.installed",
-    "mane_select_refseq.release",
-    "x.stamp",
-];
+/// The longest VCF header line masked, and the longest jellyfish header
+/// read: past it a line is compared as it is, and a file is no jellyfish
+/// file, so memory stays bounded on any input.
+const HEADER_MAX: usize = 16 << 20;
+/// Stamp names: whole names, and endings.
+const STAMP_NAMES: [&str; 4] = ["DONE", "INSTALLED", "RELEASE", "version.txt"];
+const STAMP_ENDINGS: [&str; 3] = [".stamp", ".installed", ".release"];
 
 /// Runs `og dev install-manifest ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -221,7 +221,7 @@ impl Walk {
             let meta = fs::symlink_metadata(&full).map_err(io_err(&full))?;
             let ft = meta.file_type();
             if self.exclude.contains(&path)
-                || (rel.is_empty() && name.as_bytes() == b"downloads")
+                || (rel.is_empty() && ft.is_dir() && name.as_bytes() == b"downloads")
                 || (!ft.is_dir() && name.as_bytes().ends_with(b".log"))
             {
                 self.skipped += 1;
@@ -291,16 +291,7 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
         f.read_to_end(&mut buf).map_err(&e)?;
         sha = sha_of(&buf);
         if gz {
-            let mut plain = Vec::new();
-            match MultiGzDecoder::new(&buf[..]).read_to_end(&mut plain) {
-                Ok(_) => {
-                    digests.push(("gzip", sha_of(&plain)));
-                    if plain.starts_with(b"##fileformat=VCF") {
-                        digests.push(("vcf", vcf_digest(&plain[..]).map_err(&e)?));
-                    }
-                }
-                Err(_) => digests.push(("gzip", "bad".into())),
-            }
+            digests.extend(gzip_stream_digests(&buf[..]));
         } else if buf.starts_with(b"##fileformat=VCF") {
             digests.push(("vcf", vcf_digest(&buf[..]).map_err(&e)?));
         } else if let Some(d) = numeric_digest(&buf) {
@@ -370,10 +361,7 @@ fn stream_digests(
     if head.starts_with(&[0x1f, 0x8b]) {
         digests.extend(gzip_stream_digests(&mut hr));
     } else if head.starts_with(b"##fileformat=VCF") {
-        digests.push((
-            "vcf",
-            vcf_digest(BufReader::with_capacity(1 << 20, &mut hr))?,
-        ));
+        digests.push(("vcf", vcf_digest(&mut hr)?));
     } else if is_jellyfish(head)
         && let Some(d) = jellyfish_digest(BufReader::with_capacity(1 << 20, &mut hr))?
     {
@@ -385,38 +373,35 @@ fn stream_digests(
     Ok((hex(hr.h), digests))
 }
 
-/// The gzip and, for a VCF, the vcf digest of a large gzip file, in one
-/// streaming pass.
+/// The gzip and, for a VCF, the vcf digest of a gzip file, in one
+/// streaming pass over its content in 1 MiB chunks.
 fn gzip_stream_digests(f: impl Read) -> Vec<(&'static str, String)> {
-    let mut r = BufReader::with_capacity(1 << 20, MultiGzDecoder::new(f));
+    let mut r = MultiGzDecoder::new(f);
     let mut raw = Sha256::new();
-    let mut vcf = Sha256::new();
-    let mut is_vcf = None;
-    let mut in_header = true;
-    let mut line = Vec::new();
+    let mut vcf: Option<VcfHasher> = None;
+    let mut buf = vec![0u8; 1 << 20];
+    let mut first = true;
     loop {
-        line.clear();
-        match r.read_until(b'\n', &mut line) {
+        let k = match read_full(&mut r, &mut buf) {
             Ok(0) => break,
-            Ok(_) => {}
+            Ok(k) => k,
             Err(_) => return vec![("gzip", "bad".into())],
-        }
-        raw.update(&line);
-        let v = *is_vcf.get_or_insert_with(|| line.starts_with(b"##fileformat=VCF"));
-        if v {
-            if in_header && !line.starts_with(b"##") {
-                in_header = false;
+        };
+        let chunk = &buf[..k];
+        if first {
+            first = false;
+            if chunk.starts_with(b"##fileformat=VCF") {
+                vcf = Some(VcfHasher::default());
             }
-            vcf.update(if in_header {
-                vcf_mask(&line)
-            } else {
-                std::borrow::Cow::Borrowed(&line[..])
-            });
+        }
+        raw.update(chunk);
+        if let Some(v) = vcf.as_mut() {
+            v.update(chunk);
         }
     }
     let mut d = vec![("gzip", hex(raw))];
-    if is_vcf == Some(true) {
-        d.push(("vcf", hex(vcf)));
+    if let Some(v) = vcf {
+        d.push(("vcf", v.finish()));
     }
     d
 }
@@ -440,33 +425,91 @@ fn vcf_mask(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
     std::borrow::Cow::Borrowed(line)
 }
 
-fn vcf_digest(mut r: impl BufRead) -> std::io::Result<String> {
-    let mut h = Sha256::new();
-    let mut header = true;
-    let mut line = Vec::new();
+/// The vcf digest, fed in chunks of any size. Each `##` header line is
+/// held until its end and hashed masked; one longer than `HEADER_MAX` is
+/// hashed as it comes, unmasked. From the first line that does not start
+/// with `##`, the bytes are hashed as they come.
+#[derive(Default)]
+struct VcfHasher {
+    h: Sha256,
+    body: bool,
+    line: Vec<u8>,
+    /// The line being read passed `HEADER_MAX`: its rest is hashed as it is.
+    long: bool,
+}
+
+impl VcfHasher {
+    fn update(&mut self, mut data: &[u8]) {
+        while !data.is_empty() {
+            if self.body {
+                self.h.update(data);
+                return;
+            }
+            let end = data.iter().position(|&b| b == b'\n').map(|i| i + 1);
+            let (part, rest) = data.split_at(end.unwrap_or(data.len()));
+            data = rest;
+            if self.long {
+                self.h.update(part);
+            } else {
+                self.line.extend_from_slice(part);
+                if end.is_none() && self.line.len() > HEADER_MAX {
+                    self.body = !self.line.starts_with(b"##");
+                    self.h.update(&self.line);
+                    self.line.clear();
+                    self.long = true;
+                }
+            }
+            if end.is_some() {
+                if !self.long {
+                    self.end_line();
+                }
+                self.long = false;
+            }
+        }
+    }
+
+    fn end_line(&mut self) {
+        if self.line.starts_with(b"##") {
+            self.h.update(vcf_mask(&self.line));
+        } else {
+            self.body = true;
+            self.h.update(&self.line);
+        }
+        self.line.clear();
+    }
+
+    fn finish(mut self) -> String {
+        if !self.line.is_empty() {
+            self.end_line();
+        }
+        hex(self.h)
+    }
+}
+
+fn vcf_digest(mut r: impl Read) -> std::io::Result<String> {
+    let mut v = VcfHasher::default();
+    let mut buf = vec![0u8; 1 << 20];
     loop {
-        line.clear();
-        if r.read_until(b'\n', &mut line)? == 0 {
+        let k = r.read(&mut buf)?;
+        if k == 0 {
             break;
         }
-        if header && !line.starts_with(b"##") {
-            header = false;
-        }
-        h.update(if header {
-            vcf_mask(&line)
-        } else {
-            std::borrow::Cow::Borrowed(&line[..])
-        });
+        v.update(&buf[..k]);
     }
-    Ok(hex(h))
+    Ok(v.finish())
 }
 
 fn is_jellyfish(head: &[u8]) -> bool {
     head.len() > 10 && head[..9].iter().all(u8::is_ascii_digit) && head[9] == b'{'
 }
 
-/// The digest of a jellyfish file's data, after the 9-digit length, the
-/// JSON header and the padding to its `alignment`; None when it is not one.
+static JF_VOLATILE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#""(hostname|pwd|time)"\s*:\s*"(?:[^"\\]|\\.)*""#).expect("a valid pattern")
+});
+
+/// The digest of a jellyfish file: its JSON header with the host, folder
+/// and time masked, then its counts after the padding to its `alignment`;
+/// None when it is not one, or its header is longer than `HEADER_MAX`.
 fn jellyfish_digest(mut r: impl Read) -> std::io::Result<Option<String>> {
     let mut len = [0u8; 10];
     if read_full(&mut r, &mut len)? < 10 || !is_jellyfish(&[&len[..], b"x"].concat()) {
@@ -476,24 +519,27 @@ fn jellyfish_digest(mut r: impl Read) -> std::io::Result<Option<String>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    if n == 0 {
+    if n == 0 || n > HEADER_MAX {
         return Ok(None);
     }
     let mut json = vec![0u8; n - 1];
     if read_full(&mut r, &mut json)? < json.len() {
         return Ok(None);
     }
-    let json = [b"{".as_slice(), &json].concat();
+    let json = String::from_utf8_lossy(&[b"{".as_slice(), &json].concat()).into_owned();
     let align = Regex::new(r#""alignment"\s*:\s*(\d+)"#)
         .expect("a valid pattern")
-        .captures(&String::from_utf8_lossy(&json))
+        .captures(&json)
         .and_then(|c| c[1].parse::<usize>().ok())
         .filter(|&a| a > 0)
         .unwrap_or(8);
     let pad = (align - (9 + n) % align) % align;
     let mut skip = vec![0u8; pad];
     read_full(&mut r, &mut skip)?;
+    let header = JF_VOLATILE.replace_all(&json, r#""$1":"<masked>""#);
     let mut h = Sha256::new();
+    h.update(format!("{}\n", header.len()));
+    h.update(header.as_bytes());
     let mut buf = vec![0u8; 1 << 20];
     loop {
         let k = r.read(&mut buf)?;
@@ -751,7 +797,8 @@ fn read_manifest(path: &str) -> Result<BTreeMap<String, Entry>, String> {
             "{path} is not an install manifest (no {MAGIC} line)"
         ));
     }
-    let mut rows = lines.filter(|l| !l.starts_with('#'));
+    // No comment lines: a path may start with `#`.
+    let mut rows = lines;
     if rows.next() != Some(COLUMNS) {
         return Err(format!("{path}: the column line is not {COLUMNS:?}"));
     }
@@ -803,10 +850,33 @@ struct Allow {
 
 fn is_stamp(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
-    matches!(name, "DONE" | "INSTALLED" | "RELEASE" | "version.txt")
-        || [".stamp", ".installed", ".release"]
-            .iter()
-            .any(|s| name.ends_with(s))
+    STAMP_NAMES.contains(&name) || STAMP_ENDINGS.iter().any(|s| name.ends_with(s))
+}
+
+/// The stamp name or ending the pattern of one path segment can match, if
+/// any: `*` matches any bytes, `?` one byte.
+fn stamp_match(seg: &str) -> Option<&'static str> {
+    let seg = seg.as_bytes();
+    if let Some(n) = STAMP_NAMES.iter().find(|n| glob(seg, n.as_bytes())) {
+        return Some(n);
+    }
+    let fits = |p: &[u8], s: &[u8]| p.iter().zip(s).all(|(&a, &b)| a == b'?' || a == b);
+    STAMP_ENDINGS.iter().copied().find(|end| {
+        let end = end.as_bytes();
+        match seg.iter().rposition(|&b| b == b'*') {
+            // No `*`: the pattern's last bytes must fit the ending.
+            None => seg.len() >= end.len() && fits(&seg[seg.len() - end.len()..], end),
+            // A `*`, then a tail: the `*` takes any bytes the tail leaves.
+            Some(i) => {
+                let tail = &seg[i + 1..];
+                if tail.len() >= end.len() {
+                    fits(&tail[tail.len() - end.len()..], end)
+                } else {
+                    fits(tail, &end[end.len() - tail.len()..])
+                }
+            }
+        }
+    })
 }
 
 fn read_allow(path: &str) -> Result<Vec<Allow>, String> {
@@ -829,10 +899,7 @@ fn read_allow(path: &str) -> Result<Vec<Allow>, String> {
             ));
         }
         let last = pattern.rsplit('/').next().unwrap_or(pattern);
-        if let Some(s) = STAMP_SAMPLES
-            .iter()
-            .find(|s| glob(last.as_bytes(), s.as_bytes()))
-        {
+        if let Some(s) = stamp_match(last) {
             return Err(format!(
                 "{path}: {pattern} can match a stamp ({s}); stamps are compared byte for byte, never allowed"
             ));
@@ -1047,7 +1114,30 @@ fn flip_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
         return Err(String::new());
     };
     let rel = unescape(path).ok_or_else(|| format!("{path} is not an escaped manifest path"))?;
-    let full = Path::new(dir).join(std::ffi::OsStr::from_bytes(&rel));
+    let rel = Path::new(std::ffi::OsStr::from_bytes(&rel));
+    // Only a regular file inside DIR, reached through folders: never a
+    // path that climbs out or starts at /, and never through a symlink.
+    let mut full = Path::new(dir).to_path_buf();
+    let mut parts = rel.components().peekable();
+    if parts.peek().is_none() {
+        return Err(format!("{path} names no file"));
+    }
+    while let Some(c) = parts.next() {
+        let std::path::Component::Normal(c) = c else {
+            return Err(format!("{path} is not a path inside {dir}"));
+        };
+        full.push(c);
+        let t = fs::symlink_metadata(&full)
+            .map_err(io_err(&full))?
+            .file_type();
+        let (ok, want) = match parts.peek() {
+            Some(_) => (t.is_dir(), "folder"),
+            None => (t.is_file(), "regular file"),
+        };
+        if !ok {
+            return Err(format!("{path}: {} is not a {want}", shown(&full)));
+        }
+    }
     let e = io_err(&full);
     let mut f = fs::OpenOptions::new()
         .read(true)
@@ -1147,10 +1237,20 @@ fn logs_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
             .map(|v| String::from_utf8_lossy(&v).into_owned())
             .map_err(|e| format!("{p}: {e}"))
     };
-    let (la, lb) = (masked_log(&read(a)?), masked_log(&read(b)?));
+    let (ta, tb) = (read(a)?, read(b)?);
+    let (la, lb) = (masked_log(&ta), masked_log(&tb));
     let mut text = String::new();
     let mut bad = 0usize;
-    let (ma, mb) = (missing_list(&la), missing_list(&lb));
+    // The missing list as it is: a mask would hide a date in a retry path.
+    let lines = |t: &str| -> Vec<String> {
+        t.split(['\n', '\r'])
+            .map(str::trim_end)
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let (ua, ub) = (lines(&ta), lines(&tb));
+    let (ma, mb) = (missing_list(&ua), missing_list(&ub));
     if ma != mb {
         bad += 1;
         let _ = writeln!(
@@ -1217,10 +1317,110 @@ mod tests {
 
     #[test]
     fn stamps() {
-        for s in STAMP_SAMPLES {
+        for s in STAMP_NAMES {
             assert!(is_stamp(&format!("a/{s}")), "{s}");
         }
+        for s in STAMP_ENDINGS {
+            assert!(is_stamp(&format!("a/chr1{s}")), "{s}");
+        }
         assert!(!is_stamp("a/catalog.json"));
+        for p in [
+            "DONE",
+            "D?NE",
+            "*",
+            "**",
+            "x.stamp",
+            "*.stamp",
+            "*mp",
+            "*.st?mp",
+            "foo*",
+            "foo.*",
+            "?.release",
+            "*.inst*",
+            "version.*",
+            "*e",
+        ] {
+            assert!(stamp_match(p).is_some(), "{p} can match a stamp");
+        }
+        for p in [
+            "*.stamps",
+            "DONE.txt",
+            "x.release.gz",
+            "?????",
+            "*.vcf.gz",
+            "*chr.vcf.gz.tbi",
+            "stamp",
+            "*.tbi",
+            "DONE?",
+        ] {
+            assert_eq!(stamp_match(p), None, "{p} matches no stamp");
+        }
+    }
+
+    /// The vcf digest line by line, all in memory: what VcfHasher must give
+    /// for any chunking.
+    fn vcf_lines(bytes: &[u8]) -> String {
+        let mut h = Sha256::new();
+        let mut header = true;
+        for line in bytes.split_inclusive(|&b| b == b'\n') {
+            header = header && line.starts_with(b"##");
+            h.update(if header { vcf_mask(line) } else { line.into() });
+        }
+        hex(h)
+    }
+
+    #[test]
+    fn the_vcf_digest_is_the_same_in_any_chunks() {
+        let cases: [&[u8]; 6] = [
+            b"##fileformat=VCFv4.2\n##fileDate=20261126\n##bcftools_viewCommand=view x; Date=Thu Nov 26 2026\n#CHROM\tPOS\n1\t5\n##not header\n",
+            b"##fileformat=VCFv4.2\r\n##fileDate=1\r\n#CHROM\r\n",
+            b"##fileformat=VCFv4.2\n##fileDate=20261126",
+            b"##fileformat=VCFv4.2\n",
+            b"",
+            b"##fileformat=VCFv4.2\n#CHROM\n1\t5",
+        ];
+        for bytes in cases {
+            for size in [1, 2, 3, 7, 64, bytes.len().max(1)] {
+                let mut v = VcfHasher::default();
+                for c in bytes.chunks(size) {
+                    v.update(c);
+                }
+                assert_eq!(v.finish(), vcf_lines(bytes), "{size}: {bytes:?}");
+            }
+            assert_eq!(vcf_digest(bytes).unwrap(), vcf_lines(bytes));
+        }
+    }
+
+    #[test]
+    fn a_header_line_past_the_limit_is_not_held() {
+        let mut v = VcfHasher::default();
+        let mut whole = Sha256::new();
+        let chunk = vec![b'a'; 1 << 20];
+        v.update(b"##fileDate=");
+        whole.update(b"##fileDate=");
+        for _ in 0..((2 * HEADER_MAX) >> 20) {
+            v.update(&chunk);
+            whole.update(&chunk);
+            assert!(v.line.len() <= HEADER_MAX, "{} bytes held", v.line.len());
+        }
+        assert!(v.long);
+        let rest = b"\n##fileDate=1\n#CHROM\n1\t5\n";
+        v.update(rest);
+        // The long line is hashed as it is; the lines after it are masked.
+        whole.update(b"\n##fileDate=<masked>\n#CHROM\n1\t5\n");
+        assert_eq!(v.finish(), hex(whole));
+    }
+
+    #[test]
+    fn a_jellyfish_header_past_the_limit_is_not_read() {
+        let input = b"999999999{\"alignment\":8}";
+        let mut r = &input[..];
+        assert_eq!(jellyfish_digest(&mut r).unwrap(), None);
+        assert_eq!(
+            r.len(),
+            input.len() - 10,
+            "only the length and the brace read"
+        );
     }
 
     #[test]

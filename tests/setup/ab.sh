@@ -154,10 +154,21 @@ if ! "${ROOT}/rust/og.sh" check --required >/dev/null 2>&1; then
 fi
 og_dir="${ROOT}/bin/.og"
 [ -n "${AB_SEED:-}" ] && manifest "$AB_SEED" >"${work}/seed.before.tsv" 2>/dev/null
+# Both sides start from this bin/.og (og itself included), so side B cannot
+# inherit a file side A added there.
+if [ -d "$og_dir" ]; then cp -pR "$og_dir" "${work}/og.before"; fi
+# og_restore: bin/.og as it was before side A.
+og_restore() {
+  rm -rf "$og_dir"
+  if [ -d "${work}/og.before" ]; then cp -pR "${work}/og.before" "$og_dir"; fi
+}
 
 for side in a b; do
   if [ "$side" = a ]; then cmd=("${side_a[@]}"); else cmd=("${side_b[@]}"); fi
-  [ "$side" = b ] && undo_images
+  if [ "$side" = b ]; then
+    undo_images
+    og_restore
+  fi
   images >"${work}/${side}.before.images"
   mkdir "${work}/install" "${work}/${side}.nxf"
   seed "${work}/install"

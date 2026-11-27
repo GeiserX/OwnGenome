@@ -495,7 +495,15 @@ fn index_mode_reads_csi_too() {
 }
 
 fn jf(host: &str, counts: &[u8]) -> Vec<u8> {
-    let json = format!("{{\"alignment\":8,\"hostname\":\"{host}\",\"format\":\"binary/sorted\"}}");
+    jf_with(host, 2, counts)
+}
+
+/// A jellyfish file: its host, folder and time come from `host`, its
+/// `counter_len` from `counter`.
+fn jf_with(host: &str, counter: u32, counts: &[u8]) -> Vec<u8> {
+    let json = format!(
+        "{{\"alignment\":8,\"counter_len\":{counter},\"format\":\"binary/sorted\",\"hostname\":\"{host}\",\"pwd\":\"/{host}\",\"time\":\"Thu Nov 26 03:56:51 {host}\"}}"
+    );
     let mut v = format!("{:09}{json}", json.len()).into_bytes();
     while v.len() % 8 != 0 {
         v.push(0);
@@ -523,6 +531,24 @@ fn jellyfish_mode_skips_the_header_and_compares_the_counts() {
         row,
     );
     assert_eq!(code, 1, "a changed count is green:\n{out}");
+    // The header's layout counts: the same bytes read with another counter
+    // length are other counts.
+    let (code, out) = modes_case(
+        "jf-layout",
+        "locityper/c.jf",
+        &jf_with("a1b2", 2, &[1, 2, 3, 4]),
+        &jf_with("a1b2", 4, &[1, 2, 3, 4]),
+        row,
+    );
+    assert_eq!(code, 1, "a changed counter_len is green:\n{out}");
+    let (code, out) = modes_case(
+        "jf-empty",
+        "locityper/c.jf",
+        &jf_with("a1b2", 2, &[]),
+        &jf_with("a1b2", 4, &[]),
+        row,
+    );
+    assert_eq!(code, 1, "a changed layout with no counts is green:\n{out}");
 }
 
 #[test]
@@ -600,6 +626,13 @@ fn stamps_are_compared_byte_for_byte() {
         "**\tperm\ttest\tall\t-\n",
         "x/chr*.stamp\tskip\ttest\tchromosome stamps\tno other part\n",
         "x/INSTALLED\tperm\ttest\tmode\t-\n",
+        "reference/foo.stamp\tskip\ttest\ta stamp\tnothing else\n",
+        "reference/foo*\tgzip\ttest\tall foo\t-\n",
+        "reference/foo.*\tgzip\ttest\tall foo\t-\n",
+        "x/*.st?mp\tgzip\ttest\tstamps\t-\n",
+        "x/gnomad-sv.inst*\tgzip\ttest\tsv\t-\n",
+        "x/?ONE\tperm\ttest\tmode\t-\n",
+        "x/version.tx?\tperm\ttest\tmode\t-\n",
     ] {
         let allow = allow_file(&t, row);
         let (code, out, err) = compare(&m, &m, Some(&allow));
@@ -609,20 +642,76 @@ fn stamps_are_compared_byte_for_byte() {
         );
         assert!(err.contains("stamp"), "{err}");
     }
-    // A row whose name is no stamp shape but names one: it does not apply.
-    let (t, a, b) = pair("stamp-skip");
+    // Names close to a stamp's that no stamp can have are rows like any.
+    for row in [
+        "x/*.stamps\tgzip\ttest\tnot a stamp\t-\n",
+        "x/DONE.txt\tperm\ttest\tnot a stamp\t-\n",
+        "x/*.release.gz\tgzip\ttest\tnot a stamp\t-\n",
+        "x/?????\tperm\ttest\tfive bytes, no stamp has five\t-\n",
+    ] {
+        let allow = allow_file(&t, row);
+        let (code, out, err) = compare(&m, &m, Some(&allow));
+        assert_eq!(
+            code, 0,
+            "a row over no stamp was refused: {row:?}\n{out}{err}"
+        );
+    }
+    // A stamp's bytes are compared even so.
+    let (_t, a, b) = pair("stamp-bytes");
     write(&a.join("reference/foo.stamp"), b"v1", 0o644);
     write(&b.join("reference/foo.stamp"), b"v2", 0o644);
-    let allow = allow_file(
-        &t,
-        "reference/foo.stamp\tskip\ttest\ta stamp\tnothing else\n",
-    );
-    let (code, out, _) = compare(&manifest(&a, &[]), &manifest(&b, &[]), Some(&allow));
+    let (code, out, _) = compare(&manifest(&a, &[]), &manifest(&b, &[]), None);
     assert_eq!(code, 1, "{out}");
     assert!(
         out.contains("DIFF\tcontent\treference/foo.stamp\t"),
         "{out}"
     );
+}
+
+#[test]
+fn a_file_named_downloads_and_a_name_starting_with_hash_are_listed() {
+    let (_t, a, b) = pair("names");
+    fs::remove_dir_all(b.join("downloads")).unwrap();
+    write(&b.join("downloads"), b"not a folder", 0o644);
+    write(&b.join("#build-id"), b"1", 0o644);
+    write(&b.join("reference/#x"), b"2", 0o644);
+    let (ma, mb) = (manifest(&a, &[]), manifest(&b, &[]));
+    let (code, out, err) = compare(&ma, &mb, None);
+    assert_eq!(code, 1, "{out}{err}");
+    for p in ["downloads", "#build-id", "reference/#x"] {
+        assert!(out.contains(&format!("DIFF\tadded\t{p}\t")), "{p}: {out}");
+    }
+    assert_eq!(compare(&mb, &mb, None).0, 0);
+    let (code, out, _) = compare(&mb, &ma, None);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("DIFF\tremoved\t#build-id\t"), "{out}");
+}
+
+#[test]
+fn flip_stays_inside_the_tree_and_writes_only_a_file() {
+    let t = Tmp::new("flip-out");
+    let d = t.0.join("d");
+    let outside = t.0.join("o.txt");
+    write(&d.join("in/x.txt"), b"inside", 0o644);
+    write(&outside, b"outside", 0o644);
+    symlink(&outside, d.join("link")).unwrap();
+    symlink(&t.0, d.join("up")).unwrap();
+    for path in [
+        "../o.txt".to_owned(),
+        s(&outside),
+        "link".to_owned(),
+        "up/o.txt".to_owned(),
+        "in/../../o.txt".to_owned(),
+        "./in/x.txt".to_owned(),
+        "in".to_owned(),
+    ] {
+        let (code, out, err) = run(&["--flip", &s(&d), &path]);
+        assert_eq!(code, 2, "--flip {path} was not refused: {out}{err}");
+    }
+    assert_eq!(fs::read(&outside).unwrap(), b"outside");
+    assert_eq!(fs::read(d.join("in/x.txt")).unwrap(), b"inside");
+    assert_eq!(run(&["--flip", &s(&d), "in/x.txt"]).0, 0);
+    assert_ne!(fs::read(d.join("in/x.txt")).unwrap(), b"inside");
 }
 
 #[test]
@@ -740,6 +829,20 @@ fn the_log_compare_masks_times_and_sees_the_missing_list() {
     let c = log("c.log", &base.replace("--kir-data", "--viral-data"));
     let (code, out, _) = run(&["--compare-logs", &a, &c]);
     assert_eq!(code, 1, "{out}");
+    assert!(out.contains("DIFF\tmissing\t"), "{out}");
+    let e = log(
+        "e.log",
+        &base.replace("--kir-data /g", "--kir-data /tmp/2026-11-26"),
+    );
+    let f = log(
+        "f.log",
+        &base.replace("--kir-data /g", "--kir-data /tmp/2026-11-27"),
+    );
+    let (code, out, _) = run(&["--compare-logs", &e, &f]);
+    assert_eq!(
+        code, 1,
+        "retry folders that differ by a date are green:\n{out}"
+    );
     assert!(out.contains("DIFF\tmissing\t"), "{out}");
     let d = log("d.log", &format!("{base}[WARN] one more line\n"));
     let (code, out, _) = run(&["--compare-logs", &a, &d]);
