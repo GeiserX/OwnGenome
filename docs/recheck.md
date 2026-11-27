@@ -11,8 +11,6 @@ bin/og recheck --sample your_sample
 
 It is part of `og`, OwnGenome's one binary, which `./scripts/setup.sh --og` builds ([og](rust.md)). It asks the network through the host's `curl`. It needs the sample's `run_manifest.tsv`, which `run-all.sh` writes (`bin/write_manifest.sh`).
 
-The old Python version, `bin/owngenome_recheck.py`, is gone: point crontabs at `bin/og recheck`.
-
 ## What it checks
 
 | Item | What the run used (`run_manifest.tsv`) | Where the newer release comes from | Steps it feeds |

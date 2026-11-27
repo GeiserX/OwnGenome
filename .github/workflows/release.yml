@@ -101,13 +101,18 @@ jobs:
 
       # A release is named after the version the pipeline reports, so the tag
       # must equal manifest.version in nextflow.config at the tagged commit,
-      # and a major or minor release needs its curated notes,
-      # docs/releases/<tag>.md, which become the release body.
+      # and a major or minor release needs its curated notes page,
+      # docs/releases/<tag>.md. The release body is the tag's CHANGELOG.md
+      # entry (scripts/ci/release-notes.sh): a tag with no entry fails here,
+      # and so does a major without its "## Upgrading to X.0" section in
+      # UPGRADING.md, whose link opens a major's notes. Nothing is published
+      # before this step passes.
       - name: The tag matches manifest.version, and the notes exist
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          scripts/ci/check-release.sh tag "$TAG" --notes-out "${RUNNER_TEMP}/notes.md"
+          scripts/ci/check-release.sh tag "$TAG"
+          scripts/ci/release-notes.sh "$TAG" > "${RUNNER_TEMP}/notes.md"
           {
             echo ""
             echo "## og binaries"

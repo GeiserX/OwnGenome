@@ -39,9 +39,7 @@ Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before ex
 It checks free space for each install and continues with a warning if one fails or does not fit.
 `--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
 See [reference setup](00-reference-setup.md) for disk peaks.
-
-### Upgrading from PCGR 2.2.5
-PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.
+A 0.x install read PCGR 2.2.5's bundle and the release-113 cache: [Upgrading](https://github.com/GeiserX/OwnGenome/blob/main/UPGRADING.md#upgrading-to-10) says what to install and what to delete.
 
 CPSR needs 16 GB of memory on a whole genome: its trace in our end test showed a peak of 12.3-15.6 GB, and under an 8 GB limit it was killed. The script and the pipeline's `CPSR` task both give it 16 GB (`--max_memory` still caps the task).
 

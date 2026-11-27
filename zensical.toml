@@ -29,6 +29,7 @@ nav = [
   { Home = "index.md" },
   { "Get started" = [
       { "Getting started" = "getting-started.md" },
+      { "Upgrading" = "https://github.com/GeiserX/OwnGenome/blob/main/UPGRADING.md" },
       { "Hardware and Storage Requirements" = "hardware-requirements.md" },
       { "Why run locally?" = "why-local.md" },
       { "Vendor Compatibility Guide" = "vendor-guide.md" },

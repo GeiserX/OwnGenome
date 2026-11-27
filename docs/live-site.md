@@ -220,19 +220,7 @@ WantedBy=multi-user.target
 
 Save it as `/etc/systemd/system/owngenome-live.service`. `systemctl enable --now owngenome-live` starts it now and at every boot, and `systemctl stop owngenome-live` stops it.
 
-### Switch from the Python server
-
-Up to this release the site was the Python server `bin/owngenome_live.py`. `og live serve` reads the same state folder, so the runs, their messages and the password hash carry over. Switch between runs: a run that is still going keeps its old `live.config`, which has no token.
-
-1. Note the commit you run now. It still has the Python server, and it is your way back: `git -C /path/to/OwnGenome rev-parse HEAD`.
-2. Stop the site (`systemctl stop owngenome-live`) and copy what it uses: `cp -a <state dir> <state dir>.before-og` and `cp /etc/systemd/system/owngenome-live.service ~/owngenome-live.service.before-og`. The state folder is `OWNGENOME_LIVE_STATE_DIR`, else `GENOME_DIR/.owngenome-live`. Both servers must use the same one: if yours is another folder, set `Environment=OWNGENOME_LIVE_STATE_DIR=...` in the unit.
-3. Update the checkout and build `og`: `git pull`, then `scripts/setup.sh --og`.
-4. Give the state folder to the account in the unit's `User=`, and let no other account write to it: `chown -R genome <state dir>` and `chmod -R go-w <state dir>`. `og live serve` does not start on a state folder that another account owns or may write to.
-5. Remove `--plugin-dir` from `ExecStart` and `plugin_dir=` from the `--config` file: the plugins are compiled into `og` now, and `og live serve` refuses both. A plugin of your own (`owngenome_live_<name>.py`) does not run under `og`. Port it to `rust/crates/og-live/src/plugins.rs` ([Plugins](#plugins)), or stay on the Python server until you do. The Run health card and `/metrics` are built in, with the same flags ([Run Alerts](alerts.md)).
-6. If `ExecStart` runs `bin/owngenome_live.py` itself, point it at `scripts/owngenome-live.sh` with the same flags. Then run `systemctl daemon-reload` and `systemctl restart owngenome-live`.
-7. Check the site: `systemctl status owngenome-live` shows `og live serve` running, `<state dir>/ingest-token` exists with mode 600, the site loads in a browser, and the home page lists the earlier runs. Start the next run with `run-all.sh` as before: it sends the token itself.
-
-**The way back.** Stop the site. Check out the commit from step 1 (`git -C /path/to/OwnGenome checkout <commit>`, or `git worktree add` it in another folder), put back the unit you copied in step 2, run `systemctl daemon-reload` and start the site. The unit's `scripts/owngenome-live.sh` is then that commit's script, which starts the Python server. The Python server reads the same `runs/<run>/events.jsonl` files, including the messages that `og live serve` took, and it ignores the files that `og live serve` added (`ingest-token` and the `.lock` files). A `run-all.sh` of this release posts to `/ingest/<run>` with the token in a header, and the Python server takes those posts too, so a run that started meanwhile keeps reporting. The copy from step 2 holds the state as it was before the switch; put it back only if you want that state, because the messages taken since then are only in the current folder.
+A site that `main` served with the Python server before 1.0 moves to `og live serve` with the steps in [Upgrading](https://github.com/GeiserX/OwnGenome/blob/main/UPGRADING.md#if-you-ran-main-before-10). The runs, their messages and the password hash carry over.
 
 ## Plugins
 
