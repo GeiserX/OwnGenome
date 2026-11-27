@@ -457,6 +457,11 @@ fn index_mode_compares_names_and_checks_the_index_fits_its_data() {
 
 /// A CSI index by hand: one sequence, one bin, one chunk ending at `end`.
 fn csi(end: u64, aux: &[u8]) -> Vec<u8> {
+    bgzf(&csi_plain(end, aux))
+}
+
+/// The decompressed bytes of [`csi`].
+fn csi_plain(end: u64, aux: &[u8]) -> Vec<u8> {
     let mut v = b"CSI\x01".to_vec();
     v.extend(14i32.to_le_bytes());
     v.extend(5i32.to_le_bytes());
@@ -469,7 +474,7 @@ fn csi(end: u64, aux: &[u8]) -> Vec<u8> {
     v.extend(1i32.to_le_bytes()); // n_chunk
     v.extend(0u64.to_le_bytes());
     v.extend(end.to_le_bytes());
-    bgzf(&v)
+    v
 }
 
 #[test]
@@ -492,6 +497,22 @@ fn index_mode_reads_csi_too() {
     assert_eq!(code, 1, "another header is green:\n{out}");
     let (code, out) = case("csi-unfit", csi(10, b""), csi(1 << 40, b""));
     assert_eq!(code, 1, "an index past its data is green:\n{out}");
+    // The data is one block of 300 decoded bytes, then the BGZF end block.
+    let data = bgzf(&[7u8; 300]);
+    let eof = (data.len() as u64) << 16;
+    let (code, out) = case("csi-block-end", csi(10, b""), csi(300, b""));
+    assert_eq!(code, 0, "an end at its block's last byte is red:\n{out}");
+    let (code, out) = case("csi-past-block", csi(10, b""), csi(301, b""));
+    assert_eq!(code, 1, "an end past its block's bytes is green:\n{out}");
+    let (code, out) = case("csi-eof", csi(10, b""), csi(eof, b""));
+    assert_eq!(code, 0, "an end at the end of the file is red:\n{out}");
+    let (code, out) = case("csi-past-eof", csi(10, b""), csi(eof | 1, b""));
+    assert_eq!(code, 1, "an end inside no block is green:\n{out}");
+    // An index over 64 MiB is not read: it is invalid, so it is red.
+    let mut big = csi_plain(10, b"");
+    big.resize(big.len() + (64 << 20), 0);
+    let (code, out) = case("csi-big", csi(10, b""), bgzf(&big));
+    assert_eq!(code, 1, "an index over 64 MiB is green:\n{out}");
 }
 
 fn jf(host: &str, counts: &[u8]) -> Vec<u8> {

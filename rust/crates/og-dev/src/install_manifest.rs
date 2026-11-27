@@ -34,9 +34,11 @@
 //!   compared. A header line longer than 16 MiB is compared as it is.
 //! - `index`: a `.tbi` or `.csi`: its header (format, columns, the CSI shift
 //!   and depth) and its sequence names, when the index is valid for the data
-//!   file beside it; `invalid` when it is not. Valid means every chunk ends
-//!   inside the data file and the chunk starts checked (up to 32, spread over
-//!   the index) begin a BGZF block. Bins and offsets are left out: they move
+//!   file beside it; `invalid` when it is not, or when it is over 64 MiB.
+//!   Valid means every chunk ends inside the data file, and the chunk starts
+//!   and ends checked (up to 32 of each, spread over the index) point into a
+//!   BGZF block: no further than its decoded length, or at offset 0 at the
+//!   end of the file. Bins and offsets are left out: they move
 //!   with any byte of the data file, which the data file's own row compares.
 //! - `jellyfish`: a jellyfish file (9 digits, then its JSON header of at
 //!   most 16 MiB): the header with the values of `hostname`, `pwd` and
@@ -118,6 +120,9 @@ const SMALL: u64 = 16 << 20;
 /// read: past it a line is compared as it is, and a file is no jellyfish
 /// file, so memory stays bounded on any input.
 const HEADER_MAX: usize = 16 << 20;
+/// The largest index read, compressed and decompressed; the real ones are a
+/// few MB. A larger one is `invalid`, which never compares equal.
+const INDEX_MAX: u64 = 64 << 20;
 /// Stamp names: whole names, and endings.
 const STAMP_NAMES: [&str; 4] = ["DONE", "INSTALLED", "RELEASE", "version.txt"];
 const STAMP_ENDINGS: [&str; 3] = [".stamp", ".installed", ".release"];
@@ -616,9 +621,17 @@ impl<'a> Cursor<'a> {
 fn read_index(path: &Path) -> std::io::Result<Option<String>> {
     let s = path.as_os_str().as_bytes();
     let data = Path::new(std::ffi::OsStr::from_bytes(&s[..s.len() - 4]));
-    let raw = fs::read(path)?;
+    let f = fs::File::open(path)?;
+    if f.metadata()?.len() > INDEX_MAX {
+        return Ok(None);
+    }
     let mut plain = Vec::new();
-    MultiGzDecoder::new(&raw[..]).read_to_end(&mut plain)?;
+    MultiGzDecoder::new(BufReader::new(f))
+        .take(INDEX_MAX + 1)
+        .read_to_end(&mut plain)?;
+    if plain.len() as u64 > INDEX_MAX {
+        return Ok(None);
+    }
     let mut c = Cursor(&plain);
     let mut h = Sha256::new();
     let mut chunks: Vec<(u64, u64)> = Vec::new();
@@ -699,31 +712,61 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
             }
         }
     }
-    // Valid for the data file: every chunk ends inside it, and the starts
-    // checked begin a BGZF block.
+    // Valid for the data file: every chunk ends inside it, at offset 0 when
+    // at its end, and the starts and ends checked point into a BGZF block.
     let Ok(mut d) = fs::File::open(data) else {
         return Ok(None);
     };
     let size = d.metadata()?.len();
+    let outside = |v: u64| (v >> 16) > size || ((v >> 16) == size && v & 0xffff != 0);
     if chunks
         .iter()
-        .any(|&(b, e)| b > e || (b >> 16) > size || (e >> 16) > size)
+        .any(|&(b, e)| b > e || outside(b) || outside(e))
     {
         return Ok(None);
     }
-    let mut starts: Vec<u64> = chunks.iter().map(|&(b, _)| b >> 16).collect();
-    starts.sort_unstable();
-    starts.dedup();
-    let step = starts.len().div_ceil(32).max(1);
-    for &off in starts.iter().step_by(step) {
-        let mut b = [0u8; 18];
-        d.seek(SeekFrom::Start(off))?;
-        if read_full(&mut d, &mut b)? < 18 || b[..4] != [0x1f, 0x8b, 8, 4] || b[12..14] != *b"BC" {
-            return Ok(None);
+    for ends in [false, true] {
+        let mut offs: Vec<u64> = chunks
+            .iter()
+            .map(|&(b, e)| if ends { e } else { b })
+            .collect();
+        offs.sort_unstable();
+        offs.dedup();
+        let step = offs.len().div_ceil(32).max(1);
+        for &v in offs.iter().step_by(step) {
+            if !in_block(&mut d, size, v)? {
+                return Ok(None);
+            }
         }
     }
     drop_cache(&d);
     Ok(Some(hex(h)))
+}
+
+/// Whether the virtual offset `v` points into the BGZF block at its file
+/// offset: up to the block's decoded length (its end counts), or 0 at the
+/// end of the file.
+fn in_block(d: &mut fs::File, size: u64, v: u64) -> std::io::Result<bool> {
+    let (at, within) = (v >> 16, v & 0xffff);
+    if at == size {
+        return Ok(within == 0);
+    }
+    let mut b = [0u8; 18];
+    d.seek(SeekFrom::Start(at))?;
+    if read_full(d, &mut b)? < 18 || b[..4] != [0x1f, 0x8b, 8, 4] || b[12..14] != *b"BC" {
+        return Ok(false);
+    }
+    // BSIZE is the block's length less one; ISIZE ends the block.
+    let end = at + u64::from(u16::from_le_bytes([b[16], b[17]])) + 1;
+    let mut trailer = [0u8; 4];
+    if end > size || end < at + 26 {
+        return Ok(false);
+    }
+    d.seek(SeekFrom::Start(end - 4))?;
+    if read_full(d, &mut trailer)? < 4 {
+        return Ok(false);
+    }
+    Ok(within <= u64::from(u32::from_le_bytes(trailer)))
 }
 
 /// A path's bytes as one TSV field: valid UTF-8 as it is, except `\`, tab,
