@@ -1,6 +1,6 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    SOMALIER, SOMALIER_RELATE, SAMPLE_QC — Is the sample the person you think?
+    SOMALIER, SOMALIER_RELATE(_COHORT), SAMPLE_QC — Is the sample the person you think?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     SOMALIER reads each BAM's genotypes and depth at somalier's known sites
     (--somalier_sites). It names the sample by its samplesheet id
@@ -13,6 +13,10 @@
     pair, relatedness, so two rows that are the same person show up. Its
     pedigree (--ped) holds each sample's samplesheet sex, so somalier.samples.tsv
     (and MultiQC) report the declared sex beside the one from the reads.
+    Its tables go to the sample's own qc/somalier folder when the run has
+    one sample, so a run of another sample into the same results folder
+    leaves them alone. With more than one sample SOMALIER_RELATE_COHORT runs
+    instead, and its tables go to somalier/ beside the sample folders.
 
     SAMPLE_QC writes <id>_sample_qc.tsv with og qc sample (rust/, bin/og on
     the task PATH; the rule scripts/33-sample-qc.sh runs too): somalier's
@@ -84,10 +88,75 @@ process SOMALIER {
     """
 }
 
+// The command of SOMALIER_RELATE and SOMALIER_RELATE_COHORT, and their
+// versions.yml. --infer: without it somalier leaves the sex column as the
+// pedigree's. With the pedigree, that column starts as the declared sex and
+// changes only when the reads tell; SAMPLE_QC reads the call, not the
+// pedigree.
+def somalier_relate_script(ped, sites, process_name, container) {
+    """
+    somalier relate --infer --ped ${ped} --sites ${sites} -o somalier extract/*.somalier
+
+    cat <<-END_VERSIONS > versions.yml
+    "${process_name}":
+        somalier: ${container.replaceFirst(/^[^:@]+[:@]/, '')}
+    END_VERSIONS
+    """
+}
+
+// One row per sample, every one male; SAMPLE_QC reads the sex column.
+def somalier_relate_stub(process_name, container) {
+    """
+    printf '#family_id\\tsample_id\\tpaternal_id\\tmaternal_id\\tsex\\tphenotype\\toriginal_pedigree_sex\\tgt_depth_mean\\tn_hom_ref\\tn_het\\tn_hom_alt\\tX_depth_mean\\tX_n\\tX_het\\tX_hom_alt\\tY_depth_mean\\tY_n\\n' > somalier.samples.tsv
+    for f in extract/*.somalier; do
+        s=\$(basename "\$f" .somalier)
+        printf '%s\\t%s\\t-9\\t-9\\t-9\\t-9\\t-9\\t30\\t1\\t1\\t1\\t15\\t20\\t0\\t20\\t15\\t5\\n' "\$s" "\$s" >> somalier.samples.tsv
+    done
+    printf '#sample_a\\tsample_b\\trelatedness\\n' > somalier.pairs.tsv
+
+    cat <<-END_VERSIONS > versions.yml
+    "${process_name}":
+        somalier: ${container.replaceFirst(/^[^:@]+[:@]/, '')}
+    END_VERSIONS
+    """
+}
+
+// A run of one sample: its tables go to the sample's folder, beside its
+// .somalier file. versions.yml stays in the work folder.
 process SOMALIER_RELATE {
     label 'process_single'
 
-    publishDir { "${params.outdir}/somalier" }, mode: params.publish_dir_mode
+    publishDir { "${params.outdir}/${meta.id}/qc/somalier" }, mode: params.publish_dir_mode,
+        saveAs: { f -> f == 'versions.yml' ? null : f }
+
+    input:
+    tuple val(meta), path(extracted, stageAs: 'extract/*')
+    path(sites)
+    path(ped)            // one line per sample: id, id, -9, -9, sex (1, 2 or -9), -9
+
+    output:
+    path "somalier.samples.tsv", emit: samples
+    path "somalier.pairs.tsv",   emit: pairs
+    path "somalier.html",        emit: html, optional: true
+    path "versions.yml",         emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
+
+    script:
+    somalier_relate_script(ped, sites, task.process, task.container)
+
+    stub:
+    somalier_relate_stub(task.process, task.container)
+}
+
+// A run of more than one sample: one set of tables over all of them, in
+// somalier/ beside the sample folders.
+process SOMALIER_RELATE_COHORT {
+    label 'process_single'
+
+    publishDir "${params.outdir}/somalier", mode: params.publish_dir_mode,
+        saveAs: { f -> f == 'versions.yml' ? null : f }
 
     input:
     path(extracted, stageAs: 'extract/*')
@@ -104,33 +173,10 @@ process SOMALIER_RELATE {
     task.ext.when == null || task.ext.when
 
     script:
-    """
-    # --infer: without it somalier leaves the sex column as the pedigree's.
-    # With the pedigree, that column starts as the declared sex and changes
-    # only when the reads tell; SAMPLE_QC reads the call, not the pedigree.
-    somalier relate --infer --ped ${ped} --sites ${sites} -o somalier extract/*.somalier
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        somalier: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
-    """
+    somalier_relate_script(ped, sites, task.process, task.container)
 
     stub:
-    // One row per sample, every one male; SAMPLE_QC reads the sex column.
-    """
-    printf '#family_id\\tsample_id\\tpaternal_id\\tmaternal_id\\tsex\\tphenotype\\toriginal_pedigree_sex\\tgt_depth_mean\\tn_hom_ref\\tn_het\\tn_hom_alt\\tX_depth_mean\\tX_n\\tX_het\\tX_hom_alt\\tY_depth_mean\\tY_n\\n' > somalier.samples.tsv
-    for f in extract/*.somalier; do
-        s=\$(basename "\$f" .somalier)
-        printf '%s\\t%s\\t-9\\t-9\\t-9\\t-9\\t-9\\t30\\t1\\t1\\t1\\t15\\t20\\t0\\t20\\t15\\t5\\n' "\$s" "\$s" >> somalier.samples.tsv
-    done
-    printf '#sample_a\\tsample_b\\trelatedness\\n' > somalier.pairs.tsv
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        somalier: ${task.container.replaceFirst(/^[^:@]+[:@]/, '')}
-    END_VERSIONS
-    """
+    somalier_relate_stub(task.process, task.container)
 }
 
 process SAMPLE_QC {

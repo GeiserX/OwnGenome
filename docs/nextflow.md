@@ -207,8 +207,10 @@ results/
 │   ├── indexcov/           # goleft indexcov coverage plots and .ped (rows with a BAM)
 │   ├── <sample>_sex_check.tsv  # the sex indexcov infers, with CNchrX and CNchrY
 │   ├── qc/                 # <sample>_sample_qc.tsv: somalier's sex, FREEMIX, same person as (sample_qc);
-│   │                       #   somalier/ and verifybamid2/ hold each tool's own files;
+│   │                       #   somalier/ and verifybamid2/ hold each tool's own files (somalier/: also the
+│   │                       #   relate tables of a run of one sample);
 │   │                       #   <sample>_read_count.tsv: reads in and primary records in the BAM (ALIGN_MINIMAP2)
+│   ├── multiqc/            # MultiQC report of the sample (reads mosdepth: needs a BAM; a VCF-only run logs the skip)
 │   ├── pharmcat/           # PharmCAT PGx reports (HTML + JSON)
 │   ├── clinvar/            # ClinVar pathogenic variant screen: hits as VCF and TSV, and the cDNA read check of each hit
 │   ├── pypgx/              # pypgx star allele calling (optional)
@@ -269,13 +271,13 @@ results/
 │   └── *_report.html       # Summary HTML report (published to sample root): QC, ClinVar, PharmCAT, CPIC,
 │                           #   CPSR, clinical filter (with its ACMG SF tier), slivar, ROH, mito haplogroup and haplocheck,
 │                           #   Y haplogroup and every other step that ran; "Not run" for a tool not selected
-├── somalier/               # somalier relate over every sample of the run: samples, pairs, HTML (sample_qc)
+├── somalier/               # somalier relate over every sample of a run of two or more: samples, pairs, HTML (sample_qc)
 ├── family/                 # --pedigree (or <name>/ with --family_name): family_plan.tsv, pedigree.tsv,
 │                           #   family.vcf.gz (joint call), relationships.tsv, somalier/, family.phased.vcf.gz,
 │                           #   <child>_inheritance.tsv.gz, de_novo.tsv, compound_het.tsv, family_report.md;
 │                           #   ibd_pairs.tsv, ibd_segments.tsv and ibd_report.md with --ancestry_fine_panel (FAMILY_IBD_REPORT);
 │                           #   couple_<a>_<b>.tsv and .md for two partners (COUPLE_CARRIER)
-├── multiqc/                # MultiQC report across samples (reads mosdepth: needs a BAM; a VCF-only run logs the skip)
+├── multiqc/                # MultiQC report across the samples of a run of two or more (MULTIQC_COHORT)
 └── pipeline_info/
     ├── timeline_*.html
     ├── report_*.html

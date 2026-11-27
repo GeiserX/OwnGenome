@@ -1374,7 +1374,7 @@ workflow {
         }
 
     // QC files for MultiQC (mosdepth summaries)
-    ch_multiqc_files = BAM_ANALYSIS.out.coverage.map { meta, f -> f }
+    ch_multiqc_files = BAM_ANALYSIS.out.coverage
 
     REPORTING(
         ch_report_inputs,

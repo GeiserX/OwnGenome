@@ -471,7 +471,12 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 ### `maxRetries = 0` still allows one retry
 - **Failed:** to stop pgsc_calc retrying `FORMAT_SCOREFILES` under the same memory cap, the PRS steps first gave it `maxRetries = 0`. The Nextflow CI stand-in for pgsc_calc, which exits 2 on any attempt after the first, showed pgsc_calc retried it anyway.
 - **Why:** Nextflow 26.04.7, and still 26.10.0, reads `maxRetries` as `result ? result as int : 1` (`TaskConfig.getMaxRetries`). Zero is false in Groovy, so `maxRetries = 0` means one retry.
-- **Fix:** the PRS steps set `errorStrategy = 'finish'` on `FORMAT_SCOREFILES`, which never retries. To turn retries off for a process, set its `errorStrategy`, not `maxRetries`.
+- **Fix:** the PRS steps set an `errorStrategy` that never retries on `FORMAT_SCOREFILES`: first `'finish'`, now `'terminate'` (next entry). To turn retries off for a process, set its `errorStrategy`, not `maxRetries`.
+
+### `errorStrategy 'finish'` can leave a nested pgsc_calc running for ever
+- **Failed:** in a run on a test machine, a pgsc_calc task was killed for memory and the `PRS` task never ended. pgsc_calc logged the kill and "Execution cancelled -- Finishing pending tasks before exit". A pending ancestry task finished minutes later, and then pgsc_calc logged nothing more until it was stopped by hand. The outer run waited on `PRS` the whole time.
+- **Why:** with `'finish'`, Nextflow waits for the pending tasks and then for every dataflow operator to end. In pgsc_calc's ancestry branch an operator can stay open after its last task, so the wait never ends. It is a race: it did not happen on every run. With `'terminate'`, Nextflow kills the pending tasks and skips that wait (`Session.await` joins the operators only when the session was not aborted). pgsc_calc's own default is `'finish'` for every exit it does not retry.
+- **Fix:** both PRS entry points give every pgsc_calc task `'terminate'` for a failure it does not retry, `FORMAT_SCOREFILES` included. The e2e case `t3-run-fixes-2-1-prs-kill-ends` kills `FORMAT_SCOREFILES` for memory while a task is still pending, and checks that `PRS` ends in seconds and is retried.
 
 ### A PRS summary with a `Variants_Used` column comes from the old scoring path
 - **Failed:** before 2026-10-01 step 25 scored with plink2 directly and wrote `<sample>_prs_summary.tsv` with the columns `Condition`, `PGS_ID`, `Score`, `Variants_Used`, `Variants_Total`. `Score` held plink2's `SCORE1_AVG` (an average, not the sum), `Variants_Used` held `NAMED_ALLELE_DOSAGE_SUM` (a dosage sum, not a count of matched variants), and the condition labels came from a hard-coded list that named PGS000738, a vitiligo score, as schizophrenia.

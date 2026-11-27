@@ -74,6 +74,7 @@ check_eq "with the panel's global AF: runs on the planted stretch" "$(rg planted
 check_eq "with global AF: the off-panel PASS marker has no ST row" "$(off_panel_sites)" 0
 check_eq "with the panel: per-site lines at all 300 panel sites" "$(grep -c '^ST' "${G}/planted/vcf/planted_roh.txt" || true)" 300
 check "the table names the global AF" has '^# AF used: global ' "$(head -n 1 "${G}/planted/vcf/planted_roh.txt")"
+check "the table says step 26 gave no table" has '; no step 26 ancestry table$' "$(head -n 1 "${G}/planted/vcf/planted_roh.txt")"
 
 # 3. Step 26 puts the sample at EUR 0.9: the nfe column (0.4), the run is back.
 mkdir -p "${G}/planted/ancestry"
@@ -92,5 +93,6 @@ GENOME_DIR="$G" run_step 11-roh-analysis.sh planted
 check_step_exit 11-roh-analysis.sh
 check_eq "no group at 0.8 or more: the global AF, no run" "$(rg planted)" 0
 check_eq "with global AF after ancestry fallback: the off-panel PASS marker has no ST row" "$(off_panel_sites)" 0
+check "the table says no step 26 group reached 0.8" has '; no step 26 group at 0.8 or more$' "$(head -n 1 "${G}/planted/vcf/planted_roh.txt")"
 
 finish

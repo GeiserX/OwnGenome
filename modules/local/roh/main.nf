@@ -52,7 +52,13 @@ process ROH {
         GROUP=\$( [ ! -s "${anc}" ] || awk -F'\\t' '\$1 ~ /^probability_(AFR|AMR|EAS|EUR|SAS)\$/ && \$2 + 0 >= 0.8 {print substr(\$1, 13), \$2}' "${anc}")
         if [ -z "\${GROUP}" ]; then
             ROH_FLAGS=(--AF-file "${panel}")
-            AF_DESC="global (panel ${panel}); no step 26 group at 0.8 or more"
+            # No table: no ancestry asked for, or PRS failed (it is
+            # report-only, so ROH goes on without its table).
+            if [ -s "${anc}" ]; then
+                AF_DESC="global (panel ${panel}); no step 26 group at 0.8 or more"
+            else
+                AF_DESC="global (panel ${panel}); no step 26 ancestry table"
+            fi
         else
             read -r POP PROB <<< "\${GROUP}"
             case "\${POP}" in AFR) GNOMAD_GROUP=afr ;; AMR) GNOMAD_GROUP=amr ;; EAS) GNOMAD_GROUP=eas ;; EUR) GNOMAD_GROUP=nfe ;; SAS) GNOMAD_GROUP=sas ;; esac

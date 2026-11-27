@@ -356,7 +356,12 @@ fi
   # it 2 CPUs, and 4 on its own retry under the same --max_memory. One
   # thread, all of PGSC_MAX_MEMORY, and no retry at the same limit (not
   # maxRetries = 0: Nextflow reads 0 as its default, one retry).
-  printf "    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '%s'; errorStrategy = 'finish' }\n" "$PGSC_MAX_MEMORY"
+  # 'terminate', never 'finish', for it and for every other task of pgsc_calc
+  # (its own default is 'finish'): with 'finish' a task still pending in the
+  # ancestry branch can leave pgsc_calc waiting for ever; 'terminate' kills
+  # the pending tasks and exits, as the Nextflow PRS module does.
+  echo "    errorStrategy = { task.exitStatus in ((130..145) + 104) ? 'retry' : 'terminate' }"
+  printf "    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '%s'; errorStrategy = 'terminate' }\n" "$PGSC_MAX_MEMORY"
   echo '}'
   # shellcheck disable=SC2016  # $(id -u) is expanded by the task's shell
   echo 'docker.runOptions = '"'"'-u $(id -u):$(id -g) --network none'"${MOUNT}'"

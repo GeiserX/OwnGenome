@@ -48,7 +48,11 @@ if [ -s "$PANEL" ] && [ -s "${PANEL}.tbi" ]; then
   GROUP=$( [ ! -s "$ANCESTRY" ] || awk -F'\t' '$1 ~ /^probability_(AFR|AMR|EAS|EUR|SAS)$/ && $2 + 0 >= 0.8 {print substr($1, 13), $2}' "$ANCESTRY")
   if [ -z "$GROUP" ]; then
     ROH_FLAGS=(--AF-file "/genome/roh_af/${PANEL##*/}")
-    AF_DESC="global (panel ${PANEL##*/}); no step 26 group at 0.8 or more"
+    if [ -s "$ANCESTRY" ]; then
+      AF_DESC="global (panel ${PANEL##*/}); no step 26 group at 0.8 or more"
+    else
+      AF_DESC="global (panel ${PANEL##*/}); no step 26 ancestry table"
+    fi
   else
     read -r POP PROB <<< "$GROUP"
     case "$POP" in AFR) GNOMAD_GROUP=afr ;; AMR) GNOMAD_GROUP=amr ;; EAS) GNOMAD_GROUP=eas ;; EUR) GNOMAD_GROUP=nfe ;; SAS) GNOMAD_GROUP=sas ;; esac

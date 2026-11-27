@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# sample_qc in the Nextflow pipeline (SOMALIER, SOMALIER_RELATE, VERIFYBAMID2,
+# sample_qc in the Nextflow pipeline (SOMALIER, SOMALIER_RELATE(_COHORT), VERIFYBAMID2,
 # SAMPLE_QC) on the VCF+BAM row of cases 20 and 21, with the sites case qc-1
 # wrote (somalier's on the fixture's contigs, plus the slice's own chrX
 # calls) and the panel qc-1 cut to those contigs:
 #   - declared female: INDEXCOV reads the slices as female (case 34) and lets
 #     the row through, but somalier finds HG002 male from the reads and stops
 #     the run, naming both sexes; the report is never written; somalier's own
-#     table holds the samplesheet's female as the pedigree's sex;
+#     table holds the samplesheet's female as the pedigree's sex, in the
+#     sample's own qc/somalier (one sample: no shared somalier/ folder);
 #   - declared male with --sex_check warn (for INDEXCOV's reading): the run
 #     ends, and the report, rendered by bin/render_report.py, shows somalier's
 #     sex, FREEMIX and the ROH and haplogroup cards, with the numbers of the
@@ -17,6 +18,9 @@
 #     PharmCAT and the CPIC lookup, and the report fills the pypgx section,
 #     the PharmCAT vs pypgx comparison (CPIC_LOOKUP's table) and the indexcov
 #     sex check (INDEXCOV's folder), with the sex INDEXCOV's own table holds.
+#     With two rows SOMALIER_RELATE_COHORT's tables go to the shared somalier/
+#     folder, and MultiQC writes each sample's report in its folder and one
+#     across both in multiqc/.
 # The Nextflow report receives every output the bash report reads: the report
 # of case nextflow-from-fastq-2-nextflow, whose run had telomere_hunter,
 # mito_variants and hla_typing, fills the Telomere content (relative), Mitochondrial
@@ -77,11 +81,16 @@ check "INDEXCOV let the row through first" has "Sample '${SAMPLE}': indexcov inf
 check "the message says how to go on" has 'rerun with --sex_check warn' "$(cat "$LOG")"
 check_eq "declared female: SAMPLE_QC tasks" "$(ran SAMPLE_QC)" 1
 check_eq "declared female: no HTML_REPORT task" "$(ran HTML_REPORT)" 0
-# pcol COLUMN SAMPLE: COLUMN of the run's somalier.samples.tsv for SAMPLE.
+# pcol COLUMN SAMPLE: COLUMN of the run's somalier.samples.tsv (in REL) for SAMPLE.
 pcol() {
   awk -F'\t' -v k="$1" -v s="$2" 'NR == 1 {sub(/^#/, ""); for (i = 1; i <= NF; i++) c[$i] = i; next}
-    $c["sample_id"] == s {print $c[k]}' "${OUT}/somalier/somalier.samples.tsv" 2>/dev/null
+    $c["sample_id"] == s {print $c[k]}' "${REL}/somalier.samples.tsv" 2>/dev/null
 }
+# One sample: SOMALIER_RELATE's tables go to its own folder, so a run of
+# another sample into the same --outdir leaves them alone.
+REL="${OUT}/${SAMPLE}/qc/somalier"
+check "one sample: SOMALIER_RELATE's tables are in the sample's qc/somalier" test -s "${REL}/somalier.samples.tsv"
+check "one sample: no shared somalier/ folder" test ! -e "${OUT}/somalier"
 check_eq "declared female: somalier's table has it as the pedigree's sex" "$(pcol original_pedigree_sex "$SAMPLE")" female
 check_eq "and somalier set the sex to male (1) from the reads" "$(pcol sex "$SAMPLE")" 1
 
@@ -92,9 +101,10 @@ if [ ! -d "$BUNDLE" ]; then
   clone_shallow_with_retry "${V%%--*}" https://github.com/sbslee/pypgx-bundle.git "$BUNDLE" \
     || { fail "the pypgx bundle clone"; finish; }
 fi
-DUP_ID="$D" EXTRA_TOOLS=pypgx,pharmcat,cpic nf_run male male --sex_check warn --pypgx_bundle "$BUNDLE"
+DUP_ID="$D" EXTRA_TOOLS=pypgx,pharmcat,cpic,multiqc nf_run male male --sex_check warn --pypgx_bundle "$BUNDLE"
 check_eq "declared male, --sex_check warn: the run exits 0" "$RC" 0
-check_eq "SOMALIER_RELATE tasks" "$(ran SOMALIER_RELATE)" 1
+check_eq "SOMALIER_RELATE_COHORT tasks (two rows)" "$(ran SOMALIER_RELATE_COHORT)" 1
+check_eq "SOMALIER_RELATE tasks (two rows: none)" "$(ran SOMALIER_RELATE)" 0
 for p in SOMALIER VERIFYBAMID2 SAMPLE_QC HTML_REPORT; do
   check_eq "${p} tasks (two rows)" "$(ran "$p")" 2
 done
@@ -110,7 +120,17 @@ check_eq "somalier names the second row by its own id" "$(tv "$TD" somalier_id)"
 check "the first row is the same person as the second" has "^${D} \\([0-9.]+\\)$" "$(tv "$T" same_person_as)"
 check "the second row is the same person as the first" has "^${SAMPLE} \\([0-9.]+\\)$" "$(tv "$TD" same_person_as)"
 check "VERIFYBAMID2 published its selfSM" test -s "${R}/qc/verifybamid2/${SAMPLE}.selfSM"
-check "SOMALIER_RELATE published its tables" test -s "${OUT}/somalier/somalier.samples.tsv"
+# Two samples: one table for both, in the shared somalier/ folder.
+REL="${OUT}/somalier"
+check "two samples: SOMALIER_RELATE_COHORT published its tables in somalier/" test -s "${REL}/somalier.samples.tsv"
+check "two samples: none in a sample's folder" test ! -e "${R}/qc/somalier/somalier.samples.tsv"
+# MultiQC: each sample its own report, and one across both.
+check_eq "MULTIQC tasks (one per sample)" "$(ran MULTIQC)" 2
+check_eq "MULTIQC_COHORT tasks" "$(ran MULTIQC_COHORT)" 1
+for id in "$SAMPLE" "$D"; do
+  check "${id}: its MultiQC report is in its folder" test -s "${OUT}/${id}/multiqc/multiqc_report.html"
+done
+check "the cohort MultiQC report is in multiqc/" test -s "${OUT}/multiqc/multiqc_report.html"
 check_eq "somalier's table: the samplesheet's male as the pedigree's sex, both rows" \
   "$(pcol original_pedigree_sex "$SAMPLE") $(pcol original_pedigree_sex "$D")" "male male"
 
