@@ -38,11 +38,11 @@ output_has unknown-og '^ERROR: unknown setup flag: --nope$'
 run_expect 2 two-flags "$OG" setup install --kir-data "$G" --viral-data
 output_has two-flags 'one flag at a time: --viral-data comes after --kir-data'
 n=$(wc -l < "${CASE_WORK}/og.calls")
-OG_SETUP=python run_expect 2 bad-og-setup "${SCRIPTS}/setup.sh" --kir-data "$G"
-[ "$(wc -l < "${CASE_WORK}/og.calls")" -eq "$n" ] || fail "setup.sh handed --kir-data to og under OG_SETUP=python"
-output_has bad-og-setup "OG_SETUP must be og or bash, got 'python'"
-OG_SETUP=python run_expect 2 bad-og-setup-og "$OG" setup install --kir-data "$G"
-output_has bad-og-setup-og "OG_SETUP must be og or bash, got 'python'"
+OG_SETUP=rust run_expect 2 bad-og-setup "${SCRIPTS}/setup.sh" --kir-data "$G"
+[ "$(wc -l < "${CASE_WORK}/og.calls")" -eq "$n" ] || fail "setup.sh handed --kir-data to og under OG_SETUP=rust"
+output_has bad-og-setup "OG_SETUP must be og or bash, got 'rust'"
+OG_SETUP=rust run_expect 2 bad-og-setup-og "$OG" setup install --kir-data "$G"
+output_has bad-og-setup-og "OG_SETUP must be og or bash, got 'rust'"
 run_expect 0 install-help "$OG" setup install --help
 output_has install-help 'og setup install'
 

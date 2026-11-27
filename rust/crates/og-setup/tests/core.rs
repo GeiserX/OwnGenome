@@ -294,13 +294,13 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--net --rw {w} {img} pip install"),
+            format!("--net --rw {w} {img} fetch all"),
             RunIn {
                 net: true,
                 rw: vec![w.clone()],
                 ..Default::default()
             },
-            vec![img.into(), "pip".into(), "install".into()],
+            vec![img.into(), "fetch".into(), "all".into()],
             &inside,
         ),
         (
@@ -327,7 +327,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--net --rw {w} -v /l:/lock.txt:ro {img} pip"),
+            format!("--net --rw {w} -v /l:/lock.txt:ro {img} fetch"),
             RunIn {
                 net: true,
                 rw: vec![w.clone()],
@@ -337,7 +337,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
                 "-v".into(),
                 "/l:/lock.txt:ro".into(),
                 img.into(),
-                "pip".into(),
+                "fetch".into(),
             ],
             &inside,
         ),
