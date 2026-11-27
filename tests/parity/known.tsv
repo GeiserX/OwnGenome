@@ -14,6 +14,49 @@ family	report-3gen-duo	out/family_report.md	#478 explains de novo checks for tra
 family	report-bench	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 family	report-bench	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 
+# Intentional report-render expectations after the PRS mixed-ancestry caveat change.
+report-render	a-escape	a-escape.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-escape	a-escape.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-full	a-full.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-full	a-full.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-no-painting	a-no-painting.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-no-painting	a-no-painting.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-numbers	a-numbers.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-painting	a-painting.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-painting	a-painting.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-since	a-since.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-since	a-since.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-stale	a-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-stale	a-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-y-calls	a-y-calls.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-y-calls	a-y-calls.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	all	all.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	all-history	all-history.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float--inf	c-float--inf.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float-inf	c-float-inf.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float-nan	c-float-nan.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-full	c-full.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-reasons	s-consumer-reasons.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-reasons	s-consumer-reasons.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-stale	s-consumer-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-stale	s-consumer-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-chrx	s-sexloss-chrx.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-chrx	s-sexloss-chrx.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-detected	s-sexloss-detected.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-detected	s-sexloss-detected.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-failed	s-sexloss-failed.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-failed	s-sexloss-failed.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-gain-stale	s-sexloss-gain-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-gain-stale	s-sexloss-gain-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-not-estimated	s-sexloss-not-estimated.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-not-estimated	s-sexloss-not-estimated.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-odd	s-sexloss-odd.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-odd	s-sexloss-odd.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-mixed	s-sv-mixed.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-mixed	s-sv-mixed.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-stale	s-sv-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-stale	s-sv-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+
 # Intentional ancestry-fine expectations after the painter moved into og.
 ancestry-fine	check-map-problems	stderr	#625: check-map accepts 1 painting reference per continental group (the painter copies from that person's two haplotypes), so the RFMix floor of 2 is no longer reported.
 ancestry-fine	report	stdout	#625: the report names og's model, not ADMIXTURE or RFMix (SNVs of the model).
