@@ -45,8 +45,8 @@ with_free 150 run_expect 1 disk-low "${SCRIPTS}/validate-setup.sh" sample1
 output_has disk-low '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum'
 output_lacks disk-low 'Need 500 GB'
 
-# The same space with the sample's Nextflow work directory: a resume, so a WARN.
-mkdir -p "${GENOME_DIR}/sample1/nextflow/work/ab"
+# The same space with the sample's Nextflow work directory and its cache: a resume, so a WARN.
+mkdir -p "${GENOME_DIR}/sample1/nextflow/work/ab" "${GENOME_DIR}/sample1/nextflow/.nextflow/cache/5e55-10n/db"
 with_free 150 run_expect 0 disk-resume "${SCRIPTS}/validate-setup.sh" sample1
 output_has disk-resume "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but .*/sample1/nextflow/work exists"
 output_has disk-resume 'a redone alignment'

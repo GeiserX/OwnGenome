@@ -6,9 +6,11 @@
 #
 # LOCITYPER used to catch Locityper's exit code and write its table with it,
 # so a Locityper killed for memory left a green task and no retry. Now a kill
-# on an attempt with a retry left ends the task with that code; the last
-# attempt writes the table. Samples: "once" is killed on its first attempt
-# only, "always" on every attempt, "ok" never.
+# (137 or 143) on the first attempt ends the task with that code, and
+# nextflow.config's rule for the report-only tools retries attempt 1 only; the
+# attempt after it writes the table. Samples: "once" is killed on its first
+# attempt only, "always" on every attempt, "term" is stopped by SIGTERM (143)
+# on its first attempt only, "ok" never.
 #
 # CPSR used to ask for process_medium's 8 GB, and on a whole genome it is
 # killed under that. It asks for 16 GB now, still capped by --max_memory:
@@ -16,7 +18,7 @@
 # second run with --max_memory 8.GB must give it 8 GB.
 #
 # The stand-ins kill themselves with SIGKILL, as the kernel does on out of
-# memory. Rows of the trace are keyed by task_id: Nextflow can write a
+# memory, except "term". Rows of the trace are keyed by task_id: Nextflow can write a
 # finished task twice (docs/lessons-learned.md, "The trace file can list a
 # finished task twice").
 . "$(dirname "$0")/lib.sh"
@@ -41,6 +43,7 @@ if [ "\$cmd" = genotype ]; then
     case "\$s" in
         always) kill -9 \$\$ ;;
         once) [ -e "${T}/marks/locityper-once" ] || { touch "${T}/marks/locityper-once"; kill -9 \$\$; } ;;
+        term) [ -e "${T}/marks/locityper-term" ] || { touch "${T}/marks/locityper-term"; kill -15 \$\$; } ;;
     esac
 fi
 mkdir -p "\$out"
@@ -71,14 +74,14 @@ printf 'chr1\t4\t6\t4\t5\n' > "${T}/ref.fa.fai"
 printf 'chr6\t1\t2\tHLA-DQB1\n' > "${T}/db/loci.bed"
 : > "${T}/db/counts.jf"
 echo "fai=$(sha256sum "${T}/ref.fa.fai" | cut -d' ' -f1) fasta=$(sha256sum "${T}/ref.fa" | cut -d' ' -f1) " > "${T}/db/DONE"
-for s in once always ok; do : > "${T}/${s}.bam"; : > "${T}/${s}.bam.bai"; done
+for s in once always ok term; do : > "${T}/${s}.bam"; : > "${T}/${s}.bam.bai"; done
 for s in once ok; do : > "${T}/${s}.vcf.gz"; : > "${T}/${s}.vcf.gz.tbi"; done
 
 cat > "${NP}/main.nf" <<NF
 include { LOCITYPER } from '${REPO}/modules/local/locityper/main'
 include { CPSR } from '${REPO}/modules/local/cpsr/main'
 
-params.samples = 'once,always,ok'
+params.samples = 'once,always,ok,term'
 params.cpsr_samples = 'once'
 
 workflow {
@@ -130,6 +133,10 @@ check_eq "LOCITYPER killed once: attempt 1 exits 137 at 32 GB, attempt 2 passes 
 check_eq "LOCITYPER killed on every attempt: the retry at 64 GB writes the table" \
   "$(attempts big 'LOCITYPER \(always\)')" "1:137:32,2:0:64"
 check_eq "LOCITYPER not killed: one attempt at 32 GB" "$(attempts big 'LOCITYPER \(ok\)')" "1:0:32"
+check_eq "LOCITYPER stopped by SIGTERM once: attempt 1 exits 143 at 32 GB, attempt 2 passes at 64 GB" \
+  "$(attempts big 'LOCITYPER \(term\)')" "1:143:32,2:0:64"
+check_eq "the term table is the retry's: Locityper ended well" \
+  "$(cut -f2 "${T}/big-out/term/locityper/term_locityper.tsv" 2>/dev/null)" 0
 check_eq "the once table is the retry's: Locityper ended well" \
   "$(cut -f2 "${T}/big-out/once/locityper/once_locityper.tsv" 2>/dev/null)" 0
 check_eq "the always table holds the last kill's exit code" \

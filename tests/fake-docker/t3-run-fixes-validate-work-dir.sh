@@ -6,12 +6,14 @@
 # validate-setup.sh looked for a resume only at <sample>/nextflow/work and
 # measured free space only where GENOME_DIR is, so:
 #   1. a resume whose work directory is elsewhere, with GENOME_DIR under the
-#      200 GB minimum, was a FAIL and stopped run-all.sh; it is a WARN;
+#      200 GB minimum, was a FAIL and stopped run-all.sh; it is a WARN. A
+#      resume needs the sample's own Nextflow cache too, so a shared work
+#      directory that holds only another sample's tasks is no resume;
 #   2. a work disk under the minimum was never seen; it is a FAIL on a fresh
 #      run and a WARN on a resume, and a work directory on GENOME_DIR's disk
-#      adds no second line;
-#   3. run-all.sh passes -w (absolute or relative) on, so the resume of case 1
-#      starts Nextflow instead of stopping at validation.
+#      adds no second line. A disk with 0 free, either one, is a FAIL;
+#   3. run-all.sh passes -w (absolute or relative) and NXF_WORK on, so the
+#      resume of case 1 starts Nextflow instead of stopping at validation.
 # A df in front of the fake one answers per path: the work disk's paths get
 # FAKE_FREE_WORK_GB on mount /work-disk, every other path FAKE_FREE_GB on /.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
@@ -42,6 +44,18 @@ with_free() { local g=$1 w=$2; shift 2; PATH="${CASE_WORK}/df-bin:${PATH}" FAKE_
 # 1. GENOME_DIR under the minimum, the run's work directory elsewhere and there: a resume.
 WD="${WDISK}/owngenome/sample1"
 mkdir -p "${WD}/ab"
+# A -w directory that several samples share holds another sample's tasks, so it
+# is never empty. Without this sample's own Nextflow cache it is no resume of
+# this sample: a fresh run under the minimum on both disks fails.
+SHARED="${WDISK}/shared"
+mkdir -p "${SHARED}/cd/0123"
+with_free 150 150 run_expect 1 shared-fresh env NXF_WORK="$SHARED" "${SCRIPTS}/validate-setup.sh" sample1
+output_has shared-fresh '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
+output_has shared-fresh "\[FAIL\].*Free disk space for Nextflow's work directory ${SHARED}: 150 GB, under the 200 GB minimum"
+output_lacks shared-fresh 'a resume'
+# A resume is the work directory's tasks plus the cache that run-all.sh's
+# Nextflow keeps in the sample's launch directory, which -resume reads.
+mkdir -p "${G}/sample1/nextflow/.nextflow/cache/5e55-10n/db"
 with_free 150 600 run_expect 0 resume-elsewhere env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
 output_has resume-elsewhere "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists: a resume"
 output_lacks resume-elsewhere '\[FAIL\].*Free disk space'
@@ -68,6 +82,9 @@ output_has work-low-resume "\[WARN\].*Free disk space for Nextflow's work direct
 # The default work directory sits on GENOME_DIR's disk: one line, as before.
 with_free 600 150 run_expect 0 same-disk "${SCRIPTS}/validate-setup.sh" sample1
 output_lacks same-disk "work directory"
+# A full GENOME_DIR disk (0 free) is measured too, not skipped.
+with_free 0 600 run_expect 1 genome-full "${SCRIPTS}/validate-setup.sh" sample1
+output_has genome-full '\[FAIL\].*Free disk space: 0 GB, under the 200 GB minimum'
 # A relative NXF_WORK is under <sample>/nextflow, where run-all.sh starts Nextflow.
 mkdir -p "${G}/sample1/nextflow/rel/ab"
 with_free 150 600 run_expect 0 relative env NXF_WORK=rel "${SCRIPTS}/validate-setup.sh" sample1
@@ -93,6 +110,11 @@ mkdir -p "${G}/sample1/nextflow/w2/ab"
 : > "$FAKE_DOCKER_LOG"
 with_free 150 600 run_expect 0 run-all-w-relative "${SCRIPTS}/run-all.sh" sample1 male -work-dir w2
 output_has run-all-w-relative "but ${G}/sample1/nextflow/w2 exists"
+# NXF_WORK in run-all.sh's environment names the work directory as -w does.
+: > "$FAKE_DOCKER_LOG"
+with_free 150 600 run_expect 0 run-all-env env NXF_WORK="$WD" "${SCRIPTS}/run-all.sh" sample1 male
+output_has run-all-env "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists"
+output_lacks run-all-env 'setup validation failed'
 # Control: the same run without -w is no resume (no <sample>/nextflow/work), so validation stops it.
 rm -rf "${G}/sample1/nextflow/rel" "${G}/sample1/nextflow/w2"
 with_free 150 600 run_expect 1 run-all-no-w "${SCRIPTS}/run-all.sh" sample1 male

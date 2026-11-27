@@ -508,10 +508,16 @@ elif [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ]; then
   WORK_DIR="${GENOME_DIR}/${SAMPLE}/nextflow/work"
 fi
 # A run that stopped keeps its Nextflow work directory, and -resume needs it:
-# the space it holds is not lost, so under 200 GB a resume is a warning. An empty
-# directory (made ahead of a first run) holds no task to reuse, so it is no resume.
+# the space it holds is not lost, so under 200 GB a resume is a warning. It is a
+# resume only when the work directory holds tasks and this sample's launch directory
+# (<sample>/nextflow, where run-all.sh starts Nextflow with -resume) holds the cache
+# of an earlier session, .nextflow/cache/<session>/db, which -resume reads. A -w
+# directory that other samples share is never empty, and an empty one made ahead of
+# a first run holds no task to reuse: neither is a resume of this sample.
 RESUME_WORK=""
-if [ -n "$SAMPLE" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] && [ -n "$(ls -A "$WORK_DIR" 2>/dev/null)" ]; then
+if [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] \
+  && [ -n "$(ls -A "$WORK_DIR" 2>/dev/null)" ] \
+  && compgen -G "${GENOME_DIR}/${SAMPLE}/nextflow/.nextflow/cache/*/db" > /dev/null; then
   RESUME_WORK=$WORK_DIR
 fi
 # disk_of DIR: "<free KB> <mount point>" of the disk that holds DIR, or its nearest parent that exists.
@@ -545,7 +551,7 @@ check_free() {
 if command -v df &>/dev/null; then
   # Use 1K blocks for portability (works on Linux and macOS)
   read -r FREE_KB CHECK_MOUNT < <(disk_of "$CHECK_DIR") || true
-  if [ -n "${FREE_KB:-}" ] && [ "$FREE_KB" -gt 0 ] 2>/dev/null; then
+  if [ -n "${FREE_KB:-}" ] && [ "$FREE_KB" -ge 0 ] 2>/dev/null; then
     FREE_GB=$(awk "BEGIN {printf \"%.0f\", ${FREE_KB}/1048576}")
     check_free "$FREE_KB" "$CHECK_MOUNT" "Free disk space"
   fi

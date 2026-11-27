@@ -12,7 +12,9 @@
 # killed on its first attempt, as for memory, then passes; cnvpytor (mounted
 # over the image's own) writes the files the module expects. A third task,
 # ROOT_CONTROL, runs as root in the same image with no give-back of its own:
-# its files must stay root's, or the check below could not fail here.
+# its files must stay root's, or the check below could not fail here. One
+# staged input of CPSR and one of CNVPYTOR belong to root: the give-back
+# changes the staged links only (chown -h), so those files stay root's.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
@@ -50,7 +52,12 @@ STANDIN
 chmod +x "${NP}/bin/cpsr" "${T}/cnvpytor"
 : > "${T}/res/gc_hg38.pytor"
 : > "${T}/res/mask_hg38.pytor"
-for f in once.vcf.gz once.vcf.gz.tbi s1.bam s1.bam.bai; do : > "${T}/${f}"; done
+for f in once.vcf.gz s1.bam; do : > "${T}/${f}"; done
+# One staged input of each root task belongs to root, as a shared reference
+# can. The give-back must change the staged links, never what they point to,
+# so these two stay root's.
+docker run --rm --user 0:0 -v "${T}:/t" "$CNVPYTOR_IMAGE" sh -c ': > /t/once.vcf.gz.tbi && : > /t/s1.bam.bai' >/dev/null 2>&1
+check_eq "two staged inputs are root's before the run" "$(stat -c %u "${T}/once.vcf.gz.tbi" "${T}/s1.bam.bai" 2>/dev/null | paste -sd' ' -)" "0 0"
 
 cat > "${NP}/main.nf" <<NF
 include { CPSR } from '${REPO}/modules/local/cpsr/main'
@@ -117,6 +124,8 @@ check_eq "files left to another user by CPSR's killed attempt" "$(foreign "$CPSR
 check_eq "files left to another user by CPSR's retry" "$(foreign "$CPSR2" | paste -sd' ' -)" ""
 check "CNVPYTOR wrote its calls" test -s "${CNV}/s1_cnvs.txt"
 check_eq "files left to another user by CNVPYTOR" "$(foreign "$CNV" | paste -sd' ' -)" ""
+check_eq "the root-owned files the staged links point to stay root's" \
+  "$(stat -c %u "${T}/once.vcf.gz.tbi" "${T}/s1.bam.bai" 2>/dev/null | paste -sd' ' -)" "0 0"
 check "control: BusyBox's chown refused Nextflow's --from" grep -q "unrecognized option '--from'" "${CTL}/.command.err"
 check_ge "control: a root task with no give-back leaves root's files" "$(foreign "$CTL" | grep -c .)" 1
 
