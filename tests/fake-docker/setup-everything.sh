@@ -34,6 +34,10 @@ awk -v legacy="$legacy" '
   { print }
 ' "${SCRIPTS}/setup.sh" > "$SETUP"
 chmod +x "$SETUP"
+# The stubs replace setup.sh's bash bodies, so every flag stays in bash here:
+# og runs a flag it has ported instead (og setup install), and that has its
+# own case, setup-port-core.
+export OG_SETUP=bash
 
 # Pin the exact bytes served by fake wget. Keep the real fetch and digest
 # code, including the SpliceAI range checks. The largest fixture is about two MiB.

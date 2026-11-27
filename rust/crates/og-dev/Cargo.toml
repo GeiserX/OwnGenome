@@ -18,6 +18,7 @@ og-runlog.workspace = true
 og-summary.workspace = true
 og-intervals.workspace = true
 og-browser.workspace = true
+og-setup.workspace = true
 flate2.workspace = true
 indexmap.workspace = true
 png = "0.18"
