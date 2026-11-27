@@ -8,7 +8,9 @@
 #     nothing is installed from it;
 #   - an old copy beside one already in the downloads folder: the copy that
 #     passes its check stays, the other goes; a download is never deleted
-#     before a check says which is the right one.
+#     before a check says which is the right one;
+#   - an old partial download is never deleted: beside a whole one it stays,
+#     and of two partial ones the larger resumes.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 seed_clinical_downloads
@@ -96,4 +98,32 @@ grep -qx 'old and broken' "${G}/vep_cache/${V116}" || fail "the old copy was del
 grep -qx 'kept and broken' "${G}/downloads/${V116}" || fail "the kept copy was deleted or changed with no check passed"
 output_has both_wrong "neither is deleted"
 output_has both_wrong "is there but is not the file of vep_cache"
+
+# --- old partial downloads ---------------------------------------------------
+# Beside a partial one in the downloads folder: neither is deleted, and the
+# larger one resumes there.
+G="${CASE_WORK}/two-parts"
+mkdir -p "${G}/vep_cache" "${G}/downloads"
+n=$(wc -c < "${D}/${V115}")
+head -c "$(( n * 3 / 4 ))" "${D}/${V115}" > "${G}/vep_cache/${V115}.part"
+head -c "$(( n / 10 ))" "${D}/${V115}" > "${G}/downloads/${V115}.part"
+cp "${G}/downloads/${V115}.part" "${CASE_WORK}/small.part"
+run_expect 0 two_parts "${SCRIPTS}/setup.sh" --clinical-data "$G"
+installed "$G"
+cmp -s "${G}/downloads/${V115}" "${D}/${V115}" || fail "VEP 115 is not the whole download after the resume"
+cmp -s "${G}/vep_cache/${V115}.part" "${CASE_WORK}/small.part" || fail "of two partial downloads one was deleted, or the smaller one resumed"
+output_has two_parts "was the larger partial download: it resumes at"
+# Beside a whole one: it stays where it is, and nothing is downloaded.
+G="${CASE_WORK}/part-beside-whole"
+mkdir -p "${G}/vep_cache" "${G}/downloads"
+head -c "$(( $(wc -c < "${D}/${V116}") / 2 ))" "${D}/${V116}" > "${G}/vep_cache/${V116}.part"
+cp "${G}/vep_cache/${V116}.part" "${CASE_WORK}/half.part"
+cp "${D}/${V116}" "${G}/downloads/"
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 part_whole "${SCRIPTS}/setup.sh" --clinical-data "$G"
+installed "$G"
+cmp -s "${G}/vep_cache/${V116}.part" "${CASE_WORK}/half.part" || fail "the old partial download was deleted or moved"
+[ ! -e "${G}/downloads/${V116}.part" ] || fail "the old partial download was moved beside the whole one"
+output_has part_whole "a partial download left by an older setup, stays"
+[ -z "$(downloaded "$V116")" ] || fail "VEP 116 was downloaded although a whole copy was there: $(downloaded "$V116")"
 echo "PASS old downloads move to the downloads folder, are checked there, and are never deleted unchecked"

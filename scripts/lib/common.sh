@@ -486,7 +486,9 @@ done_with() {
 # downloaded). NEW that matches: OLD is a second copy and goes. NEW that
 # does not, and OLD that does: OLD replaces it. Otherwise (no check given,
 # neither matches, the checksum list cannot be read) both stay, and fetch
-# then refuses NEW and says so.
+# then refuses NEW and says so. Unless NEW passed that check, OLD.part is
+# never deleted: beside a whole NEW it stays where it is, and of two partial
+# downloads the larger resumes at NEW.part and the other is kept at OLD.part.
 adopt() {
   local old=$1 new=$2 x
   shift 2
@@ -512,8 +514,22 @@ adopt() {
   fi
   for x in "" .part; do
     [ -e "${old}${x}" ] || continue
-    if [ -e "${new}${x}" ]; then
-      rm -rf -- "${old}${x}"  # not kept: a second partial download; the one in the downloads folder resumes
+    if [ "$x" = .part ] && [ -e "$new" ]; then
+      # A whole NEW is there, which fetch checks; a partial copy beside it
+      # would be an orphan, so OLD.part stays where it is.
+      echo "  [WARN] ${old}.part, a partial download left by an older setup, stays: ${new} is already there and fetch checks it."
+    elif [ -e "${new}${x}" ]; then
+      # Two partial downloads: neither is deleted unchecked. The larger one
+      # moves to NEW.part, so fetch resumes the most progress.
+      if [ "$x" = .part ] && [ -f "${old}.part" ] && [ -f "${new}.part" ] \
+          && [ "$(wc -c < "${old}.part")" -gt "$(wc -c < "${new}.part")" ] \
+          && mv -- "${new}.part" "${new}.part.adopt" \
+          && { mv -- "${old}.part" "${new}.part" || { mv -- "${new}.part.adopt" "${new}.part"; false; }; } \
+          && mv -- "${new}.part.adopt" "${old}.part"; then
+        echo "  [WARN] ${old}.part, left by an older setup, was the larger partial download: it resumes at ${new}.part, and the smaller one is kept at ${old}.part."
+      else
+        echo "  [WARN] ${old}${x}, left by an older setup, and ${new}${x} are both here; neither is deleted, and ${new}${x} is the one fetch uses."
+      fi
     elif mkdir -p "$(dirname "$new")" && mv -- "${old}${x}" "${new}${x}"; then
       echo "  Moved ${old}${x}, left by an older setup, to ${new}${x}."
     fi
