@@ -76,7 +76,7 @@ ensembl_gff	chip-data	49	reference/ensembl/Homo_sapiens.GRCh38.${ENSEMBL_GFF_REL
 consumer_sites_template	consumer-sites	40	reference/consumer/23andme_v5_hg19_ref.txt.gz		https://raw.githubusercontent.com/arrogantrobot/23andme2vcf/${CONSUMER_SITES_COMMIT}/23andme_v5_hg19_ref.txt.gz	sha256	${CONSUMER_SITES_SHA256}	5845972	23andme2vcf (MIT)	-
 dbsnp	consumer-sites	40	downloads/dbsnp_${CONSUMER_DBSNP_BUILD}_GRCh38.vcf.gz		https://ftp.ncbi.nih.gov/snp/archive/${CONSUMER_DBSNP_BUILD}/VCF/GCF_000001405.40.gz	md5	${CONSUMER_DBSNP_MD5}	29552227779	NCBI dbSNP (public domain)	reference/consumer/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz
 aadr	ancient-panel	44	downloads/aadr-${AADR_VERSION}/aadr.{part}	anno ind snp geno	-	md5	-	7300000000	AADR (CC BY 4.0)	reference/ancient/aadr_${AADR_VERSION}/DONE
-hg19_to_hg38_chain	ancient-panel	44	reference/liftover/hg19ToHg38.over.chain.gz		-	sha256	${HG19_TO_HG38_CHAIN_SHA256}	227698	UCSC (non-commercial)	-
+hg19_to_hg38_chain	ancient-panel,consumer-sites	40,44	reference/liftover/hg19ToHg38.over.chain.gz		-	sha256	${HG19_TO_HG38_CHAIN_SHA256}	227698	UCSC (non-commercial)	-
 pgsc_ancestry_panel	ancestry-panel	25	reference/pgsc_calc/${PGSC_PANEL}.tar.zst		https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/${PGSC_PANEL}.tar.zst	md5	https://ftp.ebi.ac.uk/pub/databases/spot/pgs/resources/md5s.txt	7434464202	PGS Catalog (EMBL-EBI terms)	-
 ancestry_fine_meta	ancestry-fine-panel	26b	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/meta.tsv		-	sha256	${ANCESTRY_FINE_META_SHA256}	6158624	gnomAD (CC0 1.0)	-
 genetic_map	ancestry-fine-panel,mocha-data	26b,51	reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/maps/plink.GRCh38.map.zip		-	sha256	${ANCESTRY_FINE_MAP_SHA256}	47469980	Beagle maps (CC BY 4.0)	-

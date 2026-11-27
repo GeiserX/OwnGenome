@@ -4,10 +4,22 @@
 //! chrom, pos, id, ref) joined with dbSNP's GRCh38 VCF by rsID. The GRCh38
 //! position of a site is dbSNP's, not a liftover. A site is dropped, with
 //! its reason, when it has no rsID (23andMe's own i-numbers), dbSNP has no
-//! SNV for it, dbSNP places it twice or on another chromosome, or neither
-//! strand of its GRCh37 base is one of dbSNP's alleles. MT sites take
-//! dbSNP's rCRS position in both builds (the list numbers them on hg19's
-//! chrM).
+//! SNV for it, dbSNP places it twice or on another chromosome, or its
+//! strand cannot be told (below). MT sites take dbSNP's rCRS position in
+//! both builds (the list numbers them on hg19's chrM).
+//!
+//! The strand: whether the GRCh37 base reads on GRCh38's + strand as it is
+//! or as its complement. It comes from UCSC's hg19ToHg38 chain (`--chain`):
+//! when the chain places the site at dbSNP's GRCh38 position, the strand of
+//! that chain is the site's, and the GRCh37 base on that strand must be one
+//! of dbSNP's alleles. The alleles alone cannot tell it where the region is
+//! inverted between the builds and both the base and its complement are
+//! alleles: rs11249375 is G in GRCh37 and C>G,T in GRCh38, on an inverted
+//! block, so the old test (is the base an allele? then +) wrote + and the
+//! export gave C where the chip reads G. Where the chain does not place the
+//! site at dbSNP's position, the alleles decide, but only when exactly one
+//! strand fits; a site that fits both is dropped. chrM is one sequence in
+//! both builds: +.
 //!
 //! dbSNP's file (about 30 GB, BGZF) is read once, inflated on many cores;
 //! a line is parsed past its ID column only when the ID is on the list.
@@ -23,6 +35,7 @@ use std::io::{BufRead, Write};
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use og_intervals::chain::Chain;
 use og_io::{AtomicFile, Lines, Utf8};
 use pycompat::num::parse_int;
 use pycompat::text::isdigit;
@@ -251,6 +264,18 @@ struct Kept {
     pos38: i128,
     ref38: String,
     strand: char,
+    from: StrandFrom,
+}
+
+/// Where a kept site's strand came from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StrandFrom {
+    /// The chain block that places the site at dbSNP's GRCh38 position.
+    Chain,
+    /// The alleles: exactly one strand of the GRCh37 base is a dbSNP allele.
+    Alleles,
+    /// chrM, one sequence in both builds.
+    Mt,
 }
 
 /// A dropped site: rsid, chrom, the position written, reason.
@@ -262,7 +287,12 @@ struct Dropped {
 }
 
 /// The decision for one template row.
-fn place(row: &Row, want: &FxHashMap<Vec<u8>, usize>, found: &Found) -> Result<Kept, Dropped> {
+fn place(
+    row: &Row,
+    want: &FxHashMap<Vec<u8>, usize>,
+    found: &Found,
+    chain: &Chain,
+) -> Result<Kept, Dropped> {
     let drop = |pos37: i128, why: String| Dropped {
         rsid: row.rsid.clone(),
         chrom: row.chrom,
@@ -316,16 +346,43 @@ fn place(row: &Row, want: &FxHashMap<Vec<u8>, usize>, found: &Found) -> Result<K
                 .map(|a| String::from_utf8_lossy(a).into_owned()),
         );
     }
-    let strand = if alleles.contains(&ref37) {
-        '+'
-    } else if complement(&ref37).is_some_and(|c| alleles.contains(c)) {
-        '-'
+    let plus = alleles.contains(&ref37);
+    let minus = complement(&ref37).is_some_and(|c| alleles.contains(c));
+    // The chain's place for the site, when it is dbSNP's position.
+    let contig = format!("chr{name}");
+    let lifted = i64::try_from(row.pos37)
+        .ok()
+        .and_then(|p| chain.lift(&contig, p))
+        .filter(|l| l.chrom == contig && i128::from(l.pos) == pos38);
+    let (strand, from) = if row.chrom == MT {
+        // The same rCRS base on both sides (set above).
+        ('+', StrandFrom::Mt)
+    } else if let Some(l) = lifted {
+        let inverted = l.strand == "-";
+        if !(if inverted { minus } else { plus }) {
+            return Err(drop(
+                pos37,
+                "its GRCh37 base is not a dbSNP allele on the strand of the liftover chain".into(),
+            ));
+        }
+        (if inverted { '-' } else { '+' }, StrandFrom::Chain)
     } else {
-        // The MT position is dbSNP's here, as the Python wrote it.
-        return Err(drop(
-            pos37,
-            "its GRCh37 base is not a dbSNP allele on either strand".into(),
-        ));
+        match (plus, minus) {
+            (true, false) => ('+', StrandFrom::Alleles),
+            (false, true) => ('-', StrandFrom::Alleles),
+            (true, true) => {
+                return Err(drop(
+                    pos37,
+                    "the liftover chain does not place it at its dbSNP position, and its GRCh37 base is a dbSNP allele on both strands".into(),
+                ));
+            }
+            (false, false) => {
+                return Err(drop(
+                    pos37,
+                    "its GRCh37 base is not a dbSNP allele on either strand".into(),
+                ));
+            }
+        }
     };
     Ok(Kept {
         rsid: row.rsid.clone(),
@@ -335,6 +392,7 @@ fn place(row: &Row, want: &FxHashMap<Vec<u8>, usize>, found: &Found) -> Result<K
         pos38,
         ref38,
         strand,
+        from,
     })
 }
 
@@ -342,6 +400,8 @@ fn place(row: &Row, want: &FxHashMap<Vec<u8>, usize>, found: &Found) -> Result<K
 pub struct BuildArgs<'a> {
     pub template: &'a str,
     pub dbsnp: &'a str,
+    /// UCSC's hg19ToHg38 chain, which gives each site's strand.
+    pub chain: &'a str,
     pub out: &'a str,
     pub dropped: &'a str,
     pub source: &'a str,
@@ -351,6 +411,7 @@ pub struct BuildArgs<'a> {
 /// Exit 1 (after writing both) when no site is kept.
 pub fn build_sites(a: &BuildArgs, workers: std::num::NonZero<usize>) -> Result<String, Fail> {
     let template = read_template(a.template)?;
+    let chain = read_chain(a.chain)?;
     let mut want: FxHashMap<Vec<u8>, usize> = FxHashMap::default();
     for row in &template {
         if is_rsid(&row.rsid) {
@@ -362,7 +423,7 @@ pub fn build_sites(a: &BuildArgs, workers: std::num::NonZero<usize>) -> Result<S
     let mut kept = Vec::new();
     let mut dropped = Vec::new();
     for row in &template {
-        match place(row, &want, &found) {
+        match place(row, &want, &found, &chain) {
             Ok(k) => kept.push(k),
             Err(d) => dropped.push(d),
         }
@@ -420,6 +481,19 @@ pub fn build_sites(a: &BuildArgs, workers: std::num::NonZero<usize>) -> Result<S
         kept.len(),
         dropped.len()
     );
+    let from = |f: StrandFrom| kept.iter().filter(|k| k.from == f).count();
+    out.push_str(&format!(
+        "  kept, strand from the liftover chain: {}\n",
+        from(StrandFrom::Chain)
+    ));
+    out.push_str(&format!(
+        "  kept, strand from the alleles (the chain does not place the site at its dbSNP position): {}\n",
+        from(StrandFrom::Alleles)
+    ));
+    out.push_str(&format!(
+        "  kept, chrM (one sequence in both builds): {}\n",
+        from(StrandFrom::Mt)
+    ));
     for (why, n) in reasons {
         out.push_str(&format!("  dropped, {why}: {n}\n"));
     }
@@ -430,6 +504,17 @@ pub fn build_sites(a: &BuildArgs, workers: std::num::NonZero<usize>) -> Result<S
         ));
     }
     Ok(out)
+}
+
+/// The chain file (plain or gzip). One with no block is refused: every
+/// strand would then come from the alleles alone.
+fn read_chain(path: &str) -> Result<Chain, Fail> {
+    let input = og_io::open(path).map_err(|e| Fail::io(path, &e))?;
+    let chain = Chain::read(input).map_err(|e| Fail::input(format!("{path}: {e}")))?;
+    if chain.blocks() == 0 {
+        return Err(Fail::input(format!("{path} holds no chain block")));
+    }
+    Ok(chain)
 }
 
 /// Gzip with no name and mtime 0, so the same table gives the same bytes.
@@ -444,13 +529,17 @@ fn write_gzip(path: &str, data: &[u8]) -> Result<(), Fail> {
 
 /// `og consumer build-sites ...`.
 pub fn cli(args: &[String]) -> Result<u8, Usage> {
-    let p = Args::parse(args, &["template", "dbsnp", "out", "dropped", "source"])?;
+    let p = Args::parse(
+        args,
+        &["template", "dbsnp", "chain", "out", "dropped", "source"],
+    )?;
     if let Some(extra) = p.positional.first() {
         return Err(Usage(format!("unrecognized arguments: {extra}")));
     }
     let a = BuildArgs {
         template: p.need("template")?,
         dbsnp: p.need("dbsnp")?,
+        chain: p.need("chain")?,
         out: p.need("out")?,
         dropped: p.need("dropped")?,
         source: p.get("source").unwrap_or(""),
@@ -485,6 +574,118 @@ mod tests {
         assert!(has_snv_class(b"VC=SNV"));
         assert!(!has_snv_class(b"RS=1;VC=SNVX"));
         assert!(!has_snv_class(b"RS=1;XVC=SNV"));
+    }
+
+    /// Runs build-sites on files written to a fresh folder; the table's
+    /// rows (rsid, strand) and the dropped list.
+    fn build(name: &str, tpl: &str, dbsnp: &str, chain: &str) -> (Vec<(String, String)>, String) {
+        let dir = std::env::temp_dir().join(format!("og-sites-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = |f: &str| dir.join(f).to_str().unwrap().to_owned();
+        std::fs::write(p("tpl.txt"), tpl).unwrap();
+        std::fs::write(p("dbsnp.vcf"), dbsnp).unwrap();
+        std::fs::write(p("chain.txt"), chain).unwrap();
+        let a = BuildArgs {
+            template: &p("tpl.txt"),
+            dbsnp: &p("dbsnp.vcf"),
+            chain: &p("chain.txt"),
+            out: &p("sites.tsv.gz"),
+            dropped: &p("dropped.tsv"),
+            source: "",
+        };
+        build_sites(&a, std::num::NonZero::new(1).unwrap()).unwrap();
+        let mut text = String::new();
+        std::io::Read::read_to_string(
+            &mut flate2::read::GzDecoder::new(std::fs::File::open(p("sites.tsv.gz")).unwrap()),
+            &mut text,
+        )
+        .unwrap();
+        let rows = text
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .map(|l| {
+                let c: Vec<&str> = l.split('\t').collect();
+                (c[0].to_owned(), c[6].to_owned())
+            })
+            .collect();
+        let dropped = std::fs::read_to_string(p("dropped.tsv")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        (rows, dropped)
+    }
+
+    /// rs11249375 as dbSNP b157 and UCSC's hg19ToHg38 chain have it: G at
+    /// chr1:144043486 in GRCh37; C>G,T at chr1:144965621 in GRCh38, on a
+    /// block the chain inverts. G is one of the GRCh38 alleles, so the
+    /// alleles alone say +; the chain says -, and the chip reads G where
+    /// GRCh38 reads C.
+    #[test]
+    fn an_inverted_chain_block_gives_the_minus_strand() {
+        let tpl = "chr1\t144043486\trs11249375\tG\n\
+                   chr1\t1000\trs2\tA\n\
+                   chr1\t1200\trs5\tA\n\
+                   chr2\t5000\trs3\tA\n\
+                   chr2\t6000\trs4\tC\n";
+        let dbsnp = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+                     NC_000001.11\t144965621\trs11249375\tC\tG,T\t.\t.\tVC=SNV\n\
+                     NC_000001.11\t900\trs2\tA\tT\t.\t.\tVC=SNV\n\
+                     NC_000001.11\t1100\trs5\tT\tC\t.\t.\tVC=SNV\n\
+                     NC_000002.12\t5100\trs3\tT\tC\t.\t.\tVC=SNV\n\
+                     NC_000002.12\t6100\trs4\tC\tG\t.\t.\tVC=SNV\n";
+        // chr1:144043000-144044000 onto GRCh38's - strand: GRCh37 144043486
+        // lands on GRCh38 144965621. chr1:500-1500 onto 400-1400, + strand.
+        // chr2 has no block.
+        let chain = "chain 1000 chr1 249250621 + 144043000 144044000 chr1 248956422 - 103990316 103991316 1\n\
+                     1000\n\
+                     \n\
+                     chain 1000 chr1 249250621 + 500 1500 chr1 248956422 + 400 1400 2\n\
+                     1000\n";
+        let (rows, dropped) = build("inverted", tpl, dbsnp, chain);
+        let strand = |id: &str| {
+            rows.iter()
+                .find(|r| r.0 == id)
+                .map(|r| r.1.as_str())
+                .unwrap_or("dropped")
+        };
+        // The site of the defect: - from the inverted block.
+        assert_eq!(strand("rs11249375"), "-");
+        // A + block at dbSNP's position: +, though T is A's complement too.
+        assert_eq!(strand("rs2"), "+");
+        // No block: the alleles decide when one strand fits ...
+        assert_eq!(strand("rs3"), "-");
+        // ... and a site both strands fit is dropped, not given +.
+        assert_eq!(strand("rs4"), "dropped");
+        assert!(dropped.contains("rs4\t2\t6000\tthe liftover chain does not place it"));
+        // A + block whose strand the alleles contradict: dropped.
+        assert_eq!(strand("rs5"), "dropped");
+        assert!(dropped.contains(
+            "rs5\t1\t1200\tits GRCh37 base is not a dbSNP allele on the strand of the liftover chain"
+        ));
+    }
+
+    /// A block that places the site away from dbSNP's position says nothing
+    /// about it: the alleles decide.
+    #[test]
+    fn a_block_elsewhere_leaves_the_strand_to_the_alleles() {
+        let tpl = "chr1\t1000\trs6\tA\n";
+        let dbsnp = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+                     NC_000001.11\t900\trs6\tT\tC\t.\t.\tVC=SNV\n";
+        // + strand, but onto 1000-2000: GRCh37 1000 lands on 1500.
+        let chain = "chain 1000 chr1 249250621 + 500 1500 chr1 248956422 + 1000 2000 1\n1000\n";
+        let (rows, _) = build("elsewhere", tpl, dbsnp, chain);
+        assert_eq!(rows, [("rs6".to_owned(), "-".to_owned())]);
+    }
+
+    #[test]
+    fn a_chain_without_blocks_is_refused() {
+        let dir = std::env::temp_dir().join(format!("og-sites-nochain-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("empty.chain");
+        std::fs::write(&path, "\n").unwrap();
+        let f = read_chain(path.to_str().unwrap()).err().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(f.code, 2);
+        assert!(f.msg.ends_with("holds no chain block"), "{}", f.msg);
     }
 
     #[test]
