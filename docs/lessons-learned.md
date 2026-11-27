@@ -494,7 +494,7 @@ Most bioinformatics containers name a non-root user of their own, which may not 
 ### ADMIXTURE reads a `.ped` the other way round from a `.bed`
 - **Failed:** the same genotypes projected as a `.bed` and as a `.ped` gave different fractions (0.96 against 0.46 for the largest group).
 - **Why:** in PLINK's "12" coding, allele 2 is the `.bim`'s A1 (what plink2 wrote as the ALT allele here), not allele 1. Writing homozygous-ALT as `1 1` mirrors every genotype.
-- **Fix:** `og ancestry-fine sample-bed` (`ped_alleles` in `rust/crates/og-ancestry/src/sample_bed.rs`) maps the `.bed` codes to `2 2`, `1 2` and `1 1`, and `tests/test_ancestry_fine_report.py` checks both encodings of the same three genotypes.
+- **Fix:** `og ancestry-fine sample-bed` (its `ped_alleles`) mapped the `.bed` codes to `2 2`, `1 2` and `1 1`.
 - **No longer used since 1.0.0:** step 26b writes no PLINK file (`.ped` or `.bed`) for the sample. `og ancestry-fine project` reads the genotypes from the VCF.
 
 ### ADMIXTURE stops on a SNV with no genotype, which for one person is every missing site
