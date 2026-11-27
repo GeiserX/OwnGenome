@@ -4,22 +4,32 @@
 //! Every file `git ls-files` lists (tracked, plus new files that are not
 //! ignored) is read, and these are the findings:
 //!
-//! - `file`: a `*.py`, `*.pyw`, `*.pyi` or `*.ipynb` file;
-//! - `shebang`: a `#!` line whose program is python, python3 or
-//!   pythonX.Y, directly or through `env`: the first line of any file, or
-//!   any line of a shell, Nextflow or workflow file (a script a heredoc or a
-//!   Nextflow `script:` block writes);
+//! - `file`: a `*.py`, `*.pyw`, `*.pyi`, `*.ipynb`, Cython `*.pyx` or
+//!   `*.pxd`, a `*.py.in` template, or a Snakemake `Snakefile` or `*.smk`;
+//! - `shebang`: a `#!` line whose program is python, python3, pythonX.Y,
+//!   pypy, pypy3 or pypyX.Y, directly or through `env`: the first line of
+//!   any file, or any line of a shell, Nextflow or workflow file (a script
+//!   a heredoc or a Nextflow `script:` block writes);
 //! - `call`: a Python program word outside a comment in a shell script (by
-//!   its suffix, by a shell `#!` line whatever the suffix, a Makefile, a
-//!   `*.mk`, a justfile or a Dockerfile), a Nextflow file or config, a
-//!   GitHub workflow or action (not its `name:` and `description:`
-//!   labels), JavaScript or TypeScript, or the `command` field of a TSV
-//!   command table (`tests/smoke/commands.tsv`): a `python3 -c`, a
-//!   `python3 - <<EOF`, a `python3 tool` run in an image, a `PY=python3`
-//!   or `${PYTHON:-python3}` that picks the interpreter. The program words
-//!   are python, python3, pythonX.Y and the package runners pip, pip3,
-//!   pipx, uv and uvx. A workflow step that `uses:` a `setup-python` or
-//!   `setup-uv` action (in a block or a flow mapping) is a call too. A shell
+//!   its suffix, `*.bats` among them, by a shell or bats `#!` line whatever
+//!   the suffix, a Makefile, a `*.mk`, a justfile, or a Dockerfile or
+//!   Containerfile by any name: `Dockerfile.x`, `x.dockerfile`,
+//!   `x.Dockerfile`), a Nextflow file or config, a workflow (GitHub, Gitea
+//!   or Forgejo) or an action (`.github/actions/`, or any `action.yml`;
+//!   not its `name:` and `description:` labels), JavaScript or TypeScript,
+//!   or the `command` field of a TSV command table
+//!   (`tests/smoke/commands.tsv`): a `python3 -c`, a `python3 - <<EOF`, a
+//!   `python3 tool` run in an image, a `\python3` past an alias, a
+//!   `PY=python3` or `${PYTHON:-python3}` that picks the interpreter. The
+//!   program words are python, python3, pythonX.Y, pypy, pypy3, pypyX.Y and
+//!   the package runners pip, pip3, pipx, uv and uvx. A run of the python
+//!   image (`PYTHON_IMAGE`, `python:3.15`, `library/python`) by `docker
+//!   run`, `podman run` or `run_in` with no program after the image is a
+//!   call too: the image's own python3 runs what comes on stdin
+//!   (`docker run -i "$PYTHON_IMAGE" <<'END'`, `... < tool.txt`); a command
+//!   continued with `\` is read whole. A workflow step that `uses:` a
+//!   `setup-python` or `setup-uv` action (in a block or a flow mapping) is
+//!   a call too. A shell
 //!   quote may span lines (a `#` inside it is text) but never opens inside
 //!   a heredoc body, where an apostrophe is data. A `//` comment may follow
 //!   a token with no blank (`"ok";// note`). A Nextflow `"""` or
@@ -32,6 +42,8 @@
 //!   variable that named a Python oracle, or a string literal that the
 //!   shell rules above find a call, heredoc or shebang in
 //!   (`.arg("python3")`, `"sh -c 'python3 x'"`, `const PY = "python3"`).
+//!   An ordinary literal is read with its escapes decoded, as the program
+//!   gets it: `"python\x33"` and `"python\u{33}"` are python3.
 //!
 //! A comment, a doc sentence and a Markdown, text, JSON or image file are
 //! prose: they never count. `python:3.15` (an image), `python=...` (a
@@ -39,15 +51,21 @@
 //! `site-packages/python3.12/` path are not calls.
 //!
 //! Known limits: a Python program name built at run time
-//! (`format!("python{}", 3)`, `["py", "thon"].concat()`) is not seen, and
-//! YAML outside `.github/workflows/` and `.github/actions/` is data (a
+//! (`format!("python{}", 3)`, `["py", "thon"].concat()`) or by shell
+//! quoting (`py""thon3`) is not seen; nor is a program word with a suffix
+//! of its own (`python3-dbg`), a shell file with no suffix and no `#!`
+//! line that another script sources, a python image named through a
+//! variable of its own (`img=$PYTHON_IMAGE; docker run -i "$img" < x`) or
+//! through separate Rust strings (`.args(["run", "-i", &image])`), and
+//! YAML other than workflows and actions is data (a
 //! `.pre-commit-config.yaml` `entry: python3`, a compose `command:`).
 //! Review catches those.
 //!
 //! `tests/python-allow.tsv` names, one row per file, the files whose
-//! findings are third-party Python: a tool run inside its own pinned image
-//! (PharmCAT's preprocessor, eKLIPse, Cyrius and the docs builder Zensical
-//! in `PYTHON_IMAGE`). Each row is `file<TAB>uses<TAB>reason[<TAB>marks]`,
+//! findings are not owned Python: a third-party tool run inside its own
+//! pinned image (PharmCAT's preprocessor, eKLIPse, Cyrius and the docs
+//! builder Zensical in `PYTHON_IMAGE`), or a line that runs no Python (a
+//! check of a log, a stub, an image's name). Each row is `file<TAB>uses<TAB>reason[<TAB>marks]`,
 //! where `uses` is the number of findings (one per use: a line with two
 //! Python commands holds two) and `marks`, if given, is a `|`-separated
 //! list of texts one of which the code of every such line, without its
@@ -96,7 +114,10 @@ fn oracle_var() -> String {
 
 /// The program words, each in two halves for the same reason.
 const PYTHON: &str = concat!("pyt", "hon");
+const PYPY: &str = concat!("py", "py");
 const PIP: &str = concat!("pi", "p");
+/// The python image's variable in `versions.env`.
+const PYTHON_IMAGE: &str = concat!("PYT", "HON_IMAGE");
 const RUNNERS: [&str; 3] = [concat!("pi", "px"), concat!("u", "v"), concat!("u", "vx")];
 
 /// One thing the gate found.
@@ -140,14 +161,26 @@ fn lang(rel: &str, text: &str) -> Lang {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
     match ext {
-        "sh" | "bash" | "ksh" | "zsh" | "mk" => return Lang::Shell,
+        "sh" | "bash" | "ksh" | "zsh" | "mk" | "bats" => return Lang::Shell,
+        // `og.dockerfile`, `og.Dockerfile`.
+        "dockerfile" | "Dockerfile" => return Lang::Shell,
         "nf" | "config" | "groovy" => return Lang::Nextflow,
         "rs" => return Lang::Rust,
         "js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx" => return Lang::Script,
         // Workflows and actions run code; the rest of .github (Dependabot,
-        // issue forms) is data.
+        // issue forms) is data. A local action may live anywhere
+        // (`uses: ./tools/act`), and Gitea and Forgejo read workflows of
+        // their own.
         "yml" | "yaml"
-            if rel.starts_with(".github/workflows/") || rel.starts_with(".github/actions/") =>
+            if [
+                ".github/workflows/",
+                ".github/actions/",
+                ".gitea/workflows/",
+                ".forgejo/workflows/",
+            ]
+            .iter()
+            .any(|d| rel.starts_with(d))
+                || matches!(name, "action.yml" | "action.yaml") =>
         {
             return Lang::Workflow;
         }
@@ -164,7 +197,7 @@ fn lang(rel: &str, text: &str) -> Lang {
     // A shell shebang makes a shell script, whatever the name's suffix
     // (`bin/report.local`).
     let shell_script = shebang_program(first_line)
-        .is_some_and(|p| matches!(p.as_str(), "sh" | "bash" | "dash" | "ksh" | "zsh"));
+        .is_some_and(|p| matches!(p.as_str(), "sh" | "bash" | "dash" | "ksh" | "zsh" | "bats"));
     if shell_script {
         return Lang::Shell;
     }
@@ -228,10 +261,12 @@ fn shebang_program(line: &str) -> Option<String> {
     None
 }
 
-/// python, python3, python3.12: not python3.12/ (a path part) and not
-/// python. (a sentence).
+/// python, python3, python3.12, and PyPy's pypy, pypy3, pypy3.10: not
+/// python3.12/ (a path part) and not python. (a sentence).
 fn is_python_program(word: &str) -> bool {
-    word.strip_prefix(PYTHON).is_some_and(version_suffix)
+    [PYTHON, PYPY]
+        .iter()
+        .any(|p| word.strip_prefix(p).is_some_and(version_suffix))
 }
 
 /// "", "3" or "3.12": not "3." (a sentence).
@@ -364,15 +399,16 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
 }
 
 /// Can a program word start at `s`? At the line start, after a blank, a
-/// quote, a bracket, a shell operator, a path `/`, a list `,` or an
-/// assignment `=` (`PY=python3`), and after the `-` or `+` of
-/// `${NAME-…}`, `${NAME:-…}`, `${NAME+…}` and `${NAME:+…}`.
+/// quote, a bracket, a shell operator, a path `/`, a list `,`, an
+/// assignment `=` (`PY=python3`) or a `\` (`\python3` skips an alias and
+/// runs python3), and after the `-` or `+` of `${NAME-…}`, `${NAME:-…}`,
+/// `${NAME+…}` and `${NAME:+…}`.
 fn word_start(b: &[u8], s: usize) -> bool {
     if s == 0 {
         return true;
     }
     let p = b[s - 1];
-    if p.is_ascii_whitespace() || b"\"'`(;|&{/[,=".contains(&p) {
+    if p.is_ascii_whitespace() || b"\"'`(;|&{/[,=\\".contains(&p) {
         return true;
     }
     (p == b'-' || p == b'+') && {
@@ -530,6 +566,125 @@ fn python_heredoc(code: &str) -> bool {
     })
 }
 
+/// The words and operators of a shell command, roughly: quotes are dropped
+/// (`"$PYTHON_IMAGE"` is the word `$PYTHON_IMAGE`), a `${…}` stays one word
+/// with its blanks, a `\` keeps the character after it, and a run of
+/// `; | & ( ) < >` is one operator.
+fn shell_tokens(code: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut it = code.chars().peekable();
+    while let Some(c) = it.next() {
+        match c {
+            '\'' | '"' | '`' => {}
+            '\\' => cur.extend(it.next()),
+            '$' if it.peek() == Some(&'{') => {
+                cur.push(c);
+                let mut depth = 0usize;
+                for d in it.by_ref() {
+                    cur.push(d);
+                    if d == '{' {
+                        depth += 1;
+                    } else if d == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+            }
+            ';' | '|' | '&' | '(' | ')' | '<' | '>' => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+                let mut op = String::from(c);
+                while let Some(n) = it.next_if(|n| ";|&()<>".contains(*n)) {
+                    op.push(n);
+                }
+                out.push(op);
+            }
+            c if c.is_whitespace() => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Is this word the python image: `$PYTHON_IMAGE`, `${PYTHON_IMAGE}` (with
+/// any `:-`, `:?` tail), or a `python` or `…/library/python` reference with
+/// any tag or digest (`python:3.15`, `docker.io/library/python@sha256:…`)?
+fn python_image_ref(word: &str) -> bool {
+    if let Some(r) = word.strip_prefix("${") {
+        return r
+            .strip_prefix(PYTHON_IMAGE)
+            .is_some_and(|rest| rest.starts_with(['}', ':', '-', '+', '=', '?']));
+    }
+    if let Some(r) = word.strip_prefix('$') {
+        return r == PYTHON_IMAGE;
+    }
+    let name = word.split('@').next().unwrap_or(word);
+    let slash = name.rfind('/').map_or(0, |k| k + 1);
+    let repo = &name[..name[slash..].find(':').map_or(name.len(), |k| slash + k)];
+    let library = ["library/", PYTHON].concat();
+    repo == PYTHON || repo == library || repo.ends_with(&format!("/{library}"))
+}
+
+/// Does a command run the python image with no program after the image?
+/// Then the image's own python3, its default command, runs what comes on
+/// stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`, `… < tool.txt`). The run
+/// is `docker run`, `podman run` or `nerdctl run` (also `container run`),
+/// or the scripts' `run_in`. A bare `python` image is a program word
+/// already, so it is not counted twice.
+fn python_image_default(code: &str) -> bool {
+    let toks = shell_tokens(code);
+    let op = |t: &str| t.starts_with([';', '|', '&', '(', ')', '<', '>']);
+    let mut i = 0;
+    while i < toks.len() {
+        let base = toks[i].rsplit('/').next().unwrap_or("");
+        let mut from = None;
+        if matches!(base, "docker" | "podman" | "nerdctl") {
+            let mut j = i + 1;
+            if toks.get(j).is_some_and(|t| t == "container") {
+                j += 1;
+            }
+            if toks.get(j).is_some_and(|t| t == "run") {
+                from = Some(j + 1);
+            }
+        } else if toks[i] == "run_in" {
+            from = Some(i + 1);
+        }
+        if let Some(mut j) = from {
+            while j < toks.len() && !op(&toks[j]) {
+                if python_image_ref(&toks[j]) {
+                    if is_python_program(&toks[j]) {
+                        break;
+                    }
+                    let next = toks.get(j + 1).map(String::as_str);
+                    // A file descriptor before a redirection (`2>/dev/null`)
+                    // is no program.
+                    let fd = next.is_some_and(|n| n.bytes().all(|c| c.is_ascii_digit()))
+                        && toks.get(j + 2).is_some_and(|n| n.starts_with(['<', '>']));
+                    if next.is_none_or(op) || fd {
+                        return true;
+                    }
+                    break;
+                }
+                j += 1;
+            }
+            i = j;
+        }
+        i += 1;
+    }
+    false
+}
+
 fn excerpt(line: &str) -> String {
     let t = line.trim();
     if t.chars().count() <= 120 {
@@ -553,13 +708,18 @@ fn finding(rel: &str, line: usize, kind: &'static str, text: &str, code: &str) -
     }
 }
 
-/// The `file` finding of a path whose name is a Python file's.
+/// The `file` finding of a path whose name is a Python file's: Python,
+/// a notebook, Cython (`.pyx`, `.pxd`), a template of a Python file
+/// (`.py.in`) or Snakemake, which is Python (`Snakefile`, `.smk`).
 fn python_name(rel: &str) -> Option<Finding> {
     let name = rel.rsplit('/').next().unwrap_or(rel);
-    [".py", ".pyw", ".pyi", ".ipynb"]
-        .iter()
-        .any(|e| name.ends_with(e))
-        .then(|| finding(rel, 0, "file", "a Python file", ""))
+    ([
+        ".py", ".pyw", ".pyi", ".ipynb", ".pyx", ".pxd", ".py.in", ".smk",
+    ]
+    .iter()
+    .any(|e| name.ends_with(e))
+        || matches!(name, "Snakefile" | "snakefile"))
+    .then(|| finding(rel, 0, "file", "a Python file", ""))
 }
 
 /// A Makefile or a justfile: an indented recipe line may start with `@`,
@@ -604,6 +764,9 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             // around it (`It's ready.` inside `cat <<EOF`).
             let mut bodies: std::collections::VecDeque<(String, bool)> =
                 std::collections::VecDeque::new();
+            // A command continued from the lines before (each ended in `\`),
+            // so a run of the python image is read whole.
+            let mut command = String::new();
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
@@ -663,12 +826,28 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 };
                 // A heredoc line holds at least the heredoc; a second command
                 // beside it is a second use.
+                let whole = if command.is_empty() {
+                    code.to_owned()
+                } else {
+                    format!("{command} {code}")
+                };
+                let default_python = match whole.trim_end().strip_suffix('\\') {
+                    Some(head) => {
+                        command = head.to_owned();
+                        false
+                    }
+                    None => {
+                        command.clear();
+                        python_image_default(&whole)
+                    }
+                };
+                // A Python heredoc fed to the image is that one use.
                 let uses = if python_heredoc(code) {
                     (python_words(code).max(1), "heredoc")
                 } else {
                     let words = python_words(code);
                     let setup = usize::from(l == Lang::Workflow && setup_python(code));
-                    (words + setup, "call")
+                    (words + setup + usize::from(default_python), "call")
                 };
                 for _ in 0..uses.0 {
                     out.push(finding(rel, n, uses.1, line, &marked));
@@ -792,6 +971,75 @@ fn rust_parts(src: &str) -> Vec<Part> {
     part
 }
 
+/// The lines of a Rust string literal's body as the program gets them,
+/// each with the source position it starts at (`start` is the body's). In
+/// an ordinary literal the escapes are decoded (`\x33` and `\u{33}` are
+/// `3`, `\"` is `"`, a `\` at the end of a line joins the next one and the
+/// blanks it starts with); a raw literal keeps its text. A real line break
+/// or a `\n` ends a line in both, as it does for the shell that may run it.
+fn literal_lines(body: &str, start: usize, raw: bool) -> Vec<(String, usize)> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut at = start;
+    let mut it = body.char_indices().peekable();
+    while let Some((j, c)) = it.next() {
+        if c == '\n' {
+            out.push((std::mem::take(&mut cur), at));
+            at = start + j + 1;
+            continue;
+        }
+        if c != '\\' {
+            cur.push(c);
+            continue;
+        }
+        if raw {
+            if it.next_if(|&(_, n)| n == 'n').is_some() {
+                out.push((std::mem::take(&mut cur), at));
+                at = start + j + 2;
+            } else {
+                cur.push('\\');
+            }
+            continue;
+        }
+        let Some((k, e)) = it.next() else { break };
+        match e {
+            'n' => {
+                out.push((std::mem::take(&mut cur), at));
+                at = start + k + 1;
+            }
+            't' => cur.push('\t'),
+            'r' => cur.push('\r'),
+            '0' => cur.push('\0'),
+            'x' => {
+                let mut hex = String::new();
+                while hex.len() < 2 {
+                    match it.next_if(|&(_, h)| h.is_ascii_hexdigit()) {
+                        Some((_, h)) => hex.push(h),
+                        None => break,
+                    }
+                }
+                cur.extend(u8::from_str_radix(&hex, 16).ok().map(char::from));
+            }
+            'u' if it.next_if(|&(_, h)| h == '{').is_some() => {
+                let mut hex = String::new();
+                for (_, h) in it.by_ref() {
+                    if h == '}' {
+                        break;
+                    }
+                    if h != '_' {
+                        hex.push(h);
+                    }
+                }
+                cur.extend(u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32));
+            }
+            '\n' => while it.next_if(|&(_, w)| w.is_whitespace()).is_some() {},
+            other => cur.push(other),
+        }
+    }
+    out.push((cur, at));
+    out
+}
+
 fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
     let part = rust_parts(src);
     let line_of = |pos: usize| src[..pos].bytes().filter(|&c| c == b'\n').count() + 1;
@@ -850,8 +1098,13 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         while end < b.len() && part[end] == Part::Str {
             end += 1;
         }
-        let prog = &src[body..end];
-        let base = prog.rsplit('/').next().unwrap_or(prog);
+        // `"python\x33"` is python3; a raw string keeps its backslashes.
+        let prog: Vec<String> = literal_lines(&src[body..end], body, open > q)
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect();
+        let prog = prog.join("\n");
+        let base = prog.rsplit('/').next().unwrap_or(&prog);
         if is_python_program(base) {
             calls.entry(line_of(s)).or_insert(s);
         }
@@ -871,8 +1124,10 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         }
     }
     // Every string literal, read with the shell rules on each of its lines
-    // (a real line break or a `\n` escape): a program word (`.arg("python3")`,
-    // `"sh -c 'python3 x'"`), a Python heredoc or a python `#!` line.
+    // (a real line break or a `\n` escape) as the program gets them (an
+    // ordinary literal's escapes decoded): a program word (`.arg("python3")`,
+    // `"sh -c 'python3 x'"`), a Python heredoc, a python `#!` line, or a run
+    // of the python image with no program after it.
     let mut i = 0;
     while i < b.len() {
         if part[i] != Part::Str {
@@ -883,24 +1138,21 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         while i < b.len() && part[i] == Part::Str {
             i += 1;
         }
-        let mut at = start;
-        for real in src[start..i].split('\n') {
-            let mut piece_at = at;
-            for piece in real.split("\\n") {
-                let code = strip_line_comment(piece);
-                let k = if shebang_is_python(piece) {
-                    1
-                } else if python_heredoc(code) {
-                    python_words(code).max(1)
-                } else {
-                    python_words(code)
-                };
-                if k > 0 {
-                    add(piece_at, k);
-                }
-                piece_at += piece.len() + 2;
+        // The body of `r"…"` or `r#"…"#` follows `r"` or `#"`; that of an
+        // ordinary or byte string follows `"` or `b"`.
+        let raw = start >= 2 && b[start - 1] == b'"' && matches!(b[start - 2], b'r' | b'#');
+        for (piece, at) in literal_lines(&src[start..i], start, raw) {
+            let code = strip_line_comment(&piece);
+            let k = if shebang_is_python(&piece) {
+                1
+            } else if python_heredoc(code) {
+                python_words(code).max(1)
+            } else {
+                python_words(code) + usize::from(python_image_default(code))
+            };
+            if k > 0 {
+                add(at, k);
             }
-            at += real.len() + 1;
         }
     }
     for (n, pos) in calls {
@@ -1543,14 +1795,17 @@ fn e() { let _ = Command::new(r\"og\"); }\n";
         );
     }
 
-    /// Test text with `@p` for the word python, `@P` for PY, `@i` for pip
-    /// and `@u` for uv, so no string in this file holds one of them and the
-    /// gate scans this file like any other Rust file.
+    /// Test text with `@p` for the word python, `@P` for PY, `@i` for pip,
+    /// `@u` for uv, `@y` for pypy and `@V` for the python image's variable,
+    /// so no string in this file holds one of them and the gate scans this
+    /// file like any other Rust file.
     fn t(s: &str) -> String {
         s.replace("@p", concat!("pyt", "hon"))
             .replace("@P", concat!("P", "Y"))
             .replace("@i", concat!("pi", "p"))
             .replace("@u", concat!("u", "v"))
+            .replace("@y", concat!("py", "py"))
+            .replace("@V", concat!("PYT", "HON_IMAGE"))
     }
 
     fn k(rel: &str, text: &str) -> Vec<(usize, &'static str)> {
@@ -1824,6 +2079,165 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
         );
         // In a shell script, -python3 stays an option name.
         assert!(k("s.sh", "\t-@p3 a\n").is_empty());
+    }
+
+    #[test]
+    fn python_fed_to_the_python_image_on_stdin() {
+        // The python image's default command is python3: with no program
+        // after the image, it runs what comes on stdin.
+        let sh = ". ./versions.env\ndocker run -i --rm \"$@V\" <<'END'\nimport os\nEND\n";
+        assert_eq!(k("s.sh", sh), [(2, "call")]);
+        assert_eq!(
+            k("s.sh", "docker run -i --rm \"${@V}\" < tool.txt\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "podman run -i @p:3.15 2>/dev/null <x\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "out=$(docker container run -i docker.io/library/@p:3@sha256:ab < x)\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(k("s.sh", "run_in \"$@V\" < x\n"), [(1, "call")]);
+        // A continued command: the image ends one line, the redirection
+        // starts the next.
+        assert_eq!(
+            k("s.sh", "docker run -i \\\n  \"$@V\" \\\n  < x\n"),
+            [(3, "call")]
+        );
+        // A program after the image: python3 is counted by its word, bash
+        // and sh are no Python, also on the next line of the command.
+        assert_eq!(
+            k("s.sh", "docker run --rm \"$@V\" @p3 -m cyrius\n"),
+            [(1, "call")]
+        );
+        assert!(
+            k(
+                "s.sh",
+                "run_in -w /tmp \\\n  \"${@V}\" \\\n  bash -c 'og x'\n"
+            )
+            .is_empty()
+        );
+        assert!(
+            k(
+                "s.sh",
+                "docker run \"${@V:?is not set in versions.env}\" sh -euc 'ls'\n"
+            )
+            .is_empty()
+        );
+        // Not a run of the image: a pull, an echo, a stamp, another image.
+        assert!(
+            k(
+                "s.sh",
+                "docker pull \"$@V\"\necho \"$@V\"\nimg=@p:3.15\ndocker run -i \"$OG_IMAGE\" < x\n"
+            )
+            .is_empty()
+        );
+        // A Python heredoc to the image is one use, not two.
+        assert_eq!(
+            k("s.sh", "docker run -i \"$@V\" <<'@P'\n@P\n"),
+            [(1, "heredoc")]
+        );
+        // From a Rust string and a workflow step too.
+        let rs = t("fn a() { let _ = \"docker run -i @p:3.15 < x\"; }\n");
+        assert_eq!(kinds("x.rs", &rs), [(1, "rust")]);
+        assert_eq!(
+            k(
+                ".github/workflows/x.yml",
+                "      - run: docker run -i \"$@V\" < x\n"
+            ),
+            [(1, "call")]
+        );
+    }
+
+    #[test]
+    fn a_backslash_before_the_program_still_runs_it() {
+        // `\python3` skips an alias and runs python3.
+        assert_eq!(k("s.sh", "\\@p3 -c 1\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", "x; \\@i install y\n"), [(1, "call")]);
+    }
+
+    #[test]
+    fn pypy_is_a_python() {
+        assert_eq!(
+            k("s.sh", "@y3 -c 1\n@y -V\nX=@y3.10\n"),
+            [(1, "call"), (2, "call"), (3, "call")]
+        );
+        assert_eq!(k("bin/tool", "#!/usr/bin/env @y3\n"), [(1, "shebang")]);
+        assert!(k("s.sh", "ls lib/@y3.10/site-packages\n").is_empty());
+    }
+
+    #[test]
+    fn bats_files_are_shell() {
+        assert_eq!(
+            k("tests/zz.bats", "@test \"x\" {\n  run @p3 -c 1\n}\n"),
+            [(2, "call")]
+        );
+        assert_eq!(
+            k("tests/zz", "#!/usr/bin/env bats\nrun @p3 -c 1\n"),
+            [(2, "call")]
+        );
+    }
+
+    #[test]
+    fn dockerfiles_by_any_name_are_shell() {
+        assert_eq!(k("docker/og.dockerfile", "RUN @p3 -c 1\n"), [(1, "call")]);
+        assert_eq!(k("docker/og.Dockerfile", "RUN @p3 -c 1\n"), [(1, "call")]);
+        assert_eq!(k("Containerfile.dev", "RUN @p3 -c 1\n"), [(1, "call")]);
+    }
+
+    #[test]
+    fn actions_anywhere_and_other_forges_are_workflows() {
+        let steps = "runs:\n  steps:\n    - name: @p3 in a label\n      run: @p3 -c 1\n";
+        for rel in [
+            "tools/act/action.yml",
+            "action.yaml",
+            ".gitea/workflows/a.yml",
+            ".forgejo/workflows/a.yaml",
+        ] {
+            assert_eq!(k(rel, steps), [(4, "call")], "{rel}");
+        }
+        // Other YAML stays data.
+        assert!(k("tools/act/config.yml", steps).is_empty());
+    }
+
+    #[test]
+    fn snakemake_cython_and_templates_are_python_files() {
+        for rel in [
+            "Snakefile",
+            "workflow/snakefile",
+            "rules/a.smk",
+            "src/a.pyx",
+            "src/a.pxd",
+            "bin/tool.py.in",
+        ] {
+            assert_eq!(k(rel, "x\n"), [(0, "file")], "{rel}");
+        }
+        assert!(k("bin/tool.in", "x\n").is_empty());
+    }
+
+    #[test]
+    fn rust_escapes_are_read_as_the_program_gets_them() {
+        // `\x33` and `\u{33}` are 3: the program is python3.
+        assert_eq!(
+            k("x.rs", "fn a() { Command::new(\"@p\\x33\"); }\n"),
+            [(1, "rust")]
+        );
+        assert_eq!(
+            k("x.rs", "fn a() { let _ = \"sh -c '@p\\u{33} x'\"; }\n"),
+            [(1, "rust")]
+        );
+        // A `\` at the end of a line joins the next one.
+        assert_eq!(
+            k("x.rs", "fn a() { let _ = \"sh -c '@p\\\n    3 x'\"; }\n"),
+            [(1, "rust")]
+        );
+        // A raw string keeps its backslashes: no escape runs there.
+        assert!(k("x.rs", "fn a() { let _ = r\"@p\\x33\"; }\n").is_empty());
     }
 
     #[cfg(unix)]

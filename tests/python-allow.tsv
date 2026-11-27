@@ -5,8 +5,9 @@
 # or a pattern; a row that covers nothing fails the gate. A Python file is
 # owned code and can never be listed here.
 # uses is the number of Python uses in the file (each python or package
-# runner word, Python heredoc and python #! line; one line can hold two): a
-# new use is checked against the reason before the count changes. marks
+# runner word, Python heredoc, python #! line and run of the python image
+# with no program after it; one line can hold two): a new use is checked
+# against the reason before the count changes. marks
 # (optional) are texts separated by |; the code of every use line (without
 # its comments) must hold one of them, so a use swapped for another at the
 # same count fails too.
