@@ -12,6 +12,10 @@ mkdir -p "$G"
 run_expect 3 setup "${SCRIPTS}/setup.sh" "$G"
 output_lacks setup 'unbound variable'
 output_has setup '^  Setup finished: core ready, [0-9]+ items missing$'
+# Step 11's allele-frequency panel failed its checksum too: it is on the
+# list of what is missing, with the command that retries it.
+output_has setup 'Could not install step 11'"'"'s allele-frequency panel'
+output_has setup '^  - step 11'"'"'s allele-frequency panel \(ROH\)$'
 
 for f in reference/GRCh38_no_alt_analysis_set.fasta reference/GRCh38_no_alt_analysis_set.fasta.fai \
          clinvar/clinvar.vcf.gz clinvar/clinvar.vcf.gz.tbi \

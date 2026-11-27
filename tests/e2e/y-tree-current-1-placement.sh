@@ -19,6 +19,17 @@ YT="${YDATA}/ytree"
 check "Yleaf's tables and the current tree install" "${REPO}/scripts/setup.sh" --yleaf-data "$GENOME_DIR"
 check "the tree folder names YFull YTree ${YTREE_VERSION}" \
   grep -qxF "$(printf 'tree\tYFull YTree %s (CC BY 4.0)' "$YTREE_VERSION")" "${YT}/version.txt"
+# A re-pin of the tree alone (here: version.txt no longer matches) downloads
+# the tree again but keeps the mask and the two position tables that still
+# match their pins: the same files (inodes) after the rerun.
+inodes() { stat -c %i "${YT}/callable_mask_chrY.fasta.gz" "${YT}/positions_ftdna_hg38.txt" "${YT}/positions_yfull_hg38.txt" 2>/dev/null | tr '\n' ' '; }
+before=$(inodes)
+check_eq "the mask and the two position tables are installed" "$(wc -w <<< "$before" | tr -d ' ')" 3
+echo stale > "${YT}/version.txt"
+check "a tree re-pin installs the tree again" "${REPO}/scripts/setup.sh" --yleaf-data "$GENOME_DIR"
+check "the reinstalled tree names YFull YTree ${YTREE_VERSION}" \
+  grep -qxF "$(printf 'tree\tYFull YTree %s (CC BY 4.0)' "$YTREE_VERSION")" "${YT}/version.txt"
+check_eq "a tree re-pin keeps the mask and position tables that match their pins" "$(inodes)" "$before"
 "${REPO}/bin/og" y tree-positions --tree-dir "$YT" "${CASE_TMP}/positions.txt" > "${CASE_TMP}/positions.log" 2>&1
 cat "${CASE_TMP}/positions.log"
 check_ge "tree SNP positions the tables place" "$(grep -c . "${CASE_TMP}/positions.txt" 2>/dev/null || true)" 300000

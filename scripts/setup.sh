@@ -508,7 +508,15 @@ install_kir_data() {
 # download of the current tree is a warning, not a failure. The mask is
 # checked against YCALLABLE_MASK_SHA256 on every run: one that matches is
 # kept with no download, also when a new tree pin installs the tables again,
-# and one that fails is downloaded again on its own.
+# and one that fails is downloaded again on its own. The two position tables
+# are kept the same way when a re-pin leaves their sha256 as it was.
+_ytree_pin() {
+  case "$1" in
+    callable_mask_chrY.fasta.gz) printf '%s' "$YCALLABLE_MASK_SHA256" ;;
+    positions_ftdna_hg38.txt) printf '%s' "$YTREE_FTDNA_SHA256" ;;
+    positions_yfull_hg38.txt) printf '%s' "$YTREE_YFULL_SHA256" ;;
+  esac
+}
 install_yleaf_data() {
   local dest="${GENOME_DIR}/reference/yleaf-${YLEAF_DATA_VERSION}" tgz url
   if [ -s "${dest}/data/hg38/new_positions.txt" ] && [ -s "${dest}/data/hg_prediction_tables/tree.json" ]; then
@@ -567,32 +575,40 @@ install_yleaf_data() {
   fi
   rm -rf "${yt}.part"
   mkdir -p "${yt}.part"
-  # A mask that matches its pin is kept: a new tree pin does not download it again.
-  # The two position tables are not: they are fetched again with the tree, even
-  # when YTREE_POSITIONS_COMMIT did not move.
-  if $mask_ok; then
-    cp "$mask" "${yt}.part/callable_mask_chrY.fasta.gz"
-  fi
+  # The mask and the two position tables that still match their pins are
+  # kept (hard-linked into the new folder): a re-pin of the tree alone
+  # downloads the tree alone.
+  local f pin
+  for f in callable_mask_chrY.fasta.gz positions_ftdna_hg38.txt positions_yfull_hg38.txt; do
+    pin=$(_ytree_pin "$f")
+    if [ -f "${yt}/${f}" ] && [ "$(_digest sha256 "${yt}/${f}")" = "$pin" ]; then
+      ln -f "${yt}/${f}" "${yt}.part/${f}"
+    fi
+  done
   if ! fetch "$tree_url" "${yt}.part/current_tree.json" sha256 "$YTREE_SHA256" \
-     || ! fetch "$ftdna_url" "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256" \
-     || ! fetch "$yfull_url" "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256" \
-     || { ! $mask_ok && ! fetch "$mask_url" "${yt}.part/callable_mask_chrY.fasta.gz" sha256 "$YCALLABLE_MASK_SHA256"; }; then
+     || { [ -f "${yt}.part/positions_ftdna_hg38.txt" ] || fetch "$ftdna_url" "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256"; } \
+     || { [ -f "${yt}.part/positions_yfull_hg38.txt" ] || fetch "$yfull_url" "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256"; } \
+     || { [ -f "${yt}.part/callable_mask_chrY.fasta.gz" ] || fetch "$mask_url" "${yt}.part/callable_mask_chrY.fasta.gz" sha256 "$YCALLABLE_MASK_SHA256"; }; then
     # Yleaf's own data is in place, so step 37 still runs: it says the
     # current tree is not installed and writes Yleaf's result only. An older
     # tree from an earlier pin goes too, so no step places on tables that
-    # versions.env no longer names. A mask that matches its pin stays: with
+    # versions.env no longer names. A file that matches its pin stays: with
     # no version.txt beside it no step reads it, and the next run keeps it.
     echo "[WARN] Could not download the current Y tree (${label}); step 37 will place the sample on Yleaf's tree only. Run this again to retry."
     rm -rf "${yt}.part"
-    if $mask_ok; then
-      find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +  # not kept: the installed tree of an older pin (its position tables are fetched again with the tree); the mask that matches its pin stays
-    else
-      rm -rf "$yt"  # not kept: the installed tree of an older pin; its position tables are fetched again with the tree
+    if [ -d "$yt" ]; then
+      for f in "$yt"/* "$yt"/.[!.]*; do
+        [ -e "$f" ] || [ -L "$f" ] || continue
+        pin=$(_ytree_pin "${f##*/}")
+        if [ -z "$pin" ] || [ ! -f "$f" ] || [ "$(_digest sha256 "$f")" != "$pin" ]; then
+          rm -rf "$f"  # not kept: the installed tree of an older pin; a file that matches its pin stays
+        fi
+      done
     fi
     return 0
   fi
   printf '%s\n' "$want" > "${yt}.part/version.txt"
-  rm -rf "$yt"  # not kept: the installed tree of an older pin, replaced; its position tables were fetched again with the tree
+  rm -rf "$yt"  # not kept: the installed tree of an older pin, replaced; the files that matched their pins are hard-linked into the new one
   mv "${yt}.part" "$yt"
   echo "[OK] Current Y tree (${label}) and Yleaf ${YTREE_POSITIONS_VERSION}'s SNP positions (step 37): ${yt}"
 }
@@ -3099,7 +3115,8 @@ fi
 # ROH_AF_PANEL_SHA256 and indexed here with the tabix of GATK_IMAGE, as
 # REVEL is (scripts/ci/check-container-helpers.sh keeps bgzip and tabix out
 # of BCFTOOLS_IMAGE). Without it step 11 gives every site AF 0.4, so a
-# failed download warns and does not stop setup.
+# failed download or index warns, goes on the list of what is missing, and
+# does not stop setup.
 ROH_AF_PANEL="${GENOME_DIR}/roh_af/${ROH_AF_PANEL_URL##*/}"
 # Download only a missing panel or one whose sha256 is not the pinned one;
 # then index the checked file, so a failed index is retried without
@@ -3113,6 +3130,7 @@ else
     ROH_AF_PANEL_OK=1
   else
     echo "[WARN] Could not install step 11's allele-frequency panel: step 11 gives every site AF 0.4 without it. Re-run setup.sh to try again."
+    note_missing "step 11's allele-frequency panel (ROH)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 if [ "$ROH_AF_PANEL_OK" = 1 ]; then
@@ -3123,6 +3141,7 @@ if [ "$ROH_AF_PANEL_OK" = 1 ]; then
   else
     rm -f "${ROH_AF_PANEL}.tbi"
     echo "[WARN] Could not index step 11's allele-frequency panel (${ROH_AF_PANEL}): step 11 gives every site AF 0.4 until it is. Re-run setup.sh to try again."
+    note_missing "step 11's allele-frequency panel (ROH)" "${SETUP_CMD} \"${GENOME_DIR}\""
   fi
 fi
 # A failed download does not stop setup here either: it goes on the list of
