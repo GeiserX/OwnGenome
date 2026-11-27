@@ -205,9 +205,9 @@ file	{sample}/pypgx/{sample}_cyp2d6_depth_check.tsv	32	PYPGX	both	tsv	stable	bas
 file	{sample}/pypgx/{sample}_pharmcat_comparison.tsv	27	CPIC_LOOKUP	both	tsv	stable	bash	-
 file	{sample}/pypgx/{sample}_pypgx_results	32	PYPGX	nextflow	dir	stable	-	-
 file	{sample}/pypgx/{sample}_pypgx_summary.tsv	32	PYPGX	both	tsv	stable	bash	-
-file	{sample}/qc/somalier/somalier.html	33	SOMALIER_RELATE	nextflow	html	experimental	-	-
-file	{sample}/qc/somalier/somalier.pairs.tsv	33	SOMALIER_RELATE	nextflow	tsv	experimental	-	-
-file	{sample}/qc/somalier/somalier.samples.tsv	33	SOMALIER_RELATE	nextflow	tsv	experimental	-	-
+file	{sample}/qc/somalier/{sample}.html	33	SOMALIER_RELATE	both	html	experimental	-	-
+file	{sample}/qc/somalier/{sample}.pairs.tsv	33	SOMALIER_RELATE	both	tsv	experimental	-	-
+file	{sample}/qc/somalier/{sample}.samples.tsv	33	SOMALIER_RELATE	both	tsv	experimental	-	-
 file	{sample}/qc/somalier/{sample}.somalier	33	SOMALIER	nextflow	bin	experimental	-	-
 file	{sample}/qc/somalier/{sample}.somalier_id	33	SOMALIER	nextflow	bin	internal	-	-
 file	{sample}/qc/verifybamid2/{sample}.Ancestry	33	VERIFYBAMID2	nextflow	bin	experimental	-	-

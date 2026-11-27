@@ -82,15 +82,15 @@ check "INDEXCOV let the row through first" has "Sample '${SAMPLE}': indexcov inf
 check "the message says how to go on" has 'rerun with --sex_check warn' "$(cat "$LOG")"
 check_eq "declared female: SAMPLE_QC tasks" "$(ran SAMPLE_QC)" 1
 check_eq "declared female: no HTML_REPORT task" "$(ran HTML_REPORT)" 0
-# pcol COLUMN SAMPLE: COLUMN of the run's somalier.samples.tsv (in REL) for SAMPLE.
+# pcol COLUMN SAMPLE: COLUMN of the run's somalier samples table (RELTAB) for SAMPLE.
 pcol() {
   awk -F'\t' -v k="$1" -v s="$2" 'NR == 1 {sub(/^#/, ""); for (i = 1; i <= NF; i++) c[$i] = i; next}
-    $c["sample_id"] == s {print $c[k]}' "${REL}/somalier.samples.tsv" 2>/dev/null
+    $c["sample_id"] == s {print $c[k]}' "$RELTAB" 2>/dev/null
 }
 # One sample: SOMALIER_RELATE's tables go to its own folder, so a run of
 # another sample into the same --outdir leaves them alone.
-REL="${OUT}/${SAMPLE}/qc/somalier"
-check "one sample: SOMALIER_RELATE's tables are in the sample's qc/somalier" test -s "${REL}/somalier.samples.tsv"
+RELTAB="${OUT}/${SAMPLE}/qc/somalier/${SAMPLE}.samples.tsv"
+check "one sample: SOMALIER_RELATE's tables are in the sample's qc/somalier, named as step 33 names them" test -s "$RELTAB"
 check "one sample: no shared somalier/ folder" test ! -e "${OUT}/somalier"
 check_eq "declared female: somalier's table has it as the pedigree's sex" "$(pcol original_pedigree_sex "$SAMPLE")" female
 check_eq "and somalier set the sex to male (1) from the reads" "$(pcol sex "$SAMPLE")" 1
@@ -122,9 +122,9 @@ check "the first row is the same person as the second" has "^${D} \\([0-9.]+\\)$
 check "the second row is the same person as the first" has "^${SAMPLE} \\([0-9.]+\\)$" "$(tv "$TD" same_person_as)"
 check "VERIFYBAMID2 published its selfSM" test -s "${R}/qc/verifybamid2/${SAMPLE}.selfSM"
 # Two samples: one table for both, in the shared somalier/ folder.
-REL="${OUT}/somalier"
-check "two samples: SOMALIER_RELATE_COHORT published its tables in somalier/" test -s "${REL}/somalier.samples.tsv"
-check_eq "two samples: each sample's own table holds only it" "$(awk -F'\t' 'NR > 1 {print $2}' "${R}/qc/somalier/somalier.samples.tsv" 2>/dev/null | paste -sd, -)" "$SAMPLE"
+RELTAB="${OUT}/somalier/somalier.samples.tsv"
+check "two samples: SOMALIER_RELATE_COHORT published its tables in somalier/" test -s "$RELTAB"
+check_eq "two samples: each sample's own table holds only it" "$(awk -F'\t' 'NR > 1 {print $2}' "${R}/qc/somalier/${SAMPLE}.samples.tsv" 2>/dev/null | paste -sd, -)" "$SAMPLE"
 # MultiQC: each sample its own report, and one across both.
 check_eq "MULTIQC tasks (one per sample)" "$(ran MULTIQC)" 2
 check_eq "MULTIQC_COHORT tasks" "$(ran MULTIQC_COHORT)" 1
