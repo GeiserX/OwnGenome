@@ -138,7 +138,7 @@ Developer and CI tools: og dev --help lists them.
 
 /// The developer and CI tools, which `og dev --help` prints. They stay out of
 /// [`USAGE`], so `og --help` lists only what a user or a step runs.
-const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|remnants [args]
+const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only [args]
   og dev scan personal-data|images [args]
   og dev versions check-run|expand|coupled [args]
   og dev pgs trait|label-match|metric-match [args]
@@ -158,7 +158,7 @@ const DEV_USAGE: &str = "  og dev parity-compare|contract|schema|report-only|rem
   og dev demo-sample [args]
   og dev demo-events [args]
   og dev params-doc [args]
-  og dev python-gate [args]
+  og dev python-gate [--root DIR] [--allow FILE] [--list]
   og dev everything-check [args]
   og dev licences [args]
   og dev docs-check [args]
@@ -203,7 +203,7 @@ const OWN_HELP: &[&str] = &[
     "viral report",
     "y str-bed|str-report|tree-positions|tree-place|private-snps|yleaf-positions",
     "exomiser prepare|report",
-    "dev freshness|contract|report-only|remnants|renovate-check|helpers|params-doc|traits-sources",
+    "dev freshness|contract|report-only|renovate-check|helpers|params-doc|traits-sources",
 ];
 
 /// `og WORDS... -h|--help [...]`: the usage lines of the command named by
