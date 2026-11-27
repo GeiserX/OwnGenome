@@ -1,0 +1,401 @@
+//! `og setup plan`: before anything downloads, every source the chosen
+//! installers need (`assets/data-sources.tsv`), whether it is already on
+//! disk, its size, what is left to download and the free disk.
+//!
+//! Presence is a file at the row's path (for a folder row, which fills over
+//! many fetches: its install done and a file of its own in it); `og setup
+//! fetch` checks its checksum when it is reached, so the plan itself reads
+//! no download and makes no request. A raw download that is not there but
+//! whose install is done (every file its `installed` column names is there,
+//! each stamp holding the pins the installer compares: an install by an
+//! older setup, which deleted the raw files, or one pruned since) is not
+//! needed again, so it counts as nothing to download.
+
+use crate::fetch::{Ctx, Env, Source, Sources, flag, root_of, take};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+/// A size as people read it: kB, MB, GB, TB (powers of 1000).
+pub fn human(b: u64) -> String {
+    let units = ["bytes", "kB", "MB", "GB", "TB"];
+    let mut v = b as f64;
+    let mut u = 0;
+    while v >= 1000.0 && u + 1 < units.len() {
+        v /= 1000.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{b} bytes")
+    } else {
+        format!("{v:.1} {}", units[u])
+    }
+}
+
+/// The rows of INSTALLERS (any row naming one), in table order.
+pub fn chosen<'a>(s: &'a Sources, installers: &[String]) -> Vec<&'a Source> {
+    s.rows
+        .values()
+        .filter(|r| r.installers.iter().any(|i| installers.contains(i)))
+        .collect()
+}
+
+/// The free bytes of the filesystem that holds PATH (its nearest existing
+/// folder).
+pub fn free_bytes(path: &Path) -> Option<(PathBuf, u64)> {
+    let mut p = path.to_path_buf();
+    while !p.exists() {
+        p = p.parent()?.to_path_buf();
+    }
+    let st = rustix::fs::statvfs(&p).ok()?;
+    Some((p, st.f_bavail.saturating_mul(st.f_frsize)))
+}
+
+/// One row of the plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Line {
+    pub id: String,
+    pub path: String,
+    pub files: usize,
+    pub present: usize,
+    /// Files not there whose install is done: not downloaded again.
+    pub installed: usize,
+    /// The bytes a folder row not installed already holds of its own.
+    pub held: u64,
+    pub bytes: Option<u64>,
+    /// Kept in the downloads folder (a raw download), not installed.
+    pub download: bool,
+}
+
+fn parts_of(r: &Source) -> Vec<Option<&str>> {
+    if r.parts.is_empty() {
+        vec![None]
+    } else {
+        r.parts.iter().map(|p| Some(p.as_str())).collect()
+    }
+}
+
+/// The plan of ROWS (rows of S): one line each, a family counted file by
+/// file. A folder row (a path ending in /) fills over many fetches, so a
+/// file in it proves nothing: it is present when its install is done and it
+/// holds a file of its own, and otherwise the files it holds already are
+/// taken off its size.
+pub fn lines(ctx: &Ctx, s: &Sources, rows: &[&Source]) -> Result<Vec<Line>, String> {
+    // The files of every row, so a folder row never counts another's file.
+    let mut others: Vec<PathBuf> = vec![];
+    for r in s.rows.values().filter(|r| !r.path.ends_with('/')) {
+        for p in parts_of(r) {
+            others.push(ctx.path(r, p)?);
+        }
+    }
+    let mut out = vec![];
+    for r in rows {
+        let parts = parts_of(r);
+        let (mut present, mut installed, mut held) = (0, 0, 0);
+        for p in &parts {
+            let f = ctx.path(r, *p)?;
+            let done = ctx.installed(r, *p)?;
+            if r.path.ends_with('/') {
+                let h = held_bytes(&f, &others);
+                match (done, h) {
+                    (true, Some(_)) => present += 1,
+                    (true, None) => installed += 1,
+                    (false, h) => held += h.unwrap_or(0),
+                }
+            } else if f.is_file() {
+                present += 1;
+            } else if done {
+                installed += 1;
+            }
+        }
+        out.push(Line {
+            id: r.id.clone(),
+            path: ctx
+                .expand(&r.path, None)
+                .map_err(|e| format!("ERROR: {}: {e}", r.id))?,
+            files: parts.len(),
+            present,
+            installed,
+            held,
+            bytes: r.bytes,
+            download: r.is_download(),
+        });
+    }
+    Ok(out)
+}
+
+/// The bytes of the files folder D holds of its own (at any depth), or
+/// None when it holds none: a hidden file (a fetch's lock), a `.part`, a
+/// saved `.checksum` and a file of another row (OTHERS) are not its own.
+pub fn held_bytes(d: &Path, others: &[PathBuf]) -> Option<u64> {
+    let mut found = None;
+    let mut todo = vec![d.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.ends_with(".part") || name.ends_with(".checksum") {
+                continue;
+            }
+            let p = e.path();
+            let Ok(m) = std::fs::metadata(&p) else {
+                continue;
+            };
+            if m.is_dir() {
+                todo.push(p);
+            } else if m.is_file() && !others.contains(&p) {
+                found = Some(found.unwrap_or(0) + m.len());
+            }
+        }
+    }
+    found
+}
+
+/// How much NEED is over FREE, if it is.
+pub fn shortfall(need: u64, free: u64) -> Option<u64> {
+    (need > free).then(|| need - free)
+}
+
+/// True unless SETUP_KEEP_DOWNLOADS=false: raw downloads stay after the install.
+pub fn keeping(ctx: &Ctx) -> bool {
+    ctx.setting("SETUP_KEEP_DOWNLOADS").as_deref() != Some("false")
+}
+
+/// Writes the plan; returns the bytes still to download into the downloads
+/// folder and that folder's free bytes (when readable).
+pub fn write_plan(
+    ctx: &Ctx,
+    lines: &[Line],
+    out: &mut dyn Write,
+) -> Result<(u64, Option<u64>), String> {
+    let downloads = ctx.downloads()?;
+    let genome = ctx.genome_dir().ok();
+    let w = |out: &mut dyn Write, s: String| out.write_all(s.as_bytes()).map_err(|e| e.to_string());
+    w(out, format!("Downloads folder: {}\n", downloads.display()))?;
+    w(out, "source\tfile\tsize\tstate\n".to_owned())?;
+    let (mut need, mut have, mut unknown, mut n_need, mut kept, mut need_dl) =
+        (0u64, 0u64, 0usize, 0usize, 0u64, 0u64);
+    for l in lines {
+        let size = l.bytes.map_or_else(|| "?".to_owned(), human);
+        let state = if l.files == 1 {
+            if l.present == 1 {
+                "present".to_owned()
+            } else if l.installed == 1 {
+                "installed, not kept".to_owned()
+            } else if l.held > 0 {
+                format!("missing, {} of it already here", human(l.held))
+            } else {
+                "missing".to_owned()
+            }
+        } else if l.installed > 0 {
+            format!(
+                "{} of {} files present, {} installed and not kept",
+                l.present, l.files, l.installed
+            )
+        } else {
+            format!("{} of {} files present", l.present, l.files)
+        };
+        w(out, format!("{}\t{}\t{size}\t{state}\n", l.id, l.path))?;
+        let missing = l.files - l.present - l.installed;
+        if missing > 0 {
+            n_need += 1;
+            match l.bytes {
+                // A family's size is shared out over its files; a folder's
+                // own files already there are not downloaded again.
+                Some(b) => {
+                    let n = (b / l.files as u64 * missing as u64).saturating_sub(l.held);
+                    have += l.held.min(b);
+                    need += n;
+                    if l.download {
+                        need_dl += n;
+                    }
+                }
+                None => unknown += 1,
+            }
+        }
+        if l.download {
+            kept += l.bytes.unwrap_or(0);
+        }
+        if l.present > 0
+            && let Some(b) = l.bytes
+        {
+            have += b / l.files as u64 * l.present as u64;
+        }
+    }
+    let unk = if unknown > 0 {
+        format!(" ({unknown} of unknown size)")
+    } else {
+        String::new()
+    };
+    w(
+        out,
+        format!(
+            "To download: {n_need} source{}, {}{unk}; already on disk: {}.\n",
+            if n_need == 1 { "" } else { "s" },
+            human(need),
+            human(have)
+        ),
+    )?;
+    if keeping(ctx) {
+        w(
+            out,
+            format!(
+                "Raw downloads kept after the install: {} (--no-keep-downloads or SETUP_KEEP_DOWNLOADS=false deletes each once installed; og setup prune deletes them later).\n",
+                human(kept)
+            ),
+        )?;
+    } else {
+        w(
+            out,
+            "Raw downloads are deleted once installed (SETUP_KEEP_DOWNLOADS=false).\n".to_owned(),
+        )?;
+    }
+    let mut dl_free = None;
+    let mut seen: Vec<PathBuf> = vec![];
+    for (i, d) in std::iter::once(downloads.clone()).chain(genome).enumerate() {
+        let Some((at, free)) = free_bytes(&d) else {
+            w(
+                out,
+                format!("Free disk: cannot read it for {}\n", d.display()),
+            )?;
+            continue;
+        };
+        if seen.iter().any(|s| same_fs(s, &at)) {
+            continue;
+        }
+        w(
+            out,
+            format!("Free disk: {} in {}\n", human(free), at.display()),
+        )?;
+        // Only the downloads folder's own filesystem counts for --check.
+        if i == 0 {
+            dl_free = Some(free);
+            if let Some(s) = shortfall(need_dl, free) {
+                w(
+                    out,
+                    format!(
+                        "[WARN] the raw downloads kept there need {} more than is free.\n",
+                        human(s)
+                    ),
+                )?;
+            }
+        }
+        seen.push(at);
+    }
+    Ok((need_dl, dl_free))
+}
+
+fn same_fs(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev(),
+        _ => false,
+    }
+}
+
+const USAGE: &str =
+    "usage: og setup plan [--for INSTALLER,...|--all] [--skip INSTALLER,...] [--check] [--root DIR]
+  --check: exit 1 when the raw downloads still to come do not fit in the
+  free disk of the downloads folder (unless SETUP_KEEP_DOWNLOADS=false);
+  a download whose install is done (its installed files are there) is not
+  to come; an installer with no source then counts as nothing to download
+  --skip: leave out the sources of these installers (setup.sh
+  --no-clinical-data is --skip clinical-data)
+  INSTALLER: setup (a plain setup), or a setup.sh flag without its dashes
+  (clinical-data, vep-cache, archaic, ...); default setup
+";
+
+/// `og setup plan`.
+pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    cli_with(args, Box::new(|k| std::env::var(k).ok()), out, err)
+}
+
+/// `og setup plan` reading its settings (GENOME_DIR, OG_DOWNLOADS,
+/// SETUP_KEEP_DOWNLOADS) through ENV.
+pub fn cli_with(args: &[String], env: Env, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let mut a = args.to_vec();
+    let all = flag(&mut a, "--all");
+    let check = flag(&mut a, "--check");
+    let (list, root, skip) = match (
+        take(&mut a, "--for"),
+        take(&mut a, "--root"),
+        take(&mut a, "--skip"),
+    ) {
+        (Ok(l), Ok(r), Ok(s)) => (l, r, s),
+        (Err(m), _, _) | (_, Err(m), _) | (_, _, Err(m)) => {
+            let _ = writeln!(err, "og setup plan: {m}");
+            return 2;
+        }
+    };
+    if !a.is_empty() {
+        let _ = write!(err, "{USAGE}");
+        return 2;
+    }
+    let res = (|| -> Result<(), String> {
+        let ctx = Ctx::new(&root_of(root.as_deref()), env)?;
+        let s = Sources::read(&ctx.root)?;
+        let skip: Vec<&str> = skip
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .filter(|x| !x.is_empty())
+            .collect();
+        let rows: Vec<&Source> = if all {
+            s.rows.values().collect()
+        } else {
+            let want: Vec<String> = list
+                .as_deref()
+                .unwrap_or("setup")
+                .split(',')
+                .filter(|x| !x.is_empty())
+                .map(str::to_owned)
+                .collect();
+            for i in &want {
+                if !check && !s.rows.values().any(|r| r.installers.contains(i)) {
+                    return Err(format!(
+                        "ERROR: no source of the table is installed by '{i}'"
+                    ));
+                }
+            }
+            chosen(&s, &want)
+        };
+        let rows: Vec<&Source> = rows
+            .into_iter()
+            .filter(|r| !r.installers.iter().any(|i| skip.contains(&i.as_str())))
+            .collect();
+        let l = lines(&ctx, &s, &rows)?;
+        let (need, free) = write_plan(&ctx, &l, out)?;
+        if check
+            && keeping(&ctx)
+            && let Some(s) = free.and_then(|f| shortfall(need, f))
+        {
+            return Err(format!(
+                "ERROR: the raw downloads this setup still needs, {}, do not fit: they need {} more than is free in {}. Free some disk, set OG_DOWNLOADS to a larger disk, or run with --no-keep-downloads (SETUP_DISK_CHECK=false skips this check). A download whose install is already done is not counted.",
+                human(need),
+                human(s),
+                ctx.downloads()?.display()
+            ));
+        }
+        Ok(())
+    })();
+    match res {
+        Ok(()) => 0,
+        Err(m) => {
+            let _ = writeln!(err, "{m}");
+            1
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::human;
+
+    #[test]
+    fn sizes_read_as_people_read_them() {
+        assert_eq!(human(999), "999 bytes");
+        assert_eq!(human(1_500), "1.5 kB");
+        assert_eq!(human(26_000_000_000), "26.0 GB");
+    }
+}

@@ -121,7 +121,7 @@ mkdir -p "$OUTPUT_DIR"
 BLACKLIST="${GENOME_DIR}/reference/ENCFF356LFX.bed"
 if [ ! -s "$BLACKLIST" ]; then
   echo "Downloading ENCODE blacklist for GRCh38..."
-  rm -f "$BLACKLIST"
+  rm -f "$BLACKLIST"  # not kept: an empty file an earlier version left, never the download
   fetch "https://raw.githubusercontent.com/PapenfussLab/gridss/${GRIDSS_BLACKLIST_COMMIT}/example/ENCFF356LFX.bed" "$BLACKLIST" || {
     echo "WARNING: Failed to download blacklist. GRIDSS will run without it."
     BLACKLIST=""
