@@ -1,7 +1,8 @@
 //! Not ported yet: scripts/setup.sh's bash runs these flags. The slice
 //! setup-port-base fills this module:
-//! the default run (setup.sh <dir>), --no-clinical-data, --everything and
-//! --refresh clinvar.
+//! the default run (setup.sh <dir>), --no-clinical-data, --everything,
+//! --refresh clinvar and --strchive-data (the STRchive catalog the default
+//! run builds, with STR_EXTRA_LOCI). --og stays in setup.sh: it builds og.
 //! It lists each flag it runs in [`PORTED`] and answers it in [`run`];
 //! nothing else in the crate changes.
 
