@@ -255,7 +255,7 @@ The cold build downloads the crates once; pulling `OG_BUILDER` the first time ad
 - the install trees, file by file, with `og dev install-manifest` (below);
 - the exit codes;
 - the two logs, with times, durations, speeds, curl progress and image pull progress masked (a date inside a file name, such as `release-2026-11-26.tar.gz`, is part of the name and is not masked), and the missing list (`Missing (...)`, each item and its `retry:` line) line by line, unmasked, so a retry path that differs only by a date still counts;
-- the images and tags each side added or removed, `localhost/pgp-pinned/` tags included. Before side B, ab.sh removes the tags side A added for images side A's log names, each by its full name and tag (a pinned tag by its digest), never by the image name alone, so side B starts from the images side A started from and must pull and pin them again. A tag another job added meanwhile is left alone;
+- the images and tags each side added or removed, `localhost/pgp-pinned/` tags included. Before side B, ab.sh removes the tags side A added for images side A's log names, each by its full name and tag, never by the image name alone, so side B starts from the images side A started from and must pull and pin them again. A pinned tag goes only when the log prints one digest reference, `NAME[:TAG]@sha256:HEX`, that gives that tag: its name and its digest must come from the same image. A tag another job added meanwhile is left alone;
 - each side's own `NXF_HOME`, where setup puts the nf-schema plugin;
 - `bin/.og`. Both sides start from the `bin/.og` that was there before side A: ab.sh restores it before side B, so side B cannot inherit a file side A added there.
 

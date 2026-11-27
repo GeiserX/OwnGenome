@@ -1522,6 +1522,9 @@ case "$AB_STUB" in
     # A digest-pinned image and its pinned tag.
     printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid4\n' 7 >>"$AB_ENGINE_STATE"
     printf 'Status: Downloaded newer image for example/pin@sha256:%064d\n' 7
+    # A second one, at another digest.
+    printf 'localhost/pgp-pinned/example/pin2:sha256-%064d\tid6\n' 8 >>"$AB_ENGINE_STATE"
+    printf 'Status: Downloaded newer image for example/pin2@sha256:%064d\n' 8
     # Another job on the engine adds, once, another tag of the same name
     # and the same name and tag from another registry.
     if [ ! -e "$AB_ENGINE_STATE.other" ]; then
@@ -1529,6 +1532,9 @@ case "$AB_STUB" in
       printf 'registry.example/example/kir:2.0\tid2\nexample/kir:1.0\tid3\n' >>"$AB_ENGINE_STATE"
       # and another image's pinned tag at the same digest.
       printf 'localhost/pgp-pinned/example/other:sha256-%064d\tid5\n' 7 >>"$AB_ENGINE_STATE"
+      # and a pinned tag with the name of one image side A logs and the
+      # digest of the other.
+      printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid7\n' 8 >>"$AB_ENGINE_STATE"
     fi ;;
   nothing)
     echo "nothing to do" ;;
@@ -1695,13 +1701,15 @@ fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
             ("AB_ENGINE_STATE", &s(&state)),
         ],
     );
-    assert!(out.contains("removed 2 image tag(s)"), "{out}");
+    assert!(out.contains("removed 3 image tag(s)"), "{out}");
     let left = fs::read_to_string(&state).unwrap();
     let other = format!("\nlocalhost/pgp-pinned/example/other:sha256-{:064}\t", 7);
+    let crossed = format!("\nlocalhost/pgp-pinned/example/pin:sha256-{:064}\t", 8);
     for tag in [
         "registry.example/example/kir:2.0\t",
         "\nexample/kir:1.0\t",
         other.as_str(),
+        crossed.as_str(),
     ] {
         assert!(
             format!("\n{left}").contains(tag),

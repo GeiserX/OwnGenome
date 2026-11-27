@@ -169,16 +169,24 @@ named() {
 # images side A started from: it pulls and pins what side A pulled and
 # pinned, and logs it the same way. A tag another job on the engine added
 # while side A ran is not named in side A's log and is left alone. A tag is
-# named by its full NAME:TAG; a pinned tag, which the log does not print, by
-# both its image NAME and its digest. Another tag of the same image name, or
-# another image's pinned tag at the same digest, is not side A's.
+# named by its full NAME:TAG. A pinned tag, which the log does not print, is
+# side A's only when the log prints one digest reference NAME[:TAG]@sha256:HEX
+# that gives that tag the way setup.sh's pinned_tag does. Another tag of the
+# same image name, another image's pinned tag at the same digest, or a tag
+# with the name of one logged image and the digest of another, is not side A's.
 undo_images() {
-  local tag name n=0
+  local tag ref name last pinned n=0
+  pinned=$(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
+    while IFS= read -r ref; do
+      name=${ref%@sha256:*} last=${ref%@sha256:*}
+      last=${last##*/}
+      [[ "$last" == *:* ]] && name=${name%:*}
+      printf 'localhost/pgp-pinned/%s:sha256-%s\n' "${name//:/-}" "${ref##*@sha256:}"
+    done || true)
   while IFS=$'\t' read -r tag _; do
     case "$tag" in
       */pgp-pinned/*:sha256-*)
-        name=${tag#*/pgp-pinned/}
-        named "${name%:sha256-*}" && named "sha256:${tag##*:sha256-}" || continue
+        grep -qxF -- "$tag" <<<"$pinned" || continue
         ;;
       *) named "$tag" || continue ;;
     esac
