@@ -411,6 +411,25 @@ fn gzip_mode_ignores_the_header_time_and_sees_the_content() {
         row,
     );
     assert_eq!(code, 0, "{out}");
+    // The data block's BSIZE spans the end block too: the headers chain to
+    // the end of the file, the members do not, and tabix cannot read it.
+    let mut forged = bgzf(b"a\tb\n");
+    let first = u16::from_le_bytes([forged[16], forged[17]]) as usize + 1;
+    let total = (forged.len() - 1) as u16;
+    assert!(first < forged.len());
+    forged[16..18].copy_from_slice(&total.to_le_bytes());
+    let (code, out) = modes_case(
+        "gz-forged",
+        "reference/t.gz",
+        &bgzf(b"a\tb\n"),
+        &forged,
+        row,
+    );
+    assert_eq!(code, 1, "a BSIZE past its member is BGZF:\n{out}");
+    assert!(
+        diff_lines(&out)[0].starts_with("DIFF\tcontent\treference/t.gz\tgzip bgzf:"),
+        "{out}"
+    );
 }
 
 fn vcf(date: &str, version: &str, alt: &str) -> Vec<u8> {
@@ -815,6 +834,60 @@ fn an_index_beside_a_fifo_or_a_block_with_another_extra_field_is_invalid() {
         .recv_timeout(std::time::Duration::from_secs(20))
         .expect("the manifest blocks on a FIFO beside an index");
     assert_eq!(got, "invalid");
+}
+
+#[test]
+fn an_index_beside_a_damaged_block_or_a_link_or_with_stray_bytes_is_invalid() {
+    let digest = |d: &Path| {
+        let text = fs::read_to_string(manifest(d, &[])).unwrap();
+        text.lines()
+            .find(|l| l.starts_with("x/d.bcf.csi\t"))
+            .and_then(|l| l.split("index=").nth(1))
+            .unwrap_or_else(|| panic!("no index digest:\n{text}"))
+            .to_owned()
+    };
+    let t = Tmp::new("csi-damaged");
+    let case = |name: &str, data: &[u8], index: &[u8]| {
+        let d = t.0.join(name);
+        write(&d.join("x/d.bcf"), data, 0o644);
+        write(&d.join("x/d.bcf.csi"), index, 0o644);
+        digest(&d)
+    };
+    let good = bgzf(&[7u8; 300]);
+    let end = u16::from_le_bytes([good[16], good[17]]) as usize + 1;
+    assert_ne!(case("good", &good, &csi(300, b"")), "invalid");
+    // The trailer claims 301 bytes where the block holds 300: offset 301
+    // reads past the data.
+    let mut isize = good.clone();
+    isize[end - 4..end].copy_from_slice(&301u32.to_le_bytes());
+    assert_eq!(
+        case("isize", &isize, &csi(301, b"")),
+        "invalid",
+        "a block whose ISIZE lies fits"
+    );
+    // A CRC that does not match the block's bytes.
+    let mut crc = good.clone();
+    crc[end - 8] ^= 1;
+    assert_eq!(
+        case("crc", &crc, &csi(10, b"")),
+        "invalid",
+        "a block with a bad CRC fits"
+    );
+    // Four stray bytes after the last sequence: neither nothing nor the
+    // eight-byte count of records with no position.
+    let mut stray = csi_plain(10, b"");
+    stray.extend([0u8; 4]);
+    assert_eq!(
+        case("stray", &good, &bgzf(&stray)),
+        "invalid",
+        "an index with stray bytes at its end is read"
+    );
+    // A data file that is a link: the manifest compares the link's text,
+    // not the target's bytes, so the index cannot vouch for them.
+    let link = t.0.join("link");
+    write(&link.join("x/d.bcf.csi"), &csi(10, b""), 0o644);
+    std::os::unix::fs::symlink(t.0.join("good/x/d.bcf"), link.join("x/d.bcf")).unwrap();
+    assert_eq!(digest(&link), "invalid", "an index beside a link fits");
 }
 
 fn jf(host: &str, counts: &[u8]) -> Vec<u8> {
@@ -1286,6 +1359,11 @@ case "$AB_STUB" in
     printf 'half of it\n' >"$dir/kir/kir.part"
     echo "ERROR: could not download the KIR data"
     exit 1 ;;
+  readonly)
+    mkdir -p "$dir/kir"
+    printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
+    chmod 0444 "$dir/kir/kir.dat"
+    echo "[OK] KIR data" ;;
   nothing)
     echo "nothing to do" ;;
   foreign)
@@ -1298,7 +1376,7 @@ esac
 
 /// Runs ab.sh --bash-vs-bash kir-data in a scratch copy of the repo with
 /// the stub setup.sh, a one-file seed and no container engine; its exit
-/// code and output.
+/// code and output. A variable given empty in `env` is unset.
 fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
     let t = Tmp::new(tag);
     let root = t.0.join("repo");
@@ -1312,8 +1390,8 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
     write(&root.join("rust/og.sh"), b"#!/bin/sh\nexit 0\n", 0o755);
     let seed = t.0.join("seed");
     write(&seed.join("ref.fa"), b"ACGT\n", 0o644);
-    let out = Command::new("bash")
-        .arg(root.join("tests/setup/ab.sh"))
+    let mut cmd = Command::new("bash");
+    cmd.arg(root.join("tests/setup/ab.sh"))
         .args(["--bash-vs-bash", "kir-data"])
         .arg(t.0.join("work"))
         .env("OG", og_bin())
@@ -1323,10 +1401,15 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
         .env("TMPDIR", &t.0)
         .env_remove("OG_DOWNLOADS")
         .env_remove("AB_EXPECT_EXIT")
-        .env_remove("AB_ALLOW")
-        .envs(env.iter().copied())
-        .output()
-        .unwrap();
+        .env_remove("AB_ALLOW");
+    for &(k, v) in env {
+        if v.is_empty() {
+            cmd.env_remove(k);
+        } else {
+            cmd.env(k, v);
+        }
+    }
+    let out = cmd.output().unwrap();
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -1356,6 +1439,26 @@ fn ab_sh_is_red_when_side_a_fails_unless_that_exit_is_expected() {
     assert_eq!(code, 0, "an expected exit 1 is red:\n{out}");
     let (code, out) = ab("ab-ok-expected", "ok", &[("AB_EXPECT_EXIT", "1")]);
     assert_eq!(code, 1, "exit 0 where 1 was expected is green:\n{out}");
+}
+
+#[test]
+fn ab_sh_runs_without_a_seed() {
+    let (code, out) = ab("ab-noseed", "ok", &[("AB_SEED", "")]);
+    assert_eq!(code, 0, "a run with no seed stops:\n{out}");
+    assert!(
+        out.contains("control: one flipped bit in kir/kir.dat is red"),
+        "{out}"
+    );
+}
+
+#[test]
+fn ab_sh_plants_its_control_in_a_read_only_file() {
+    let (code, out) = ab("ab-readonly", "readonly", &[]);
+    assert_eq!(code, 0, "a read-only file stops the control:\n{out}");
+    assert!(
+        out.contains("control: one flipped bit in kir/kir.dat is red"),
+        "{out}"
+    );
 }
 
 #[test]

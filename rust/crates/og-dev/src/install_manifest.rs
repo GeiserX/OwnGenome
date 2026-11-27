@@ -28,7 +28,8 @@
 //! start with the container, `bgzf:`, `gzip:` or (a plain VCF) `plain:`:
 //! tabix and every region read need BGZF, so plain gzip is not the same
 //! file. BGZF means every gzip member is a BGZF block (htslib's header
-//! check), each starting where the one before ends, up to the end.
+//! check), each starting where the one before ends, up to the end, and
+//! each member ending where its block header says.
 //!
 //! - `gzip`: the decompressed content of a gzip or BGZF file (every
 //!   member), so the header's time and OS byte do not count. `bad` when it
@@ -38,20 +39,21 @@
 //!   Everything else, the bcftools version and command lines included, is
 //!   compared. A header line longer than 16 MiB (its newline included) is
 //!   compared as it is.
-//! - `index`: a `.tbi` or `.csi` whose data file beside it is a regular
-//!   file: its header (format, columns, the CSI shift and depth), its
-//!   sequence names, and per sequence what does not move with the data
-//!   file's bytes: the record counts of htslib's pseudo-bin (mapped and
-//!   unmapped) and, in a `.tbi`, the length of the linear index (the last
-//!   16 kb window holding a record); then the count of records with no
-//!   position, when the index has it. `invalid` when it does not fit the
-//!   data file, or when the index is over 64 MiB. Fit means every chunk
-//!   ends inside the data file, and every chunk start and end points into a
-//!   BGZF block: no further than its decoded length, or at offset 0 at the
-//!   end of the file. Offsets and bin numbers are left out: they move with
-//!   any byte of the data file, which the data file's own row compares.
-//!   htslib merges a bin into its parent when its chunks span less than
-//!   64 KiB of the compressed file, so even the set of bins moves with the
+//! - `index`: a `.tbi` or `.csi` whose data file beside it is a regular file,
+//!   not a link: its header (format, columns, the CSI shift and depth), its
+//!   sequence names, and per sequence what does not move with the data file's
+//!   bytes: the record counts of htslib's pseudo-bin (mapped and unmapped)
+//!   and, in a `.tbi`, the length of the linear index (the last 16 kb window
+//!   holding a record); then the count of records with no position, when the
+//!   index has it. `invalid` when it does not fit the data file, when bytes
+//!   other than that count follow the last sequence, or when the index is
+//!   over 64 MiB. Fit means every chunk ends inside the data file, and every
+//!   chunk start and end points into a BGZF block that decodes whole, CRC and
+//!   length matching: no further than its decoded length, or at offset 0 at
+//!   the end of the file. Offsets and bin numbers are left out: they move
+//!   with any byte of the data file, which the data file's own row compares.
+//!   htslib merges a bin into its parent when its chunks span less than 64
+//!   KiB of the compressed file, so even the set of bins moves with the
 //!   compressed sizes.
 //! - `jellyfish`: a jellyfish file (9 digits, then its JSON header of at
 //!   most 16 MiB): the header with the values of `hostname`, `pwd` and
@@ -111,13 +113,14 @@
 //! does, 2 when an argument, a manifest or the allowlist is wrong or a file
 //! cannot be read.
 
+use flate2::bufread::GzDecoder;
 use flate2::read::MultiGzDecoder;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -318,9 +321,14 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
         f.read_to_end(&mut buf).map_err(&e)?;
         sha = sha_of(&buf);
         if gz {
-            let mut walk = BgzfWalk::default();
-            walk.update(&buf);
-            digests.extend(with_container(walk.kind(), gzip_stream_digests(&buf[..])));
+            let mut hr = Hashing {
+                inner: &buf[..],
+                h: Sha256::new(),
+                walk: BgzfWalk::default(),
+            };
+            let d = gzip_stream_digests(Members::new(&mut hr));
+            std::io::copy(&mut hr, &mut std::io::sink()).map_err(&e)?;
+            digests.extend(with_container(hr.walk.kind(), d));
         } else if buf.starts_with(b"##fileformat=VCF") {
             let d = vcf_digest(&buf[..]).map_err(&e)?;
             digests.push(("vcf", format!("plain:{d}")));
@@ -391,9 +399,11 @@ fn bgzf_bsize(h: &[u8]) -> Option<u64> {
     .then(|| u64::from(u16::from_le_bytes([h[16], h[17]])))
 }
 
-/// Whether a gzip file is BGZF, from its raw bytes in chunks of any size:
-/// every member a BGZF block, each one starting where the one before ends
-/// (BSIZE + 1 bytes on), and the last one ending the file.
+/// Whether a gzip file is BGZF, from its raw bytes in chunks of any size
+/// and the member ends the decoder reports: every member a BGZF block,
+/// each one starting where the one before ends (BSIZE + 1 bytes on), each
+/// member ending where its block header says, and the last one ending the
+/// file.
 #[derive(Default)]
 struct BgzfWalk {
     /// Bytes seen.
@@ -402,6 +412,8 @@ struct BgzfWalk {
     next: u64,
     /// The header of the block at `next`, while it comes in.
     head: Vec<u8>,
+    /// Block ends the headers declared that no member has reached yet.
+    ends: std::collections::VecDeque<u64>,
     broken: bool,
 }
 
@@ -422,7 +434,10 @@ impl BgzfWalk {
             if self.head.len() == 18 {
                 match bgzf_bsize(&self.head) {
                     // A block holds its 18-byte header and 8-byte trailer.
-                    Some(b) if b + 1 >= 26 => self.next += b + 1,
+                    Some(b) if b + 1 >= 26 => {
+                        self.next += b + 1;
+                        self.ends.push_back(self.next);
+                    }
                     _ => self.broken = true,
                 }
                 self.head.clear();
@@ -430,8 +445,21 @@ impl BgzfWalk {
         }
     }
 
+    /// The decoder read a whole member, ending at raw offset `at`. The walk
+    /// has always read that member's header by then.
+    fn member_end(&mut self, at: u64) {
+        if self.ends.pop_front() != Some(at) {
+            self.broken = true;
+        }
+    }
+
     fn kind(&self) -> &'static str {
-        if !self.broken && self.head.is_empty() && self.next > 0 && self.pos == self.next {
+        if !self.broken
+            && self.head.is_empty()
+            && self.ends.is_empty()
+            && self.next > 0
+            && self.pos == self.next
+        {
             "bgzf"
         } else {
             "gzip"
@@ -461,7 +489,7 @@ fn stream_digests(
     let mut digests = Vec::new();
     let gz = head.starts_with(&[0x1f, 0x8b]);
     if gz {
-        digests.extend(gzip_stream_digests(&mut hr));
+        digests.extend(gzip_stream_digests(Members::new(&mut hr)));
     } else if head.starts_with(b"##fileformat=VCF") {
         digests.push(("vcf", format!("plain:{}", vcf_digest(&mut hr)?)));
     } else if is_jellyfish(head)
@@ -478,10 +506,43 @@ fn stream_digests(
     Ok((hex(hr.h), digests))
 }
 
+/// The members of a gzip stream decoded one after another, as
+/// `MultiGzDecoder` reads them, telling the BGZF walk where each one ends.
+struct Members<'a, R: Read> {
+    dec: Option<GzDecoder<BufReader<&'a mut Hashing<R>>>>,
+}
+
+impl<'a, R: Read> Members<'a, R> {
+    fn new(hr: &'a mut Hashing<R>) -> Self {
+        Members {
+            dec: Some(GzDecoder::new(BufReader::with_capacity(1 << 20, hr))),
+        }
+    }
+}
+
+impl<R: Read> Read for Members<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while let Some(dec) = self.dec.as_mut() {
+            let k = dec.read(buf)?;
+            if k > 0 || buf.is_empty() {
+                return Ok(k);
+            }
+            // The member and its trailer are read: what the buffer still
+            // holds comes after it.
+            let mut b = self.dec.take().expect("a decoder").into_inner();
+            let at = b.get_ref().walk.pos - b.buffer().len() as u64;
+            b.get_mut().walk.member_end(at);
+            if !b.fill_buf()?.is_empty() {
+                self.dec = Some(GzDecoder::new(b));
+            }
+        }
+        Ok(0)
+    }
+}
+
 /// The gzip and, for a VCF, the vcf digest of a gzip file, in one
 /// streaming pass over its content in 1 MiB chunks.
-fn gzip_stream_digests(f: impl Read) -> Vec<(&'static str, String)> {
-    let mut r = MultiGzDecoder::new(f);
+fn gzip_stream_digests(mut r: impl Read) -> Vec<(&'static str, String)> {
     let mut raw = Sha256::new();
     let mut vcf: Option<VcfHasher> = None;
     let mut buf = vec![0u8; 1 << 20];
@@ -826,18 +887,20 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
         }
     }
     // The records with no position, which htslib writes after the last
-    // sequence.
-    match c.u64() {
-        Some(n_no_coor) => {
+    // sequence: the count, or nothing, and no other bytes.
+    match c.0.len() {
+        0 => h.update([0]),
+        8 => {
             h.update([1]);
-            h.update(n_no_coor.to_le_bytes());
+            h.update(c.0);
         }
-        None => h.update([0]),
+        _ => return Ok(None),
     }
-    // Valid for the data file: a regular file (a FIFO would block the
-    // read), every chunk ends inside it, at offset 0 when at its end, and
-    // every chunk start and end points into a BGZF block.
-    if !fs::metadata(data).is_ok_and(|m| m.is_file()) {
+    // Valid for the data file: a regular file, not a link (the manifest
+    // compares a link's text, never its target's bytes, and a FIFO would
+    // block the read), every chunk ends inside it, at offset 0 when at its
+    // end, and every chunk start and end points into a BGZF block.
+    if !fs::symlink_metadata(data).is_ok_and(|m| m.is_file()) {
         return Ok(None);
     }
     let Ok(d) = fs::File::open(data) else {
@@ -868,7 +931,8 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
 
 /// Whether offset `within` of the BGZF block at file offset `at` exists:
 /// up to the block's decoded length (its end counts), or 0 at the end of
-/// the file.
+/// the file. The block must decode as one whole gzip member, its CRC and
+/// ISIZE matching what it decodes to.
 fn in_block(d: &fs::File, size: u64, at: u64, within: u64) -> std::io::Result<bool> {
     use std::os::unix::fs::FileExt;
     let read = |buf: &mut [u8], off: u64| match d.read_exact_at(buf, off) {
@@ -886,17 +950,24 @@ fn in_block(d: &fs::File, size: u64, at: u64, within: u64) -> std::io::Result<bo
     let Some(bsize) = bgzf_bsize(&b) else {
         return Ok(false);
     };
-    // BSIZE is the block's length less one; ISIZE ends the block, after
-    // the 18-byte header (XLEN 6) and at least the CRC.
+    // BSIZE is the block's length less one: the 18-byte header (XLEN 6),
+    // the deflate data, then the CRC and ISIZE.
     let end = at + bsize + 1;
     if end > size || end < at + 26 {
         return Ok(false);
     }
-    let mut trailer = [0u8; 4];
-    if !read(&mut trailer, end - 4)? {
+    let mut block = vec![0u8; (bsize + 1) as usize];
+    if !read(&mut block, at)? {
         return Ok(false);
     }
-    Ok(within <= u64::from(u32::from_le_bytes(trailer)))
+    // The decoder checks the CRC and ISIZE; the member must use the whole
+    // block, no more and no less.
+    let mut dec = GzDecoder::new(&block[..]);
+    let mut plain = Vec::new();
+    if dec.read_to_end(&mut plain).is_err() || !dec.into_inner().is_empty() {
+        return Ok(false);
+    }
+    Ok(within <= plain.len() as u64)
 }
 
 /// A path's bytes as one TSV field: valid UTF-8 as it is, except `\`, tab,
@@ -1663,12 +1734,25 @@ mod tests {
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         gz.write_all(&body).unwrap();
         let gz = gz.finish().unwrap();
-        let kind = |bytes: &[u8], step: usize| {
-            let mut w = BgzfWalk::default();
-            for c in bytes.chunks(step) {
-                w.update(c);
+        /// Hands its bytes on `step` at a time.
+        struct Steps<'a>(&'a [u8], usize);
+        impl Read for Steps<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let k = self.0.len().min(self.1).min(buf.len());
+                buf[..k].copy_from_slice(&self.0[..k]);
+                self.0 = &self.0[k..];
+                Ok(k)
             }
-            w.kind()
+        }
+        let kind = |bytes: &[u8], step: usize| {
+            let mut hr = Hashing {
+                inner: Steps(bytes, step),
+                h: Sha256::new(),
+                walk: BgzfWalk::default(),
+            };
+            let _ = gzip_stream_digests(Members::new(&mut hr));
+            std::io::copy(&mut hr, &mut std::io::sink()).unwrap();
+            hr.walk.kind()
         };
         for step in [1, 7, 4096, usize::MAX] {
             assert_eq!(kind(&bgzf, step), "bgzf", "{step}");
@@ -1678,6 +1762,15 @@ mod tests {
         assert_eq!(kind(&[&bgzf[..], &gz[..]].concat(), 4096), "gzip");
         assert_eq!(kind(&bgzf[..bgzf.len() - 1], 4096), "gzip");
         assert_eq!(kind(b"", 1), "gzip");
+        // The first block's BSIZE spans the second block too: the headers
+        // still chain to the end, but the first member ends before.
+        let first = bgzf_bsize(&bgzf).unwrap() as usize + 1;
+        let second = bgzf_bsize(&bgzf[first..]).unwrap() as usize + 1;
+        let mut forged = bgzf.clone();
+        forged[16..18].copy_from_slice(&((first + second - 1) as u16).to_le_bytes());
+        for step in [1, 4096, usize::MAX] {
+            assert_eq!(kind(&forged, step), "gzip", "{step}");
+        }
     }
 
     #[test]

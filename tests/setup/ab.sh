@@ -287,7 +287,10 @@ grep '^ALLOWED' "${work}/check.tree.txt" "${work}/check.nxf-home.txt" 2>/dev/nul
 
 # The control: one flipped bit in a file the component wrote in tree B must
 # turn the tree compare red.
-path=$(manifest --control "${work}/b.tsv" --allow "$allow" --not-in "$seed_tsv") || {
+control_args=(--control "${work}/b.tsv" --allow "$allow")
+# With no seed there is nothing to leave out.
+if [ -n "${AB_SEED:-}" ]; then control_args+=(--not-in "$seed_tsv"); fi
+path=$(manifest "${control_args[@]}") || {
   echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
   exit 2
 }
@@ -295,11 +298,22 @@ path=$(manifest --control "${work}/b.tsv" --allow "$allow" --not-in "$seed_tsv")
 real="${work}/b/$(printf '%b' "$path")"
 copy=$(mktemp "${real}.XXXXXX")
 cp -p "$real" "$copy" && mv -f "$copy" "$real"
-manifest --flip "${work}/b" "$path" >/dev/null
+# A read-only file gets owner write for each flip only, so tree B keeps its
+# mode and the compare sees one difference, the content.
+flip() {
+  if [ -w "$real" ]; then
+    manifest --flip "${work}/b" "$path" >/dev/null
+  else
+    chmod u+w "$real"
+    manifest --flip "${work}/b" "$path" >/dev/null
+    chmod u-w "$real"
+  fi
+}
+flip
 take b.control "${work}/b"
 crc=0
 manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
-manifest --flip "${work}/b" "$path" >/dev/null
+flip
 if [ "$crc" -ne 1 ] || ! grep -qF "DIFF	content	${path}	" "${work}/check.control.txt"; then
   echo "ERROR: one flipped bit in ${path} did not turn the compare red (exit ${crc}): the compare cannot fail." >&2
   exit 2
