@@ -63,7 +63,7 @@ tests/fixtures/                       provenance notes name the image that wrote
 EXEMPT_PAIRS='
 docs/08-hla-typing.md             jiachenzdocker/hla-la@sha256:ecca23de6635aa85e60b4ee39dd4e15341b5febb514e5478f2b2a086f05a447c   HLA-LA is not a pipeline step
 docs/stylesheets/theme.css        quay.io/biocontainers/expansionhunter:5.0.0   example in a CSS comment
-scripts/cyrius-constraints.txt    python:3.11   the image pip resolved these constraints in
+scripts/cyrius-constraints.txt    python:3.11   the image the constraints were first resolved in
 docs/troubleshooting.md           quay.io/biocontainers/toolname:tag   a placeholder, not an image
 tests/bench/ancestry-engines.sh   quay.io/biocontainers/rfmix:2.03.r0.9505bfa--h503566f_8   the bench pins it: og replaced RFMix in step 26b
 tests/bench/ancestry-engines.sh   quay.io/biocontainers/admixture:1.3.0--0   the bench pins it: og replaced ADMIXTURE in step 26b
