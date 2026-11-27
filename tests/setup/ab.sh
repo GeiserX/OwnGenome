@@ -169,16 +169,19 @@ named() {
 # images side A started from: it pulls and pins what side A pulled and
 # pinned, and logs it the same way. A tag another job on the engine added
 # while side A ran is not named in side A's log and is left alone. A tag is
-# named by its full NAME:TAG, a pinned tag by its digest, never by its name
-# alone: another tag of the same image name is not side A's.
+# named by its full NAME:TAG; a pinned tag, which the log does not print, by
+# both its image NAME and its digest. Another tag of the same image name, or
+# another image's pinned tag at the same digest, is not side A's.
 undo_images() {
-  local tag ref n=0
+  local tag name n=0
   while IFS=$'\t' read -r tag _; do
     case "$tag" in
-      */pgp-pinned/*:sha256-*) ref="sha256:${tag##*:sha256-}" ;;
-      *) ref=$tag ;;
+      */pgp-pinned/*:sha256-*)
+        name=${tag#*/pgp-pinned/}
+        named "${name%:sha256-*}" && named "sha256:${tag##*:sha256-}" || continue
+        ;;
+      *) named "$tag" || continue ;;
     esac
-    named "$ref" || continue
     "$ENGINE" rmi "$tag" >/dev/null 2>&1 && n=$((n + 1))
   done < <(LC_ALL=C comm -13 "${work}/a.before.images" "${work}/a.images" | grep -v ':<none>' || true)
   echo "   removed ${n} image tag(s) side A added, for side B to add again"
@@ -201,8 +204,9 @@ if ! mkdir "$lock" 2>/dev/null; then
   echo "ERROR: another ab.sh run uses this checkout (${lock} exists, pid $(cat "${lock}/pid" 2>/dev/null || echo unknown)). Wait for it, run from another checkout, or remove the folder if no run is left." >&2
   exit 2
 fi
-echo $$ >"${lock}/pid"
+# The trap comes first: a run that took the lock always gives it back.
 trap 'rm -rf "$lock"' EXIT
+echo $$ >"${lock}/pid"
 
 # setup.sh builds og when it is missing or stale, and only the first of two
 # runs would: build it before side A, so neither side does.
@@ -329,7 +333,8 @@ path=$(manifest "${control_args[@]}") || {
 # printf -v keeps a trailing newline in the name, which $( ) would strip.
 printf -v rel '%b' "$path"
 real="${work}/b/${rel}"
-copy=$(mktemp "${real}.XXXXXX")
+# A short name beside it: a 255-byte name plus a suffix would be too long.
+copy=$(mktemp "${real%/*}/.ab-copy.XXXXXX")
 if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
   rm -f "$copy"
   echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
