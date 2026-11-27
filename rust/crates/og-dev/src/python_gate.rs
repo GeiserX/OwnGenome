@@ -296,6 +296,8 @@ struct Open {
     /// A Nextflow `"""` or `'''` string: the shell body of a `script:`
     /// block, where `/*` and `//` are a glob and a path, not comments.
     body: bool,
+    /// A JavaScript backtick template literal, which may span lines.
+    tick: bool,
 }
 
 /// A Nextflow line without its comments, read in order: `/* */` (`st`
@@ -307,8 +309,9 @@ struct Open {
 fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
     let b = line.as_bytes();
     let mut out = String::new();
-    // JavaScript also quotes with backticks: a template literal (`http://x`).
-    let (mut single, mut double, mut tick) = (false, false, false);
+    // JavaScript also quotes with backticks: a template literal
+    // (`http://x`), carried in `st` because it may span lines.
+    let (mut single, mut double) = (false, false);
     let (mut i, mut seg) = (0, 0);
     while i < b.len() {
         if st.block {
@@ -321,7 +324,7 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
             }
             continue;
         }
-        let quoted = single || double || tick;
+        let quoted = single || double || st.tick;
         if nf && !quoted && (b[i..].starts_with(b"\"\"\"") || b[i..].starts_with(b"'''")) {
             st.body = !st.body;
             i += 3;
@@ -332,9 +335,9 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
                 i += 2;
                 continue;
             }
-            b'\'' if !double && !tick => single = !single,
-            b'"' if !single && !tick => double = !double,
-            b'`' if !nf && !single && !double => tick = !tick,
+            b'\'' if !double && !st.tick => single = !single,
+            b'"' if !single && !st.tick => double = !double,
+            b'`' if !nf && !single && !double => st.tick = !st.tick,
             b'/' if !quoted && !st.body && b.get(i + 1) == Some(&b'*') => {
                 out.push_str(&line[seg..i]);
                 st.block = true;
@@ -1779,6 +1782,9 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
             k("a.js", "const u = `http://x`; spawn(\"@p3\");\n"),
             [(1, "call")]
         );
+        // A template literal may span lines.
+        let js = "const t = `first\nhttp://x`; spawn(\"@p3\", [\"-V\"]);\n";
+        assert_eq!(k("a.js", js), [(2, "call")]);
     }
 
     #[test]
