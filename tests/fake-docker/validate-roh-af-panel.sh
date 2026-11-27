@@ -3,7 +3,7 @@
 # file of ROH_AF_PANEL_URL): missing is a [WARN] (step 11 runs with AF 0.4),
 # a file that is not the pinned one is a [FAIL], exit 1; the pinned file
 # with no index is a [WARN] (step 11 does not use it), and with its .tbi a
-# [PASS]. The last two run a checkout copy whose versions.env pins the
+# [OK]. The last two run a checkout copy whose versions.env pins the
 # planted file's sha256, so no real panel is needed.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
@@ -26,12 +26,14 @@ TOOLS=pharmcat run_expect 1 not-pinned "${SCRIPTS}/validate-setup.sh" sample1
 output_has not-pinned '\[FAIL\].*ROH allele-frequency panel \(step 11\): .* is not the pinned file'
 
 # A checkout copy that pins the planted panel: every entry is the real
-# checkout's but versions.env, so validate-setup.sh reads that pin.
+# checkout's but versions.env, so validate-setup.sh reads that pin. It is no
+# git checkout (no .git), so og.sh check skips the tree hash, which git cannot
+# compute over a folder of links.
 COPY="${CASE_WORK}/checkout"
 mkdir -p "${COPY}/scripts"
 for e in "${REPO_ROOT}"/* "${REPO_ROOT}"/.[!.]*; do
   n=${e##*/}
-  case "$n" in scripts | versions.env) ;; *) ln -s "$e" "${COPY}/${n}" ;; esac
+  case "$n" in scripts | versions.env | .git) ;; *) ln -s "$e" "${COPY}/${n}" ;; esac
 done
 for e in "${REPO_ROOT}"/scripts/*; do ln -s "$e" "${COPY}/scripts/${e##*/}"; done
 rm "${COPY}/scripts/validate-setup.sh"
@@ -43,9 +45,9 @@ grep -qx "ROH_AF_PANEL_SHA256=\"${SUM}\"" "${COPY}/versions.env" || fail "the co
 rm -f "${PANEL}.tbi"
 TOOLS=pharmcat run_expect 0 no-index "${COPY}/scripts/validate-setup.sh" sample1
 output_has no-index '\[WARN\].*ROH allele-frequency panel \(step 11\) has no index, so step 11 gives every site AF 0\.4: .*\.tbi'
-output_lacks no-index '\[(FAIL|PASS)\].*ROH allele-frequency panel'
+output_lacks no-index '\[(FAIL|OK)\].*ROH allele-frequency panel'
 
 printf 'index\n' > "${PANEL}.tbi"
 TOOLS=pharmcat run_expect 0 indexed "${COPY}/scripts/validate-setup.sh" sample1
-output_has indexed '\[PASS\].*ROH allele-frequency panel \(step 11\): present'
+output_has indexed '\[OK\].*ROH allele-frequency panel \(step 11\): present'
 output_lacks indexed '\[(WARN|FAIL)\].*ROH allele-frequency panel'
