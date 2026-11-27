@@ -27,7 +27,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 `setup.sh --consumer-sites` builds it once into `reference/consumer/23andme_v5_sites_dbsnp<build>.tsv.gz`:
 
 1. The 23andMe v5 site list from [23andme2vcf](https://github.com/arrogantrobot/23andme2vcf) (MIT licence), at the commit `CONSUMER_SITES_COMMIT` and checked against `CONSUMER_SITES_SHA256`: 638,463 sites with their GRCh37 position and reference base.
-2. dbSNP's GRCh38 VCF of build `CONSUMER_DBSNP_BUILD` (about 30 GB), checked against `CONSUMER_DBSNP_MD5`. Each rsID takes its GRCh38 position from it: no liftover chain is used. The download resumes when cut, and is deleted once the table is built.
+2. dbSNP's GRCh38 VCF of build `CONSUMER_DBSNP_BUILD` (about 30 GB), checked against `CONSUMER_DBSNP_MD5`. Each rsID takes its GRCh38 position from it: no liftover chain is used. The download resumes when cut, and stays in the downloads folder (see [The downloads folder](00-reference-setup.md#the-downloads-folder)).
 
 A site is dropped from the table, with its reason in `reference/consumer/23andme_v5_dropped_dbsnp<build>.tsv`, when it has no rsID (23andMe's own `i` numbers, about 17,800 sites), dbSNP has no SNV for it, dbSNP places it at two positions or on another chromosome, or neither strand of its GRCh37 base is one of dbSNP's alleles. A site whose GRCh37 base is on the other strand in GRCh38 is written on the GRCh37 strand. A pseudoautosomal site, which dbSNP lists on chrX and chrY, keeps the chromosome of the list. The list numbers its MT sites the way hg19's chrM does, which is one or two bases off the rCRS; the table gives them dbSNP's rCRS position, the same in GRCh37 and GRCh38.
 
@@ -41,7 +41,7 @@ With the pinned list and dbSNP b157 the table keeps 614,138 sites and drops 24,3
 ## Command
 
 ```bash
-./scripts/setup.sh --consumer-sites /path/to/genome_dir   # once: about 30 GB download, deleted afterwards
+./scripts/setup.sh --consumer-sites /path/to/genome_dir   # once: about 30 GB download, kept in the downloads folder
 ./scripts/40-export-consumer.sh your_name male            # or female; the sex is optional
 ```
 

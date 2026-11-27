@@ -26,11 +26,11 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags. 
 
 `./scripts/setup.sh --mocha-data <genome_dir>` installs `reference/mocha-<MOCHA_PANEL_VERSION>/`:
 
-- `panel/chrN.vcf.gz`: the 1000 Genomes high-coverage phased panel of 3,202 people (release 20220422, EBI), one chromosome at a time. Each file is checked against the md5 of the release's manifest, and the manifest against `MOCHA_PANEL_MANIFEST_SHA256`. Only the biallelic SNVs seen twice or more are kept, with genotypes only; the downloaded file is then deleted.
+- `panel/chrN.vcf.gz`: the 1000 Genomes high-coverage phased panel of 3,202 people (release 20220422, EBI), one chromosome at a time. Each file is checked against the md5 of the release's manifest, and the manifest against `MOCHA_PANEL_MANIFEST_SHA256`. Only the biallelic SNVs seen twice or more are kept, with genotypes only; the downloaded file stays in the downloads folder.
 - `maps/chrN.map`: the PLINK GRCh38 genetic map of step 26b (`ANCESTRY_FINE_MAP_URL`, its mirror and its sha256).
-- `cnps.bed`: the panel's common germline deletions and duplications, MoChA's `--cnp` list. Each chromosome file gives its structural variants seen twice or more and over 10 kb (`SVTYPE` CNV, DEL or DUP) before it is deleted, the recipe of the MoChA README (GRCh38, "List of common germline duplications and deletions"). A panel installed before this list existed is rebuilt by a rerun of `--mocha-data`.
+- `cnps.bed`: the panel's common germline deletions and duplications, MoChA's `--cnp` list. Each chromosome file gives its structural variants seen twice or more and over 10 kb (`SVTYPE` CNV, DEL or DUP), the recipe of the MoChA README (GRCh38, "List of common germline duplications and deletions"). A panel installed before this list existed is rebuilt by a rerun of `--mocha-data`.
 
-The 22 downloads come to about 30 GB (29.8 GB by the server's sizes on 2026-10-27). They are fetched one at a time and each is deleted once cut, so what stays on disk is much smaller. `MOCHA_REGIONS=<bed>` keeps only the regions of a BED file (the e2e case cuts the panel to one 500 kb slice of chr20 this way). `MOCHA_DATA` overrides the folder.
+The 22 downloads come to about 30 GB (29.8 GB by the server's sizes on 2026-10-27). They are fetched one at a time and kept in the downloads folder. With `setup.sh --no-keep-downloads` each is deleted once cut, so what stays on disk is much smaller. `MOCHA_REGIONS=<bed>` keeps only the regions of a BED file (the e2e case cuts the panel to one 500 kb slice of chr20 this way). `MOCHA_DATA` overrides the folder.
 
 ## Input
 

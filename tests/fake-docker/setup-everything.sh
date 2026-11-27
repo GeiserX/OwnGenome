@@ -9,7 +9,7 @@ mkdir -p "${COPY}/scripts" "${COPY}/rust" "${COPY}/assets"
 ln -s "${REPO_ROOT}/scripts/lib" "${COPY}/scripts/lib"
 ln -s "${REPO_ROOT}/scripts/ci" "${COPY}/scripts/ci"
 ln -s "${REPO_ROOT}/bin" "${COPY}/bin"
-cp "${REPO_ROOT}/assets/everything.tsv" "${REPO_ROOT}/assets/pgs_scores.tsv" "${COPY}/assets/"
+cp "${REPO_ROOT}/assets/everything.tsv" "${REPO_ROOT}/assets/pgs_scores.tsv" "${REPO_ROOT}/assets/data-sources.tsv" "${COPY}/assets/"
 cp "${REPO_ROOT}/versions.env" "${COPY}/versions.env"
 cat > "${COPY}/rust/og.sh" <<'OG'
 #!/usr/bin/env bash
@@ -65,9 +65,14 @@ for spec in CADD SPLICEAI_MASKED SOMATIC_DATA CNVPYTOR_DATA; do
   base_var="${spec}_BASE_URL" files_var="${spec}_FILES"
   seed_pins "${!base_var}" "${!files_var}" >> "${COPY}/versions.env"
 done
-for spec in REVEL ALPHAMISSENSE; do
-  url_var="${spec}_URL"
-  printf '%s_SHA256="%s"\n' "$spec" "$(fake_body "${!url_var}" | sha256sum | awk '{print $1}')" >> "${COPY}/versions.env"
+# REVEL's and AlphaMissense's URL and sha256 are rows of assets/data-sources.tsv.
+TABLE="${COPY}/assets/data-sources.tsv"
+for id in revel alphamissense; do
+  url=$(awk -F'\t' -v id="$id" '$1 == id {print $6}' "$TABLE")
+  [ -n "$url" ] || fail "assets/data-sources.tsv has no row ${id}"
+  sum=$(fake_body "$url" | sha256sum | awk '{print $1}')
+  awk -F'\t' -v OFS='\t' -v id="$id" -v sum="$sum" '$1 == id {$8 = sum} {print}' "$TABLE" > "${TABLE}.new"
+  mv "${TABLE}.new" "$TABLE"
 done
 
 G="${CASE_WORK}/data"
@@ -220,25 +225,17 @@ FAKE_SCORE_FREE_KIB=$space_with_margin run_expect 0 resume-with-space "$SETUP" -
 [ ! -e "${cadd}.part" ] || fail 'resumed download left a .part'
 
 # With room for the margin alone, a size-matching score needs only its index.
-# Log calls to the real MD5 tool so a duplicate content check fails the case.
+# og setup fetch says once per check that a file already there matches its
+# md5, so a duplicate content check fails the case.
 rm -f "${cadd}.tbi"
 printf 'CADD_SNV_BYTES="%s"\n' "$(stat -c %s "$cadd")" >> "${COPY}/versions.env"
-export NORMAL_MD5SUM
-NORMAL_MD5SUM=$(command -v md5sum)
-cat > "${CASE_WORK}/test-bin/md5sum" <<'MD5SUM'
-#!/usr/bin/env bash
-printf 'md5sum %s\n' "$@" >> "$FAKE_DOCKER_LOG"
-exec "$NORMAL_MD5SUM" "$@"
-MD5SUM
-chmod +x "${CASE_WORK}/test-bin/md5sum"
 : > "$FAKE_DOCKER_LOG"
 FAKE_SCORE_FREE_KIB=$space_margin run_expect 0 retry-index-only "$SETUP" --annotation-scores "$G"
 [ -s "${cadd}.tbi" ] || fail 'index retry did not publish the CADD index'
 docker_log_has '^wget .*/whole_genome_SNVs\.tsv\.gz\.tbi ' 'index retry did not fetch the CADD index'
 [ "$(grep -c '^wget ' "$FAKE_DOCKER_LOG")" -eq 1 ] || fail 'index retry fetched more than the CADD index'
-cadd_checks=$(awk -v path="$cadd" '$0 == "md5sum " path { count++ } END { print count + 0 }' "$FAKE_DOCKER_LOG")
+cadd_checks=$(grep -cF "${cadd} is already here and matches its md5" "${CASE_WORK}/retry-index-only.out" || true)
 [ "$cadd_checks" -eq 1 ] || fail "index retry checked CADD data $cadd_checks times, expected 1"
-rm -f "${CASE_WORK}/test-bin/md5sum"
 
 # The outer gzip members each span more than one MiB. Recompress each with
 # one input byte flipped so it can replace just one end of the stream.

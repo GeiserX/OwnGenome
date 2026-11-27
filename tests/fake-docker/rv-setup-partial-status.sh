@@ -16,6 +16,9 @@
 . "${REPO_ROOT}/versions.env"
 seed_clinical_downloads
 export FETCH_TRIES=1 FETCH_WAIT=0
+# The downloads go through the real og (og setup fetch); the placeholder og
+# binaries below stand in for the og the installers run.
+export OG="${REPO_ROOT}/bin/og"
 
 COPY="${CASE_WORK}/checkout"
 mkdir -p "${COPY}/rust" "${COPY}/bin/.og"

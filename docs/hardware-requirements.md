@@ -57,7 +57,7 @@ One row per download, in GB as `wget` and `du -h` count them (1 GB = 2^30 bytes)
 | **Total, default run** | **~73-78 GB** | **~98-103 GB** | |
 | With `--no-clinical-data` (first three rows + Docker images) | ~16-21 GB | ~33-38 GB | |
 
-While a VEP cache installs, the tarball and the unpacked tree are on disk together until the tarball is deleted (`install_vep_cache` in `scripts/lib/common.sh`): 56 GB peak for release 116 and 52 GB for release 115. The bundle needs 15 GB peak. Setup adds a 5 GB margin to each check and warns when it skips an item. The three clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours. To retry only these downloads, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"`.
+While a VEP cache installs, the tarball and the unpacked tree are on disk together (`install_vep_cache` in `scripts/lib/common.sh`; the tarball then stays in the downloads folder): 56 GB peak for release 116 and 52 GB for release 115. The bundle needs 15 GB peak. Setup adds a 5 GB margin to each check and warns when it skips an item. The three clinical downloads add about 57 GB to transfer and 65 GB on disk. Allow 1 to 3 hours. To retry only these downloads, run `./scripts/setup.sh --clinical-data "$GENOME_DIR"`.
 
 **Optional** (only for the step named):
 
@@ -96,6 +96,8 @@ The REVEL authors make the scores freely available for non-commercial use. The [
 |---|---|
 | Default run | ~73-78 GB |
 | Default run + annotation databases | ~248-253 GB |
+
+Setup keeps the raw downloads in the downloads folder ([The downloads folder](00-reference-setup.md#the-downloads-folder)), so they stay on disk after the install: about 69 GB for a plain setup and about 344 GB for `--everything`. `bin/og setup plan` prints the figure for your options and the free disk. `setup.sh --no-keep-downloads` deletes each one once it is installed, and `bin/og setup prune` deletes them later.
 
 ### Total Disk Requirements
 
@@ -369,12 +371,14 @@ About 73 GB for a default run and 248 GB with the annotation databases; the [tab
 
 1. **Keep the BAM as a CRAM** after all BAM-dependent steps complete: `./scripts/34-cram-archive.sh <sample>` writes the CRAM, checks it against the BAM, and with `--delete-bam` then deletes the BAM ([step 34](34-cram-archive.md)). The CRAM is about half the size of the BAM, and it can only be read with the same reference FASTA, so keep that file.
 
-2. **Delete intermediate files:**
+2. **Delete the kept raw downloads** with `bin/og setup prune` once setup is done, or install with `setup.sh --no-keep-downloads`. A later `--refresh` then downloads them again.
+
+3. **Delete intermediate files:**
    - `<sample>/nextflow/work` once a `run-all.sh` run succeeded and the results look right (the next run then starts from scratch)
    - CNVpytor `.pytor` files (5-15 GB each)
    - Delly `.bcf` files (after converting to VCF)
 
-3. **Keep your original FASTQ or ORA files.** A BAM from a default, trimmed run does not hold your original reads: fastp cut bases and dropped reads before alignment, so FASTQ extracted from that BAM is only what fastp kept. Delete the BAM rather than the FASTQ if you need the space; you can re-align.
+4. **Keep your original FASTQ or ORA files.** A BAM from a default, trimmed run does not hold your original reads: fastp cut bases and dropped reads before alignment, so FASTQ extracted from that BAM is only what fastp kept. Delete the BAM rather than the FASTQ if you need the space; you can re-align.
 
 ### Storage Medium Recommendations
 

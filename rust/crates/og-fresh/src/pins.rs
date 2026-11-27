@@ -103,14 +103,35 @@ pub fn hla_db_release(common: &Path) -> Lookup<String> {
     })
 }
 
-/// The `vep_cache_url` printf template of `scripts/lib/common.sh`.
+/// The VEP cache URL with `%s` for the release: the url of row vep_cache
+/// of `assets/data-sources.tsv`, in the checkout that holds COMMON
+/// (`scripts/lib/common.sh`), where setup reads it too.
 pub fn vep_cache_template(common: &Path) -> Lookup<String> {
-    static P: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"vep_cache_url\(\)\s*\{\s*printf '([^']+)'").expect("vep"));
-    let text = std::fs::read_to_string(common).unwrap_or_default();
-    P.captures(&text).map(|c| c[1].to_owned()).ok_or_else(|| {
-        crate::LookupError::Failed("no vep_cache_url template in scripts/lib/common.sh".into())
+    let table = common
+        .ancestors()
+        .nth(3)
+        .map(|root| root.join("assets/data-sources.tsv"));
+    let text = table
+        .as_deref()
+        .and_then(|t| std::fs::read_to_string(t).ok())
+        .unwrap_or_default();
+    vep_cache_template_in(&text).ok_or_else(|| {
+        crate::LookupError::Failed(
+            "no vep_cache row with ${VEP_CACHE_RELEASE} in its url in assets/data-sources.tsv"
+                .into(),
+        )
     })
+}
+
+/// [`vep_cache_template`] of a table's text.
+pub fn vep_cache_template_in(table: &str) -> Option<String> {
+    let url = table
+        .lines()
+        .find(|l| l.starts_with("vep_cache\t"))?
+        .split('\t')
+        .nth(5)?;
+    url.contains("${VEP_CACHE_RELEASE}")
+        .then(|| url.replace("${VEP_CACHE_RELEASE}", "%s"))
 }
 
 /// The value of the first line matching `pattern` (one group) in a file.
@@ -145,6 +166,20 @@ mod tests {
             Some("3.65.0")
         );
         assert_eq!(hla_release_in("HLA_DB_RELEASE=3.65.0"), None);
+        assert_eq!(
+            vep_cache_template_in("id\tx\n# vep_cache\nvep_cache\ta\tb\tc\t\thttps://h/release-${VEP_CACHE_RELEASE}/v_${VEP_CACHE_RELEASE}.tar.gz\tsum\n")
+                .as_deref(),
+            Some("https://h/release-%s/v_%s.tar.gz")
+        );
+        assert_eq!(vep_cache_template_in("vep_cache\ta\tb\tc\t\t-\n"), None);
+        let real = vep_cache_template(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/lib/common.sh"),
+        )
+        .expect("the checkout's table");
+        assert!(
+            real.starts_with("https://ftp.ensembl.org/pub/release-%s/"),
+            "{real}"
+        );
         let pins = plain_pins("A=\"1\" # x\n  B=\"2\"\nC_D=\"\"\n");
         assert_eq!(pins.get("A").map(String::as_str), Some("1"));
         assert!(!pins.contains_key("B"));

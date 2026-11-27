@@ -32,23 +32,29 @@ fi
 # CPSR runs the VEP release inside the PCGR image (PCGR_VEP_CACHE_RELEASE in
 # versions.env), not the one step 13 uses.
 if [ ! -f "${VEP_DIR}/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt" ]; then
-  CACHE_URL=$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE")
   echo "ERROR: VEP release-${PCGR_VEP_CACHE_RELEASE} cache not found at ${VEP_DIR}/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/" >&2
   echo "${PCGR_IMAGE} requires the VEP ${PCGR_VEP_CACHE_RELEASE} cache (different from step 13's release-${VEP_CACHE_RELEASE})." >&2
-  echo "Download and extract it:" >&2
-  echo "  mkdir -p ${VEP_DIR}" >&2
-  echo "  curl -fL -C - -o ${VEP_DIR}/$(basename "$CACHE_URL") ${CACHE_URL}" >&2
-  echo "  tar xzf ${VEP_DIR}/$(basename "$CACHE_URL") -C ${VEP_DIR}" >&2
+  echo "Install it with: ${PGP_ROOT}/scripts/setup.sh --clinical-data ${GENOME_DIR}" >&2
+  # The URL is the table's (og setup source); without og the setup command above is the hint.
+  if CACHE_URL=$(vep_cache_url "$PCGR_VEP_CACHE_RELEASE" 2>/dev/null) && [ -n "$CACHE_URL" ]; then
+    echo "Or download and extract it by hand:" >&2
+    echo "  mkdir -p ${VEP_DIR}" >&2
+    echo "  curl -fL -C - -o ${VEP_DIR}/$(basename "$CACHE_URL") ${CACHE_URL}" >&2
+    echo "  tar xzf ${VEP_DIR}/$(basename "$CACHE_URL") -C ${VEP_DIR}" >&2
+  fi
   exit 1
 fi
 
 if [ ! -d "${REFDATA_DIR}/data" ]; then
   echo "ERROR: PCGR 2.x ref data bundle not found at ${REFDATA_DIR}/data/" >&2
-  echo "Download and extract it first:" >&2
-  echo "  cd ${GENOME_DIR}/pcgr_data" >&2
-  echo "  curl -fL -C - -O https://insilico.hpc.uio.no/pcgr/pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz" >&2
-  echo "  tar xzf pcgr_ref_data.${PCGR_DATA_BUNDLE}.grch38.tgz" >&2
-  echo "  mkdir -p ${PCGR_DATA_BUNDLE} && mv data/ ${PCGR_DATA_BUNDLE}/" >&2
+  echo "Install it with: ${PGP_ROOT}/scripts/setup.sh --clinical-data ${GENOME_DIR}" >&2
+  if BUNDLE_URL=$(source_of pcgr_bundle url 2>/dev/null) && [ -n "$BUNDLE_URL" ]; then
+    echo "Or download and extract it by hand:" >&2
+    echo "  cd ${GENOME_DIR}/pcgr_data" >&2
+    echo "  curl -fL -C - -O ${BUNDLE_URL}" >&2
+    echo "  tar xzf ${BUNDLE_URL##*/}" >&2
+    echo "  mkdir -p ${PCGR_DATA_BUNDLE} && mv data/ ${PCGR_DATA_BUNDLE}/" >&2
+  fi
   exit 1
 fi
 
