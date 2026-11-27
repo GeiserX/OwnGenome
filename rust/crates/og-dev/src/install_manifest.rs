@@ -20,6 +20,9 @@
 //! mode and digests. In a name, a tab, a newline, a carriage return, a
 //! backslash, any other control byte and any byte that is not UTF-8 are
 //! written as `\t`, `\n`, `\r`, `\\` and `\xHH`.
+//! A file that changes while it is read (its size, modification time or
+//! identity) stops the manifest with an error: its row would describe
+//! neither version.
 //!
 //! `digests` holds, for a file of a kind a compare mode reads, the sha256 of
 //! what that mode compares (`kind=hex`, comma separated, `-` for none). The
@@ -29,7 +32,8 @@
 //! tabix and every region read need BGZF, so plain gzip is not the same
 //! file. BGZF means every gzip member is a BGZF block (htslib's header
 //! check), each starting where the one before ends, up to the end, and
-//! each member ending where its block header says.
+//! each member ending where its block header says and decoding to at most
+//! 64 KiB.
 //!
 //! - `gzip`: the decompressed content of a gzip or BGZF file (every
 //!   member), so the header's time and OS byte do not count. `bad` when it
@@ -48,13 +52,13 @@
 //!   index has it. `invalid` when it does not fit the data file, when bytes
 //!   other than that count follow the last sequence, or when the index is
 //!   over 64 MiB. Fit means every chunk ends inside the data file, and every
-//!   chunk start and end points into a BGZF block that decodes whole, CRC and
-//!   length matching: no further than its decoded length, or at offset 0 at
-//!   the end of the file. Offsets and bin numbers are left out: they move
-//!   with any byte of the data file, which the data file's own row compares.
-//!   htslib merges a bin into its parent when its chunks span less than 64
-//!   KiB of the compressed file, so even the set of bins moves with the
-//!   compressed sizes.
+//!   chunk start and end points into a BGZF block that decodes whole, to at
+//!   most 64 KiB, CRC and length matching: no further than its decoded
+//!   length, or at offset 0 at the end of the file. Offsets and bin numbers
+//!   are left out: they move with any byte of the data file, which the data
+//!   file's own row compares. htslib merges a bin into its parent when its
+//!   chunks span less than 64 KiB of the compressed file, so even the set of
+//!   bins moves with the compressed sizes.
 //! - `jellyfish`: a jellyfish file (9 digits, then its JSON header of at
 //!   most 16 MiB): the header with the values of `hostname`, `pwd` and
 //!   `time` masked (the host, the folder and the time of the count), then
@@ -145,6 +149,8 @@ const HEADER_MAX: usize = 16 << 20;
 /// The largest index read, compressed and decompressed; the real ones are a
 /// few MB. A larger one is `invalid`, which never compares equal.
 const INDEX_MAX: u64 = 64 << 20;
+/// The most a BGZF block decodes to.
+const BGZF_MAX: u64 = 64 << 10;
 /// Stamp names: whole names, and endings. `pins.tsv` (the fine panel's
 /// pins) and `*.sha256` (a saved region's checksum) decide a reuse.
 const STAMP_NAMES: [&str; 5] = ["DONE", "INSTALLED", "RELEASE", "version.txt", "pins.tsv"];
@@ -264,7 +270,7 @@ impl Walk {
             } else if ft.is_dir() {
                 format!("d\t-\t-\t{mode}\t-")
             } else if ft.is_file() {
-                let (sha, digests) = digest_file(&full, meta.len())?;
+                let (sha, digests) = digest_file(&full, &meta)?;
                 self.bytes += meta.len();
                 format!("f\t{}\t{sha}\t{mode}\t{digests}", meta.len())
             } else {
@@ -304,10 +310,29 @@ fn drop_cache(f: &fs::File) {
     let _ = f;
 }
 
-/// The sha256 of a file and its `digests` column.
-fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
+/// Whether two observations of a file are the same file with the same size
+/// and modification time.
+fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    a.dev() == b.dev()
+        && a.ino() == b.ino()
+        && a.len() == b.len()
+        && a.mtime() == b.mtime()
+        && a.mtime_nsec() == b.mtime_nsec()
+}
+
+/// The sha256 of a file and its `digests` column. `meta` is what the walk
+/// saw: a file that is not that file, or changes while it is read, is an
+/// error, as its row would describe neither version.
+fn digest_file(path: &Path, meta: &fs::Metadata) -> Result<(String, String), String> {
     let e = io_err(path);
+    let len = meta.len();
     let mut f = fs::File::open(path).map_err(&e)?;
+    let changed = || format!("{}: the file changed while it was read", shown(path));
+    if !same_file(meta, &f.metadata().map_err(&e)?) {
+        return Err(changed());
+    }
+    let read;
     let mut head = [0u8; 64];
     let n = read_full(&mut f, &mut head).map_err(&e)?;
     let head = &head[..n];
@@ -319,11 +344,13 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
     if len <= SMALL {
         let mut buf = Vec::with_capacity(len as usize);
         f.read_to_end(&mut buf).map_err(&e)?;
+        read = buf.len() as u64;
         sha = sha_of(&buf);
         if gz {
             let mut hr = Hashing {
                 inner: &buf[..],
                 h: Sha256::new(),
+                n: 0,
                 walk: BgzfWalk::default(),
             };
             let d = gzip_stream_digests(Members::new(&mut hr));
@@ -339,9 +366,13 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
             digests.push(("jellyfish", d));
         }
     } else {
-        let (s, d) = stream_digests(BufReader::with_capacity(1 << 20, &f), head).map_err(&e)?;
+        let (s, d, n) = stream_digests(BufReader::with_capacity(1 << 20, &f), head).map_err(&e)?;
         sha = s;
+        read = n;
         digests.extend(d);
+    }
+    if read != len || !same_file(meta, &f.metadata().map_err(&e)?) {
+        return Err(changed());
     }
     drop_cache(&f);
     if name.ends_with(b".tbi") || name.ends_with(b".csi") {
@@ -375,6 +406,8 @@ fn read_full(f: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
 struct Hashing<R> {
     inner: R,
     h: Sha256,
+    /// Bytes read.
+    n: u64,
     walk: BgzfWalk,
 }
 
@@ -382,6 +415,7 @@ impl<R: Read> Read for Hashing<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let k = self.inner.read(buf)?;
         self.h.update(&buf[..k]);
+        self.n += k as u64;
         self.walk.update(&buf[..k]);
         Ok(k)
     }
@@ -445,10 +479,11 @@ impl BgzfWalk {
         }
     }
 
-    /// The decoder read a whole member, ending at raw offset `at`. The walk
-    /// has always read that member's header by then.
-    fn member_end(&mut self, at: u64) {
-        if self.ends.pop_front() != Some(at) {
+    /// The decoder read a whole member of `decoded` bytes, ending at raw
+    /// offset `at`. The walk has always read that member's header by then.
+    /// A BGZF block decodes to at most 64 KiB.
+    fn member_end(&mut self, at: u64, decoded: u64) {
+        if self.ends.pop_front() != Some(at) || decoded > BGZF_MAX {
             self.broken = true;
         }
     }
@@ -475,15 +510,17 @@ fn with_container(kind: &str, digests: Vec<(&'static str, String)>) -> Vec<(&'st
         .collect()
 }
 
-/// The sha256 and the mode digests of a large file, from one read of `r`:
-/// a full install is hundreds of GB, and a second read doubles the time.
-fn stream_digests(
-    r: impl Read,
-    head: &[u8],
-) -> std::io::Result<(String, Vec<(&'static str, String)>)> {
+/// A file's digests: each compare mode's kind and value.
+type Digests = Vec<(&'static str, String)>;
+
+/// The sha256, the mode digests and the length of a large file, from one
+/// read of `r`: a full install is hundreds of GB, and a second read doubles
+/// the time.
+fn stream_digests(r: impl Read, head: &[u8]) -> std::io::Result<(String, Digests, u64)> {
     let mut hr = Hashing {
         inner: r,
         h: Sha256::new(),
+        n: 0,
         walk: BgzfWalk::default(),
     };
     let mut digests = Vec::new();
@@ -503,19 +540,22 @@ fn stream_digests(
     if gz {
         digests = with_container(hr.walk.kind(), digests);
     }
-    Ok((hex(hr.h), digests))
+    Ok((hex(hr.h), digests, hr.n))
 }
 
 /// The members of a gzip stream decoded one after another, as
 /// `MultiGzDecoder` reads them, telling the BGZF walk where each one ends.
 struct Members<'a, R: Read> {
     dec: Option<GzDecoder<BufReader<&'a mut Hashing<R>>>>,
+    /// Bytes the current member decoded to so far.
+    decoded: u64,
 }
 
 impl<'a, R: Read> Members<'a, R> {
     fn new(hr: &'a mut Hashing<R>) -> Self {
         Members {
             dec: Some(GzDecoder::new(BufReader::with_capacity(1 << 20, hr))),
+            decoded: 0,
         }
     }
 }
@@ -525,13 +565,18 @@ impl<R: Read> Read for Members<'_, R> {
         while let Some(dec) = self.dec.as_mut() {
             let k = dec.read(buf)?;
             if k > 0 || buf.is_empty() {
+                self.decoded += k as u64;
                 return Ok(k);
             }
             // The member and its trailer are read: what the buffer still
-            // holds comes after it.
+            // holds comes after it. A broken walk stopped counting, and the
+            // file is plain gzip whatever follows.
             let mut b = self.dec.take().expect("a decoder").into_inner();
-            let at = b.get_ref().walk.pos - b.buffer().len() as u64;
-            b.get_mut().walk.member_end(at);
+            if !b.get_ref().walk.broken {
+                let at = b.get_ref().walk.pos - b.buffer().len() as u64;
+                b.get_mut().walk.member_end(at, self.decoded);
+            }
+            self.decoded = 0;
             if !b.fill_buf()?.is_empty() {
                 self.dec = Some(GzDecoder::new(b));
             }
@@ -961,10 +1006,16 @@ fn in_block(d: &fs::File, size: u64, at: u64, within: u64) -> std::io::Result<bo
         return Ok(false);
     }
     // The decoder checks the CRC and ISIZE; the member must use the whole
-    // block, no more and no less.
+    // block, no more and no less, and decode to at most 64 KiB.
     let mut dec = GzDecoder::new(&block[..]);
     let mut plain = Vec::new();
-    if dec.read_to_end(&mut plain).is_err() || !dec.into_inner().is_empty() {
+    if (&mut dec)
+        .take(BGZF_MAX + 1)
+        .read_to_end(&mut plain)
+        .is_err()
+        || plain.len() as u64 > BGZF_MAX
+        || !dec.into_inner().is_empty()
+    {
         return Ok(false);
     }
     Ok(within <= plain.len() as u64)
@@ -1033,6 +1084,24 @@ struct Entry {
     digests: BTreeMap<String, String>,
 }
 
+/// Whether `v` is a value the manifest writes for the digest kind `k`: a
+/// sha256, with its container for `gzip` and `vcf`, or the kind's failure
+/// mark.
+fn digest_ok(k: &str, v: &str) -> bool {
+    let sha = |s: &str| s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let with = |kinds: &[&str]| {
+        v.split_once(':')
+            .is_some_and(|(c, s)| kinds.contains(&c) && sha(s))
+    };
+    match k {
+        "gzip" => v == "bad" || with(&["bgzf", "gzip"]),
+        "vcf" => with(&["bgzf", "gzip", "plain"]),
+        "index" => v == "invalid" || sha(v),
+        "jellyfish" | "numeric" => sha(v),
+        _ => false,
+    }
+}
+
 fn read_manifest(path: &str) -> Result<BTreeMap<String, Entry>, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let mut lines = text.lines();
@@ -1065,6 +1134,9 @@ fn read_manifest(path: &str) -> Result<BTreeMap<String, Entry>, String> {
                 let (k, v) = kv
                     .split_once('=')
                     .ok_or_else(|| format!("{path}: {p}: digest {kv:?}"))?;
+                if !digest_ok(k, v) {
+                    return Err(format!("{path}: {p}: {k} digest {v:?}"));
+                }
                 if d.insert(k.to_owned(), v.to_owned()).is_some() {
                     return Err(format!("{path}: {p} has two {k} digests"));
                 }
@@ -1443,12 +1515,43 @@ static PULL: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("a valid pattern")
 });
+static DATE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?")
+        .expect("a valid pattern")
+});
+
+/// A line with each date or timestamp masked, but not a date inside a
+/// name, such as `release-2026-11-26.tar.gz`: a letter, digit, `_`, `.` or
+/// `-` right before it, or a letter, digit or `_` right after it, or a `.`
+/// or `-` then a letter or digit, makes it part of the name. A `.` that
+/// ends a sentence does not.
+fn mask_dates(line: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut out = String::with_capacity(line.len());
+    let mut last = 0;
+    for m in DATE.find_iter(line) {
+        let before = line[..m.start()]
+            .chars()
+            .next_back()
+            .is_some_and(|c| word(c) || matches!(c, '.' | '-'));
+        let mut rest = line[m.end()..].chars();
+        let after = match rest.next() {
+            Some('.' | '-') => rest.next().is_some_and(word),
+            c => c.is_some_and(word),
+        };
+        if before || after {
+            continue;
+        }
+        out.push_str(&line[last..m.start()]);
+        out.push_str("<time>");
+        last = m.end();
+    }
+    out.push_str(&line[last..]);
+    out
+}
+
 static MASKS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     [
-        (
-            r"\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?",
-            "<time>",
-        ),
         (r"\b\d{1,2}:\d{2}:\d{2}\b", "<time>"),
         (r"\b\d+(\.\d+)?\s?[kMGT]i?B/s\b", "<speed>"),
         (
@@ -1473,7 +1576,7 @@ fn masked_log(text: &str) -> Vec<String> {
                 && !PULL.is_match(l)
         })
         .map(|l| {
-            MASKS.iter().fold(l.to_owned(), |s, (re, to)| {
+            MASKS.iter().fold(mask_dates(l), |s, (re, to)| {
                 re.replace_all(&s, *to).into_owned()
             })
         })
@@ -1748,6 +1851,7 @@ mod tests {
             let mut hr = Hashing {
                 inner: Steps(bytes, step),
                 h: Sha256::new(),
+                n: 0,
                 walk: BgzfWalk::default(),
             };
             let _ = gzip_stream_digests(Members::new(&mut hr));
@@ -1831,8 +1935,9 @@ mod tests {
         let gz = gz.finish().unwrap();
         for bytes in [&vcf[..], &gz[..]] {
             let mut r = Once(bytes, 0);
-            let got = stream_digests(&mut r, &bytes[..64]).unwrap();
-            assert_eq!(got, small(bytes));
+            let (sha, digests, n) = stream_digests(&mut r, &bytes[..64]).unwrap();
+            assert_eq!((sha, digests), small(bytes));
+            assert_eq!(n, bytes.len() as u64);
             assert_eq!(r.1, bytes.len());
         }
         // The same content as BGZF: the same digests, with its container.
@@ -1840,7 +1945,7 @@ mod tests {
             og_io::bgzf::Writer::new(Vec::new(), std::num::NonZero::new(1).unwrap()).unwrap();
         w.write_all(&vcf).unwrap();
         let bg = w.finish().unwrap();
-        let (_, got) = stream_digests(&mut Once(&bg, 0), &bg[..64]).unwrap();
+        let (_, got, _) = stream_digests(&mut Once(&bg, 0), &bg[..64]).unwrap();
         let (_, plain) = small(&gz);
         let want: Vec<_> = plain
             .into_iter()
@@ -1851,8 +1956,9 @@ mod tests {
         let mut bad = gz.clone();
         bad.extend_from_slice(b"not gzip at all");
         let mut r = Once(&bad, 0);
-        let (sha, _) = stream_digests(&mut r, &bad[..64]).unwrap();
+        let (sha, _, n) = stream_digests(&mut r, &bad[..64]).unwrap();
         assert_eq!(sha, sha_of(&bad));
+        assert_eq!(n, bad.len() as u64);
         assert_eq!(r.1, bad.len());
     }
 

@@ -430,6 +430,42 @@ fn gzip_mode_ignores_the_header_time_and_sees_the_content() {
         diff_lines(&out)[0].starts_with("DIFF\tcontent\treference/t.gz\tgzip bgzf:"),
         "{out}"
     );
+    // A block whose header, CRC and ISIZE agree but that decodes to more
+    // than 64 KiB is not BGZF.
+    let body = vec![b'a'; 70_000];
+    let (code, out) = modes_case(
+        "gz-big-member",
+        "reference/t.gz",
+        &bgzf(&body),
+        &big_member(&body),
+        row,
+    );
+    assert_eq!(code, 1, "a 70000-byte block is BGZF:\n{out}");
+    // Two plain gzip members in one buffer: plain gzip, read to the end.
+    let two = [gz(b"a\t", 0), gz(b"b\n", 0)].concat();
+    let (code, out) = modes_case(
+        "gz-two-members",
+        "reference/t.gz",
+        &two,
+        &gz(b"a\tb\n", 0),
+        row,
+    );
+    assert_eq!(code, 0, "{out}");
+}
+
+/// One gzip member with BGZF's header (its BSIZE right) holding all of
+/// `body`, then BGZF's end block.
+fn big_member(body: &[u8]) -> Vec<u8> {
+    let mut e = GzBuilder::new()
+        .extra(b"BC\x02\x00\x00\x00".to_vec())
+        .write(Vec::new(), Compression::default());
+    e.write_all(body).unwrap();
+    let mut v = e.finish().unwrap();
+    let bsize = (v.len() - 1) as u16;
+    v[16..18].copy_from_slice(&bsize.to_le_bytes());
+    let end = bgzf(b"");
+    v.extend_from_slice(&end[end.len() - 28..]);
+    v
 }
 
 fn vcf(date: &str, version: &str, alt: &str) -> Vec<u8> {
@@ -873,6 +909,12 @@ fn an_index_beside_a_damaged_block_or_a_link_or_with_stray_bytes_is_invalid() {
         "invalid",
         "a block with a bad CRC fits"
     );
+    // A block that decodes to more than 64 KiB, its CRC and ISIZE right.
+    assert_eq!(
+        case("big", &big_member(&[7u8; 70_000]), &csi(10, b"")),
+        "invalid",
+        "a 70000-byte block fits"
+    );
     // Four stray bytes after the last sequence: neither nothing nor the
     // eight-byte count of records with no position.
     let mut stray = csi_plain(10, b"");
@@ -1177,14 +1219,33 @@ fn bad_input_is_refused() {
     assert_eq!(compare(&m, &junk, None).0, 2);
     // A row with one digest kind twice: the second must not stand in for
     // the first.
+    let (aa, bb) = ("a".repeat(64), "b".repeat(64));
     let twice = t.0.join("twice.tsv");
     fs::write(
         &twice,
-        "#og-install-manifest 1\npath\ttype\tsize\tsha256\tmode\tdigests\nx.gz\tf\t3\tabc\t0644\tgzip=gzip:aa,gzip=gzip:bb\n",
+        format!("#og-install-manifest 1\npath\ttype\tsize\tsha256\tmode\tdigests\nx.gz\tf\t3\tabc\t0644\tgzip=gzip:{aa},gzip=gzip:{bb}\n"),
     )
     .unwrap();
     let (code, out, err) = compare(&twice, &twice, None);
     assert_eq!(code, 2, "a row with two gzip digests is read:\n{out}{err}");
+    // A digest the manifest never writes: two empty values must not compare
+    // equal under a gzip row.
+    for (name, digests) in [
+        ("empty", "gzip=".to_owned()),
+        ("no-container", format!("gzip={aa}")),
+        ("short", "index=abc".to_owned()),
+        ("vcf-bad", "vcf=bad".to_owned()),
+        ("unknown", format!("size={aa}")),
+    ] {
+        let p = t.0.join(format!("digest-{name}.tsv"));
+        fs::write(
+            &p,
+            format!("#og-install-manifest 1\npath\ttype\tsize\tsha256\tmode\tdigests\nx.gz\tf\t3\tabc\t0644\t{digests}\n"),
+        )
+        .unwrap();
+        let (code, out, err) = compare(&p, &p, None);
+        assert_eq!(code, 2, "{name}: {digests} is read:\n{out}{err}");
+    }
     assert_eq!(run(&[&s(&t.0.join("missing"))]).0, 2);
     assert_eq!(run(&[]).0, 2);
 }
@@ -1274,6 +1335,34 @@ fn the_control_leaves_out_what_the_seed_put_there() {
 }
 
 #[test]
+fn a_file_that_grows_while_it_is_read_stops_the_manifest() {
+    let t = Tmp::new("grows");
+    let d = t.0.join("tree");
+    let f = d.join("big.dat");
+    // Over 16 MiB, so it is read as a stream.
+    write(&f, &vec![b'x'; 32 << 20], 0o644);
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (s2, f2) = (stop.clone(), f.clone());
+    // 4 KiB a millisecond, for at most 10 s (40 MiB): a reader that follows
+    // the growth still reaches the end, and the disk never fills.
+    let writer = std::thread::spawn(move || {
+        let mut o = fs::OpenOptions::new().append(true).open(&f2).unwrap();
+        for _ in 0..10_000 {
+            if s2.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            o.write_all(&[b'y'; 4096]).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    });
+    let (code, out, err) = run(&[&s(&d)]);
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    writer.join().unwrap();
+    assert_eq!(code, 2, "a file that grew while read is listed:\n{out}");
+    assert!(err.contains("changed while it was read"), "{err}");
+}
+
+#[test]
 fn the_log_compare_masks_times_and_sees_the_missing_list() {
     let t = Tmp::new("logs");
     let log = |name: &str, body: &str| {
@@ -1309,6 +1398,31 @@ fn the_log_compare_masks_times_and_sees_the_missing_list() {
         "retry folders that differ by a date are green:\n{out}"
     );
     assert!(out.contains("DIFF\tmissing\t"), "{out}");
+    // A date inside a file name is part of the name, not a time.
+    let g = log(
+        "g.log",
+        &base.replace("Downloading x", "Downloading release-2026-11-26.tar.gz"),
+    );
+    let h = log(
+        "h.log",
+        &base.replace("Downloading x", "Downloading release-2026-11-27.tar.gz"),
+    );
+    let (code, out, _) = run(&["--compare-logs", &g, &h]);
+    assert_eq!(
+        code, 1,
+        "file names that differ by a date are green:\n{out}"
+    );
+    // A timestamp that ends a sentence is still a time.
+    let i = log(
+        "i.log",
+        &format!("{base}Finished at 2026-11-26 10:00:00.\n"),
+    );
+    let j = log(
+        "j.log",
+        &format!("{base}Finished at 2026-11-27 11:12:13.\n"),
+    );
+    let (code, out, _) = run(&["--compare-logs", &i, &j]);
+    assert_eq!(code, 0, "{out}");
     let d = log("d.log", &format!("{base}[WARN] one more line\n"));
     let (code, out, _) = run(&["--compare-logs", &a, &d]);
     assert_eq!(code, 1, "{out}");
@@ -1364,6 +1478,20 @@ case "$AB_STUB" in
     printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
     chmod 0444 "$dir/kir/kir.dat"
     echo "[OK] KIR data" ;;
+  newline)
+    mkdir -p "$dir/kir"
+    printf 'the KIR data, longer than the seed file\n' >"$dir/kir/k"$'\n'
+    echo "[OK] KIR data" ;;
+  images)
+    mkdir -p "$dir/kir"
+    printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
+    printf 'example/kir:1.0\tid1\n' >>"$AB_ENGINE_STATE"
+    echo "Status: Downloaded newer image for example/kir:1.0"
+    # Another job on the engine adds a tag of the same name, once.
+    if [ ! -e "$AB_ENGINE_STATE.other" ]; then
+      : >"$AB_ENGINE_STATE.other"
+      printf 'example/kir:2.0\tid2\n' >>"$AB_ENGINE_STATE"
+    fi ;;
   nothing)
     echo "nothing to do" ;;
   foreign)
@@ -1378,6 +1506,12 @@ esac
 /// the stub setup.sh, a one-file seed and no container engine; its exit
 /// code and output. A variable given empty in `env` is unset.
 fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
+    ab_with(tag, stub, env, &|_| {})
+}
+
+/// [`ab`], with `prep` called on the scratch folder (the repo copy is in
+/// its `repo` folder) before ab.sh runs.
+fn ab_with(tag: &str, stub: &str, env: &[(&str, &str)], prep: &dyn Fn(&Path)) -> (i32, String) {
     let t = Tmp::new(tag);
     let root = t.0.join("repo");
     for f in [
@@ -1390,6 +1524,7 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
     write(&root.join("rust/og.sh"), b"#!/bin/sh\nexit 0\n", 0o755);
     let seed = t.0.join("seed");
     write(&seed.join("ref.fa"), b"ACGT\n", 0o644);
+    prep(&t.0);
     let mut cmd = Command::new("bash");
     cmd.arg(root.join("tests/setup/ab.sh"))
         .args(["--bash-vs-bash", "kir-data"])
@@ -1410,11 +1545,15 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
         }
     }
     let out = cmd.output().unwrap();
-    let text = format!(
+    let mut text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
+    // The scratch folder goes when this returns: say here if the lock stayed.
+    if root.join("bin/.og.ab-lock").exists() {
+        text.push_str("\n[lock left]\n");
+    }
     (out.status.code().unwrap_or(-1), text)
 }
 
@@ -1458,6 +1597,63 @@ fn ab_sh_plants_its_control_in_a_read_only_file() {
     assert!(
         out.contains("control: one flipped bit in kir/kir.dat is red"),
         "{out}"
+    );
+}
+
+#[test]
+fn ab_sh_plants_its_control_in_a_name_ending_in_a_newline() {
+    let (code, out) = ab("ab-newline", "newline", &[]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("control: one flipped bit in kir/k\\n is red"),
+        "{out}"
+    );
+}
+
+#[test]
+fn ab_sh_refuses_a_checkout_another_run_uses() {
+    let (code, out) = ab_with("ab-locked", "ok", &[], &|t| {
+        fs::create_dir_all(t.join("repo/bin/.og.ab-lock")).unwrap();
+    });
+    assert_eq!(code, 2, "two runs share one bin/.og:\n{out}");
+    assert!(
+        out.contains("another ab.sh run uses this checkout"),
+        "{out}"
+    );
+    // A refused run leaves the other run's lock; a run removes its own.
+    assert!(out.contains("[lock left]"), "{out}");
+    let (code, out) = ab("ab-unlocked", "ok", &[]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        !out.contains("[lock left]"),
+        "the lock outlives its run:\n{out}"
+    );
+}
+
+#[test]
+fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
+    let t = Tmp::new("ab-engine");
+    let engine = t.0.join("engine");
+    write(
+        &engine,
+        b"#!/usr/bin/env bash\nst=$AB_ENGINE_STATE\ncase \"$1\" in\n  image) cat \"$st\" ;;\n  rmi) awk -F'\\t' -v t=\"$2\" '$1 != t' \"$st\" >\"$st.new\" && mv \"$st.new\" \"$st\" ;;\nesac\n",
+        0o755,
+    );
+    let state = t.0.join("images.tsv");
+    fs::write(&state, "").unwrap();
+    let (_, out) = ab(
+        "ab-images",
+        "images",
+        &[
+            ("CONTAINER_ENGINE", &s(&engine)),
+            ("AB_ENGINE_STATE", &s(&state)),
+        ],
+    );
+    assert!(out.contains("removed 1 image tag(s)"), "{out}");
+    let left = fs::read_to_string(&state).unwrap();
+    assert!(
+        left.contains("example/kir:2.0\t"),
+        "another job's tag was removed:\n{left}\n{out}"
     );
 }
 

@@ -148,18 +148,37 @@ seed() {
   fi
 }
 
+# named REF: whether side A's log names REF whole, not as part of a longer
+# name or tag (repo:v1 does not name repo:v10).
+named() {
+  awk -v t="$1" '
+    {
+      s = $0; off = 0
+      while ((i = index(s, t)) > 0) {
+        a = (off + i > 1) ? substr($0, off + i - 1, 1) : ""
+        b = substr($0, off + i + length(t), 1)
+        if (a !~ /[[:alnum:]_.-]/ && b !~ /[[:alnum:]_.-]/) { found = 1; exit }
+        off += i; s = substr(s, i + 1)
+      }
+    }
+    END { exit !found }' "${work}/a.log"
+}
+
 # undo_images: remove the tags side A added for an image its log names (an
 # image with no other tag goes with its last one), so side B starts from the
 # images side A started from: it pulls and pins what side A pulled and
 # pinned, and logs it the same way. A tag another job on the engine added
-# while side A ran is not named in side A's log and is left alone.
+# while side A ran is not named in side A's log and is left alone. A tag is
+# named by its full NAME:TAG, a pinned tag by its digest, never by its name
+# alone: another tag of the same image name is not side A's.
 undo_images() {
-  local tag repo n=0
+  local tag ref n=0
   while IFS=$'\t' read -r tag _; do
-    repo=${tag#localhost/pgp-pinned/}
-    repo=${repo#pgp-pinned/}
-    repo=${repo%:*}
-    grep -qF -- "$repo" "${work}/a.log" || continue
+    case "$tag" in
+      */pgp-pinned/*:sha256-*) ref="sha256:${tag##*:sha256-}" ;;
+      *) ref=$tag ;;
+    esac
+    named "$ref" || continue
     "$ENGINE" rmi "$tag" >/dev/null 2>&1 && n=$((n + 1))
   done < <(LC_ALL=C comm -13 "${work}/a.before.images" "${work}/a.images" | grep -v ':<none>' || true)
   echo "   removed ${n} image tag(s) side A added, for side B to add again"
@@ -172,6 +191,18 @@ delta() {
   LC_ALL=C comm -3 "${work}/$1.before.images" "${work}/$1.images" \
     | awk -F'\t' '{ if ($1 != "") print "-\t" $1 "\t" $2; else print "+\t" $2 "\t" $3 }' >"${work}/$1.images.delta"
 }
+
+# One run per checkout: each run snapshots bin/.og before side A and puts it
+# back before side B, so a second run would snapshot or delete files the
+# first one is using.
+lock="${ROOT}/bin/.og.ab-lock"
+mkdir -p "${ROOT}/bin"
+if ! mkdir "$lock" 2>/dev/null; then
+  echo "ERROR: another ab.sh run uses this checkout (${lock} exists, pid $(cat "${lock}/pid" 2>/dev/null || echo unknown)). Wait for it, run from another checkout, or remove the folder if no run is left." >&2
+  exit 2
+fi
+echo $$ >"${lock}/pid"
+trap 'rm -rf "$lock"' EXIT
 
 # setup.sh builds og when it is missing or stale, and only the first of two
 # runs would: build it before side A, so neither side does.
@@ -295,9 +326,15 @@ path=$(manifest "${control_args[@]}") || {
   exit 2
 }
 # The file may still be a hard link into the seed: give B its own copy first.
-real="${work}/b/$(printf '%b' "$path")"
+# printf -v keeps a trailing newline in the name, which $( ) would strip.
+printf -v rel '%b' "$path"
+real="${work}/b/${rel}"
 copy=$(mktemp "${real}.XXXXXX")
-cp -p "$real" "$copy" && mv -f "$copy" "$real"
+if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
+  rm -f "$copy"
+  echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
+  exit 2
+fi
 # A read-only file gets owner write for each flip only, so tree B keeps its
 # mode and the compare sees one difference, the content.
 flip() {
