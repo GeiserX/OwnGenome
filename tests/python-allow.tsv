@@ -30,7 +30,7 @@ tests/e2e/pharmcat-indel-refblocks-1.sh	1	PHARMCAT_IMAGE: the case's control run
 tests/fake-docker/pgx-opt-in-steps.sh	6	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs, its python3 -m cyrius call and the pip install it must no longer run; runs no Python	run_lines python|grep
 tests/fake-docker/single-source-run-in.sh	2	PYTHON_IMAGE: checks that setup.sh --cyrius ran the python image, and names its pip install in a failure message; runs no Python	docker_log_has|fail "
 tests/parity/gen/report-corpus.sh	1	PYTHON_IMAGE: names the python image in a made-up run manifest; runs no Python	"PYTHON_IMAGE"
-tests/smoke/commands.tsv	2	PHARMCAT_IMAGE, EKLIPSE_IMAGE: each row runs the tool's own Python script in its image (PharmCAT's preprocessor, eKLIPse.py) with the image's python3	PHARMCAT_IMAGE|EKLIPSE_IMAGE
+tests/smoke/commands.tsv	3	PHARMCAT_IMAGE, EKLIPSE_IMAGE: each row runs the tool's own Python script in its image (PharmCAT's preprocessor, eKLIPse.py) with the image's python3. PGSC_PYYAML_IMAGE: command -v python only finds the interpreter's path, to check that the yaml module sits in its site-packages; no Python runs	PHARMCAT_IMAGE|EKLIPSE_IMAGE|readlink -f "$(command -v python)"
 tests/smoke/cyrius.sh	2	PYTHON_IMAGE: the Cyrius smoke run pip-installs the hash-locked wheels, then runs python3 -m cyrius, in the python image	--require-hashes|-m cyrius
 tests/smoke/hipstr.sh	1	HIPSTR_IMAGE: prints the image's own python3 version for its smoke row	python_version.txt
 tests/test_owngenome_view.sh	3	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python	NOPY

@@ -7,7 +7,8 @@
 //! - `file`: a `*.py`, `*.pyw`, `*.pyi`, `*.ipynb`, Cython `*.pyx` or
 //!   `*.pxd`, a `*.py.in` template, or a Snakemake `Snakefile` or `*.smk`;
 //! - `shebang`: a `#!` line whose program is python, python3, pythonX.Y,
-//!   pypy, pypy3 or pypyX.Y, directly or through `env`: the first line of
+//!   pypy, pypy3 or pypyX.Y, or a package runner that runs Python (`uv run
+//!   --script`, `uvx`, `pipx run`), directly or through `env`: the first line of
 //!   any file, or any line of a shell, Nextflow or workflow file (a script
 //!   a heredoc or a Nextflow `script:` block writes);
 //! - `call`: a Python program word outside a comment in a shell script (by
@@ -23,12 +24,19 @@
 //!   `PY=python3` or `${PYTHON:-python3}` that picks the interpreter. The
 //!   program words are python, python3, pythonX.Y, pypy, pypy3, pypyX.Y and
 //!   the package runners pip, pip3, pipx, uv and uvx. A run of the python
-//!   image (`PYTHON_IMAGE`, `python:3.15`, `library/python`) by `docker
-//!   run`, `podman run` or `run_in` with no program after the image is a
-//!   call too: the image's own python3 runs what comes on stdin
-//!   (`docker run -i "$PYTHON_IMAGE" <<'END'`, `... < tool.txt`), wherever
-//!   the redirection stands; a command continued with `\` is read whole,
-//!   in a Rust string too. A workflow step that `uses:` a
+//!   image (`PYTHON_IMAGE` in any `${PYTHON_IMAGE…}` form, `python:3.15`,
+//!   `library/python`, `docker.io/python`, and the same names of `pypy`)
+//!   by `docker`, `podman`, `nerdctl` or the engine variable
+//!   (`"$CONTAINER_ENGINE"`, `"$ENGINE"`) `run` or `create`, after any
+//!   global options (`docker --log-level error run`), or by `run_in`, with
+//!   no program after the image is a call too: the image's own python3
+//!   runs what comes on stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`,
+//!   `... < tool.txt`, `<<< '...'`), wherever the redirection stands and
+//!   whatever its target (a quoted path with a blank, a process
+//!   substitution `< <(cat x)`). A run inside quotes or a substitution
+//!   (`sh -c '...'`, `$(...)`) is read too, and a command continued with
+//!   `\`, in a Rust string too, or over the lines of a workflow's folded
+//!   block (`run: >-`) is read whole. A workflow step that `uses:` a
 //!   `setup-python` or `setup-uv` action (in a block or a flow mapping) is
 //!   a call too. A shell
 //!   quote may span lines (a `#` inside it is text) but never opens inside
@@ -51,16 +59,32 @@
 //! stamp), `PYTHON_IMAGE`, `setup-python` outside a `uses:` line and a
 //! `site-packages/python3.12/` path are not calls.
 //!
+//! What the gate is for: it guards against regressions. It is not a proof
+//! that no Python can run. It catches every form a contributor to this
+//! repository could plausibly write, and every form the repository itself
+//! already uses (its engine variables, its `${PYTHON_IMAGE%@*}`).
+//! Adversarial or exotic forms are named below as known limits, and review
+//! catches those.
+//!
 //! Known limits: a Python program name built at run time
 //! (`format!("python{}", 3)`, `["py", "thon"].concat()`) or by shell
-//! quoting (`py""thon3`) is not seen; nor is a program word with a suffix
-//! of its own (`python3-dbg`), a shell file with no suffix and no `#!`
-//! line that another script sources, a python image named through a
-//! variable of its own (`img=$PYTHON_IMAGE; docker run -i "$img" < x`) or
-//! through separate Rust strings (`.args(["run", "-i", &image])`), and
-//! YAML other than workflows and actions is data (a
-//! `.pre-commit-config.yaml` `entry: python3`, a compose `command:`).
-//! Review catches those.
+//! quoting (`py""thon3`, the ANSI-C `$'\x70ython3'`) is not seen; nor is a
+//! program word with a suffix of its own (`python3-dbg`), a shell file
+//! with no suffix and no `#!` line that another script sources, a python
+//! image named through a variable of its own (`img=$PYTHON_IMAGE; docker
+//! run -i "$img" < x`) or through separate Rust strings (`.args(["run",
+//! "-i", &image])`), an engine global option outside the list that takes
+//! a value, an empty expansion standing where the program would be
+//! (`docker run -i "$PYTHON_IMAGE" ${EXTRA:-} < x`, a `"$@"` with no
+//! arguments: the gate counts it as the program), and apptainer or
+//! singularity (`apptainer run docker://python:3.12 < x`). YAML other
+//! than workflows and actions is data (a `.pre-commit-config.yaml` `entry:
+//! python3`, a compose `command:`), and so is a plain multi-line YAML
+//! scalar (a `run:` value with no `|` or `>` whose next line goes on with
+//! it), which is read line by line. JSON and TOML config that runs a
+//! command is data too: an agent hook (`.claude/settings.json`,
+//! `.codex/hooks.json`) or a cargo runner (`.cargo/config.toml` `runner =
+//! "python3 ..."`).
 //!
 //! `tests/python-allow.tsv` names, one row per file, the files whose
 //! findings are not owned Python: a third-party tool run inside its own
@@ -226,6 +250,54 @@ fn command_column(text: &str) -> Option<usize> {
     None
 }
 
+/// For each line of a workflow: does YAML join it with the next one? In a
+/// folded block scalar (`run: >`, `>-`, `>+`) each line is joined with a
+/// blank to the next line of the block, unless one of the two is blank.
+/// The block holds the lines indented at least as deep as its first line,
+/// which is deeper than the key's. A literal block (`run: |`) keeps its
+/// lines, so it needs nothing here.
+fn folded_lines(text: &str) -> Vec<bool> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = vec![false; lines.len()];
+    let lead = |l: &str| l.len() - l.trim_start_matches(' ').len();
+    let folded_head = |l: &str| {
+        let code = l.split(" #").next().unwrap_or(l).trim_end();
+        code.rsplit_once(": ").is_some_and(|(_, v)| {
+            v.strip_prefix('>').is_some_and(|r| {
+                r.chars()
+                    .all(|c| matches!(c, '-' | '+') || c.is_ascii_digit())
+            })
+        })
+    };
+    let mut i = 0;
+    while i < lines.len() {
+        if !folded_head(lines[i]) {
+            i += 1;
+            continue;
+        }
+        let key = lead(lines[i]);
+        let mut j = i + 1;
+        let mut indent = None;
+        while j < lines.len() {
+            let l = lines[j];
+            if l.trim().is_empty() {
+                j += 1;
+                continue;
+            }
+            let at = *indent.get_or_insert(lead(l));
+            if at <= key || lead(l) < at {
+                break;
+            }
+            j += 1;
+        }
+        for k in i + 1..j.saturating_sub(1) {
+            out[k] = !lines[k].trim().is_empty() && !lines[k + 1].trim().is_empty();
+        }
+        i = j;
+    }
+    out
+}
+
 /// A workflow line that is a label: `name:` or `description:`, also as
 /// the first key of a list item.
 fn yaml_label(line: &str) -> bool {
@@ -280,8 +352,10 @@ fn is_runner_program(word: &str) -> bool {
     RUNNERS.contains(&word) || word.strip_prefix(PIP).is_some_and(version_suffix)
 }
 
+/// A `#!` line whose program is a Python or a package runner that runs one
+/// (`#!/usr/bin/env -S uv run --script`, `#!/usr/bin/env pipx run`).
 fn shebang_is_python(line: &str) -> bool {
-    shebang_program(line).is_some_and(|p| is_python_program(&p))
+    shebang_program(line).is_some_and(|p| is_python_program(&p) || is_runner_program(&p))
 }
 
 /// Does a `#` at `i` start a shell comment? It does at the start of a word:
@@ -567,143 +641,352 @@ fn python_heredoc(code: &str) -> bool {
     })
 }
 
-/// The words and operators of a shell command, roughly: quotes are dropped
-/// (`"$PYTHON_IMAGE"` is the word `$PYTHON_IMAGE`), a `${…}` stays one word
-/// with its blanks, a `\` keeps the character after it, and a run of
-/// `; | & ( ) < >` is one operator.
-fn shell_tokens(code: &str) -> Vec<String> {
-    let mut out = Vec::new();
+/// The index just after the `)` that closes the `(` at `open`, outside
+/// quotes and nested parentheses (`$(a "b)" (c))`), or the end.
+fn close_paren(c: &[char], open: usize) -> usize {
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < c.len() {
+        match c[i] {
+            '\\' => i += 1,
+            '\'' => {
+                i += 1;
+                while i < c.len() && c[i] != '\'' {
+                    i += 1;
+                }
+            }
+            '"' => {
+                i += 1;
+                while i < c.len() && c[i] != '"' {
+                    if c[i] == '\\' {
+                        i += 1;
+                    } else if c[i] == '$' && c.get(i + 1) == Some(&'(') {
+                        i = close_paren(c, i + 1);
+                        continue;
+                    }
+                    i += 1;
+                }
+            }
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    c.len()
+}
+
+/// The words and operators of a shell command, and the text inside its
+/// quotes and substitutions. A quoted string is part of its word, blanks
+/// and operators included (`"$dir/my tool.txt"` is the one word
+/// `$dir/my tool.txt`), and its quote characters are dropped; a `\` keeps
+/// the character after it. A `${…}`, a command substitution (`$(…)`,
+/// `` `…` ``) and a process substitution (`<(…)`, `>(…)`) stay one word.
+/// A run of `; | & ( ) < >` outside them is one operator. Groovy's `"""`
+/// and `'''` open the shell body of a Nextflow script: they are no quote.
+///
+/// The second list holds the text of every quoted string and substitution,
+/// as the shell that runs it gets it: a command may stand there
+/// (`sh -c '…'`, `$(…)`, a JavaScript or Groovy string).
+fn shell_tokens(code: &str) -> (Vec<String>, Vec<String>) {
+    let c: Vec<char> = code.chars().collect();
+    let text = |a: usize, b: usize| -> String { c[a.min(b)..b].iter().collect() };
+    let (mut out, mut inner) = (Vec::new(), Vec::new());
+    // The word being read, and whether a quote made it a word even if empty.
     let mut cur = String::new();
-    let mut it = code.chars().peekable();
-    while let Some(c) = it.next() {
-        match c {
-            '\'' | '"' | '`' => {}
-            '\\' => cur.extend(it.next()),
-            '$' if it.peek() == Some(&'{') => {
-                cur.push(c);
+    let mut word = false;
+    let mut i = 0;
+    while i < c.len() {
+        let ch = c[i];
+        if matches!(ch, '"' | '\'') && c.get(i + 1) == Some(&ch) && c.get(i + 2) == Some(&ch) {
+            i += 3;
+            continue;
+        }
+        match ch {
+            '\'' => {
+                let e = (i + 1..c.len()).find(|&k| c[k] == '\'').unwrap_or(c.len());
+                let body = text(i + 1, e);
+                cur.push_str(&body);
+                inner.push(body);
+                word = true;
+                i = e + 1;
+                continue;
+            }
+            '"' => {
+                // `\` escapes `"`, `\`, `$` and `` ` `` only; a `$(…)` may
+                // hold quotes of its own.
+                let mut body = String::new();
+                i += 1;
+                while i < c.len() && c[i] != '"' {
+                    if c[i] == '\\' && i + 1 < c.len() {
+                        if !matches!(c[i + 1], '"' | '\\' | '$' | '`') {
+                            body.push('\\');
+                        }
+                        body.push(c[i + 1]);
+                        i += 2;
+                    } else if c[i] == '$' && c.get(i + 1) == Some(&'(') {
+                        let e = close_paren(&c, i + 1);
+                        body.push_str(&text(i, e));
+                        i = e;
+                    } else {
+                        body.push(c[i]);
+                        i += 1;
+                    }
+                }
+                cur.push_str(&body);
+                inner.push(body);
+                word = true;
+                i += 1;
+                continue;
+            }
+            '`' => {
+                let e = (i + 1..c.len()).find(|&k| c[k] == '`').unwrap_or(c.len());
+                cur.push_str(&text(i, (e + 1).min(c.len())));
+                inner.push(text(i + 1, e));
+                word = true;
+                i = e + 1;
+                continue;
+            }
+            '\\' => {
+                cur.extend(c.get(i + 1));
+                word = true;
+                i += 2;
+                continue;
+            }
+            '$' if c.get(i + 1) == Some(&'(') => {
+                let e = close_paren(&c, i + 1);
+                cur.push_str(&text(i, e));
+                inner.push(text(i + 2, e.saturating_sub(1)));
+                word = true;
+                i = e;
+                continue;
+            }
+            '$' if c.get(i + 1) == Some(&'{') => {
                 let mut depth = 0usize;
-                for d in it.by_ref() {
-                    cur.push(d);
-                    if d == '{' {
+                while i < c.len() {
+                    cur.push(c[i]);
+                    if c[i] == '{' {
                         depth += 1;
-                    } else if d == '}' {
+                    } else if c[i] == '}' {
                         depth -= 1;
                         if depth == 0 {
                             break;
                         }
                     }
+                    i += 1;
                 }
+                word = true;
+                i += 1;
+                continue;
+            }
+            // A process substitution is a word: the path of a pipe.
+            '<' | '>' if c.get(i + 1) == Some(&'(') && !word => {
+                let e = close_paren(&c, i + 1);
+                out.push(text(i, e));
+                inner.push(text(i + 2, e.saturating_sub(1)));
+                i = e;
+                continue;
             }
             ';' | '|' | '&' | '(' | ')' | '<' | '>' => {
-                if !cur.is_empty() {
+                if word {
                     out.push(std::mem::take(&mut cur));
+                    word = false;
                 }
-                let mut op = String::from(c);
-                while let Some(n) = it.next_if(|n| ";|&()<>".contains(*n)) {
-                    op.push(n);
+                let mut op = String::from(ch);
+                i += 1;
+                while i < c.len() && ";|&()<>".contains(c[i]) {
+                    // `< <(…)` is a redirection from a process substitution.
+                    if matches!(c[i], '<' | '>') && c.get(i + 1) == Some(&'(') {
+                        break;
+                    }
+                    op.push(c[i]);
+                    i += 1;
                 }
                 out.push(op);
+                continue;
             }
             c if c.is_whitespace() => {
-                if !cur.is_empty() {
+                if word {
                     out.push(std::mem::take(&mut cur));
+                    word = false;
                 }
             }
-            _ => cur.push(c),
+            _ => {
+                cur.push(ch);
+                word = true;
+            }
         }
+        i += 1;
     }
-    if !cur.is_empty() {
+    if word {
         out.push(cur);
     }
-    out
+    (out, inner)
 }
 
-/// Is this word the python image: `$PYTHON_IMAGE`, `${PYTHON_IMAGE}` (with
-/// any `:-`, `:?` tail), or a `python` or `…/library/python` reference with
-/// any tag or digest (`python:3.15`, `docker.io/library/python@sha256:…`)?
+/// Can this character be part of a shell variable's name?
+fn name_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// Is this word a container engine: `docker`, `podman` or `nerdctl` by
+/// any path, or the repository's engine variables `$CONTAINER_ENGINE` and
+/// `$ENGINE`, bare or braced with any tail (`${CONTAINER_ENGINE:-docker}`)?
+fn engine_word(word: &str) -> bool {
+    let var = word.strip_prefix("${").or_else(|| word.strip_prefix('$'));
+    if let Some(v) = var {
+        let name: String = v.chars().take_while(|&c| name_char(c)).collect();
+        return matches!(name.as_str(), "CONTAINER_ENGINE" | "ENGINE");
+    }
+    matches!(
+        word.rsplit('/').next().unwrap_or(""),
+        "docker" | "podman" | "nerdctl"
+    )
+}
+
+/// The global options of docker, podman and nerdctl that take a value in
+/// the next word (`docker --log-level error run`).
+const ENGINE_VALUE_OPTIONS: [&str; 24] = [
+    "-c",
+    "--context",
+    "-H",
+    "--host",
+    "--config",
+    "-l",
+    "--log-level",
+    "--tlscacert",
+    "--tlscert",
+    "--tlskey",
+    "--connection",
+    "--url",
+    "--identity",
+    "--root",
+    "--runroot",
+    "--storage-driver",
+    "--cgroup-manager",
+    "--runtime",
+    "--tmpdir",
+    "-n",
+    "--namespace",
+    "-a",
+    "--address",
+    "--data-root",
+];
+
+/// Is this word the python image: `$PYTHON_IMAGE` or `${PYTHON_IMAGE…}`
+/// with any tail that cannot continue the name (`:-`, `%@*`, `#…`), or a
+/// `python` or `pypy` reference with any tag or digest, bare, under
+/// `library/`, `docker.io/` or `index.docker.io/`, or any registry's
+/// `…/library/` (`python:3.15`, `docker.io/library/python@sha256:…`)?
 fn python_image_ref(word: &str) -> bool {
     if let Some(r) = word.strip_prefix("${") {
         return r
             .strip_prefix(PYTHON_IMAGE)
-            .is_some_and(|rest| rest.starts_with(['}', ':', '-', '+', '=', '?']));
+            .is_some_and(|rest| rest.chars().next().is_some_and(|c| !name_char(c)));
     }
     if let Some(r) = word.strip_prefix('$') {
-        return r == PYTHON_IMAGE;
+        return r
+            .strip_prefix(PYTHON_IMAGE)
+            .is_some_and(|rest| !rest.starts_with(name_char));
     }
     let name = word.split('@').next().unwrap_or(word);
     let slash = name.rfind('/').map_or(0, |k| k + 1);
     let repo = &name[..name[slash..].find(':').map_or(name.len(), |k| slash + k)];
-    let library = ["library/", PYTHON].concat();
-    repo == PYTHON || repo == library || repo.ends_with(&format!("/{library}"))
+    [PYTHON, PYPY].iter().any(|p| {
+        let library = format!("library/{p}");
+        repo == *p
+            || repo == library
+            || repo.ends_with(&format!("/{library}"))
+            || repo == format!("docker.io/{p}")
+            || repo == format!("index.docker.io/{p}")
+    })
 }
 
 /// Does a command run the python image with no program after the image?
 /// Then the image's own python3, its default command, runs what comes on
-/// stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`, `… < tool.txt`). The run
-/// is `docker run`, `podman run` or `nerdctl run` (also `container run`),
-/// or the scripts' `run_in`. A redirection may stand anywhere in the
-/// command (`docker run -i < tool.txt "$PYTHON_IMAGE"`): it and its file
-/// are skipped, and a word after it is still the program (`... < x sh`).
-/// A bare `python` image is a program word already, so it is not counted
-/// twice.
+/// stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`, `… < tool.txt`,
+/// `<<< '…'`). The run is `run` or `create` (a container made with no
+/// program runs python3 when it starts) of docker, podman, nerdctl or the
+/// repository's engine variable, after any global options and an optional
+/// `container`, or the scripts' `run_in`. A redirection may stand anywhere
+/// in the command (`docker run -i < tool.txt "$PYTHON_IMAGE"`): it and its
+/// target are skipped, and a word after it is still the program
+/// (`... < x sh`). A target is one word even when quoted with blanks or a
+/// process substitution (`< <(cat x)`). A bare `python` image is a program
+/// word already, so it is not counted twice. A command inside quotes or a
+/// substitution is read the same way (`sh -c '…'`, `$(…)`).
 fn python_image_default(code: &str) -> bool {
-    let toks = shell_tokens(code);
+    let (toks, inner) = shell_tokens(code);
+    runs_python_image_default(&toks) || inner.iter().any(|s| python_image_default(s))
+}
+
+fn runs_python_image_default(toks: &[String]) -> bool {
     // `;`, `|`, `&`, `&&`, `||`, `(` and `)` end the command; `<`, `>`,
-    // `<<`, `>&`, `&>` and the like are redirections, each with one word
-    // after it.
+    // `<<`, `<<<`, `>&`, `&>` and the like are redirections, each with one
+    // word after it. A process substitution is a word.
     let control = |t: &str| {
         t.starts_with([';', '|', '(', ')']) || (t.starts_with('&') && !t.starts_with("&>"))
     };
-    let redirect = |t: &str| t.starts_with(['<', '>']) || t.starts_with("&>");
+    let redirect = |t: &str| {
+        (t.starts_with(['<', '>']) && !t.starts_with("<(") && !t.starts_with(">("))
+            || t.starts_with("&>")
+    };
     // A file descriptor before a redirection (`2>/dev/null`) is no word of
     // the command.
     let fd = |p: usize| {
         toks[p].bytes().all(|c| c.is_ascii_digit()) && toks.get(p + 1).is_some_and(|n| redirect(n))
     };
-    let mut i = 0;
-    while i < toks.len() {
-        let base = toks[i].rsplit('/').next().unwrap_or("");
+    for i in 0..toks.len() {
         let mut from = None;
-        if matches!(base, "docker" | "podman" | "nerdctl") {
+        if engine_word(&toks[i]) {
             let mut j = i + 1;
+            while let Some(t) = toks.get(j).filter(|t| t.starts_with('-')) {
+                j += if ENGINE_VALUE_OPTIONS.contains(&t.as_str()) {
+                    2
+                } else {
+                    1
+                };
+            }
             if toks.get(j).is_some_and(|t| t == "container") {
                 j += 1;
             }
-            if toks.get(j).is_some_and(|t| t == "run") {
+            if toks.get(j).is_some_and(|t| t == "run" || t == "create") {
                 from = Some(j + 1);
             }
         } else if toks[i] == "run_in" {
             from = Some(i + 1);
         }
-        if let Some(mut j) = from {
-            while j < toks.len() && !control(&toks[j]) {
-                if redirect(&toks[j]) {
-                    j += 2;
-                    continue;
-                }
-                if python_image_ref(&toks[j]) {
-                    if is_python_program(&toks[j]) {
-                        break;
-                    }
-                    // The program: the first word after the image that is no
-                    // redirection, no file of one and no descriptor.
-                    let mut p = j + 1;
-                    loop {
-                        match toks.get(p) {
-                            None => return true,
-                            Some(t) if control(t) => return true,
-                            Some(t) if redirect(t) => p += 2,
-                            Some(_) if fd(p) => p += 1,
-                            Some(_) => break,
-                        }
-                    }
+        let Some(mut j) = from else { continue };
+        while j < toks.len() && !control(&toks[j]) {
+            if redirect(&toks[j]) {
+                j += 2;
+                continue;
+            }
+            if python_image_ref(&toks[j]) {
+                if python_words(&toks[j]) > 0 {
                     break;
                 }
-                j += 1;
+                // The program: the first word after the image that is no
+                // redirection, no target of one and no descriptor.
+                let mut p = j + 1;
+                loop {
+                    match toks.get(p) {
+                        None => return true,
+                        Some(t) if control(t) => return true,
+                        Some(t) if redirect(t) => p += 2,
+                        Some(_) if fd(p) => p += 1,
+                        Some(_) => break,
+                    }
+                }
+                break;
             }
-            i = j;
+            j += 1;
         }
-        i += 1;
     }
     false
 }
@@ -816,6 +1099,12 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             let mut bodies: std::collections::VecDeque<(String, bool)> =
                 std::collections::VecDeque::new();
             let mut command = Continued::default();
+            // A workflow's folded block scalar is one command over its lines.
+            let folded = if l == Lang::Workflow {
+                folded_lines(text)
+            } else {
+                Vec::new()
+            };
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
@@ -875,7 +1164,11 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 };
                 // A heredoc line holds at least the heredoc; a second command
                 // beside it is a second use.
-                let default_python = command.ends_python_image_run(code);
+                let default_python = if folded.get(i) == Some(&true) {
+                    command.ends_python_image_run(&format!("{code} \\"))
+                } else {
+                    command.ends_python_image_run(code)
+                };
                 // A Python heredoc fed to the image is that one use.
                 let uses = if python_heredoc(code) {
                     (python_words(code).max(1), "heredoc")
@@ -2304,6 +2597,219 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
         );
         // A raw string keeps its backslashes: no escape runs there.
         assert!(k("x.rs", "fn a() { let _ = r\"@p\\x33\"; }\n").is_empty());
+    }
+
+    #[test]
+    fn quoted_targets_here_strings_and_process_substitutions() {
+        // A here-string feeds stdin; its quoted text is one word.
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker run -i --rm \"$@V\" <<< 'import sys; print(sys.version)'\n"
+            ),
+            [(1, "call")]
+        );
+        // A quoted target with a blank in it is one word.
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker run -i --rm \"$@V\" < \"$dir/my tool.txt\"\n"
+            ),
+            [(1, "call")]
+        );
+        // A process substitution is one word, whatever runs inside it.
+        assert_eq!(
+            k("s.sh", "docker run -i --rm \"$@V\" < <(cat tool.txt)\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker run -i --rm \"$@V\" < tool.txt > >(tee log.txt)\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "m.nf",
+                "process A {\n  script:\n  \"\"\"\n  docker run -i --rm \"\\$@V\" < <(cat tool.txt)\n  \"\"\"\n}\n"
+            ),
+            [(4, "call")]
+        );
+        // A program after them still replaces the default command.
+        assert!(k("s.sh", "docker run -i \"$@V\" <<< 'x y' sh\n").is_empty());
+        assert!(k("s.sh", "docker run -i \"$@V\" < <(cat x) bash -c 'og x'\n").is_empty());
+        assert!(k("s.sh", "docker run -i \"$@V\" < \"a b\" sh -c 'og x'\n").is_empty());
+        // A run inside quotes, a command substitution or a process
+        // substitution is still read, as are JavaScript and Groovy strings.
+        assert_eq!(
+            k("s.sh", "sh -c 'docker run -i \"$@V\" < x'\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "out=\"$(docker run -i \"$@V\" < x)\"\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "out=`docker run -i \"$@V\" < x`\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "diff <(docker run -i \"$@V\" < a) b\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("x.js", "const c = 'docker run -i @p:3.15 < x';\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("m.nf", "def c = \"docker run -i \\\"${@V}\\\" < x\"\n"),
+            [(1, "call")]
+        );
+    }
+
+    #[test]
+    fn a_package_runner_shebang_is_python() {
+        assert_eq!(
+            k(
+                "bin/zz-tool",
+                "#!/usr/bin/env -S @u run --script\nprint(1)\n"
+            ),
+            [(1, "shebang")]
+        );
+        assert_eq!(
+            k("bin/zz-tool", "#!/usr/bin/env @ix run\n"),
+            [(1, "shebang")]
+        );
+        assert_eq!(k("bin/zz-tool", "#!/usr/bin/env @ux x\n"), [(1, "shebang")]);
+        assert_eq!(
+            k("bin/zz-tool", "#!/usr/local/bin/@u run\n"),
+            [(1, "shebang")]
+        );
+        assert!(k("bin/zz-tool", "#!/usr/bin/env bash\nog x\n").is_empty());
+    }
+
+    #[test]
+    fn engine_variables_global_options_and_create() {
+        // The repo's own engine variables.
+        assert_eq!(
+            k(
+                "s.sh",
+                "\"$CONTAINER_ENGINE\" run -i --rm \"$@V\" < tool.txt\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "\"${CONTAINER_ENGINE:-docker}\" run -i \"$@V\" < x\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "${CONTAINER_ENGINE} container run -i \"$@V\" < x\n"),
+            [(1, "call")]
+        );
+        assert_eq!(k("s.sh", "\"$ENGINE\" run -i \"$@V\" < x\n"), [(1, "call")]);
+        assert_eq!(k("s.sh", "$ENGINE run -i \"$@V\" < x\n"), [(1, "call")]);
+        // Global options before the verb.
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker --log-level error run -i --rm \"$@V\" < tool.txt\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker -H unix:///x.sock --tls run -i \"$@V\" < x\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker --context=ci run -i \"$@V\" < x\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "podman --remote --url tcp://h:1 run -i \"$@V\" < x\n"
+            ),
+            [(1, "call")]
+        );
+        // A container made with no program runs python3 when it starts.
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker create -i --name pyc \"$@V\"\ndocker start -ai pyc < tool.txt\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker container create -i \"$@V\"\n"),
+            [(1, "call")]
+        );
+        // Not a run: another variable, an inspect, a create with a program.
+        assert!(
+            k(
+                "s.sh",
+                "\"$ENGINE_LOG\" run -i \"$@V\" < x\n\"$CONTAINER_ENGINE\" image inspect \"$@V\"\ndocker create \"$@V\" sh\n"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn more_names_of_the_python_image() {
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker run -i --rm docker.io/@p:3.12-slim < tool.txt\n"
+            ),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker run -i index.docker.io/@p@sha256:ab < x\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker run -i --rm \"${@V%@*}\" < tool.txt\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker run -i \"${@V#docker.io/}\" < x\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker run -i --rm @y:3.10 < tool.txt\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k("s.sh", "docker run -i library/@y:3.10-slim < x\n"),
+            [(1, "call")]
+        );
+        // A bare name is a program word already: one use, not two.
+        assert_eq!(k("s.sh", "docker run -i docker.io/@p < x\n"), [(1, "call")]);
+        // A variable whose name only starts with it is not the image.
+        assert!(k("s.sh", "docker run -i \"${@V_TAG}\" < x\n").is_empty());
+        assert!(k("s.sh", "docker run -i \"$@V_TAG\" < x\n").is_empty());
+    }
+
+    #[test]
+    fn a_folded_workflow_scalar_is_one_command() {
+        // YAML joins the lines of a `>` block with a blank.
+        let wf = "jobs:\n  a:\n    steps:\n      - run: >-\n          docker run -i --rm\n          \"$@V\" < tool.txt\n      - name: next\n        run: >\n          docker run -i --rm\n          \"$@V\" # the image\n\n          echo done\n";
+        assert_eq!(
+            k(".github/workflows/x.yml", wf),
+            [(6, "call"), (10, "call")]
+        );
+        // A program on the next line of a folded block is the program.
+        let wf = "      - run: >-\n          docker run -i --rm \"$@V\"\n          sh -c 'og x'\n";
+        assert!(k(".github/workflows/x.yml", wf).is_empty());
+        // A literal block keeps its lines; a `\` continues a command there.
+        let wf = "      - run: |-\n          docker run -i --rm \\\n            \"$@V\" < tool.txt\n          echo ok\n";
+        assert_eq!(k(".github/workflows/x.yml", wf), [(3, "call")]);
     }
 
     #[cfg(unix)]
