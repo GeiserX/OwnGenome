@@ -119,7 +119,7 @@ docker run --rm -it \
 
 **Symptom:** `OSError: [Errno 13] Permission denied: '/genome/sample/output'` or similar.
 
-**Cause:** the container's user cannot write to the bind-mounted host folder. The step scripts run each container as you (`--user` with your UID and GID, `HOME=/tmp`), with only the sample folder writable. Older versions ran every container as root, so a sample folder they wrote holds root-owned files that a step running as you cannot overwrite. CPSR and `benchmark-variants.sh` pass `--root` at their call: their images (PCGR, hap.py) have not been shown to run unprivileged. So does the GATK container of step 20's shifted-reference pass, whose BwaSpark needs a passwd entry for its uid; it gives its files back when it ends. Strelka2 and Manta pass it only to delete a leftover folder that an older version wrote as root. Nextflow's `docker` profile runs each task as you too, with `HOME=/tmp`. `CPSR`, `CNVPYTOR` and `MITO_VARIANTS` are the exceptions and run as root: CNVpytor copies files into its own image, and `MITO_VARIANTS` runs step 20's shifted-reference pass. Nextflow (`docker.fixOwnership`) gives their work files back to you; a file they write outside their work directory stays root's. Most bioinformatics images name a non-root user of their own (e.g., UID 1000), so a container you start by hand without `--user` may not be able to write either.
+**Cause:** the container's user cannot write to the bind-mounted host folder. The step scripts run each container as you (`--user` with your UID and GID, `HOME=/tmp`), with only the sample folder writable. Older versions ran every container as root, so a sample folder they wrote holds root-owned files that a step running as you cannot overwrite. CPSR and `benchmark-variants.sh` pass `--root` at their call: their images (PCGR, hap.py) have not been shown to run unprivileged. So does the GATK container of step 20's shifted-reference pass, whose BwaSpark needs a passwd entry for its uid; it gives its files back when it ends. Strelka2 and Manta pass it only to delete a leftover folder that an older version wrote as root. Nextflow's `docker` profile runs each task as you too, with `HOME=/tmp`. `CPSR`, `CNVPYTOR` and `MITO_VARIANTS` are the exceptions and run as root: CNVpytor copies files into its own image, and `MITO_VARIANTS` runs step 20's shifted-reference pass. Each of them gives its work files back to you when its script ends, also when it fails or one of its programs is killed for memory (a kill of the whole container leaves them root's); Nextflow's `docker.fixOwnership` does it only after a task that succeeds, and only in an image whose `chown` knows GNU's `--from`. A file they write outside their work directory stays root's. Most bioinformatics images name a non-root user of their own (e.g., UID 1000), so a container you start by hand without `--user` may not be able to write either.
 
 **Fix for a step script or a Nextflow run:** when the sample folder holds a path you do not own, a step script prints the command that takes it back. A Nextflow task stops with the error above. Run the command, then run the step or `run-all.sh` again:
 
@@ -137,6 +137,14 @@ docker run --rm --user root \
 ```
 
 Files written with `--user root` are owned by root on the host. Take them back with the `sudo chown` command above.
+
+### `chown: unrecognized option '--from'` at the top of a task's `.command.err`
+
+**Symptom:** a Nextflow task's `.command.err` starts with `chown: unrecognized option '--from'` and a BusyBox usage text, and the task still completes.
+
+**Cause:** the `docker` profile sets `docker.fixOwnership`, and after each task Nextflow runs `chown -fR --from root` inside its container. Images with BusyBox's `chown`, such as the biocontainers images of Locityper and CNVpytor, do not know `--from`. Nextflow ignores the error.
+
+**Fix:** none needed. Such a task runs as you, so it has nothing to give back. The three tasks that run as root (`CPSR`, `CNVPYTOR`, `MITO_VARIANTS`) give their work files back themselves.
 
 ---
 

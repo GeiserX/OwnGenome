@@ -51,7 +51,7 @@
 #   A step without its data or BAM is skipped. A report-only tool whose task fails is skipped, and its step is marked
 #   failed (logs/run_status.tsv). Results are published by hard link when work/ and GENOME_DIR share a filesystem,
 #   you passed no -w, -c or --publish_dir_mode, and you run as root or Linux's fs.protected_hardlinks is 0. Every
-#   published file is yours (tasks run as you; Nextflow gives the CPSR and CNVPYTOR work files back), but this
+#   published file is yours (tasks run as you; CPSR and CNVPYTOR, which run as root, give their work files back), but this
 #   condition is kept as it was.
 # logs/run_status.tsv keeps this command with its switches: bin/og recheck --rerun replays it when a newer
 #   ClinVar or catalog changes a result (docs/recheck.md).
@@ -168,7 +168,13 @@ if ! command -v nextflow >/dev/null 2>&1 || [[ ! "${java_major:-}" =~ ^[0-9]+$ ]
   printf '%s\n' "ERROR: run-all.sh starts the Nextflow pipeline and needs Java 17 or later (found: ${java_major:-none}) and Nextflow ($(command -v nextflow || echo 'not on PATH'))." \
     "  Install the release CI validates:  curl -s https://get.nextflow.io | NXF_VER=${NEXTFLOW_VERSION} bash && sudo mv nextflow /usr/local/bin/" \
     "  Or run the steps one by one: ./scripts/<step>.sh ${SAMPLE} (docs/getting-started.md)." >&2; exit 2; fi
-on SKIP_VALIDATION || INPUT="$input_mode" "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
+# The work directory this run gives Nextflow: -w or -work-dir, else NXF_WORK, else <sample>/nextflow/work; a relative one
+# is under <sample>/nextflow, where Nextflow starts. validate-setup.sh gets it as NXF_WORK, so it sees a resume whose
+# work/ is on another disk and checks that disk's free space too. A workDir set in a -c config is not seen here.
+WD=${NXF_WORK:-work} prev=""
+for a in "$@"; do case "$prev" in -w|-work-dir) WD=$a ;; esac; prev=$a; done
+case "$WD" in /*) ;; *) WD="${S}/nextflow/${WD}" ;; esac
+on SKIP_VALIDATION || INPUT="$input_mode" NXF_WORK="$WD" "${SCRIPT_DIR}/validate-setup.sh" "$SAMPLE" \
   || { echo "ERROR: setup validation failed; fix the items above. To bypass: SKIP_VALIDATION=true $0 ${SAMPLE} ${SEX}" >&2; exit 1; }
 # og (bin/.og) built from another rust/ than this checkout's stops the run, SKIP_VALIDATION or not (rust/og.sh); before the family plan, which runs og.
 [ ! -f "${PGP_ROOT}/rust/og.sh" ] || OG_MSG=$(bash "${PGP_ROOT}/rust/og.sh" check 2>&1) || { echo "$OG_MSG" >&2; exit 2; }
@@ -491,7 +497,7 @@ if [ -n "$EX" ]; then
 else rm -f "$EXC"; fi
 # Publish by hard link when it is sure to work: the BAM and every other output are then stored once, not twice.
 # Nextflow does not fall back to a copy when a link fails; the run stops. The docker profile runs tasks as you, and
-# Nextflow's docker.fixOwnership gives the work files of CPSR and CNVPYTOR (which run as root) back to you, so every
+# CPSR and CNVPYTOR (which run as root) give their work files back to you when their scripts end, so every
 # published file is yours. Linux lets another user link a file it does not own only when fs.protected_hardlinks is 0;
 # the condition from when tasks ran as root is kept as it was: root or protected_hardlinks 0, and a probe link from
 # work/ to GENOME_DIR that works.

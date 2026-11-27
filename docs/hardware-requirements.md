@@ -127,7 +127,7 @@ Every step runs in a Docker container with a hard `--memory` limit. The two entr
 | 9 (ExpansionHunter) | `THREADS` (4) / 4 GB | 4 / 8 GB |
 | 10 (TelomereHunter) | `THREADS` (4) / 4 GB | 4 / 8 GB |
 | 13 (VEP) | `THREADS` (8) / 2 GB per thread, at least 8 GB | 8 / 16 GB |
-| 17 (CPSR) | 4 / 8 GB | 4 / 8 GB |
+| 17 (CPSR) | 4 / 16 GB | 4 / 16 GB (CPSR needs 16 GB) |
 | 18 (CNVpytor) | 4 / 8 GB | 4 / 8 GB |
 | 19 (Delly) | 4 / 8 GB | 4 / 8 GB |
 | 25 (PRS): scoring files written as pgsc_calc reads them | no limit | `PRS_PREPARE` 1 / 2 GB |
@@ -190,7 +190,7 @@ Check the shares on a running task: `docker ps` lists the pipeline's containers 
 
 ### Runtime per step
 
-The figures below are measured, from our end test: three real 30-40x human whole genomes, run with `run-all.sh` in October 2026 on a 16-thread, 62 GB desktop-class server with the data on an SSD, while the server ran its other services. DeepVariant ran on the CPU. Each task had its default request from `conf/base.config`; on this path a task's CPUs are a Docker share, not a cap, so a task could use more cores than it asked for when the host had them free. fastp and the alignment have two runs, from the two samples that started from FASTQ in these runs (the third sample's alignment ran on an earlier version of the pipeline that split it into two tasks, and is left out); the other steps have one run per sample, and a step that ran again on a sample counts every completed run. Each figure is the range across those runs, taken from Nextflow's trace: the task's wall time, its `peak_rss` and its average `%cpu` (in cores). `peak_rss` adds up the resident memory of the task's processes, shared and file-mapped pages included, so it can be more than the container was charged: CPSR showed up to 15.6 GB under its 8 GB limit and was not killed.
+The figures below are measured, from our end test: three real 30-40x human whole genomes, run with `run-all.sh` in October 2026 on a 16-thread, 62 GB desktop-class server with the data on an SSD, while the server ran its other services. DeepVariant ran on the CPU. Each task had its default request from `conf/base.config`; on this path a task's CPUs are a Docker share, not a cap, so a task could use more cores than it asked for when the host had them free. fastp and the alignment have two runs, from the two samples that started from FASTQ in these runs (the third sample's alignment ran on an earlier version of the pipeline that split it into two tasks, and is left out); the other steps have one run per sample, and a step that ran again on a sample counts every completed run. Each figure is the range across those runs, taken from Nextflow's trace: the task's wall time, its `peak_rss` and its average `%cpu` (in cores). `peak_rss` adds up the resident memory of the task's processes, shared and file-mapped pages included, so it can be more than the container was charged: CPSR showed up to 15.6 GB under its 8 GB limit and was not killed there; on another whole genome it was killed at that limit, so CPSR now asks for 16 GB.
 
 DeepVariant 1.10 with 8 shards took 8 h 50 min to 13 h 30 min. In the 13.5 h run, on an 8-CPU, 24 GB budget, `make_examples` took about 10.5 h, `call_variants` about 3 h and `postprocess_variants` under an hour; on a busy host `make_examples` ran at about half the speed it reached on a quiet one. Upstream reports 1 h 9 min on a 96-vCPU cloud machine ([DeepVariant r1.10 metrics](https://github.com/google/deepvariant/blob/r1.10/docs/metrics.md)), about 110 vCPU-hours, which agrees.
 
