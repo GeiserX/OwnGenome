@@ -54,11 +54,14 @@ printf '#pgs_id=PGS000001\nchr_name\tchr_position\teffect_allele\tother_allele\t
   && tar -cf "${T}/panel.tar" GRCh38_x_ALL.pgen GRCh38_x_ALL.psam GRCh38_x_ALL.pvar.zst GRCh38_x.king.cutoff.out.id meta.txt )
 check "the panel names pgsc_calc's reference format" test -s "${T}/panel/meta.txt"
 
-# What the PRS task puts beside pgsc_calc: the kill and the pending task.
+# What the PRS task puts beside pgsc_calc: the kill and the pending task. The
+# hold ends at the TERM Nextflow sends when it stops the task: a plain sleep
+# defers the trap, and Nextflow's own TERM handler does not exit, so the held
+# task would start its container minutes after the case ended.
 cat > "${T}/nested.config" <<NFCONF
 process {
     withName: 'FORMAT_SCOREFILES' { containerOptions = '--memory 8m --memory-swap 8m' }
-    withName: 'EXTRACT_DATABASE' { beforeScript = 'sleep ${HOLD}' }
+    withName: 'EXTRACT_DATABASE' { beforeScript = 'sleep ${HOLD} & trap "kill \$! 2>/dev/null; exit 143" TERM; wait \$!' }
 }
 NFCONF
 
@@ -132,6 +135,14 @@ check "pgsc_calc never waits for its pending tasks (no 'Execution cancelled')" \
   bash -c '! grep -q "Execution cancelled" "$1"' _ "${NLOG:-/dev/null}"
 check "PRS names the memory kill" \
   grep -rqF 'a pgsc_calc task was killed for memory' --include=.command.err "${T}/work"
+
+# Nothing of the run is left running: no process works inside the case folder.
+sleep 3
+left=0
+for p in /proc/[0-9]*; do
+  case "$(readlink "${p}/cwd" 2>/dev/null)" in "${T}"/*) left=$((left + 1)) ;; esac
+done
+check_eq "no task of the run is still running after it ends" "$left" 0
 
 rm -rf "$T"
 finish
