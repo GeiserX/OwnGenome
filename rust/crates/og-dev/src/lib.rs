@@ -33,6 +33,9 @@
 //!   benchmark on published 1000 Genomes men.
 //! - `og dev renovate-check LOG` ([`renovate`]): what a Renovate dry run
 //!   found, against every pin in the repository.
+//! - `og dev install-manifest` ([`install_manifest`]): what an install
+//!   tree holds, file by file, and the compare of two trees that each Rust
+//!   slice of `scripts/setup.sh` must pass (`tests/setup/ab.sh`).
 //! - `og dev build cn-intervals|callability|sv-rule-regions` ([`build`]):
 //!   rebuild a committed asset table from its pinned downloads.
 //! - Not ported yet, each says so and exits 2: `og dev demo-sample`
@@ -63,6 +66,7 @@ pub mod evidence;
 pub mod fixture;
 pub mod helpers;
 pub mod images;
+pub mod install_manifest;
 pub mod licences;
 mod lookaround;
 pub mod nf_trace;
@@ -88,7 +92,7 @@ mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [--root DIR] [--allow FILE] [--list]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev install-manifest DIR [--exclude PATH]...\n       og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --control B.tsv [--allow ALLOW.tsv] [--not-in SEED.tsv]\n       og dev install-manifest --flip DIR PATH\n       og dev install-manifest --compare-logs A.log B.log\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [--root DIR] [--allow FILE] [--list]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -211,6 +215,7 @@ pub fn main(args: &[String]) -> u8 {
         Some("smoke") => run(smoke::cli, &args[1..]),
         Some("build") => run(build::cli, &args[1..]),
         Some("helpers") => run(helpers::cli, &args[1..]),
+        Some("install-manifest") => run(install_manifest::cli, &args[1..]),
         Some("demo-sample") => run(demo::cli, &args[1..]),
         Some("demo-events") => run(demo_events::cli, &args[1..]),
         Some("params-doc") => run(params_doc::cli, &args[1..]),
@@ -339,5 +344,19 @@ mod stream_tests {
             run_with_writers(clean, &[], &mut Fails { flush_only: true }, &mut Vec::new()),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn og_dev_usage_lists_every_install_manifest_form() {
+        for form in super::install_manifest::USAGE.lines() {
+            let form = form.trim_start_matches("usage: ").trim();
+            assert!(
+                super::USAGE.contains(&format!("       {form}\n")),
+                "og dev usage lacks: {form}"
+            );
+        }
     }
 }
