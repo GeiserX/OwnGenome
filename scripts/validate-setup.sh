@@ -509,16 +509,28 @@ elif [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ]; then
 fi
 # A run that stopped keeps its Nextflow work directory, and -resume needs it:
 # the space it holds is not lost, so under 200 GB a resume is a warning. It is a
-# resume only when the work directory holds tasks and this sample's launch directory
+# resume only when the work directory holds tasks, this sample's launch directory
 # (<sample>/nextflow, where run-all.sh starts Nextflow with -resume) holds the cache
-# of an earlier session, .nextflow/cache/<session>/db, which -resume reads. A -w
-# directory that other samples share is never empty, and an empty one made ahead of
-# a first run holds no task to reuse: neither is a resume of this sample.
+# of an earlier session, .nextflow/cache/<session>/db, which -resume reads, and that
+# session ran in this work directory. -resume continues the last session, and the
+# newest log of the launch directory, .nextflow.log (older ones rotate to .1, .2 ...),
+# names its work directory: "Work-dir: <absolute path> [<fs>]", written even when the
+# run stopped before its first task. A -w directory that other samples share is never
+# empty, an empty one made ahead of a first run holds no task to reuse, and a sample
+# that ran before reuses nothing from another work directory: none is a resume.
+# nf_last_work_dir LOG: the work directory LOG names, empty when LOG is missing or names none.
+nf_last_work_dir() {
+  { sed -n 's/^.* nextflow\.Session - Work-dir: \(.*\) \[[^]]*\]$/\1/p' "$1" 2>/dev/null || true; } | tail -n 1
+}
 RESUME_WORK=""
 if [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] \
   && [ -n "$(ls -A "$WORK_DIR" 2>/dev/null)" ] \
   && compgen -G "${GENOME_DIR}/${SAMPLE}/nextflow/.nextflow/cache/*/db" > /dev/null; then
-  RESUME_WORK=$WORK_DIR
+  # Nextflow writes an absolute -w as given and a relative one from the physical launch directory: compare both resolved.
+  LAST_WORK=$(nf_last_work_dir "${GENOME_DIR}/${SAMPLE}/nextflow/.nextflow.log")
+  if [ -n "$LAST_WORK" ] && [ "$(cd -- "$LAST_WORK" 2>/dev/null && pwd -P)" = "$(cd -- "$WORK_DIR" 2>/dev/null && pwd -P)" ]; then
+    RESUME_WORK=$WORK_DIR
+  fi
 fi
 # disk_of DIR: "<free KB> <mount point>" of the disk that holds DIR, or its nearest parent that exists.
 disk_of() {
@@ -535,7 +547,8 @@ check_free() {
     pass "${what}: ${gb} GB in ${mount}"
   elif [ "$gb" -ge 200 ]; then
     warn "${what}: ${gb} GB — 500 GB+ recommended for full pipeline per sample"
-  elif [ -n "$RESUME_WORK" ]; then
+  elif [ -n "$RESUME_WORK" ] && [ "$gb" -gt 0 ]; then
+    # A full disk (0 GB) fails even on a resume: it cannot write what the unfinished tasks need.
     warn "${what}: ${gb} GB, under the 200 GB minimum, but ${RESUME_WORK} exists: a resume of an earlier run."
     if [ -z "$RESUME_TOLD" ]; then
       echo "       -resume reuses every task that finished, so it writes only what the unfinished tasks"

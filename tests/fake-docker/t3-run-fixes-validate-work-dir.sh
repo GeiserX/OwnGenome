@@ -7,11 +7,13 @@
 # measured free space only where GENOME_DIR is, so:
 #   1. a resume whose work directory is elsewhere, with GENOME_DIR under the
 #      200 GB minimum, was a FAIL and stopped run-all.sh; it is a WARN. A
-#      resume needs the sample's own Nextflow cache too, so a shared work
-#      directory that holds only another sample's tasks is no resume;
+#      resume needs the sample's own Nextflow cache too, and its last log
+#      (<sample>/nextflow/.nextflow.log) must name that work directory, so a
+#      shared work directory that holds only other samples' tasks is no resume;
 #   2. a work disk under the minimum was never seen; it is a FAIL on a fresh
 #      run and a WARN on a resume, and a work directory on GENOME_DIR's disk
-#      adds no second line. A disk with 0 free, either one, is a FAIL;
+#      adds no second line. A disk with 0 free, either one, is a FAIL, on a
+#      resume too;
 #   3. run-all.sh passes -w (absolute or relative) and NXF_WORK on, so the
 #      resume of case 1 starts Nextflow instead of stopping at validation.
 # A df in front of the fake one answers per path: the work disk's paths get
@@ -40,6 +42,11 @@ SHIM
 chmod +x "${CASE_WORK}/df-bin/df"
 # with_free GENOME_GB WORK_GB COMMAND...: run COMMAND with that much free on each disk.
 with_free() { local g=$1 w=$2; shift 2; PATH="${CASE_WORK}/df-bin:${PATH}" FAKE_FREE_GB=$g FAKE_FREE_WORK_GB=$w "$@"; }
+# nf_log DIR [LOG]: the sample's last Nextflow log (default .nextflow.log) names DIR as its work directory,
+# in the line Nextflow 26.10.5 writes at the start of every run.
+nf_log() {
+  printf 'Nov-27 04:40:42.300 [main] DEBUG nextflow.Session - Work-dir: %s [ext2/ext3]\n' "$1" > "${G}/sample1/nextflow/${2:-.nextflow.log}"
+}
 
 # 1. GENOME_DIR under the minimum, the run's work directory elsewhere and there: a resume.
 WD="${WDISK}/owngenome/sample1"
@@ -56,10 +63,36 @@ output_lacks shared-fresh 'a resume'
 # A resume is the work directory's tasks plus the cache that run-all.sh's
 # Nextflow keeps in the sample's launch directory, which -resume reads.
 mkdir -p "${G}/sample1/nextflow/.nextflow/cache/5e55-10n/db"
+nf_log "$WD"
 with_free 150 600 run_expect 0 resume-elsewhere env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
 output_has resume-elsewhere "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists: a resume"
 output_lacks resume-elsewhere '\[FAIL\].*Free disk space'
 output_has resume-elsewhere "\[OK\].*Free disk space for Nextflow's work directory ${WD}: 600 GB in /work-disk"
+# A full disk (0 free) fails on a resume too: it cannot write what the unfinished tasks need.
+with_free 0 600 run_expect 1 resume-genome-full env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
+output_has resume-genome-full '\[FAIL\].*Free disk space: 0 GB, under the 200 GB minimum \(500 GB'
+with_free 600 0 run_expect 1 resume-work-full env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
+output_has resume-work-full "\[FAIL\].*Free disk space for Nextflow's work directory ${WD}: 0 GB, under the 200 GB minimum"
+# A sample that ran before in its own work directory, now run with a shared -w
+# directory, reuses nothing from it: its last log names the other directory, so
+# this is a fresh run. An older, rotated log (.nextflow.log.1) that names the
+# shared directory does not count: -resume continues the last session.
+nf_log "$SHARED" .nextflow.log.1
+with_free 150 150 run_expect 1 stale-shared env NXF_WORK="$SHARED" "${SCRIPTS}/validate-setup.sh" sample1
+output_has stale-shared '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
+output_has stale-shared "\[FAIL\].*Free disk space for Nextflow's work directory ${SHARED}: 150 GB, under the 200 GB minimum"
+output_lacks stale-shared 'a resume'
+rm -f "${G}/sample1/nextflow/.nextflow.log.1"
+# Without the log nothing names the session's work directory: no resume.
+rm -f "${G}/sample1/nextflow/.nextflow.log"
+with_free 150 600 run_expect 1 no-log env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
+output_has no-log '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
+nf_log "$WD"
+# The same directory reached through a link is the same work directory: Nextflow
+# logs an absolute -w as given and a relative one from the physical launch directory.
+ln -s "$WDISK" "${CASE_WORK}/wlink"
+with_free 150 600 run_expect 0 resume-via-link env NXF_WORK="${CASE_WORK}/wlink/owngenome/sample1" "${SCRIPTS}/validate-setup.sh" sample1
+output_has resume-via-link "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${CASE_WORK}/wlink/owngenome/sample1 exists: a resume"
 # Control: without NXF_WORK the same run is not a resume, so the old FAIL stands.
 with_free 150 600 run_expect 1 resume-unseen "${SCRIPTS}/validate-setup.sh" sample1
 output_has resume-unseen '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
@@ -87,6 +120,7 @@ with_free 0 600 run_expect 1 genome-full "${SCRIPTS}/validate-setup.sh" sample1
 output_has genome-full '\[FAIL\].*Free disk space: 0 GB, under the 200 GB minimum'
 # A relative NXF_WORK is under <sample>/nextflow, where run-all.sh starts Nextflow.
 mkdir -p "${G}/sample1/nextflow/rel/ab"
+nf_log "${G}/sample1/nextflow/rel"
 with_free 150 600 run_expect 0 relative env NXF_WORK=rel "${SCRIPTS}/validate-setup.sh" sample1
 output_has relative "but ${G}/sample1/nextflow/rel exists"
 
@@ -101,16 +135,19 @@ exec "${CASE_WORK}/hook-outputs" "$@"
 HOOK
 chmod +x "${CASE_WORK}/tools-hook"
 export FAKE_DOCKER_RUN_HOOK="${CASE_WORK}/tools-hook"
+nf_log "$WD"
 : > "$FAKE_DOCKER_LOG"
 with_free 150 600 run_expect 0 run-all-w "${SCRIPTS}/run-all.sh" sample1 male -w "$WD"
 output_has run-all-w "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists"
 output_lacks run-all-w 'setup validation failed'
 grep -qF -- "-w ${WD}" <(grep '^nextflow :: ' "$FAKE_DOCKER_LOG") || fail "nextflow did not get -w ${WD}"
 mkdir -p "${G}/sample1/nextflow/w2/ab"
+nf_log "${G}/sample1/nextflow/w2"
 : > "$FAKE_DOCKER_LOG"
 with_free 150 600 run_expect 0 run-all-w-relative "${SCRIPTS}/run-all.sh" sample1 male -work-dir w2
 output_has run-all-w-relative "but ${G}/sample1/nextflow/w2 exists"
 # NXF_WORK in run-all.sh's environment names the work directory as -w does.
+nf_log "$WD"
 : > "$FAKE_DOCKER_LOG"
 with_free 150 600 run_expect 0 run-all-env env NXF_WORK="$WD" "${SCRIPTS}/run-all.sh" sample1 male
 output_has run-all-env "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists"
