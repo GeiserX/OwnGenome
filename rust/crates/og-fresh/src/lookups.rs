@@ -329,9 +329,11 @@ pub fn pypgx(c: &Ctx<'_>) -> Lookup<Found> {
     }
     // Setup checks out PYPGX_BUNDLE_COMMIT, and the version names the tag:
     // the two pins must name the same commit, or step 32 reads another
-    // bundle than the version says.
-    let pinned = c.pins.need("PYPGX_BUNDLE_COMMIT")?;
-    if let Some((tag, sha)) = &bundle_commit
+    // bundle than the version says. og recheck reads the pins from a run
+    // manifest, and one written before the commit pin has no such row:
+    // then there is nothing to compare.
+    if let Some(pinned) = c.pins.get("PYPGX_BUNDLE_COMMIT")
+        && let Some((tag, sha)) = &bundle_commit
         && sha != pinned
     {
         return failed(format!(
@@ -1478,13 +1480,14 @@ mod tests {
             digests: |_| String::new(),
             asked: Mutex::new(vec![]),
         };
-        let run = |commit: &str| {
+        let run = |commit: Option<&str>| {
             let stub = Stub::new(vec![
                 ("pypgx-bundle/tags", tags()),
                 ("pypi.org/pypi/pypgx", pypi()),
             ]);
+            let row = commit.map_or(String::new(), |c| format!("PYPGX_BUNDLE_COMMIT=\"{c}\"\n"));
             let pins = Pins::parse(&format!(
-                "PYPGX_IMAGE=\"quay.io/biocontainers/pypgx:0.26.0--pyh7e72e81_0\"\nPYPGX_BUNDLE_VERSION=\"0.26.0\"\nPYPGX_BUNDLE_COMMIT=\"{commit}\"\n"
+                "PYPGX_IMAGE=\"quay.io/biocontainers/pypgx:0.26.0--pyh7e72e81_0\"\nPYPGX_BUNDLE_VERSION=\"0.26.0\"\n{row}"
             ));
             let c = Ctx {
                 fetch: &stub,
@@ -1497,13 +1500,16 @@ mod tests {
             };
             pypgx(&c).map(|_| ())
         };
-        let e = run("bbbb").unwrap_err().to_string();
+        let e = run(Some("bbbb")).unwrap_err().to_string();
         assert!(
             e.contains(
                 "PYPGX_BUNDLE_COMMIT bbbb is not the commit of pypgx-bundle tag 0.26.0 (aaaa)"
             ),
             "{e}"
         );
-        run("aaaa").expect("the tag's own commit passes");
+        run(Some("aaaa")).expect("the tag's own commit passes");
+        // og recheck reads the pins from a run manifest, and one written
+        // before the commit pin has no such row: nothing to compare.
+        run(None).expect("pins with no PYPGX_BUNDLE_COMMIT skip the check");
     }
 }
