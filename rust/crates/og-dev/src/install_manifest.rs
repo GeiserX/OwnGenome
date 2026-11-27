@@ -371,13 +371,16 @@ fn digest_file(path: &Path, meta: &fs::Metadata) -> Result<(String, String), Str
         read = n;
         digests.extend(d);
     }
+    // An index is parsed from the same open file, so a file put in its
+    // place meanwhile cannot lend it its digest; the check after it covers
+    // both reads.
+    if name.ends_with(b".tbi") || name.ends_with(b".csi") {
+        digests.push(("index", index_digest(path, &f)));
+    }
     if read != len || !same_file(meta, &f.metadata().map_err(&e)?) {
         return Err(changed());
     }
     drop_cache(&f);
-    if name.ends_with(b".tbi") || name.ends_with(b".csi") {
-        digests.push(("index", index_digest(path)));
-    }
     let col = if digests.is_empty() {
         "-".to_owned()
     } else {
@@ -792,8 +795,8 @@ fn numeric_digest(buf: &[u8]) -> Option<String> {
 
 /// The `index` digest of a .tbi or .csi: its header and names, or
 /// `invalid` when it does not fit the data file beside it.
-fn index_digest(path: &Path) -> String {
-    match read_index(path) {
+fn index_digest(path: &Path, f: &fs::File) -> String {
+    match read_index(path, f) {
         Ok(Some(d)) => d,
         _ => "invalid".into(),
     }
@@ -822,13 +825,15 @@ impl<'a> Cursor<'a> {
     }
 }
 
-fn read_index(path: &Path) -> std::io::Result<Option<String>> {
+/// The index digest of the open index file `f` at `path`, read from its
+/// start; the data file is `path` less `.tbi` or `.csi`.
+fn read_index(path: &Path, mut f: &fs::File) -> std::io::Result<Option<String>> {
     let s = path.as_os_str().as_bytes();
     let data = Path::new(std::ffi::OsStr::from_bytes(&s[..s.len() - 4]));
-    let f = fs::File::open(path)?;
     if f.metadata()?.len() > INDEX_MAX {
         return Ok(None);
     }
+    f.seek(SeekFrom::Start(0))?;
     let mut plain = Vec::new();
     MultiGzDecoder::new(BufReader::new(f))
         .take(INDEX_MAX + 1)
