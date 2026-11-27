@@ -137,7 +137,7 @@ line() { perl -e 'print "- ", "x" x ($ARGV[0] - 2), "\n"' "$1"; }
   printf '# Changelog\n\n## 3.1.1\n\n'; line 122999
   printf '\n## 3.1.2\n\n'; line 123000
   printf '\n## 3.1.3\n\n'; line 130000
-  # 70,000 two-byte characters: 140,000 bytes, but only 70,002 characters.
+  # 70,000 two-byte characters: 140,000 bytes, but only 70,003 characters.
   printf '\n## 3.1.4\n\n- '; perl -e 'print "\xc3\xa9" x 70000, "\n"'
 } > "${T}/CHANGELOG.md"
 g commit -qam "docs: entries around the size limit"
@@ -146,7 +146,7 @@ if [ "$rc" = 0 ] && [ "${#out}" = 122999 ]; then ok "notes of exactly 123,000 ch
 refused "notes of 123,001 characters fail" "are 123001 characters, over the limit of 123000" v3.1.2 HEAD
 refused "a 130,000-character entry fails and names its size and the limit" "the notes of v3.1.3 are 130001 characters, over the limit of 123000 (a GitHub Release body holds at most 125000" v3.1.3 HEAD
 run v3.1.4 HEAD
-if [ "$rc" = 0 ]; then ok "the limit counts characters, not bytes (70,002 characters in 140,003 bytes pass)"; else bad "a 140,003-byte entry of 70,002 characters (exit ${rc}): ${err}"; fi
+if [ "$rc" = 0 ]; then ok "the limit counts characters, not bytes (70,003 characters in 140,003 bytes pass)"; else bad "a 140,003-byte entry of 70,003 characters (exit ${rc}): ${err}"; fi
 
 # release.yml publishes what this script prints for the tag, as a release.
 WF="${REPO}/.github/workflows/release.yml"
@@ -172,8 +172,13 @@ if [ "$rc" = 0 ] && grep -qF "UPGRADING.md#upgrading-to-10)" <<< "$out"; then ok
 # Every closed entry of the real CHANGELOG.md at HEAD must give notes, short
 # enough to publish. The pull request that renames "## Unreleased" to
 # "## X.Y.Z" goes red here, in Guard, before anyone pushes the tag.
+# closed: the versions of the closed "## X.Y.Z" entries of a CHANGELOG.md on
+# stdin. A date after the version is optional: a bare "## 1.0.0" is closed too.
+closed() { sed -nE 's/^## ([0-9]+\.[0-9]+\.[0-9]+)( .*)?$/\1/p'; }
+got=$(printf '# Changelog\n\n## Unreleased\n\n## 3.2.1 (2026-12-01)\n\n## 3.2.0\n\n## 3.1.0x\n' | closed | paste -sd ' ' -)
+if [ "$got" = "3.2.1 3.2.0" ]; then ok "a closed entry counts with a date or bare (## 3.2.1 (2026-12-01), ## 3.2.0)"; else bad "closed entries found: '${got}', want '3.2.1 3.2.0'"; fi
 real=$(git -C "$REPO" show HEAD:CHANGELOG.md)
-versions=$(sed -nE 's/^## ([0-9]+\.[0-9]+\.[0-9]+)( .*)?$/\1/p' <<< "$real")
+versions=$(closed <<< "$real")
 if [ -z "$versions" ]; then ok "the real CHANGELOG.md has no closed release entry yet"; fi
 for v in $versions; do
   rc=0
