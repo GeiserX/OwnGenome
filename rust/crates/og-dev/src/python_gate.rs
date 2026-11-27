@@ -33,7 +33,8 @@
 //!   runs what comes on stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`,
 //!   `... < tool.txt`, `<<< '...'`), wherever the redirection stands and
 //!   whatever its target (a quoted path with a blank, a process
-//!   substitution `< <(cat x)`). A run inside quotes or a substitution
+//!   substitution `< <(cat x)`), unless an `--entrypoint` runs in place
+//!   of python3. A run inside quotes or a substitution
 //!   (`sh -c '...'`, `$(...)`) is read too, and a command continued with
 //!   `\`, in a Rust string too, or over the lines of a workflow's folded
 //!   block (`run: >-`) is read whole. A workflow step that `uses:` a
@@ -77,14 +78,18 @@
 //! a value, an empty expansion standing where the program would be
 //! (`docker run -i "$PYTHON_IMAGE" ${EXTRA:-} < x`, a `"$@"` with no
 //! arguments: the gate counts it as the program), and apptainer or
-//! singularity (`apptainer run docker://python:3.12 < x`). YAML other
+//! singularity (`apptainer run "docker://$PYTHON_IMAGE" < x`). YAML other
 //! than workflows and actions is data (a `.pre-commit-config.yaml` `entry:
 //! python3`, a compose `command:`), and so is a plain multi-line YAML
 //! scalar (a `run:` value with no `|` or `>` whose next line goes on with
 //! it), which is read line by line. JSON and TOML config that runs a
 //! command is data too: an agent hook (`.claude/settings.json`,
 //! `.codex/hooks.json`) or a cargo runner (`.cargo/config.toml` `runner =
-//! "python3 ..."`).
+//! "python3 ..."`). A JavaScript regex literal that holds `/*` (`/[/*]/`)
+//! opens a block comment for the gate and hides the code after it. In a
+//! raw Rust string a `\n` ends a line, as `printf` makes it for a stub it
+//! writes, so a quoted argument holding a literal `\n` splits its command
+//! in two.
 //!
 //! `tests/python-allow.tsv` names, one row per file, the files whose
 //! findings are not owned Python: a third-party tool run inside its own
@@ -250,31 +255,43 @@ fn command_column(text: &str) -> Option<usize> {
     None
 }
 
-/// For each line of a workflow: does YAML join it with the next one? In a
-/// folded block scalar (`run: >`, `>-`, `>+`) each line is joined with a
-/// blank to the next line of the block, unless one of the two is blank.
-/// The block holds the lines indented at least as deep as its first line,
-/// which is deeper than the key's. A literal block (`run: |`) keeps its
-/// lines, so it needs nothing here.
-fn folded_lines(text: &str) -> Vec<bool> {
+/// What YAML makes of a workflow's block scalars, line by line. `folded`:
+/// does YAML join this line with the next one? In a folded block (`run: >`,
+/// `>-`, `>+`) a line is joined with a blank to the next line when both
+/// stand at the block's own indent; a blank line, or a line indented
+/// deeper, keeps its line break. `label`: is this line the body of a
+/// `name:` or `description:` block, which is text, not a command? A block
+/// holds the lines indented at least as deep as its first line, which is
+/// deeper than the key's. A literal block (`run: |`) keeps its lines.
+struct YamlBlocks {
+    folded: Vec<bool>,
+    label: Vec<bool>,
+}
+
+fn yaml_blocks(text: &str) -> YamlBlocks {
     let lines: Vec<&str> = text.lines().collect();
-    let mut out = vec![false; lines.len()];
+    let mut out = YamlBlocks {
+        folded: vec![false; lines.len()],
+        label: vec![false; lines.len()],
+    };
     let lead = |l: &str| l.len() - l.trim_start_matches(' ').len();
-    let folded_head = |l: &str| {
+    // The block indicator a key line ends with: `>` or `|`, with any
+    // chomping and indent indicators (`>-`, `|+`, `>2`).
+    let head = |l: &str| {
         let code = l.split(" #").next().unwrap_or(l).trim_end();
-        code.rsplit_once(": ").is_some_and(|(_, v)| {
-            v.strip_prefix('>').is_some_and(|r| {
-                r.chars()
-                    .all(|c| matches!(c, '-' | '+') || c.is_ascii_digit())
-            })
+        code.rsplit_once(": ").and_then(|(_, v)| {
+            let mut c = v.chars();
+            let kind = c.next().filter(|k| matches!(k, '>' | '|'))?;
+            c.all(|c| matches!(c, '-' | '+') || c.is_ascii_digit())
+                .then_some(kind)
         })
     };
     let mut i = 0;
     while i < lines.len() {
-        if !folded_head(lines[i]) {
+        let Some(kind) = head(lines[i]) else {
             i += 1;
             continue;
-        }
+        };
         let key = lead(lines[i]);
         let mut j = i + 1;
         let mut indent = None;
@@ -290,8 +307,16 @@ fn folded_lines(text: &str) -> Vec<bool> {
             }
             j += 1;
         }
-        for k in i + 1..j.saturating_sub(1) {
-            out[k] = !lines[k].trim().is_empty() && !lines[k + 1].trim().is_empty();
+        let at = indent.unwrap_or(0);
+        let label = yaml_label(lines[i]);
+        for k in i + 1..j {
+            out.label[k] = label;
+            out.folded[k] = kind == '>'
+                && k + 1 < j
+                && !lines[k].trim().is_empty()
+                && !lines[k + 1].trim().is_empty()
+                && lead(lines[k]) == at
+                && lead(lines[k + 1]) == at;
         }
         i = j;
     }
@@ -592,7 +617,8 @@ fn heredoc_delims(code: &str) -> Vec<(String, bool)> {
                 {
                     i += 1;
                 }
-                let mut word = String::new();
+                // Bytes, so a UTF-8 delimiter (`FINÉ`) stays whole.
+                let mut word: Vec<u8> = Vec::new();
                 let mut q = 0u8;
                 while i < b.len() {
                     let c = b[i];
@@ -600,24 +626,24 @@ fn heredoc_delims(code: &str) -> Vec<(String, bool)> {
                         if c == q {
                             q = 0;
                         } else {
-                            word.push(c as char);
+                            word.push(c);
                         }
                     } else if c == b'\'' || c == b'"' {
                         q = c;
                     } else if c == b'\\' {
                         if let Some(&n) = b.get(i + 1) {
-                            word.push(n as char);
+                            word.push(n);
                         }
                         i += 1;
                     } else if c.is_ascii_whitespace() || b";|&<>()".contains(&c) {
                         break;
                     } else {
-                        word.push(c as char);
+                        word.push(c);
                     }
                     i += 1;
                 }
                 if !word.is_empty() {
-                    out.push((word, dash));
+                    out.push((String::from_utf8_lossy(&word).into_owned(), dash));
                 }
                 continue;
             }
@@ -962,13 +988,27 @@ fn runs_python_image_default(toks: &[String]) -> bool {
             from = Some(i + 1);
         }
         let Some(mut j) = from else { continue };
+        // An `--entrypoint` runs in place of the image's python3; an empty
+        // one (`--entrypoint ''`) leaves python3 to run. A python program
+        // as the entrypoint is a program word, counted already.
+        let mut entrypoint = false;
         while j < toks.len() && !control(&toks[j]) {
             if redirect(&toks[j]) {
                 j += 2;
                 continue;
             }
+            if toks[j] == "--entrypoint" {
+                entrypoint = toks.get(j + 1).is_some_and(|v| !v.is_empty());
+                j += 2;
+                continue;
+            }
+            if let Some(v) = toks[j].strip_prefix("--entrypoint=") {
+                entrypoint = !v.is_empty();
+                j += 1;
+                continue;
+            }
             if python_image_ref(&toks[j]) {
-                if python_words(&toks[j]) > 0 {
+                if entrypoint || python_words(&toks[j]) > 0 {
                     break;
                 }
                 // The program: the first word after the image that is no
@@ -1004,7 +1044,7 @@ impl Continued {
         let whole = if self.0.is_empty() {
             code.to_owned()
         } else {
-            format!("{} {code}", self.0)
+            format!("{}{code}", self.0)
         };
         match whole.trim_end().strip_suffix('\\') {
             Some(head) => {
@@ -1099,18 +1139,18 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             let mut bodies: std::collections::VecDeque<(String, bool)> =
                 std::collections::VecDeque::new();
             let mut command = Continued::default();
-            // A workflow's folded block scalar is one command over its lines.
-            let folded = if l == Lang::Workflow {
-                folded_lines(text)
-            } else {
-                Vec::new()
+            // A workflow's folded block scalar is one command over its lines,
+            // and the body of a `name:` block is a label.
+            let blocks = (l == Lang::Workflow).then(|| yaml_blocks(text));
+            let in_block = |v: fn(&YamlBlocks) -> &Vec<bool>, i: usize| {
+                blocks.as_ref().is_some_and(|b| v(b).get(i) == Some(&true))
             };
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
                     continue;
                 }
-                if l == Lang::Workflow && yaml_label(line) {
+                if l == Lang::Workflow && (yaml_label(line) || in_block(|b| &b.label, i)) {
                     continue;
                 }
                 let mut field = match column {
@@ -1164,7 +1204,7 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 };
                 // A heredoc line holds at least the heredoc; a second command
                 // beside it is a second use.
-                let default_python = if folded.get(i) == Some(&true) {
+                let default_python = if in_block(|b| &b.folded, i) {
                     command.ends_python_image_run(&format!("{code} \\"))
                 } else {
                     command.ends_python_image_run(code)
@@ -2810,6 +2850,39 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
         // A literal block keeps its lines; a `\` continues a command there.
         let wf = "      - run: |-\n          docker run -i --rm \\\n            \"$@V\" < tool.txt\n          echo ok\n";
         assert_eq!(k(".github/workflows/x.yml", wf), [(3, "call")]);
+    }
+
+    #[test]
+    fn yaml_indents_entrypoints_utf8_delimiters_and_split_words() {
+        // A deeper line in a folded block keeps its line break: `echo` is a
+        // command of its own, not the image's program.
+        let wf =
+            "      - run: >-\n          docker run -i \"$@V\" < tool.txt\n            echo done\n";
+        assert_eq!(k(".github/workflows/x.yml", wf), [(2, "call")]);
+        // The body of a `name:` block is a label.
+        let wf = "      - name: >-\n          Checks without @p3\n        run: og x\n";
+        assert!(k(".github/workflows/x.yml", wf).is_empty());
+        // An explicit entrypoint runs in place of the image's python3; an
+        // empty one does not.
+        assert!(k("s.sh", "docker run --entrypoint /bin/true \"$@V\"\n").is_empty());
+        assert!(k("s.sh", "docker run --entrypoint=/bin/sh -i \"$@V\" < x\n").is_empty());
+        assert_eq!(
+            k("s.sh", "docker run -i --entrypoint '' \"$@V\" < x\n"),
+            [(1, "call")]
+        );
+        // A UTF-8 heredoc delimiter closes its body.
+        assert_eq!(
+            k(
+                "s.sh",
+                "cat <<'FINÉ'\ntext\nFINÉ\nprintf '%s' 'first\n# second'; @p3 -V\n"
+            ),
+            [(5, "call")]
+        );
+        // A `\` and line break inside a word join it with no blank.
+        assert_eq!(
+            k("s.sh", "docker ru\\\nn -i \"$@V\" < tool.txt\n"),
+            [(2, "call")]
+        );
     }
 
     #[cfg(unix)]
