@@ -35,7 +35,8 @@ For an existing setup, install or retry all three with:
 ```
 
 The bundle goes to `pcgr_data/20260620/data/`; the caches coexist under `vep_cache/homo_sapiens/`.
-Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction, then removes each archive.
+Setup checks Ensembl's cache checksums and the bundle's pinned SHA-256 before extraction.
+The archives stay in the downloads folder, so a rerun downloads nothing again. `--no-keep-downloads` deletes each one once it is installed.
 It checks free space for each install and continues with a warning if one fails or does not fit.
 `--no-clinical-data` skips all three. Without either CPSR item, `run-all.sh` skips step 17.
 See [reference setup](00-reference-setup.md) for disk peaks.

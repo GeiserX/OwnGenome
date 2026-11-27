@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 # check-release.sh: the checks a release must pass before it is published.
 #
-#   check-release.sh tag TAG [--notes-out FILE]
+#   check-release.sh tag TAG
 #       TAG (vMAJOR.MINOR.PATCH) must equal "v" + the manifest version that
 #       nextflow.config declares at TAG, so `nextflow run -r TAG` reports the
-#       version the release is named after. A major or minor release
-#       (PATCH = 0) must carry its hand-written notes, docs/releases/TAG.md,
-#       at TAG. With --notes-out the release body is written to FILE: the
-#       notes file when TAG has one, else (a patch release only) the commit
-#       subjects since the previous tag. Notes that still carry the draft
-#       notice (a line starting "> **Not released yet.**") are refused.
+#       version the release is named after. The release notes are the tag's
+#       CHANGELOG.md entry; scripts/ci/release-notes.sh checks and writes them.
 #
 #   check-release.sh checks RUNS.TSV [--ignore NAME]...
 #       RUNS.TSV is the tagged commit's check runs, one per line:
@@ -19,13 +15,9 @@
 #       must be among them. NAME (the release job itself) is left out.
 #
 #   check-release.sh declared
-#       The working tree: the version nextflow.config declares, and every
-#       docs/releases/*.md. Each notes file is named vX.Y.Z.md, opens with
-#       "# OwnGenome X.Y.Z", is linked from CHANGELOG.md, and a declared
-#       major or minor version has one, without the draft notice. Notes for
-#       a version not declared yet may carry it. Guard runs this through
-#       tests/test_release.sh, so a bump to X.Y.0 cannot merge without its
-#       notes.
+#       The working tree: nextflow.config declares exactly one manifest
+#       version, of the form MAJOR.MINOR.PATCH. Guard runs this through
+#       tests/test_release.sh.
 #
 #   check-release.sh dist DIR
 #       DIR is what a release uploads: the four og binaries,
@@ -47,8 +39,6 @@ shift || true
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 semver='^v([0-9]+)\.([0-9]+)\.([0-9]+)$'
-# The notice a notes file carries while its release is still being written.
-draft='^> \*\*Not released yet\.\*\*'
 
 # manifest_version: the version = '...' line inside the manifest { } block of
 # nextflow.config on stdin. Exactly one, or an error.
@@ -66,53 +56,16 @@ manifest_version() {
   printf '%s\n' "$v"
 }
 
-# check_notes NAME TEXT: NAME is vX.Y.Z.md; TEXT is its content.
-check_notes() {
-  local name=$1 text=$2 tag v
-  tag=${name%.md}
-  [[ "$name" == *.md && "$tag" =~ $semver ]] || die "docs/releases/${name}: a notes file is named vMAJOR.MINOR.PATCH.md"
-  v=${tag#v}
-  [ "$(printf '%s\n' "$text" | sed -n '/[^[:space:]]/{p;q;}')" = "# OwnGenome ${v}" ] \
-    || die "docs/releases/${name}: the first line must be '# OwnGenome ${v}'"
-  [ "$(printf '%s\n' "$text" | grep -c '[^[:space:]]')" -ge 2 ] \
-    || die "docs/releases/${name}: holds no notes, only a heading"
-}
-
 case "$MODE" in
   tag)
-    TAG=${1:?Usage: $0 tag TAG [--notes-out FILE]}
-    shift
-    OUT=""
-    if [ "${1:-}" = --notes-out ]; then OUT=${2:?--notes-out needs a file}; fi
+    TAG=${1:?Usage: $0 tag TAG}
+    [ $# -eq 1 ] || die "tag takes one argument, TAG; the release notes come from scripts/ci/release-notes.sh"
     [[ "$TAG" =~ $semver ]] || die "the tag is not of the form vMAJOR.MINOR.PATCH"
-    patch=${BASH_REMATCH[3]}
     git -C "$ROOT" rev-parse -q --verify "refs/tags/${TAG}" >/dev/null || die "tag ${TAG} does not exist in this repository"
     declared=$(git -C "$ROOT" show "${TAG}:nextflow.config" | manifest_version)
     [ "v${declared}" = "$TAG" ] \
       || die "tag ${TAG} does not match the version nextflow.config declares at that commit (${declared}): bump manifest.version in a pull request, then tag the merged commit"
-    notes="docs/releases/${TAG}.md"
-    if text=$(git -C "$ROOT" show "${TAG}:${notes}" 2>/dev/null); then
-      check_notes "${TAG}.md" "$text"
-      ! grep -q "$draft" <<< "$text" || die "${notes} still carries the 'Not released yet' notice: remove it in the pull request that bumps the version"
-      [ -z "$OUT" ] || printf '%s\n' "$text" > "$OUT"
-      echo "OK: ${TAG} matches manifest.version, notes from ${notes}"
-    elif [ "$patch" = 0 ]; then
-      die "${TAG} is a major or minor release and has no ${notes} at that commit: write its notes first"
-    else
-      if [ -n "$OUT" ]; then
-        prev=$(git -C "$ROOT" tag --sort=-version:refname | grep -E "$semver" | grep -vx "$TAG" \
-          | while read -r t; do git -C "$ROOT" merge-base --is-ancestor "$t" "$TAG" 2>/dev/null && { echo "$t"; break; }; done || true)
-        {
-          echo "## What's Changed"
-          echo ""
-          git -C "$ROOT" log "${prev:+${prev}..}${TAG}" --pretty=format:"- %s" --no-merges
-          echo ""
-          echo ""
-          echo "All image versions are listed in versions.env at this tag."
-        } > "$OUT"
-      fi
-      echo "OK: ${TAG} matches manifest.version, a patch release: notes from the commit subjects"
-    fi
+    echo "OK: ${TAG} matches manifest.version"
     ;;
   checks)
     RUNS=${1:?Usage: $0 checks RUNS.TSV [--ignore NAME]...}
@@ -148,24 +101,7 @@ case "$MODE" in
   declared)
     declared=$(manifest_version < "${ROOT}/nextflow.config")
     [[ "v${declared}" =~ $semver ]] || die "nextflow.config declares version '${declared}', which is not MAJOR.MINOR.PATCH"
-    patch=${BASH_REMATCH[3]}
-    changelog=""
-    [ ! -f "${ROOT}/CHANGELOG.md" ] || changelog=$(cat "${ROOT}/CHANGELOG.md")
-    shopt -s nullglob
-    count=0
-    for f in "${ROOT}"/docs/releases/*; do
-      name=$(basename "$f")
-      check_notes "$name" "$(cat "$f")"
-      grep -qF "docs/releases/${name}" <<< "$changelog" || die "CHANGELOG.md does not link docs/releases/${name}"
-      count=$((count + 1))
-    done
-    if [ "$patch" = 0 ] && [ ! -f "${ROOT}/docs/releases/v${declared}.md" ]; then
-      die "nextflow.config declares ${declared}, a major or minor release, and docs/releases/v${declared}.md does not exist: write its notes in the same pull request"
-    fi
-    if [ -f "${ROOT}/docs/releases/v${declared}.md" ] && grep -q "$draft" "${ROOT}/docs/releases/v${declared}.md"; then
-      die "nextflow.config declares ${declared} and docs/releases/v${declared}.md still carries the 'Not released yet' notice: remove it in the same pull request"
-    fi
-    echo "OK: declared version ${declared}, ${count} notes file(s) well formed"
+    echo "OK: declared version ${declared}"
     ;;
   dist)
     DIST=${1:?Usage: $0 dist DIR}
@@ -188,6 +124,6 @@ case "$MODE" in
     echo "OK: the og binaries and THIRD-PARTY-LICENSES.txt match SHA256SUMS, and the notices of the Rust standard library, musl, htslib and htscodecs are in it"
     ;;
   *)
-    die "usage: $0 [--repo DIR] {tag TAG [--notes-out FILE] | checks RUNS.TSV [--ignore NAME]... | declared | dist DIR}"
+    die "usage: $0 [--repo DIR] {tag TAG | checks RUNS.TSV [--ignore NAME]... | declared | dist DIR}"
     ;;
 esac

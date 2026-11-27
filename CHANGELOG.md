@@ -1,8 +1,141 @@
 # Changelog
 
-Each release's changes, one `## X.Y.Z` entry per release (a date may follow the version). The release workflow publishes a tag's entry as its GitHub Release. A major release's notes open with a link to its section of [UPGRADING.md](UPGRADING.md), which has the steps to upgrade. Releases before 1.0.0 list their commits on GitHub.
+Each release's changes, one `## X.Y.Z` entry per release (a date may follow the version). The release workflow publishes a tag's entry as its GitHub Release. A major release's notes open with a link to its section of [UPGRADING.md](UPGRADING.md), which has the steps to upgrade. Releases before 1.0.0 list their commits on GitHub. Inside an entry, headings start at `###`, because a `## ` line ends the entry.
 
 ## Unreleased
+
+### Summary
+
+OwnGenome 1.0.0 is the first stable release. It is one Nextflow pipeline that takes your FASTQ, BAM or VCF and runs every step on your own machine. This summary groups the changes since 0.8.2 by what you get. [Every change](#every-change) lists each one.
+
+#### One pipeline from raw reads
+
+- The Nextflow pipeline starts from FASTQ: fastp, minimap2 alignment with duplicate marking and the BAM index in one pass, and DeepVariant writing a VCF and a gVCF. Before, Nextflow started from a VCF and the alignment existed only as bash.
+- The gVCF means PRS and PharmCAT see the sites where you match the reference, instead of treating them as missing.
+- The alignment fails when the BAM lost input reads, instead of passing a BAM with a third missing.
+- A VCF from a vendor is checked before any step runs: a GRCh37 file, a multi-sample file and a file without contig lengths are refused with the reason.
+- `run-all.sh` resumes, keeps per-step logs, starts from the BAM and VCF an earlier run produced, and runs the sample identity and contamination checks in a default run.
+- Polygenic score files are prepared at launch, beside alignment and variant calling, instead of after them, so a run from FASTQ or a BAM ends minutes sooner.
+- `bin/og recheck` says which results a newer ClinVar or catalog would change, and `--rerun` reruns only those.
+
+#### Watching a run
+
+- A live site shows a run as it happens, from any device, behind a password built into the server. The invented demo sample lets anyone try it.
+- Each genome reads as a report there, not a grid of step boxes: a lead paragraph, findings ranked by what to do about them (take to a doctor, tell your prescriber, worth a look, for family planning, data quality, for information), a page per finding, and a family report. Charts show scores, copy number, the Y line and the family.
+- On a phone the report keeps what matters open and folds the rest one tap away.
+- On a child's page, a result to act on stays closed until someone opens it on purpose.
+- A run that stopped writing reads "Stopped", not "Being written", and the launch can print the run's page address.
+- The run says which steps are planned, running and done, how long each step usually takes on this machine, and how many hours are left, as a range.
+- It warns before a task runs out of memory or a disk fills, and before a run stalls, on Linux, macOS and WSL2.
+
+#### The report
+
+- The HTML report reads in seven chapters with a table of contents. One section prints on its own, with its caveats.
+- A confidence mark on each finding, and charts that keep low-star and low-confidence data visible.
+- One search box finds any gene, rsID or variant across every result, including repeat expansions, Locityper loci and the CFTR and UGT1A1 readings.
+- The report says what changed since the previous run of the same sample, and the run manifest records which databases and images produced it.
+- The report says which genes this genome could not read reliably, instead of showing them as normal, and says plainly what short reads cannot see.
+- Any finding opens in a local genome viewer with your reads, from the report or the live site. Nothing is uploaded.
+- A gene hit twice across engines is flagged, for example a deletion plus a variant on the other copy.
+- The Nextflow report gets every table the bash report reads: ClinVar frequencies and rsIDs, CPSR classes, read counts and the clinical and slivar detail.
+- Each run writes `facts/<sample>_genome_facts.json`, the short list of findings that [OwnHealth](https://github.com/GeiserX/OwnHealth) imports to show your genome next to the rest of your health record. See [Bring Your Results into OwnHealth](https://geiserx.github.io/OwnGenome/ownhealth/).
+
+#### Clinical findings
+
+- ClinVar hits need a depth and genotype-quality floor and a population frequency. Lab-construct contamination (cDNA reads clipped at exon edges) is flagged, and known deep intronic sites are always reported.
+- A delins the caller split into adjacent records matches the combined ClinVar record.
+- Heterozygous MUTYH or HFE carriers no longer show as secondary findings; deletions in secondary-finding genes do.
+- Exomiser ranks the variants that could explain a list of HPO terms.
+- The clinical filter ranks HIGH impacts on the MANE transcript and gives indels of unknown frequency their own tier.
+- Compound heterozygous pairs are phased from the reads: cis, trans or unknown.
+
+#### Structural variants and copy number
+
+- A real SV merge replaces position binning. AnnotSV class 4 and 5 variants reach the reports with caller support, exon overlap and population frequency, and AnnotSV keeps genotype and phase so two deletions pair in trans.
+- Common repeat, immune-locus and MHC SVs, single-junction Manta breakends and long Delly calls that read depth contradicts no longer show as likely pathogenic.
+- A filtered or 0/0 Manta record no longer hides a deletion another caller found, and chrX depth is read by sex and PAR.
+- Copy number at any locus comes from one catalog row: HP, LCE3, CCL3L1, CYP21A2 deletions and gene conversions, and recurrent deletions such as 1q21.1 and AZF from a pinned ClinGen list. These results reach both reports and the couple screen.
+- Paraphase and Parascopy call alpha-globin, CYP21A2, GBA, PMS2, STRC, NCF1, OTOA and SMN1 copy number, and the report lists every paralog gene in the catalogs. The SMN1 silent-carrier marker prints beside the SMN copy number.
+- A CYP21A2 deletion is no longer called when the BAM dropped its multi-mapping reads.
+- GRCh38's false duplications are masked, so genes such as U2AF1 can be read.
+- Mobile element insertions (Alu, L1, SVA), including the few known to cause disease.
+- Large mosaic gains, losses and copy-neutral LOH in blood, mosaic loss of chromosome Y or X, and large mtDNA deletions with the mtDNA copy count.
+
+#### Repeats
+
+- 82 STRchive disease repeats are screened instead of the 31 ExpansionHunter bundles, with matching thresholds. Each locus shows its intermediate range and sizing confidence; RFC1 is resolved with a read-level motif count.
+- The CFTR 5T/TG tract and the UGT1A1 TA repeat are read directly from the reads.
+- The MUC1 repeat behind ADTKD is checked, which no standard caller sees.
+- Locityper genotypes the hardest polymorphic genes as an opt-in step.
+
+#### Pharmacogenomics
+
+- pypgx calls deletions and hybrids for all 13 of its SV genes, shows copy-number calls with their confidence, and says when a gene cannot be called on this reference.
+- Drug guidance for CYP2D6 comes only when two callers agree. HLA-A and HLA-B come from T1K; with `HLA_QC=true`, OptiType (opt-in, experimental) must agree too. When T1K ties candidates or calls a null allele in a way that leaves B\*57:01, B\*58:01, B\*15:02 or A\*31:01 open, the gene is held back as ambiguous instead of passing whichever candidate T1K printed first.
+- An optional medication list reports CYP2D6 and CYP2C19 phenoconversion, and the report warns when a medicine changes a call or is contraindicated (for example valproate with POLG).
+- MT-RNR1 is called from the mtDNA variants. Indel-defined alleles are called reference when the gVCF holds a confident reference block over them.
+- HLA drug alleles and the DQ2.5, DQ2.2 and DQ8 types are derived from the T1K alleles.
+
+#### Polygenic scores
+
+- Scores report an ancestry-adjusted percentile when the ancestry panel is installed, the ancestry each score was built on and how well it predicts.
+- Sex-specific scores are scored only for the matching sex, and chrX rows survive. Blood pressure and lipid scores are added.
+
+#### Traits, blood groups and ancestry
+
+- A traits section: lactase persistence, caffeine, alcohol flush, taste, earwax, APOE and other replicated variants, each with its citation.
+- Multi-SNP results (APOE, APOL1, SERPINA1, HFE and others) come from one rule table checked against dbSNP, so a strand mistake fails CI. More risk-allele and marker rows are in the table.
+- Blood group antigens across ABO, Rh, Kell, Duffy, Kidd and the other systems, plus the platelet and neutrophil antigens that matter for transfusion and pregnancy.
+- Lp(a) from the two risk variants and the KIV-2 repeat count, with the KIV-2 null allele beside the count.
+- CHIP: clonal blood-cell mutations, with the detection limit at your depth.
+- Inherited integrated HHV-6 and viral DNA from the reads that do not map to the human genome.
+- Admixture fractions with a bootstrap range and a chromosome painting against an open regional panel. OwnGenome computes both with its own code (`og ancestry-fine project` and `og ancestry-fine paint`), so step 26b runs no tool licensed for academic use only.
+- Placement among ancient populations, and your Neanderthal and Denisovan share. The Neanderthal figure is an upper-end estimate, measured against the published method on the same person: compare it between people run through OwnGenome, not with a published total.
+- The Y line is placed on YFull's current tree, with the SNPs past the deepest known branch. Y-STR repeat counts, mtDNA and Y explore links, and the files those services accept.
+- Runs of homozygosity flag a chromosome that may come from one parent, and sex-chromosome aneuploidies are named.
+- A 23andMe-layout raw-data file from the gVCF, for third-party tools.
+- `scripts/owngenome-lookup.sh` (`og lookup query`) answers "what is my genotype at rsX or in gene Y" without opening a VCF.
+
+#### Families and couples
+
+- One family file says who is related to whom. The pipeline joint-calls the family, checks the declared relationships, phases a child by inheritance and maps which stretches each child got from each parent, ready for DNA Painter.
+- Shared DNA segments between two sequenced relatives, on the report and the live site.
+- An optional couple screen reports shared recessive and X-linked risk. Common population deletions, short Delly calls and megabase artefacts no longer count as carrier risk.
+- A daughter's chrX site that differs from her mother is not called de novo when her father carries the allele.
+- Chip data: mitochondrial sites lift over correctly, a 23andMe-layout file OwnGenome exported reads back with its chrM positions unchanged, and MyHeritage files with Windows line endings convert.
+
+#### Setup and reliability
+
+- `setup.sh` copies the chromosome bands from the repository instead of downloading them, and `validate-setup.sh` fails a copy that differs. It installs the VEP cache up front, retries a download whose checksum or gzip check fails, and keeps digest-pinned images through a cleanup.
+- Steps stop trusting half-written files, and a failed upstream command fails its task instead of leaving a short file that looks valid.
+- Memory budgets match a real genome for GLnexus, MEI and the PRS steps, and DeepVariant gets its full run time.
+- Every image version is one line in `versions.env`. Renovate proposes each update as its own pull request, and CI runs every changed image on a small real-data fixture.
+
+#### The Rust core
+
+- OwnGenome's own tools start moving from Python to Rust, into one static binary, `og`, for x86_64 and aarch64. `./scripts/setup.sh <genome_dir>` builds it from a checkout, and `--og` builds only it; on a release tag setup downloads the release's binaries and checks them against `SHA256SUMS` and the build attestation.
+- Steps 04, 05 and 07 run four VCF filters through `og`: `og sv inv-filter`, `og sv svlen-fix`, `og pgx refblock-fill` and `og pgx mito-merge`, in the bash scripts and the Nextflow modules. The Python filters are gone. The output is the same, byte for byte, except for these fixes:
+  - Step 05 no longer keeps an old `SVLEN` or `END` beside the new one when a record's INFO held the key twice.
+  - Step 07 no longer gives PharmCAT a gVCF record and a 0/0 record at the same multi-base position. Two positions that start at the same base each get their own coverage count, and a 0/0 record is no longer glued onto a last line without a newline.
+  - Step 07 no longer crashes on `--min-depth 0` with an MT-RNR1 position missing from the depth file.
+  - Malformed input to any of the four filters (too few columns, a `POS` that is not a whole number) stops with exit 2 and names the file and line, instead of a Python traceback.
+- A run refuses an `og` built from other code than the checkout, and `run_manifest.tsv` records which Rust code was present.
+- The shared base for the ports that follow: number formatting and CSV and text output exactly as Python writes them, BGZF read and written on many cores, VCF records parsed in place without copying, region lookups through a `.tbi`, `.csi` or `.fai` index, and interval sets.
+- The CYP2D6 depth check and the RFC1 motif count have Rust ports (`og pgx cyp2d6-*`, `og str motif`) that read BAMs without pysam and write what the Python writes. Steps 21, 32 and 9b run them, in the bash scripts and the Nextflow modules; `bin/cyp2d6_depth_check.py` and `bin/rfc1_motif.py` are gone.
+- `og map build` writes the first layers of a per-person genome map document: chromosome bands, runs of homozygosity and every finding placed on the genome, with a child's closed results kept closed there too. `og map genes` names every gene and its exons, offline, from the GENCODE files setup installs. The live site serves the map and gene files behind its login; its page does not draw the map yet.
+- `setup.sh --masked-reference` masks the reference with `og` in one pass. It refuses a FASTA with old Mac line endings instead of passing it through unmasked, and counts overlapping rows once.
+
+#### Testing
+
+- The e2e suite runs the real tools on an HG002 slice, in parallel jobs, scoped to what a pull request can affect. A case that checks nothing fails.
+- A misspelt Nextflow parameter is caught instead of silently ignored.
+- A release tag must match the version the pipeline declares, and a commit main's CI did not pass cannot be released.
+
+Full commit list: https://github.com/GeiserX/OwnGenome/compare/v0.8.2...v1.0.0
+
+Get started: https://geiserx.github.io/OwnGenome/getting-started/
+
+### Every change
 
 - A Locityper killed for memory (step 53) is now retried with twice the memory. The `LOCITYPER` task caught Locityper's exit code and wrote it into the table, so the task ended green and Nextflow never retried it: every locus read "not called". Now a kill (exit 137 or 143) on the first attempt ends the task with that code, and the retry writes the table, as before. `scripts/53-locityper.sh` has no retry engine, so it keeps writing the exit code into the table; its container already gets 16 GB. `tests/e2e/t3-run-fixes-1-memory-retry.sh` runs the module's real script with a stand-in Locityper that is killed once, every time, or never.
 - CPSR (step 17) now asks for 16 GB, in the pipeline and in `scripts/17-cpsr.sh`. On a whole genome it was killed under process_medium's 8 GB, so every run paid a first attempt that could not finish, and on a host whose `--max_memory` is 8 GB both attempts died. Our end test had already measured a peak of 12.3-15.6 GB. `--max_memory` still caps the task; the same e2e case checks both the 16 GB and the cap. No other step's whole-genome peak in `docs/hardware-requirements.md` is above its request.
@@ -582,10 +715,8 @@ Each release's changes, one `## X.Y.Z` entry per release (a date may follow the 
 
 - Setup and the step guides now point to the terms for AnnotSV, PCGR/CPSR, Exomiser, REVEL, the UCSC chain, Illumina ORA, and Paraphase. See [Licences for downloads](docs/licences.md).
 
-- Each tag's GitHub Release now carries its CHANGELOG.md entry. The release workflow writes the notes with `scripts/ci/release-notes.sh`, which refuses a tag with no entry and a major release with no `## Upgrading to X.0` section in UPGRADING.md. A major's notes open with a link to that section. `UPGRADING.md` is the one upgrade page: the steps for every upgrade, then one section per major release, newest first, starting with 1.0. The README and the docs site link it, and the upgrade notes of the live site, step 17 and the re-check moved there. `tests/test_release_notes.sh` checks the script.
+- Each tag's GitHub Release now carries its CHANGELOG.md entry. The release workflow writes the notes with `scripts/ci/release-notes.sh`, which refuses a tag with no entry and a major release with no `## Upgrading to X.0` section in UPGRADING.md. A major's notes open with a link to that section. `UPGRADING.md` is the one upgrade page: the steps for every upgrade, then one section per major release, newest first, starting with 1.0. The README and the docs site link it, and the upgrade notes of the live site, step 17 and the re-check moved there. The script refuses notes over 123,000 characters. A GitHub Release body holds at most 125,000, and the release job adds its og binaries paragraph after the notes. Guard runs the script on each closed entry of CHANGELOG.md, so an entry that is too long fails on its pull request, before the tag. `tests/test_release_notes.sh` checks the script. `docs/releases/` is gone: the release checks no longer ask for a notes page, and its summary of 1.0 opens this entry.
 
 ## Releases
-
-- 1.0.0 (not released yet): [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)
 
 - 0.2.0 to 0.8.2: https://github.com/GeiserX/OwnGenome/releases
