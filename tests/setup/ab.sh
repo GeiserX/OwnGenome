@@ -3,7 +3,8 @@
 # and with og (side B), and compare everything the two runs left: the
 # install trees file by file (og dev install-manifest), the exit codes, the
 # logs with times masked, the missing list, the images and pinned tags each
-# side added or removed, the Nextflow plugin folder and bin/.og.
+# side added or removed, the Nextflow plugin folder, bin/.og, and who owns
+# what each side wrote.
 #
 # Usage: tests/setup/ab.sh [--bash-vs-bash] COMPONENT [WORK_DIR]
 #
@@ -12,16 +13,16 @@
 #   side A: OG_SETUP=bash scripts/setup.sh --COMPONENT <install folder>
 #   side B: OG_SETUP=og og setup install --COMPONENT <install folder>
 # Side B calls og directly and never setup.sh, so it cannot fall back to
-# bash; when og has no `setup install`, ab.sh stops before side A.
-# --bash-vs-bash runs side A's command on both sides: it finds the bytes
-# that change from one run to the next (the allowlist's rows), and its
-# result says no og side ran.
+# bash; when og has no `setup install`, ab.sh stops before side A, so build
+# an og that has it first. --bash-vs-bash runs side A's command on both
+# sides: it finds the bytes that change from one run to the next (the
+# allowlist's rows), and its result says no og side ran.
 #
 # Both sides install into the same empty folder, WORK_DIR/install, moved to
 # WORK_DIR/a or WORK_DIR/b afterwards, so a path written into a file is the
 # same on both. WORK_DIR must not hold install, a or b; it defaults to a new
-# temporary folder and is kept, with each side's log, exit code and
-# manifests, and the compares.
+# temporary folder and is kept, with each side's log, exit code, manifests
+# (and their errors, NAME.manifest.err), and the compares.
 #
 # Environment (anything else exported, such as ARCHAIC_REGIONS, reaches
 # both sides):
@@ -29,8 +30,11 @@
 #                 for a component that needs another one (the reference):
 #                 hard links on Linux (a copy on another filesystem), APFS
 #                 clones on macOS, never symlinks, which a container cannot
-#                 follow out of GENOME_DIR. The seed must still be the same
+#                 follow out of GENOME_DIR. Everything in it must belong to
+#                 the user running ab.sh, and it must still be the same
 #                 afterwards.
+#   AB_EXPECT_EXIT  the exit code side A must end with (default 0), for a
+#                 component that is meant to stop short
 #   AB_ALLOW      the allowlist (default tests/setup/install-manifest-allow.tsv)
 #   OG            the og binary (default <repo>/bin/og)
 #   OG_DOWNLOADS  the downloads folder both sides share (default
@@ -39,11 +43,14 @@
 #   CONTAINER_ENGINE  docker (default) or podman
 # Each side gets its own empty NXF_HOME (WORK_DIR/a.nxf, b.nxf).
 #
-# Every run ends with a control: one bit of the smallest file compared byte
-# for byte is flipped in tree B, and the compare must go red and name it.
+# Tree A must hold at least one entry the seed did not, or the run proves
+# nothing. Every run ends with a control: one bit of the smallest file the
+# component wrote and the compare reads byte for byte is flipped in tree B,
+# and the compare must go red and name it.
 #
 # Exit 0 when every check is green, 1 when one is red, 2 when an argument is
-# wrong, side B has no og to run, or the control did not go red.
+# wrong, side B has no og to run, a manifest cannot be taken, tree A holds
+# nothing new, or the control did not go red.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -62,6 +69,12 @@ fi
 comp=$1
 case "$comp" in '' | -* | */* | *' '*) usage ;; esac
 if [ "$comp" = refresh-clinvar ]; then words=(--refresh clinvar); else words=("--${comp}"); fi
+expect=${AB_EXPECT_EXIT:-0}
+case "$expect" in '' | *[!0-9]*)
+  echo "ERROR: AB_EXPECT_EXIT=${expect} is not an exit code." >&2
+  exit 2
+  ;;
+esac
 if [ $# -eq 2 ]; then
   work=$2
   mkdir -p "$work"
@@ -78,12 +91,19 @@ done
 
 OG=${OG:-${ROOT}/bin/og}
 ENGINE=${CONTAINER_ENGINE:-docker}
+uid=$(id -u)
 allow=${AB_ALLOW:-${ROOT}/tests/setup/install-manifest-allow.tsv}
 export OG_DOWNLOADS=${OG_DOWNLOADS:-${work}/downloads}
 mkdir -p "$OG_DOWNLOADS"
 if [ -n "${AB_SEED:-}" ]; then
   [ -d "$AB_SEED" ] || { echo "ERROR: AB_SEED=${AB_SEED} is not a folder." >&2; exit 2; }
   AB_SEED=$(cd "$AB_SEED" && pwd)
+  # Seeded files keep their owner: one that is not ours would read as a
+  # file the component wrote as another user.
+  if [ -n "$(find "$AB_SEED" ! -user "$uid" | head -n 1)" ]; then
+    echo "ERROR: AB_SEED holds entries uid ${uid} does not own; run ab.sh as the seed's owner." >&2
+    exit 2
+  fi
 fi
 
 side_a=(env OG_SETUP=bash "${ROOT}/scripts/setup.sh" "${words[@]}")
@@ -101,6 +121,16 @@ else
 fi
 
 manifest() { "$OG" dev install-manifest "$@"; }
+
+# take NAME DIR: the manifest of DIR into WORK/NAME.tsv. Its messages go to
+# WORK/NAME.manifest.err, shown when it fails (an unreadable file, say).
+take() {
+  manifest "$2" >"${work}/$1.tsv" 2>"${work}/$1.manifest.err" || {
+    echo "ERROR: og dev install-manifest $2 failed (${work}/$1.manifest.err):" >&2
+    sed 's/^/       /' "${work}/$1.manifest.err" >&2
+    exit 2
+  }
+}
 
 # images: the engine's tags and image ids, sorted; "unavailable" without one.
 images() {
@@ -153,7 +183,13 @@ if ! "${ROOT}/rust/og.sh" check --required >/dev/null 2>&1; then
   }
 fi
 og_dir="${ROOT}/bin/.og"
-[ -n "${AB_SEED:-}" ] && manifest "$AB_SEED" >"${work}/seed.before.tsv" 2>/dev/null
+seed_tsv="${work}/seed.none.tsv"
+if [ -n "${AB_SEED:-}" ]; then
+  take seed.before "$AB_SEED"
+  seed_tsv="${work}/seed.before.tsv"
+else
+  : >"$seed_tsv"
+fi
 # Both sides start from this bin/.og (og itself included), so side B cannot
 # inherit a file side A added there.
 if [ -d "$og_dir" ]; then cp -pR "$og_dir" "${work}/og.before"; fi
@@ -179,12 +215,27 @@ for side in a b; do
   echo "$rc" >"${work}/${side}.exit"
   echo "   exit ${rc} after $((SECONDS - start)) s"
   mv "${work}/install" "${work}/${side}"
-  manifest "${work}/${side}" >"${work}/${side}.tsv" 2>/dev/null
-  manifest "${work}/${side}.nxf" >"${work}/${side}.nxf.tsv" 2>/dev/null
+  # A file the side left that is not ours (a container run without
+  # --user): the next setup run as this user cannot rewrite or delete it.
+  find "${work}/${side}" "${work}/${side}.nxf" ! -user "$uid" >"${work}/${side}.foreign" 2>&1 || true
+  take "$side" "${work}/${side}"
+  take "${side}.nxf" "${work}/${side}.nxf"
   images >"${work}/${side}.images"
   delta "$side"
-  if [ -d "$og_dir" ]; then manifest "$og_dir" >"${work}/${side}.og.tsv" 2>/dev/null; else echo none >"${work}/${side}.og.tsv"; fi
+  if [ -d "$og_dir" ]; then take "${side}.og" "$og_dir"; else echo none >"${work}/${side}.og.tsv"; fi
 done
+
+# Tree A must hold something the seed did not: a file or link that is not
+# in the seed as it is, or a new folder. Otherwise the run proves nothing.
+new=$(awk -F'\t' '
+  FILENAME == ARGV[1] { if (FNR > 2) { row[$0] = 1; if ($2 == "d") dir[$1] = 1 } next }
+  FNR > 2 && !($0 in row) && !($2 == "d" && ($1 in dir)) { n++ }
+  END { print n + 0 }' "$seed_tsv" "${work}/a.tsv")
+if [ "$new" -eq 0 ]; then
+  echo "ERROR: tree A holds nothing the seed did not (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; read ${work}/a.log." >&2
+  exit 2
+fi
+echo "   tree A: ${new} entries the seed did not hold"
 
 red=0
 check() { # NAME COMMAND...: run a check, print its verdict, keep its output.
@@ -201,32 +252,51 @@ check() { # NAME COMMAND...: run a check, print its verdict, keep its output.
 }
 # shellcheck disable=SC2329  # called through check
 same_file() { cmp "$1" "$2" || { diff "$1" "$2" | head -n 20; return 1; }; }
+# shellcheck disable=SC2329  # called through check
+side_a_exit() {
+  local got
+  got=$(cat "${work}/a.exit")
+  [ "$got" = "$expect" ] || { echo "side A exited ${got}, not ${expect} (AB_EXPECT_EXIT); read ${work}/a.log"; return 1; }
+}
+# shellcheck disable=SC2329  # called through check
+no_foreign() {
+  local side rc=0
+  for side in a b; do
+    if [ -s "${work}/${side}.foreign" ]; then
+      echo "side ${side} left entries uid ${uid} does not own:"
+      head -n 20 "${work}/${side}.foreign"
+      rc=1
+    fi
+  done
+  return "$rc"
+}
 
+check side-a-exit side_a_exit
 check exit-codes same_file "${work}/a.exit" "${work}/b.exit"
 check tree manifest --compare "${work}/a.tsv" "${work}/b.tsv" --allow "$allow"
 check nxf-home manifest --compare "${work}/a.nxf.tsv" "${work}/b.nxf.tsv" --allow "$allow"
 check logs manifest --compare-logs "${work}/a.log" "${work}/b.log"
 check images same_file "${work}/a.images.delta" "${work}/b.images.delta"
 check bin-og same_file "${work}/a.og.tsv" "${work}/b.og.tsv"
+check foreign-files no_foreign
 if [ -n "${AB_SEED:-}" ]; then
-  manifest "$AB_SEED" >"${work}/seed.after.tsv" 2>/dev/null
+  take seed.after "$AB_SEED"
   check seed-unchanged manifest --compare "${work}/seed.before.tsv" "${work}/seed.after.tsv"
 fi
 grep '^ALLOWED' "${work}/check.tree.txt" "${work}/check.nxf-home.txt" 2>/dev/null | sed 's/^/         /' || true
-if [ "$(cat "${work}/a.exit")" != 0 ]; then
-  echo "[WARN] side A exited $(cat "${work}/a.exit"): the trees compared may be partial; read ${work}/a.log."
-fi
 
-# The control: one flipped bit in tree B must turn the tree compare red.
-path=$(manifest --control "${work}/b.tsv" --allow "$allow") || {
-  echo "ERROR: tree B has no file compared byte for byte to plant the control in." >&2
+# The control: one flipped bit in a file the component wrote in tree B must
+# turn the tree compare red.
+path=$(manifest --control "${work}/b.tsv" --allow "$allow" --not-in "$seed_tsv") || {
+  echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
   exit 2
 }
-# The file may be a hard link into the seed: give B its own copy first.
+# The file may still be a hard link into the seed: give B its own copy first.
 real="${work}/b/$(printf '%b' "$path")"
-cp -p "$real" "${real}.ab-copy" && mv -f "${real}.ab-copy" "$real"
+copy=$(mktemp "${real}.XXXXXX")
+cp -p "$real" "$copy" && mv -f "$copy" "$real"
 manifest --flip "${work}/b" "$path" >/dev/null
-manifest "${work}/b" >"${work}/b.control.tsv" 2>/dev/null
+take b.control "${work}/b"
 crc=0
 manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
 manifest --flip "${work}/b" "$path" >/dev/null

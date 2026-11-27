@@ -14,16 +14,21 @@
 //! `o` (anything else). `mode` is the permission bits in octal (`-` for a
 //! symlink). Paths are relative to DIR, so trees at two places have equal
 //! manifests. Left out: the folder `downloads` at the top (raw downloads,
-//! kept or not by choice), every file whose name ends in `.log` (tool logs,
-//! with times and hosts in them), and each `--exclude` path with all under
-//! it. In a name, a tab, a newline, a carriage return, a backslash, any
-//! other control byte and any byte that is not UTF-8 are written as `\t`,
-//! `\n`, `\r`, `\\` and `\xHH`.
+//! kept or not by choice) and each `--exclude` path with all under it. A
+//! file whose name ends in `.log` (a tool log, with times and hosts in it)
+//! is listed for its presence only: `f`, then `-` for its size, sha256,
+//! mode and digests. In a name, a tab, a newline, a carriage return, a
+//! backslash, any other control byte and any byte that is not UTF-8 are
+//! written as `\t`, `\n`, `\r`, `\\` and `\xHH`.
 //!
 //! `digests` holds, for a file of a kind a compare mode reads, the sha256 of
 //! what that mode compares (`kind=hex`, comma separated, `-` for none). The
 //! manifest carries them so a tree can be compared after it is gone (the
-//! reference manifest of a full install):
+//! reference manifest of a full install). The `gzip` and `vcf` digests
+//! start with the container, `bgzf:`, `gzip:` or (a plain VCF) `plain:`:
+//! tabix and every region read need BGZF, so plain gzip is not the same
+//! file. BGZF means every gzip member is a BGZF block (htslib's header
+//! check), each starting where the one before ends, up to the end.
 //!
 //! - `gzip`: the decompressed content of a gzip or BGZF file (every
 //!   member), so the header's time and OS byte do not count. `bad` when it
@@ -31,21 +36,32 @@
 //! - `vcf`: a VCF (plain or gzip) with the value of its `##fileDate=` line
 //!   and the `Date=` part of each `##bcftools_<cmd>Command=` line masked.
 //!   Everything else, the bcftools version and command lines included, is
-//!   compared. A header line longer than 16 MiB is compared as it is.
-//! - `index`: a `.tbi` or `.csi`: its header (format, columns, the CSI shift
-//!   and depth) and its sequence names, when the index is valid for the data
-//!   file beside it; `invalid` when it is not, or when it is over 64 MiB.
-//!   Valid means every chunk ends inside the data file, and the chunk starts
-//!   and ends checked (up to 32 of each, spread over the index) point into a
+//!   compared. A header line longer than 16 MiB (its newline included) is
+//!   compared as it is.
+//! - `index`: a `.tbi` or `.csi` whose data file beside it is a regular
+//!   file: its header (format, columns, the CSI shift and depth), its
+//!   sequence names, and per sequence what does not move with the data
+//!   file's bytes: the record counts of htslib's pseudo-bin (mapped and
+//!   unmapped) and, in a `.tbi`, the length of the linear index (the last
+//!   16 kb window holding a record); then the count of records with no
+//!   position, when the index has it. `invalid` when it does not fit the
+//!   data file, or when the index is over 64 MiB. Fit means every chunk
+//!   ends inside the data file, and every chunk start and end points into a
 //!   BGZF block: no further than its decoded length, or at offset 0 at the
-//!   end of the file. Bins and offsets are left out: they move
-//!   with any byte of the data file, which the data file's own row compares.
+//!   end of the file. Offsets and bin numbers are left out: they move with
+//!   any byte of the data file, which the data file's own row compares.
+//!   htslib merges a bin into its parent when its chunks span less than
+//!   64 KiB of the compressed file, so even the set of bins moves with the
+//!   compressed sizes.
 //! - `jellyfish`: a jellyfish file (9 digits, then its JSON header of at
 //!   most 16 MiB): the header with the values of `hostname`, `pwd` and
 //!   `time` masked (the host, the folder and the time of the count), then
-//!   the counts after its alignment padding. The rest of the header (the
-//!   layout, the hash matrix, the command line) is compared: it decides how
-//!   the counts are read.
+//!   the counts. Jellyfish 2 pads its header with NUL bytes to its
+//!   alignment and counts them in the 9-digit length, so the counts start
+//!   right after that length; the trailing NULs are left out of the
+//!   header, since a longer host name needs fewer of them. The rest of the
+//!   header (the layout, the hash matrix, the command line) is compared:
+//!   it decides how the counts are read.
 //! - `numeric`: a text file of at most 16 MiB with a decimal number in it:
 //!   its lines and whitespace-separated words, each word with a decimal
 //!   point or an exponent rounded to 4 significant digits, every other word
@@ -71,17 +87,20 @@
 //! `index`, `jellyfish`, `numeric` or `skip` (content not compared), and may
 //! add `perm` (`gzip,perm`, or `perm` alone): the permission bits may
 //! differ. `component` and `reason` must not be empty; `cannot_compare` says
-//! why no other mode can compare the file and is required for `skip`, `-`
-//! otherwise. A stamp (`DONE`, `INSTALLED`, `RELEASE`, `version.txt`,
-//! `*.stamp`, `*.installed`, `*.release`) is always compared byte for byte:
-//! its bytes decide whether the next setup run reinstalls, so a row whose
-//! last segment can match any stamp name is refused, and no row applies to
-//! a stamp.
+//! why no other mode can compare the file: required for `skip`, and exactly
+//! `-` for any other mode. A manifest row that names one digest kind twice
+//! is refused. A stamp (`DONE`, `INSTALLED`, `RELEASE`, `version.txt`,
+//! `pins.tsv`, `*.stamp`, `*.installed`, `*.release`, `*.sha256`) is
+//! always compared byte for byte: its bytes decide whether the next setup
+//! run reinstalls or reuses, so a row whose last segment can match any
+//! stamp name is refused, and no row applies to a stamp.
 //!
 //! # For tests/setup/ab.sh
 //!
-//! `--control B.tsv [--allow ALLOW.tsv]` prints the smallest non-empty file
-//! compared byte for byte; `--flip DIR PATH` flips one bit of the byte in
+//! `--control B.tsv [--allow ALLOW.tsv] [--not-in SEED.tsv]` prints the
+//! smallest non-empty file compared byte for byte, leaving out a file whose
+//! row SEED.tsv holds as it is (a file the seed put there, not the
+//! component); `--flip DIR PATH` flips one bit of the byte in
 //! the middle of DIR/PATH (twice restores it); PATH must name a regular file
 //! inside DIR, reached through folders only. `--compare-logs A B` compares
 //! two setup logs with times, durations, speeds and download progress
@@ -106,7 +125,7 @@ use std::sync::LazyLock;
 
 const USAGE: &str = "usage: og dev install-manifest DIR [--exclude PATH]...
        og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]
-       og dev install-manifest --control B.tsv [--allow ALLOW.tsv]
+       og dev install-manifest --control B.tsv [--allow ALLOW.tsv] [--not-in SEED.tsv]
        og dev install-manifest --flip DIR PATH
        og dev install-manifest --compare-logs A.log B.log
 ";
@@ -123,9 +142,10 @@ const HEADER_MAX: usize = 16 << 20;
 /// The largest index read, compressed and decompressed; the real ones are a
 /// few MB. A larger one is `invalid`, which never compares equal.
 const INDEX_MAX: u64 = 64 << 20;
-/// Stamp names: whole names, and endings.
-const STAMP_NAMES: [&str; 4] = ["DONE", "INSTALLED", "RELEASE", "version.txt"];
-const STAMP_ENDINGS: [&str; 3] = [".stamp", ".installed", ".release"];
+/// Stamp names: whole names, and endings. `pins.tsv` (the fine panel's
+/// pins) and `*.sha256` (a saved region's checksum) decide a reuse.
+const STAMP_NAMES: [&str; 5] = ["DONE", "INSTALLED", "RELEASE", "version.txt", "pins.tsv"];
+const STAMP_ENDINGS: [&str; 4] = [".stamp", ".installed", ".release", ".sha256"];
 
 /// Runs `og dev install-manifest ARGS`; returns the exit code.
 pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -227,13 +247,15 @@ impl Walk {
             let ft = meta.file_type();
             if self.exclude.contains(&path)
                 || (rel.is_empty() && ft.is_dir() && name.as_bytes() == b"downloads")
-                || (!ft.is_dir() && name.as_bytes().ends_with(b".log"))
             {
                 self.skipped += 1;
                 continue;
             }
             let mode = format!("{:04o}", meta.permissions().mode() & 0o7777);
-            let row = if ft.is_symlink() {
+            let row = if ft.is_file() && name.as_bytes().ends_with(b".log") {
+                // A log's bytes hold times and hosts: its presence only.
+                "f\t-\t-\t-\t-".to_owned()
+            } else if ft.is_symlink() {
                 let target = fs::read_link(&full).map_err(io_err(&full))?;
                 format!("l\t-\t->{}\t-\t-", escape(target.as_os_str().as_bytes()))
             } else if ft.is_dir() {
@@ -296,9 +318,12 @@ fn digest_file(path: &Path, len: u64) -> Result<(String, String), String> {
         f.read_to_end(&mut buf).map_err(&e)?;
         sha = sha_of(&buf);
         if gz {
-            digests.extend(gzip_stream_digests(&buf[..]));
+            let mut walk = BgzfWalk::default();
+            walk.update(&buf);
+            digests.extend(with_container(walk.kind(), gzip_stream_digests(&buf[..])));
         } else if buf.starts_with(b"##fileformat=VCF") {
-            digests.push(("vcf", vcf_digest(&buf[..]).map_err(&e)?));
+            let d = vcf_digest(&buf[..]).map_err(&e)?;
+            digests.push(("vcf", format!("plain:{d}")));
         } else if let Some(d) = numeric_digest(&buf) {
             digests.push(("numeric", d));
         }
@@ -338,18 +363,88 @@ fn read_full(f: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
 }
 
 /// A reader that hashes every byte it hands on, so the one read a decoder
-/// makes of a file also gives the file's sha256.
+/// makes of a file also gives the file's sha256 and its container.
 struct Hashing<R> {
     inner: R,
     h: Sha256,
+    walk: BgzfWalk,
 }
 
 impl<R: Read> Read for Hashing<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let k = self.inner.read(buf)?;
         self.h.update(&buf[..k]);
+        self.walk.update(&buf[..k]);
         Ok(k)
     }
+}
+
+/// The BSIZE of a BGZF block header, by htslib's own check (gzip, deflate,
+/// FEXTRA, XLEN 6 and the BC subfield of length 2), or None.
+fn bgzf_bsize(h: &[u8]) -> Option<u64> {
+    (h.len() >= 18
+        && h[..3] == [0x1f, 0x8b, 8]
+        && h[3] & 4 != 0
+        && h[10..12] == [6, 0]
+        && h[12..14] == *b"BC"
+        && h[14..16] == [2, 0])
+    .then(|| u64::from(u16::from_le_bytes([h[16], h[17]])))
+}
+
+/// Whether a gzip file is BGZF, from its raw bytes in chunks of any size:
+/// every member a BGZF block, each one starting where the one before ends
+/// (BSIZE + 1 bytes on), and the last one ending the file.
+#[derive(Default)]
+struct BgzfWalk {
+    /// Bytes seen.
+    pos: u64,
+    /// Where the next block starts.
+    next: u64,
+    /// The header of the block at `next`, while it comes in.
+    head: Vec<u8>,
+    broken: bool,
+}
+
+impl BgzfWalk {
+    fn update(&mut self, mut data: &[u8]) {
+        while !data.is_empty() && !self.broken {
+            if self.pos < self.next {
+                let k =
+                    usize::try_from(self.next - self.pos).map_or(data.len(), |g| g.min(data.len()));
+                self.pos += k as u64;
+                data = &data[k..];
+                continue;
+            }
+            let k = (18 - self.head.len()).min(data.len());
+            self.head.extend_from_slice(&data[..k]);
+            self.pos += k as u64;
+            data = &data[k..];
+            if self.head.len() == 18 {
+                match bgzf_bsize(&self.head) {
+                    // A block holds its 18-byte header and 8-byte trailer.
+                    Some(b) if b + 1 >= 26 => self.next += b + 1,
+                    _ => self.broken = true,
+                }
+                self.head.clear();
+            }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        if !self.broken && self.head.is_empty() && self.next > 0 && self.pos == self.next {
+            "bgzf"
+        } else {
+            "gzip"
+        }
+    }
+}
+
+/// The digests of a gzip file with its container in front, `bad` as it is.
+fn with_container(kind: &str, digests: Vec<(&'static str, String)>) -> Vec<(&'static str, String)> {
+    digests
+        .into_iter()
+        .map(|(k, v)| (k, if v == "bad" { v } else { format!("{kind}:{v}") }))
+        .collect()
 }
 
 /// The sha256 and the mode digests of a large file, from one read of `r`:
@@ -361,12 +456,14 @@ fn stream_digests(
     let mut hr = Hashing {
         inner: r,
         h: Sha256::new(),
+        walk: BgzfWalk::default(),
     };
     let mut digests = Vec::new();
-    if head.starts_with(&[0x1f, 0x8b]) {
+    let gz = head.starts_with(&[0x1f, 0x8b]);
+    if gz {
         digests.extend(gzip_stream_digests(&mut hr));
     } else if head.starts_with(b"##fileformat=VCF") {
-        digests.push(("vcf", vcf_digest(&mut hr)?));
+        digests.push(("vcf", format!("plain:{}", vcf_digest(&mut hr)?)));
     } else if is_jellyfish(head)
         && let Some(d) = jellyfish_digest(BufReader::with_capacity(1 << 20, &mut hr))?
     {
@@ -375,6 +472,9 @@ fn stream_digests(
     // Whatever a decoder left (bytes after the gzip stream, the end of a
     // file it stopped reading) still counts in the sha256.
     std::io::copy(&mut hr, &mut std::io::sink())?;
+    if gz {
+        digests = with_container(hr.walk.kind(), digests);
+    }
     Ok((hex(hr.h), digests))
 }
 
@@ -431,9 +531,10 @@ fn vcf_mask(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
 }
 
 /// The vcf digest, fed in chunks of any size. Each `##` header line is
-/// held until its end and hashed masked; one longer than `HEADER_MAX` is
-/// hashed as it comes, unmasked. From the first line that does not start
-/// with `##`, the bytes are hashed as they come.
+/// held until its end and hashed masked; one longer than `HEADER_MAX`, its
+/// newline included, is hashed unmasked, however the chunks fall. From the
+/// first line that does not start with `##`, the bytes are hashed as they
+/// come.
 #[derive(Default)]
 struct VcfHasher {
     h: Sha256,
@@ -457,7 +558,9 @@ impl VcfHasher {
                 self.h.update(part);
             } else {
                 self.line.extend_from_slice(part);
-                if end.is_none() && self.line.len() > HEADER_MAX {
+                // Past the cap the line is hashed as it is, whether or not
+                // this chunk also holds its newline.
+                if self.line.len() > HEADER_MAX {
                     self.body = !self.line.starts_with(b"##");
                     self.h.update(&self.line);
                     self.line.clear();
@@ -513,8 +616,11 @@ static JF_VOLATILE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// The digest of a jellyfish file: its JSON header with the host, folder
-/// and time masked, then its counts after the padding to its `alignment`;
-/// None when it is not one, or its header is longer than `HEADER_MAX`.
+/// and time masked, then its counts; None when it is not one, or its
+/// header is longer than `HEADER_MAX`. Jellyfish 2 pads the header with
+/// NUL bytes to its `alignment` inside the 9-digit length, so the counts
+/// start right after that length and the NULs are not hashed: a longer
+/// host name needs fewer of them.
 fn jellyfish_digest(mut r: impl Read) -> std::io::Result<Option<String>> {
     let mut len = [0u8; 10];
     if read_full(&mut r, &mut len)? < 10 || !is_jellyfish(&[&len[..], b"x"].concat()) {
@@ -531,16 +637,8 @@ fn jellyfish_digest(mut r: impl Read) -> std::io::Result<Option<String>> {
     if read_full(&mut r, &mut json)? < json.len() {
         return Ok(None);
     }
+    json.truncate(json.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1));
     let json = String::from_utf8_lossy(&[b"{".as_slice(), &json].concat()).into_owned();
-    let align = Regex::new(r#""alignment"\s*:\s*(\d+)"#)
-        .expect("a valid pattern")
-        .captures(&json)
-        .and_then(|c| c[1].parse::<usize>().ok())
-        .filter(|&a| a > 0)
-        .unwrap_or(8);
-    let pad = (align - (9 + n) % align) % align;
-    let mut skip = vec![0u8; pad];
-    read_full(&mut r, &mut skip)?;
     let header = JF_VOLATILE.replace_all(&json, r#""$1":"<masked>""#);
     let mut h = Sha256::new();
     h.update(format!("{}\n", header.len()));
@@ -681,6 +779,8 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
         let Some(n_bin) = c.count() else {
             return Ok(None);
         };
+        // The pseudo-bin's record counts (mapped, unmapped), when present.
+        let mut counts: Option<(u64, u64)> = None;
         for _ in 0..n_bin {
             let Some(bin) = c
                 .take(4)
@@ -694,27 +794,53 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
             let Some(n_chunk) = c.count() else {
                 return Ok(None);
             };
-            for _ in 0..n_chunk {
+            for i in 0..n_chunk {
                 let (Some(b), Some(e)) = (c.u64(), c.u64()) else {
                     return Ok(None);
                 };
                 if bin != meta_bin {
                     chunks.push((b, e));
+                } else if i == 1 {
+                    counts = Some((b, e));
                 }
             }
+        }
+        match counts {
+            Some((mapped, unmapped)) => {
+                h.update([1]);
+                h.update(mapped.to_le_bytes());
+                h.update(unmapped.to_le_bytes());
+            }
+            None => h.update([0]),
         }
         if !csi {
             let Some(n_intv) = c.count() else {
                 return Ok(None);
             };
+            // How many 16 kb windows the linear index spans: where the
+            // last record ends, whatever the offsets.
+            h.update((n_intv as u64).to_le_bytes());
             if c.take(8 * n_intv).is_none() {
                 return Ok(None);
             }
         }
     }
-    // Valid for the data file: every chunk ends inside it, at offset 0 when
-    // at its end, and the starts and ends checked point into a BGZF block.
-    let Ok(mut d) = fs::File::open(data) else {
+    // The records with no position, which htslib writes after the last
+    // sequence.
+    match c.u64() {
+        Some(n_no_coor) => {
+            h.update([1]);
+            h.update(n_no_coor.to_le_bytes());
+        }
+        None => h.update([0]),
+    }
+    // Valid for the data file: a regular file (a FIFO would block the
+    // read), every chunk ends inside it, at offset 0 when at its end, and
+    // every chunk start and end points into a BGZF block.
+    if !fs::metadata(data).is_ok_and(|m| m.is_file()) {
+        return Ok(None);
+    }
+    let Ok(d) = fs::File::open(data) else {
         return Ok(None);
     };
     let size = d.metadata()?.len();
@@ -725,45 +851,49 @@ fn read_index(path: &Path) -> std::io::Result<Option<String>> {
     {
         return Ok(None);
     }
-    for ends in [false, true] {
-        let mut offs: Vec<u64> = chunks
-            .iter()
-            .map(|&(b, e)| if ends { e } else { b })
-            .collect();
-        offs.sort_unstable();
-        offs.dedup();
-        let step = offs.len().div_ceil(32).max(1);
-        for &v in offs.iter().step_by(step) {
-            if !in_block(&mut d, size, v)? {
-                return Ok(None);
-            }
+    // Each block once, with the furthest offset into it, in file order.
+    let mut blocks: BTreeMap<u64, u64> = BTreeMap::new();
+    for v in chunks.iter().flat_map(|&(b, e)| [b, e]) {
+        let w = blocks.entry(v >> 16).or_default();
+        *w = (*w).max(v & 0xffff);
+    }
+    for (&at, &within) in &blocks {
+        if !in_block(&d, size, at, within)? {
+            return Ok(None);
         }
     }
     drop_cache(&d);
     Ok(Some(hex(h)))
 }
 
-/// Whether the virtual offset `v` points into the BGZF block at its file
-/// offset: up to the block's decoded length (its end counts), or 0 at the
-/// end of the file.
-fn in_block(d: &mut fs::File, size: u64, v: u64) -> std::io::Result<bool> {
-    let (at, within) = (v >> 16, v & 0xffff);
+/// Whether offset `within` of the BGZF block at file offset `at` exists:
+/// up to the block's decoded length (its end counts), or 0 at the end of
+/// the file.
+fn in_block(d: &fs::File, size: u64, at: u64, within: u64) -> std::io::Result<bool> {
+    use std::os::unix::fs::FileExt;
+    let read = |buf: &mut [u8], off: u64| match d.read_exact_at(buf, off) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
+        Err(e) => Err(e),
+    };
     if at == size {
         return Ok(within == 0);
     }
     let mut b = [0u8; 18];
-    d.seek(SeekFrom::Start(at))?;
-    if read_full(d, &mut b)? < 18 || b[..4] != [0x1f, 0x8b, 8, 4] || b[12..14] != *b"BC" {
+    if !read(&mut b, at)? {
         return Ok(false);
     }
-    // BSIZE is the block's length less one; ISIZE ends the block.
-    let end = at + u64::from(u16::from_le_bytes([b[16], b[17]])) + 1;
-    let mut trailer = [0u8; 4];
+    let Some(bsize) = bgzf_bsize(&b) else {
+        return Ok(false);
+    };
+    // BSIZE is the block's length less one; ISIZE ends the block, after
+    // the 18-byte header (XLEN 6) and at least the CRC.
+    let end = at + bsize + 1;
     if end > size || end < at + 26 {
         return Ok(false);
     }
-    d.seek(SeekFrom::Start(end - 4))?;
-    if read_full(d, &mut trailer)? < 4 {
+    let mut trailer = [0u8; 4];
+    if !read(&mut trailer, end - 4)? {
         return Ok(false);
     }
     Ok(within <= u64::from(u32::from_le_bytes(trailer)))
@@ -864,7 +994,9 @@ fn read_manifest(path: &str) -> Result<BTreeMap<String, Entry>, String> {
                 let (k, v) = kv
                     .split_once('=')
                     .ok_or_else(|| format!("{path}: {p}: digest {kv:?}"))?;
-                d.insert(k.to_owned(), v.to_owned());
+                if d.insert(k.to_owned(), v.to_owned()).is_some() {
+                    return Err(format!("{path}: {p} has two {k} digests"));
+                }
             }
         }
         let e = Entry {
@@ -966,7 +1098,13 @@ fn read_allow(path: &str) -> Result<Vec<Allow>, String> {
             }
         }
         let skip = a.content.as_deref() == Some("skip");
-        if skip == (cannot.trim().is_empty() || cannot == "-") {
+        let cannot = cannot.trim();
+        let fits = if skip {
+            !cannot.is_empty() && cannot != "-"
+        } else {
+            cannot == "-"
+        };
+        if !fits {
             return Err(format!(
                 "{path}: {pattern}: cannot_compare must say why no mode can compare a skipped file, and be - for any other row"
             ));
@@ -1123,21 +1261,38 @@ fn compare_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
 }
 
 fn control_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
-    let (m, allow) = match args {
-        [m] => (m, None),
-        [m, flag, al] if flag == "--allow" => (m, Some(al)),
-        _ => return Err(String::new()),
+    let Some((m, mut rest)) = args.split_first() else {
+        return Err(String::new());
     };
+    let (mut allow, mut seed) = (None, None);
+    while let [flag, value, tail @ ..] = rest {
+        match flag.as_str() {
+            "--allow" if allow.is_none() => allow = Some(value),
+            "--not-in" if seed.is_none() => seed = Some(value),
+            _ => return Err(String::new()),
+        }
+        rest = tail;
+    }
+    if !rest.is_empty() {
+        return Err(String::new());
+    }
     let m = read_manifest(m)?;
     let allow = match allow {
         Some(p) => read_allow(p)?,
         None => Vec::new(),
+    };
+    let seed = match seed {
+        Some(p) => read_manifest(p)?,
+        None => BTreeMap::new(),
     };
     let pick = m
         .iter()
         .filter(|(p, e)| {
             e.kind == "f"
                 && e.size != "0"
+                && e.size != "-"
+                // A file the seed put there as it is: not the component's.
+                && seed.get(*p) != Some(*e)
                 && row_for(&allow, p)
                     .and_then(|r| r.content.as_ref())
                     .is_none()
@@ -1382,6 +1537,12 @@ mod tests {
             "*.inst*",
             "version.*",
             "*e",
+            "pins.tsv",
+            "*.tsv",
+            "p?ns.*",
+            "region.sha256",
+            "*.sha2?6",
+            "*56",
         ] {
             assert!(stamp_match(p).is_some(), "{p} can match a stamp");
         }
@@ -1395,9 +1556,14 @@ mod tests {
             "stamp",
             "*.tbi",
             "DONE?",
+            "pins.tsv.gz",
+            "*.sha256sum",
+            "*.csv",
         ] {
             assert_eq!(stamp_match(p), None, "{p} matches no stamp");
         }
+        assert!(is_stamp("reference/fine/pins.tsv"));
+        assert!(is_stamp("reference/locityper/region.bed.sha256"));
     }
 
     /// The vcf digest line by line, all in memory: what VcfHasher must give
@@ -1454,6 +1620,66 @@ mod tests {
         assert_eq!(v.finish(), hex(whole));
     }
 
+    /// One header line `##fileDate=` padded to `len` bytes with its
+    /// newline, then a record line.
+    fn date_line(len: usize) -> Vec<u8> {
+        let mut v = b"##fileDate=".to_vec();
+        v.resize(len - 1, b'7');
+        v.extend_from_slice(b"\n#CHROM\n1\t5\n");
+        v
+    }
+
+    #[test]
+    fn the_header_cap_holds_wherever_the_newline_falls() {
+        for (len, masked) in [(HEADER_MAX, true), (HEADER_MAX + 1, false)] {
+            let bytes = date_line(len);
+            let mut want = Sha256::new();
+            if masked {
+                want.update(b"##fileDate=<masked>\n");
+            } else {
+                want.update(&bytes[..len]);
+            }
+            want.update(b"#CHROM\n1\t5\n");
+            let want = hex(want);
+            // The line whole in one chunk, then split just before its
+            // newline, so the cap is crossed in the chunk with the newline
+            // or the one before it.
+            for cut in [bytes.len(), len - 1, len - 2] {
+                let mut v = VcfHasher::default();
+                v.update(&bytes[..cut]);
+                v.update(&bytes[cut..]);
+                assert_eq!(v.finish(), want, "line of {len} bytes, cut at {cut}");
+            }
+        }
+    }
+
+    #[test]
+    fn bgzf_is_told_from_plain_gzip() {
+        let body = b"a\tb\n".repeat(40_000);
+        let mut w =
+            og_io::bgzf::Writer::new(Vec::new(), std::num::NonZero::new(1).unwrap()).unwrap();
+        w.write_all(&body).unwrap();
+        let bgzf = w.finish().unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&body).unwrap();
+        let gz = gz.finish().unwrap();
+        let kind = |bytes: &[u8], step: usize| {
+            let mut w = BgzfWalk::default();
+            for c in bytes.chunks(step) {
+                w.update(c);
+            }
+            w.kind()
+        };
+        for step in [1, 7, 4096, usize::MAX] {
+            assert_eq!(kind(&bgzf, step), "bgzf", "{step}");
+            assert_eq!(kind(&gz, step), "gzip", "{step}");
+        }
+        // BGZF with gzip after it, or cut short, is not BGZF.
+        assert_eq!(kind(&[&bgzf[..], &gz[..]].concat(), 4096), "gzip");
+        assert_eq!(kind(&bgzf[..bgzf.len() - 1], 4096), "gzip");
+        assert_eq!(kind(b"", 1), "gzip");
+    }
+
     #[test]
     fn a_jellyfish_header_past_the_limit_is_not_read() {
         let input = b"999999999{\"alignment\":8}";
@@ -1478,16 +1704,17 @@ mod tests {
         assert!(numeric_digest(b"no numbers 12 here\n").is_none());
     }
 
-    /// The digests a small file gets in memory.
+    /// The digests a small file of plain gzip, or a plain VCF, gets in
+    /// memory.
     fn small(bytes: &[u8]) -> (String, Vec<(&'static str, String)>) {
         let mut d = Vec::new();
         if bytes.starts_with(&[0x1f, 0x8b]) {
             let mut plain = Vec::new();
             MultiGzDecoder::new(bytes).read_to_end(&mut plain).unwrap();
-            d.push(("gzip", sha_of(&plain)));
-            d.push(("vcf", vcf_digest(&plain[..]).unwrap()));
+            d.push(("gzip", format!("gzip:{}", sha_of(&plain))));
+            d.push(("vcf", format!("gzip:{}", vcf_digest(&plain[..]).unwrap())));
         } else {
-            d.push(("vcf", vcf_digest(bytes).unwrap()));
+            d.push(("vcf", format!("plain:{}", vcf_digest(bytes).unwrap())));
         }
         (sha_of(bytes), d)
     }
@@ -1515,6 +1742,18 @@ mod tests {
             assert_eq!(got, small(bytes));
             assert_eq!(r.1, bytes.len());
         }
+        // The same content as BGZF: the same digests, with its container.
+        let mut w =
+            og_io::bgzf::Writer::new(Vec::new(), std::num::NonZero::new(1).unwrap()).unwrap();
+        w.write_all(&vcf).unwrap();
+        let bg = w.finish().unwrap();
+        let (_, got) = stream_digests(&mut Once(&bg, 0), &bg[..64]).unwrap();
+        let (_, plain) = small(&gz);
+        let want: Vec<_> = plain
+            .into_iter()
+            .map(|(k, v)| (k, v.replacen("gzip:", "bgzf:", 1)))
+            .collect();
+        assert_eq!(got, want);
         // Bytes after the gzip stream end the decoding; they still count in the sha.
         let mut bad = gz.clone();
         bad.extend_from_slice(b"not gzip at all");

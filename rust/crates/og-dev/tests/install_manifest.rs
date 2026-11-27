@@ -4,8 +4,9 @@
 //!
 //! 1. A manifest lists every file, folder and symlink with its type, size,
 //!    sha256, mode and the digests its compare modes read, sorted, with no
-//!    trace of where the tree sits; the `downloads` folder at the top,
-//!    `*.log` files and `--exclude` paths are left out.
+//!    trace of where the tree sits; the `downloads` folder at the top and
+//!    `--exclude` paths are left out, and a `*.log` file is listed for its
+//!    presence only.
 //! 2. Two copies of one tree compare green. One flipped byte, a removed
 //!    file, an added file, a changed mode, a removed folder, a changed
 //!    symlink target and a changed type each turn it red, with the path.
@@ -22,6 +23,9 @@
 //! 6. The control: the smallest file compared byte for byte is picked, one
 //!    flipped bit is red and a second flip restores it. The log compare
 //!    masks times and progress and is red on another missing list.
+//! 7. tests/setup/ab.sh, with a stub setup.sh: a side A that fails, a run
+//!    that installs nothing, a control that would land in the seed and a
+//!    file another user owns each make it red or stop it.
 
 use flate2::{Compression, GzBuilder};
 use og_dev::install_manifest::cli;
@@ -167,22 +171,22 @@ fn manifest_lists_entries_and_leaves_out_downloads_and_logs() {
         "reference\td\t-\t-\t0755\t-",
         "reference/empty\td\t-\t-\t0755\t-",
         "reference/sub\td\t-\t-\t0755\t-",
+        "reference/sub/build.log\tf\t-\t-\t-\t-",
         "reference/sub/y.bin\tf\t4\t054edec1d0211f624fed0cbca9d4f9400b0e491c43742af2c5b0abebf0c990d8\t0600\t-",
         "reference/x.txt\tf\t5\t2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\t0644\t-",
         "reference/y.link\tl\t-\t->sub/y.bin\t-\t-",
         "tools\td\t-\t-\t0755\t-",
     ];
     assert_eq!(rows.len(), want.len() + 2, "{text}");
-    assert_eq!(&rows[1..8], &want, "{text}");
+    assert_eq!(&rows[1..9], &want, "{text}");
     assert!(
-        rows[8].starts_with("tools/run.sh\tf\t10\t") && rows[8].ends_with("\t0755\t-"),
+        rows[9].starts_with("tools/run.sh\tf\t10\t") && rows[9].ends_with("\t0755\t-"),
         "{text}"
     );
     assert!(
         !text.contains("downloads"),
         "the downloads folder is listed:\n{text}"
     );
-    assert!(!text.contains("build.log"), "a log is listed:\n{text}");
     assert!(
         !text.contains(&s(&a)),
         "the manifest names where the tree sits:\n{text}"
@@ -190,6 +194,35 @@ fn manifest_lists_entries_and_leaves_out_downloads_and_logs() {
     let ex = fs::read_to_string(manifest(&a, &["--exclude", "reference/sub"])).unwrap();
     assert!(!ex.contains("reference/sub"), "{ex}");
     assert!(ex.contains("reference/x.txt"), "{ex}");
+}
+
+#[test]
+fn a_log_counts_for_its_presence_only() {
+    // Other bytes in a log are green; a log in one tree only is red.
+    let (_t, a, b) = pair("log");
+    write(
+        &b.join("reference/sub/build.log"),
+        b"built at 13:41 on host-two",
+        0o600,
+    );
+    let (ma, mb) = (manifest(&a, &[]), manifest(&b, &[]));
+    let (code, out, err) = compare(&ma, &mb, None);
+    assert_eq!(code, 0, "{out}{err}");
+    write(&b.join("reference/sub/results.log"), b"x", 0o644);
+    let (code, out, _) = compare(&ma, &manifest(&b, &[]), None);
+    assert_eq!(code, 1, "a log in B only is green:\n{out}");
+    assert_eq!(
+        diff_lines(&out),
+        ["DIFF\tadded\treference/sub/results.log\tf in B only"],
+        "{out}"
+    );
+    fs::remove_file(b.join("reference/sub/build.log")).unwrap();
+    let (code, out, _) = compare(&ma, &manifest(&b, &[]), None);
+    assert_eq!(code, 1, "{out}");
+    assert!(
+        out.contains("DIFF\tremoved\treference/sub/build.log\t"),
+        "a log in A only is green:\n{out}"
+    );
 }
 
 #[test]
@@ -357,6 +390,27 @@ fn gzip_mode_ignores_the_header_time_and_sees_the_content() {
         row,
     );
     assert_eq!(code, 1, "{out}");
+    // Plain gzip where BGZF was: the same content, but tabix cannot read it.
+    let (code, out) = modes_case(
+        "gz-kind",
+        "reference/t.gz",
+        &bgzf(b"a\tb\n"),
+        &gz(b"a\tb\n", 0),
+        row,
+    );
+    assert_eq!(code, 1, "plain gzip in place of BGZF is green:\n{out}");
+    assert!(
+        diff_lines(&out)[0].starts_with("DIFF\tcontent\treference/t.gz\tgzip bgzf:"),
+        "{out}"
+    );
+    let (code, out) = modes_case(
+        "gz-both-bgzf",
+        "reference/t.gz",
+        &bgzf(b"a\tb\n"),
+        &bgzf(b"a\tb\n"),
+        row,
+    );
+    assert_eq!(code, 0, "{out}");
 }
 
 fn vcf(date: &str, version: &str, alt: &str) -> Vec<u8> {
@@ -392,6 +446,15 @@ fn vcf_mode_masks_only_the_dates() {
         "clinvar/*.vcf\tvcf\ttest\tbcftools writes the date of the run\t-\n",
     );
     assert_eq!(code, 0, "{out}");
+    // The same records as plain gzip, or not compressed at all, where a
+    // BGZF VCF was.
+    for (tag, other) in [
+        ("vcf-gzip", gz(&vcf("20261127", "1.22+htslib-1.22", "G"), 0)),
+        ("vcf-uncompressed", vcf("20261127", "1.22+htslib-1.22", "G")),
+    ] {
+        let (code, out) = modes_case(tag, "clinvar/c.vcf.gz", &a, &other, row);
+        assert_eq!(code, 1, "{tag}: another container is green:\n{out}");
+    }
 }
 
 /// A BGZF VCF and its .tbi built by og-io, written to DIR/NAME(.tbi).
@@ -455,6 +518,160 @@ fn index_mode_compares_names_and_checks_the_index_fits_its_data() {
     );
 }
 
+#[test]
+fn an_index_of_fewer_records_is_red_beside_the_full_data() {
+    let rows = "clinvar/*.tbi\tindex\ttest\toffsets move with the header's length\t-\n";
+    // The short data fills exactly one BGZF block (65,280 bytes), so the
+    // full data starts with the same block and every offset of the short
+    // index still fits it: only what the index covers tells them apart.
+    let base = String::from_utf8(vcf("20261126", "1.22", "G")).unwrap();
+    let short = base.replacen(
+        "##fileDate=20261126\n",
+        &format!("##fileDate=20261126{}\n", "9".repeat(0xff00 - base.len())),
+        1,
+    );
+    assert_eq!(short.len(), 0xff00);
+    let full =
+        short.clone() + "chr1\t5000000\t.\tG\tA\t.\tPASS\t.\nchr1\t5000100\t.\tT\tC\t.\tPASS\t.\n";
+    let (t, a, b) = pair("tbi-stale");
+    vcf_with_index(&a.join("clinvar"), "c.vcf.gz", full.as_bytes());
+    // B: the index of the data less its last two records, beside the full
+    // data.
+    vcf_with_index(&b.join("clinvar"), "c.vcf.gz", short.as_bytes());
+    write(&b.join("clinvar/c.vcf.gz"), &bgzf(full.as_bytes()), 0o644);
+    let allow = allow_file(&t, rows);
+    let (mb, ma) = (manifest(&b, &[]), manifest(&a, &[]));
+    let text = fs::read_to_string(&mb).unwrap();
+    assert!(
+        !text.contains("index=invalid"),
+        "the short index must fit the full data:\n{text}"
+    );
+    let (code, out, err) = compare(&ma, &mb, Some(&allow));
+    assert_eq!(code, 1, "an index of fewer records is green:\n{out}{err}");
+    assert!(
+        out.contains("DIFF\tcontent\tclinvar/c.vcf.gz.tbi\tindex "),
+        "{out}"
+    );
+}
+
+/// Random letters, the same for one seed.
+fn noise(seed: &mut u64, n: usize) -> String {
+    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    (0..n)
+        .map(|_| {
+            *seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            A[(*seed >> 58) as usize] as char
+        })
+        .collect()
+}
+
+/// The bin numbers of each sequence of a .tbi, the pseudo-bin left out.
+fn tbi_bins(path: &Path) -> Vec<Vec<u32>> {
+    use std::io::Read;
+    let mut p = Vec::new();
+    flate2::read::MultiGzDecoder::new(fs::File::open(path).unwrap())
+        .read_to_end(&mut p)
+        .unwrap();
+    let mut at = 4;
+    let n_ref = int_at(&p, &mut at);
+    at += 24;
+    let l_nm = int_at(&p, &mut at);
+    at += l_nm;
+    let mut out = Vec::new();
+    for _ in 0..n_ref {
+        let mut bins = Vec::new();
+        let n_bin = int_at(&p, &mut at);
+        for _ in 0..n_bin {
+            let bin = int_at(&p, &mut at) as u32;
+            let n_chunk = int_at(&p, &mut at);
+            at += 16 * n_chunk;
+            if bin != 37450 {
+                bins.push(bin);
+            }
+        }
+        let n_intv = int_at(&p, &mut at);
+        at += 8 * n_intv;
+        bins.sort_unstable();
+        out.push(bins);
+    }
+    out
+}
+
+fn int_at(p: &[u8], at: &mut usize) -> usize {
+    let v = i32::from_le_bytes(p[*at..*at + 4].try_into().unwrap());
+    *at += 4;
+    v as usize
+}
+
+#[test]
+fn bin_numbers_that_move_with_the_compressed_sizes_stay_out_of_the_index_digest() {
+    // htslib (and og-io, which writes what tabix writes) merges a bin into
+    // its parent when its chunks span less than 64 KiB of the compressed
+    // file. 126 records of random text in one 16 kb window, about 130 kB:
+    // after a short header they end in the second block (a span of one
+    // block, merged); after a header 1,900 bytes longer they end in the
+    // third (two blocks, kept). The record spanning the window's end makes
+    // the parent bin exist.
+    let body = |pad: usize| {
+        let mut s = format!(
+            "##fileformat=VCFv4.2\n##fileDate={}\n##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+            "9".repeat(pad)
+        );
+        let mut seed = 7;
+        for i in 0..126 {
+            s += &format!(
+                "chr1\t{}\t.\tA\tG\t.\tPASS\tN={}\n",
+                163_900 + i * 100,
+                noise(&mut seed, 1000)
+            );
+        }
+        s += &format!("chr1\t180200\t.\t{}\tA\t.\tPASS\t.\n", "A".repeat(50));
+        s.into_bytes()
+    };
+    let rows = "clinvar/*.vcf.gz\tvcf\ttest\tthe date of the run\t-\nclinvar/*.tbi\tindex\ttest\toffsets move with the header's length\t-\n";
+    let (t, a, b) = pair("tbi-merge");
+    vcf_with_index(&a.join("clinvar"), "c.vcf.gz", &body(10));
+    vcf_with_index(&b.join("clinvar"), "c.vcf.gz", &body(1910));
+    let (ba, bb) = (
+        tbi_bins(&a.join("clinvar/c.vcf.gz.tbi")),
+        tbi_bins(&b.join("clinvar/c.vcf.gz.tbi")),
+    );
+    assert_ne!(ba, bb, "the case no longer moves a bin: {ba:?}");
+    let allow = allow_file(&t, rows);
+    let (code, out, err) = compare(&manifest(&a, &[]), &manifest(&b, &[]), Some(&allow));
+    assert_eq!(
+        code, 0,
+        "the same records indexed after another header are red:\n{out}{err}"
+    );
+    assert!(
+        out.contains("ALLOWED\tcontent\tclinvar/c.vcf.gz.tbi\tindex equal: "),
+        "{out}"
+    );
+}
+
+#[test]
+fn the_two_lookup_fixture_indexes_get_their_own_digests() {
+    let t = Tmp::new("fixtures");
+    let d = t.0.join("d");
+    let src = repo().join("tests/parity/inputs/lookup");
+    for f in ["ann.vcf.gz", "ann.vcf.gz.tbi", "g.vcf.gz", "g.vcf.gz.tbi"] {
+        write(&d.join(f), &fs::read(src.join(f)).unwrap(), 0o644);
+    }
+    let text = fs::read_to_string(manifest(&d, &[])).unwrap();
+    let index = |name: &str| {
+        text.lines()
+            .find(|l| l.starts_with(&format!("{name}\t")))
+            .and_then(|l| l.split("index=").nth(1))
+            .unwrap_or_else(|| panic!("no index digest for {name}:\n{text}"))
+            .to_owned()
+    };
+    let (ann, g) = (index("ann.vcf.gz.tbi"), index("g.vcf.gz.tbi"));
+    assert!(ann != "invalid" && g != "invalid", "{text}");
+    assert_ne!(ann, g, "two indexes of other files get one digest");
+}
+
 /// A CSI index by hand: one sequence, one bin, one chunk ending at `end`.
 fn csi(end: u64, aux: &[u8]) -> Vec<u8> {
     bgzf(&csi_plain(end, aux))
@@ -513,29 +730,127 @@ fn index_mode_reads_csi_too() {
     big.resize(big.len() + (64 << 20), 0);
     let (code, out) = case("csi-big", csi(10, b""), bgzf(&big));
     assert_eq!(code, 1, "an index over 64 MiB is green:\n{out}");
+    // The pseudo-bin's record counts and the count of records with no
+    // position are compared; its offsets are not.
+    let (code, out) = case("csi-meta", csi_meta(10, 5, None), csi_meta(20, 5, None));
+    assert_eq!(code, 0, "{out}");
+    let (code, out) = case("csi-mapped", csi_meta(10, 5, None), csi_meta(20, 4, None));
+    assert_eq!(code, 1, "another record count is green:\n{out}");
+    let (code, out) = case(
+        "csi-no-coor",
+        csi_meta(10, 5, Some(0)),
+        csi_meta(10, 5, Some(3)),
+    );
+    assert_eq!(
+        code, 1,
+        "another count of unplaced records is green:\n{out}"
+    );
+}
+
+/// A CSI like [`csi`] plus htslib's pseudo-bin (37450 at depth 5: its
+/// offsets, then `mapped` records and none unmapped) and, when given, the
+/// count of records with no position.
+fn csi_meta(end: u64, mapped: u64, no_coor: Option<u64>) -> Vec<u8> {
+    let mut v = b"CSI\x01".to_vec();
+    v.extend(14i32.to_le_bytes());
+    v.extend(5i32.to_le_bytes());
+    v.extend(0i32.to_le_bytes());
+    v.extend(1i32.to_le_bytes()); // n_ref
+    v.extend(2i32.to_le_bytes()); // n_bin
+    v.extend(4681u32.to_le_bytes());
+    v.extend(0u64.to_le_bytes());
+    v.extend(1i32.to_le_bytes());
+    v.extend(0u64.to_le_bytes());
+    v.extend(end.to_le_bytes());
+    v.extend(37450u32.to_le_bytes());
+    v.extend(0u64.to_le_bytes());
+    v.extend(2i32.to_le_bytes());
+    v.extend(0u64.to_le_bytes());
+    v.extend(end.to_le_bytes());
+    v.extend(mapped.to_le_bytes());
+    v.extend(0u64.to_le_bytes());
+    if let Some(n) = no_coor {
+        v.extend(n.to_le_bytes());
+    }
+    bgzf(&v)
+}
+
+#[test]
+fn an_index_beside_a_fifo_or_a_block_with_another_extra_field_is_invalid() {
+    let digest = |d: &Path| {
+        let text = fs::read_to_string(manifest(d, &[])).unwrap();
+        text.lines()
+            .find(|l| l.starts_with("x/d.bcf.csi\t"))
+            .and_then(|l| l.split("index=").nth(1))
+            .unwrap_or_else(|| panic!("no index digest:\n{text}"))
+            .to_owned()
+    };
+    let t = Tmp::new("csi-odd");
+    let good = t.0.join("good");
+    write(&good.join("x/d.bcf"), &bgzf(&[7u8; 300]), 0o644);
+    write(&good.join("x/d.bcf.csi"), &csi(10, b""), 0o644);
+    assert_ne!(digest(&good), "invalid");
+    // XLEN 12: an extra field htslib does not read as BGZF, so the trailer
+    // is not where BSIZE says.
+    let mut data = bgzf(&[7u8; 300]);
+    data[10] = 12;
+    let odd = t.0.join("xlen");
+    write(&odd.join("x/d.bcf"), &data, 0o644);
+    write(&odd.join("x/d.bcf.csi"), &csi(10, b""), 0o644);
+    assert_eq!(digest(&odd), "invalid", "a block with XLEN 12 fits");
+    // A FIFO where the data file is: invalid at once, never a blocked read.
+    let fifo = t.0.join("fifo");
+    write(&fifo.join("x/d.bcf.csi"), &csi(10, b""), 0o644);
+    let st = Command::new("mkfifo")
+        .arg(fifo.join("x/d.bcf"))
+        .status()
+        .unwrap();
+    assert!(st.success());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let f2 = fifo.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(digest(&f2));
+    });
+    let got = rx
+        .recv_timeout(std::time::Duration::from_secs(20))
+        .expect("the manifest blocks on a FIFO beside an index");
+    assert_eq!(got, "invalid");
 }
 
 fn jf(host: &str, counts: &[u8]) -> Vec<u8> {
     jf_with(host, 2, counts)
 }
 
-/// A jellyfish file: its host, folder and time come from `host`, its
-/// `counter_len` from `counter`.
+/// A jellyfish file laid out as jellyfish 2.3.1 writes it: its host, folder
+/// and time come from `host`, its `counter_len` from `counter`. The header
+/// is padded with NULs to its alignment, and the 9-digit length counts
+/// them (a real count in the pinned Locityper image wrote `000000407`
+/// with 2 NULs inside, and with a host 36 bytes longer `000000447` with 6).
 fn jf_with(host: &str, counter: u32, counts: &[u8]) -> Vec<u8> {
-    let json = format!(
+    let mut span = format!(
         "{{\"alignment\":8,\"counter_len\":{counter},\"format\":\"binary/sorted\",\"hostname\":\"{host}\",\"pwd\":\"/{host}\",\"time\":\"Thu Nov 26 03:56:51 {host}\"}}"
-    );
-    let mut v = format!("{:09}{json}", json.len()).into_bytes();
-    while v.len() % 8 != 0 {
-        v.push(0);
+    )
+    .into_bytes();
+    while (9 + span.len()) % 8 != 0 {
+        span.push(0);
     }
+    let mut v = format!("{:09}", span.len()).into_bytes();
+    v.extend(span);
     v.extend(counts);
     v
+}
+
+/// The NULs inside the header span of `jf_with(host, ..)`.
+fn jf_pad(host: &str) -> usize {
+    let v = jf_with(host, 2, &[]);
+    v.iter().rev().take_while(|&&b| b == 0).count()
 }
 
 #[test]
 fn jellyfish_mode_skips_the_header_and_compares_the_counts() {
     let row = "locityper/*.jf\tjellyfish\ttest\tthe header holds the host, folder and time of the count\t-\n";
+    // The two hosts need another number of padding NULs.
+    assert_ne!(jf_pad("a1b2"), jf_pad("host-two"));
     let (code, out) = modes_case(
         "jf-green",
         "locityper/c.jf",
@@ -543,7 +858,10 @@ fn jellyfish_mode_skips_the_header_and_compares_the_counts() {
         &jf("host-two", &[1, 2, 3, 4]),
         row,
     );
-    assert_eq!(code, 0, "{out}");
+    assert_eq!(
+        code, 0,
+        "two hosts that pad the header differently are red:\n{out}"
+    );
     let (code, out) = modes_case(
         "jf-red",
         "locityper/c.jf",
@@ -654,6 +972,10 @@ fn stamps_are_compared_byte_for_byte() {
         "x/gnomad-sv.inst*\tgzip\ttest\tsv\t-\n",
         "x/?ONE\tperm\ttest\tmode\t-\n",
         "x/version.tx?\tperm\ttest\tmode\t-\n",
+        "fine/pins.tsv\tperm\ttest\tmode\t-\n",
+        "fine/*.tsv\tnumeric\ttest\tfloats\t-\n",
+        "locityper/*.sha256\tskip\ttest\ta checksum\tnothing else\n",
+        "**/*.sha2*\tperm\ttest\tmode\t-\n",
     ] {
         let allow = allow_file(&t, row);
         let (code, out, err) = compare(&m, &m, Some(&allow));
@@ -759,6 +1081,14 @@ fn bad_input_is_refused() {
             format!("{HEAD}x\tgzip\ttest\tvolatile\tnothing else\n"),
         ),
         (
+            "empty-why-without-skip",
+            format!("{HEAD}x\tgzip\ttest\tvolatile\t\n"),
+        ),
+        (
+            "blank-why-without-skip",
+            format!("{HEAD}x\tgzip\ttest\tvolatile\t  \n"),
+        ),
+        (
             "four-columns",
             "path\tmode\tcomponent\treason\nx\tgzip\ttest\tvolatile\n".to_owned(),
         ),
@@ -772,6 +1102,16 @@ fn bad_input_is_refused() {
     let junk = t.0.join("junk.tsv");
     fs::write(&junk, "a\tb\n").unwrap();
     assert_eq!(compare(&m, &junk, None).0, 2);
+    // A row with one digest kind twice: the second must not stand in for
+    // the first.
+    let twice = t.0.join("twice.tsv");
+    fs::write(
+        &twice,
+        "#og-install-manifest 1\npath\ttype\tsize\tsha256\tmode\tdigests\nx.gz\tf\t3\tabc\t0644\tgzip=gzip:aa,gzip=gzip:bb\n",
+    )
+    .unwrap();
+    let (code, out, err) = compare(&twice, &twice, None);
+    assert_eq!(code, 2, "a row with two gzip digests is read:\n{out}{err}");
     assert_eq!(run(&[&s(&t.0.join("missing"))]).0, 2);
     assert_eq!(run(&[]).0, 2);
 }
@@ -830,6 +1170,37 @@ fn the_control_picks_a_byte_compared_file_and_one_bit_is_red() {
 }
 
 #[test]
+fn the_control_leaves_out_what_the_seed_put_there() {
+    let t = Tmp::new("control-seed");
+    let seed = t.0.join("seed");
+    write(&seed.join("ref.fa"), b"ACGT\n", 0o644);
+    let b = t.0.join("b");
+    copy(&seed, &b);
+    write(&b.join("kir/kir.dat"), b"the component's own file\n", 0o644);
+    write(&b.join("kir/run.log"), b"x", 0o644);
+    let (ms, mb) = (manifest(&seed, &[]), manifest(&b, &[]));
+    let (code, picked, _) = run(&["--control", &s(&mb)]);
+    assert_eq!((code, picked.as_str()), (0, "ref.fa\n"));
+    let (code, picked, err) = run(&["--control", &s(&mb), "--not-in", &s(&ms)]);
+    assert_eq!(
+        (code, picked.as_str()),
+        (0, "kir/kir.dat\n"),
+        "the control picks a seed file: {err}"
+    );
+    // A seed file the component wrote again with other bytes is its own.
+    write(&b.join("ref.fa"), b"ACGTT\n", 0o644);
+    fs::remove_file(b.join("kir/kir.dat")).unwrap();
+    let (code, picked, _) = run(&["--control", &s(&manifest(&b, &[])), "--not-in", &s(&ms)]);
+    assert_eq!((code, picked.as_str()), (0, "ref.fa\n"));
+    // Nothing but the seed, and a log (presence only): no file to plant in.
+    fs::remove_file(b.join("ref.fa")).unwrap();
+    copy(&seed.join("ref.fa"), &b.join("ref.fa"));
+    let (code, picked, _) = run(&["--control", &s(&manifest(&b, &[])), "--not-in", &s(&ms)]);
+    assert_eq!(code, 1, "picked {picked}");
+    assert_eq!(run(&["--control", &s(&mb), "--not-in"]).0, 2);
+}
+
+#[test]
 fn the_log_compare_masks_times_and_sees_the_missing_list() {
     let t = Tmp::new("logs");
     let log = |name: &str, body: &str| {
@@ -884,4 +1255,156 @@ fn the_committed_allowlist_reads_cleanly() {
     let allow = repo().join("tests/setup/install-manifest-allow.tsv");
     let (code, out, err) = compare(&m, &m, Some(&allow));
     assert_eq!(code, 0, "{out}{err}");
+}
+
+/// The og binary cargo built beside this test binary: ab.sh runs `og dev
+/// install-manifest`. `cargo test --workspace` builds it; on its own, run
+/// `cargo build -p og` first.
+fn og_bin() -> PathBuf {
+    let exe = std::env::current_exe().unwrap();
+    let og = exe.parent().and_then(Path::parent).unwrap().join("og");
+    assert!(
+        og.is_file(),
+        "{} is missing: build og first (cargo build -p og)",
+        og.display()
+    );
+    og
+}
+
+/// A stub `scripts/setup.sh` for ab.sh's own tests; `AB_STUB` says what it
+/// does to the install folder (its last argument).
+const STUB_SETUP: &str = r#"#!/usr/bin/env bash
+set -eu
+dir=${!#}
+case "$AB_STUB" in
+  ok)
+    mkdir -p "$dir/kir"
+    printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
+    echo "[OK] KIR data" ;;
+  fail)
+    mkdir -p "$dir/kir"
+    printf 'half of it\n' >"$dir/kir/kir.part"
+    echo "ERROR: could not download the KIR data"
+    exit 1 ;;
+  nothing)
+    echo "nothing to do" ;;
+  foreign)
+    mkdir -p "$dir/kir"
+    printf 'the KIR data, longer than the seed file\n' >"$dir/kir/kir.dat"
+    printf 'written as another user, longer than the KIR data\n' >"$dir/kir/other.dat"
+    if [ "$(id -u)" = 0 ]; then chown 65534 "$dir/kir/other.dat"; else sudo -n chown 0 "$dir/kir/other.dat"; fi ;;
+esac
+"#;
+
+/// Runs ab.sh --bash-vs-bash kir-data in a scratch copy of the repo with
+/// the stub setup.sh, a one-file seed and no container engine; its exit
+/// code and output.
+fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
+    let t = Tmp::new(tag);
+    let root = t.0.join("repo");
+    for f in [
+        "tests/setup/ab.sh",
+        "tests/setup/install-manifest-allow.tsv",
+    ] {
+        write(&root.join(f), &fs::read(repo().join(f)).unwrap(), 0o755);
+    }
+    write(&root.join("scripts/setup.sh"), STUB_SETUP.as_bytes(), 0o755);
+    write(&root.join("rust/og.sh"), b"#!/bin/sh\nexit 0\n", 0o755);
+    let seed = t.0.join("seed");
+    write(&seed.join("ref.fa"), b"ACGT\n", 0o644);
+    let out = Command::new("bash")
+        .arg(root.join("tests/setup/ab.sh"))
+        .args(["--bash-vs-bash", "kir-data"])
+        .arg(t.0.join("work"))
+        .env("OG", og_bin())
+        .env("CONTAINER_ENGINE", "true")
+        .env("AB_SEED", &seed)
+        .env("AB_STUB", stub)
+        .env("TMPDIR", &t.0)
+        .env_remove("OG_DOWNLOADS")
+        .env_remove("AB_EXPECT_EXIT")
+        .env_remove("AB_ALLOW")
+        .envs(env.iter().copied())
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    (out.status.code().unwrap_or(-1), text)
+}
+
+#[test]
+fn ab_sh_is_green_on_a_real_install_and_plants_its_control_in_it() {
+    let (code, out) = ab("ab-ok", "ok", &[]);
+    assert_eq!(code, 0, "{out}");
+    // The seed's ref.fa is smaller, but the seed did not come from the
+    // component: a bit flipped there proves nothing about it.
+    assert!(
+        out.contains("control: one flipped bit in kir/kir.dat is red"),
+        "the control is not in the component's file:\n{out}"
+    );
+}
+
+#[test]
+fn ab_sh_is_red_when_side_a_fails_unless_that_exit_is_expected() {
+    let (code, out) = ab("ab-fail", "fail", &[]);
+    assert_eq!(code, 1, "both sides failing is green:\n{out}");
+    assert!(out.contains("[RED]  side-a-exit"), "{out}");
+    let (code, out) = ab("ab-fail-expected", "fail", &[("AB_EXPECT_EXIT", "1")]);
+    assert_eq!(code, 0, "an expected exit 1 is red:\n{out}");
+    let (code, out) = ab("ab-ok-expected", "ok", &[("AB_EXPECT_EXIT", "1")]);
+    assert_eq!(code, 1, "exit 0 where 1 was expected is green:\n{out}");
+}
+
+#[test]
+fn ab_sh_stops_when_the_component_installs_nothing() {
+    let (code, out) = ab("ab-nothing", "nothing", &[]);
+    assert_eq!(code, 2, "a run that installs nothing passes:\n{out}");
+    assert!(out.contains("holds nothing the seed did not"), "{out}");
+}
+
+#[test]
+fn ab_sh_is_red_on_a_file_another_user_owns() {
+    let root = Command::new("id").arg("-u").output().unwrap().stdout == b"0\n";
+    let sudo = !root
+        && Command::new("sudo")
+            .args(["-n", "true"])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+    if !root && !sudo {
+        eprintln!("skipped: making a file another user owns needs root or sudo -n");
+        return;
+    }
+    // A volume mounted with owners ignored takes the chown and keeps the
+    // owner: nothing to test there.
+    let probe = Tmp::new("ab-owner-probe");
+    let f = probe.0.join("f");
+    write(&f, b"x", 0o644);
+    let before = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&f).unwrap().uid()
+    };
+    let chown = if root {
+        Command::new("chown").arg("65534").arg(&f).status()
+    } else {
+        Command::new("sudo")
+            .args(["-n", "chown", "0"])
+            .arg(&f)
+            .status()
+    };
+    let after = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&f).unwrap().uid()
+    };
+    if !chown.is_ok_and(|s| s.success()) || after == before {
+        eprintln!("skipped: the temp folder's filesystem does not keep file owners");
+        return;
+    }
+    let (code, out) = ab("ab-foreign", "foreign", &[]);
+    assert_eq!(code, 1, "a file another user owns is green:\n{out}");
+    assert!(out.contains("[RED]  foreign-files"), "{out}");
+    assert!(out.contains("kir/other.dat"), "{out}");
 }
