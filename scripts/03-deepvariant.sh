@@ -10,7 +10,7 @@
 # Sex: with `male`, chrX and chrY are called haploid outside the
 #   pseudoautosomal regions (assets/par_grch38.bed), so a male sample gets no
 #   impossible heterozygous call there. `female` and no sex call every contig
-#   diploid. The alternative callers 03a, 03b and 03d take the same sex
+#   diploid. The alternative callers 03a to 03d take the same sex
 #   argument and use the same pseudoautosomal regions.
 # Optional environment:
 #   INTERVALS="chr20:10000001-10500000 chr22:1-50818468" calls only those
