@@ -1,0 +1,3 @@
+path	mode	component	reason	cannot_compare
+clinvar/clinvar_*chr.vcf.gz	vcf	refresh-clinvar	bcftools annotate and view write the time of each run into their ##bcftools_annotateCommand and ##bcftools_viewCommand header lines	-
+clinvar/clinvar_*chr.vcf.gz.tbi	index	refresh-clinvar	the header lines with a time change the size of the compressed header block, so every offset after it moves; the index of the same records holds the same names and must fit its file	-

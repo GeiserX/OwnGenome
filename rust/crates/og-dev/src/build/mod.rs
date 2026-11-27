@@ -343,6 +343,10 @@ mod fetch_tests {
                 while !stop.load(Ordering::Relaxed) {
                     match server.accept() {
                         Ok((mut stream, _)) => {
+                            // On macOS an accepted socket inherits the
+                            // listener's O_NONBLOCK; a read before curl's
+                            // request arrives would fail with WouldBlock.
+                            stream.set_nonblocking(false).unwrap();
                             stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                             let mut reader = BufReader::new(&stream);
                             let mut line = String::new();

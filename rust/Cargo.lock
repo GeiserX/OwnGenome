@@ -816,6 +816,8 @@ dependencies = [
  "pycompat",
  "regex",
  "regex-syntax",
+ "rustix",
+ "sha2",
 ]
 
 [[package]]
