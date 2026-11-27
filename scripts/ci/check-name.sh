@@ -94,6 +94,6 @@ fi
 if scan "$(git rev-parse --show-toplevel)"; then
   echo "OK: no old project name"
 else
-  echo "Rename these to OwnGenome (owngenome-view.sh, owngenome-lookup.sh, owngenome-live.sh, owngenome_live.py, OWNGENOME_*), or list a line that keeps the old name on purpose in ALLOW in scripts/ci/check-name.sh." >&2
+  echo "Rename these to OwnGenome (owngenome-view.sh, owngenome-lookup.sh, owngenome-live.sh, OWNGENOME_*), or list a line that keeps the old name on purpose in ALLOW in scripts/ci/check-name.sh." >&2
   exit 1
 fi

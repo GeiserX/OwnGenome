@@ -274,10 +274,10 @@ pub fn haplogroups(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
     )
 }
 
-/// Step 26b's table (ADMIXTURE fractions with their bootstrap range, then
-/// the painted shares) and its painting, written by `og ancestry-fine
-/// report` from made-up ADMIXTURE and RFMix output. Mostly West Eurasian,
-/// as step 25's EUR placement.
+/// Step 26b's table (the projected fractions with their bootstrap range,
+/// then the painted shares) and its painting, written by `og ancestry-fine
+/// report` from made-up projection and painting output. Mostly West
+/// Eurasian, as step 25's EUR placement.
 pub fn ancestry_fine(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
     let s = &ctx.sample;
     let continent: &[(&str, f64)] = &[

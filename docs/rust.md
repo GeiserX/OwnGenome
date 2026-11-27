@@ -33,7 +33,7 @@ rust/
   crates/og-recheck/    og recheck: newer databases since a run, the rerun and the ClinVar lock
   crates/og-render/     og report render|index|charts: the reports from summary.json (render: both reports, every section, called by steps 24, HTML_REPORT and generate-report.sh; a section that cannot be written says so in place and the rest is written)
   crates/og-live/       og live serve|results|family|demo, og view serve: the live site, all ported (serve with its login, ingest port and results)
-  crates/og-couple/     og couple screen|genes: step 39's couple screen (not ported yet)
+  crates/og-couple/     og couple screen|genes: step 39's couple screen
   crates/og-admix/      what the fine-ancestry engines share (panel, map, ref.geno, RNG, simulator), and the painting and the projection
   og/                   the binary: og <tool> [args]
 bin/og                  the shim tasks call; runs bin/.og/og-linux-<arch> (og-darwin-<arch> on a Mac)
@@ -137,6 +137,7 @@ To add a primitive: write it in `pycompat` with unit tests and add an operation 
 - **E2E** (`e2e.yml`): a pull request that changes `rust/` runs the smoke cases and every e2e case whose row in `scripts/ci/e2e-case-paths.tsv` has a glob that matches `bin/og`, the cases that run `og` on real tool output ([Which cases a pull request runs](testing.md#which-cases-a-pull-request-runs)). A merge to main that changes `rust/` runs every case.
 - **Release** (`release.yml`): a tag builds the four binaries and `THIRD-PARTY-LICENSES.txt`, writes `SHA256SUMS` over all five, checks them with `scripts/ci/check-release.sh dist` (each file there, listed once and matching its sum, and the notices of the Rust standard library, musl, htslib and htscodecs in the licence file), attests them and attaches all six files to the release. A pull request that changes `rust/` or the workflow builds them as a dry run, with the same check.
 - **`og dev licences notices`**: `cargo test -p og-dev --test licences` runs it through real `cargo metadata` on a planted workspace. The crates the binary links must all be credited, each text once; build, dev, procedural-macro, other-target and feature-off crates must not be; an extra part's HTML notices must come out as text; and a crate under SSPL-1.0, one with no licence text that MIT cannot cover, a licence file it cannot read and a missing extra file must each stop it.
+- **`og dev licences check`**: the Lint job `data-sources` runs it on the checkout and then on a copy with a planted file under `assets/` that has no row, which must fail. It checks that every file under `assets/` has a row in `assets/SOURCES.tsv` and carries the header phrase its row names, and that `NOTICE` names every third-party row.
 
 [Testing](testing.md) has the rest of CI.
 

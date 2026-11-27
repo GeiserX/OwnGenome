@@ -1,4 +1,4 @@
-// live.js: the run's progress on a person's page (assets/live/index.html, served by bin/owngenome_live.py):
+// live.js: the run's progress on a person's page (assets/live/index.html, served by og live serve):
 // the step timeline (one line per step), the step detail, the wire of what each step found, the event
 // stream and the replay, in the report's "How the run went" section. One data source feeds the page: in live mode state.json plus the run's event stream;
 // with <html data-mode="replay"> a frames.json of recorded states played on a timer. person.js draws

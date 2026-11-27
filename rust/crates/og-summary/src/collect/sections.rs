@@ -540,7 +540,7 @@ pub fn read_catalog(assets: &str) -> Result<Vec<CatalogRow>, String> {
     let p = crate::join(assets, NAME);
     if !crate::is_file(&p) {
         return Err(format!(
-            "{NAME} is not in {assets}: the report needs the repository's assets/ folder (render_report.py --assets)"
+            "{NAME} is not in {assets}: the report needs the repository's assets/ folder (og report render --assets)"
         ));
     }
     let text = std::fs::read(&p).map_err(|e| py_error("OSError", &e.to_string()))?;

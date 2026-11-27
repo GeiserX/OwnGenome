@@ -198,8 +198,12 @@ pub fn read_all(c: &Ctx<'_>) -> Vec<Out> {
     ];
     // One reader at a time: a run's peak memory is then the biggest single
     // section, not the sum of all of them. The sample VCF, the one input
-    // that takes time, is read on its own thread meanwhile (`read_a`). A
-    // panic stays in its section.
+    // that takes time, is read on its own thread meanwhile (`read_a`). In
+    // the og binary a reader that panics ends og at once (the panic hook,
+    // og_render::chapters::abort_outside_guarded, aborts outside og report
+    // render's guarded sections), so no summary is written from a cut read;
+    // the catch below turns a panic into that section's error only where no
+    // such hook is set, as in the cargo tests.
     readers
         .iter()
         .map(|r| {

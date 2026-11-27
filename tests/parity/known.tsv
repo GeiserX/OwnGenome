@@ -78,3 +78,9 @@ report-render	nf	nf.html	#629: callability shares print at one decimal, the repo
 report-render	nf	nf.txt	#629: callability shares print at one decimal, the report says whether coding exons were checked, and genes whose own step gave no result get a line of their own.
 report-render	stale	stale.html	#629: callability shares print at one decimal, the report says whether coding exons were checked, and genes whose own step gave no result get a line of their own.
 report-render	stale	stale.txt	#629: callability shares print at one decimal, the report says whether coding exons were checked, and genes whose own step gave no result get a line of their own.
+report-render	no-assets	no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	no-assets	no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	no-assets	no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	cb-no-assets	cb-no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer

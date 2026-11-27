@@ -1,5 +1,5 @@
 // home.js: the live site's home page (assets/live/home.html), the Journal design: "does anyone have
-// something to act on, and what is running?" From /runs.json (bin/owngenome_live.py runs_index): a
+// something to act on, and what is running?" From /runs.json (og live serve, runs_index in rust/crates/og-live/src/state.rs): a
 // headline sentence, the findings that need attention across everyone, the run being written first,
 // then each family as a block (a small pedigree and one tile per person, with the person's lead and the
 // counts by level), the people in no family, and the log of every run. Colour follows the person: each

@@ -31,8 +31,9 @@
 #                                                    adds a site or the build changes
 # Exit 0 when every site matches, 1 when one does not, when RULES has no site
 # (an empty check is a failure), or when the table's build is not the one
-# versions.env pins. tests/test_traits_report.py runs it on the table and on
-# planted copies with a swapped pair, a minus-strand pair and an unknown rsID.
+# versions.env pins. rust/crates/og-steps/tests/genome_traits.rs runs it on the
+# table and on planted copies with a swapped pair, a minus-strand pair and an
+# unknown rsID.
 set -euo pipefail
 export LC_ALL=C   # one sort order for the table and the dbSNP lines
 
