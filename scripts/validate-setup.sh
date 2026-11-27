@@ -912,9 +912,9 @@ else
     if [ "$(consumer_sites_digest "$CONSUMER_SITES")" = "$CONSUMER_SITES_TABLE_SHA256" ]; then
       pass "Site table of the raw-data export (opt-in step 40, dbSNP ${CONSUMER_DBSNP_BUILD}): present, the same as the pinned build"
     elif ! consumer_sites_current "$CONSUMER_SITES"; then
-      fail "Site table ${CONSUMER_SITES} was built before og took each site's strand from the liftover chain: it has the wrong bases at sites on inverted blocks, and step 40 refuses it. Build it again: ./scripts/setup.sh --consumer-sites ${GENOME_DIR}"
+      fail "Site table ${CONSUMER_SITES} was built before og took each site's strand from the liftover chain: it has the wrong bases at sites on inverted blocks, and step 40 refuses it. Build it again: ./scripts/setup.sh --consumer-sites ${GENOME_DIR}, or delete it if you do not use step 40: rm ${CONSUMER_SITES}"
     else
-      fail "Site table ${CONSUMER_SITES} differs from the pinned build (CONSUMER_SITES_TABLE_SHA256): it was built by another version of the pipeline. Build it again: ./scripts/setup.sh --consumer-sites ${GENOME_DIR}"
+      fail "Site table ${CONSUMER_SITES} differs from the pinned build (CONSUMER_SITES_TABLE_SHA256): it was built by another version of the pipeline. Build it again: ./scripts/setup.sh --consumer-sites ${GENOME_DIR}, or delete it if you do not use step 40: rm ${CONSUMER_SITES}"
     fi
   elif [ -e "$CONSUMER_SITES" ]; then
     fail "Site table ${CONSUMER_SITES} is damaged: remove it and run ./scripts/setup.sh --consumer-sites ${GENOME_DIR}"

@@ -3,9 +3,9 @@
 # build, so run-all.sh, which runs it first, stops before such a table is used:
 #   1. a table built before og took each site's strand from the liftover chain
 #      (no "## table_format: 2" line) is a FAIL that says step 40 refuses it
-#      and names the rebuild;
+#      and names the rebuild, or deleting the table when step 40 is not used;
 #   2. a table with the format line that differs from the pin is a FAIL that
-#      names the rebuild;
+#      names the same two ways out;
 #   3. the pinned table passes (a checkout copy pins the planted table).
 # Before the fix, case 1 was a warning and validate-setup.sh exited 0.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
@@ -26,14 +26,14 @@ cp "${P}/old-sites.tsv.gz" "$SITES"
 run_expect 1 old "${SCRIPTS}/validate-setup.sh" sample1
 output_has old "\[FAIL\].*Site table ${SITES} was built before og took each site's strand from the liftover chain"
 output_has old 'step 40 refuses it'
-output_has old "Build it again: \./scripts/setup\.sh --consumer-sites ${G}$"
+output_has old "Build it again: \./scripts/setup\.sh --consumer-sites ${G}, or delete it if you do not use step 40: rm ${SITES}$"
 output_lacks old '\[OK\].*Site table'
 
 # 2. A table with the format line that is not the pinned build.
 cp "${P}/unit-sites.tsv.gz" "$SITES"
 run_expect 1 unpinned "${SCRIPTS}/validate-setup.sh" sample1
 output_has unpinned "\[FAIL\].*Site table ${SITES} differs from the pinned build"
-output_has unpinned "Build it again: \./scripts/setup\.sh --consumer-sites ${G}$"
+output_has unpinned "Build it again: \./scripts/setup\.sh --consumer-sites ${G}, or delete it if you do not use step 40: rm ${SITES}$"
 output_lacks unpinned 'built before og took'
 
 # 3. A checkout copy whose pin is this table: it passes.

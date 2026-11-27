@@ -17,10 +17,10 @@ pub fn telomere(ctx: &Ctx, rng: &mut Rng) -> Result<(), String> {
 }
 
 /// Step 40's summary table, in `og consumer export`'s rows: the pinned site
-/// table keeps 614,138 of the chip list's 638,463 sites
+/// table keeps 613,971 of the chip list's 638,463 sites
 /// (docs/40-export-consumer.md); the counts are made up.
 pub fn consumer_export(ctx: &Ctx, _rng: &mut Rng) -> Result<(), String> {
-    let (sites, from_blocks, from_records) = (614_138, 470_912, 140_206);
+    let (sites, from_blocks, from_records) = (613_971, 470_745, 140_206);
     let mut reasons = [
         ("no gVCF record", 1954),
         ("inside a deletion or a longer allele", 611),

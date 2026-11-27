@@ -17,7 +17,7 @@
 # ClinVar, carrier screen, traits.
 #
 # rsIDs are found in the consumer site table (setup.sh --consumer-sites,
-# 614,138 chip rsIDs with dbSNP b157 GRCh38 positions), then in
+# 613,971 chip rsIDs with dbSNP b157 GRCh38 positions), then in
 # assets/traits.tsv and assets/bloodtype_markers.tsv, then in the annotated
 # VCF (only the sample's own variants carry an rsID there). Genes are found in
 # GENCODE's gene lines, which setup.sh installs.
