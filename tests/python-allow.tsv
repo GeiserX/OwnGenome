@@ -1,0 +1,37 @@
+# Python that og dev python-gate allows (docs/rust.md, "No owned Python").
+# Every row is third-party Python run inside its own pinned image, named by
+# its versions.env variable, or a line that names Python and runs none (a
+# check of a log, a stub, an image name). One file per row, never a directory
+# or a pattern; a row that covers nothing fails the gate. A Python file is
+# owned code and can never be listed here.
+# uses is the number of Python uses in the file (each python or package
+# runner word, Python heredoc, python #! line and run of the python image
+# with no program after it; one line can hold two): a new use is checked
+# against the reason before the count changes. marks
+# (optional) are texts separated by |; the code of every use line (without
+# its comments) must hold one of them, so a use swapped for another at the
+# same count fails too. Take a mark from the use itself (the tool's path),
+# never from text every line of the file holds (an image column).
+# file<TAB>uses<TAB>reason<TAB>marks
+.github/workflows/docs.yml	3	PYTHON_IMAGE: Zensical, the docs site builder, pip-installed from docs/requirements-docs.txt (every wheel hash-locked) and run inside the pinned python image	/tmp/docs
+modules/local/cyrius/main.nf	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image	-m cyrius
+modules/local/mito_variants/main.nf	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3	$EK
+modules/local/pharmcat/main.nf	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3	/pharmcat/pharmcat_vcf_preprocessor
+rust/crates/og-dev/src/images.rs	2	the image scanner's own words: python is a Docker Hub base name it refuses, and python3 x.py a test line that is no image; runs no Python	"python",|"python3 x.py",
+rust/crates/og-fresh/src/registry.rs	2	PYTHON_IMAGE: the python image's Docker Hub repository (library/python), which the pin reader asks the registry about; runs no Python	library/python
+rust/crates/og-fresh/src/selftest.rs	1	PYTHON_IMAGE: the python image's Docker Hub repository (library/python) in the pin reader's self-test; runs no Python	library/python
+rust/crates/og-setup/tests/fetch.rs	1	the net-read reason label pip (setup.sh's Cyrius install in PYTHON_IMAGE); runs no Python	"pip",
+rust/crates/og-steps/src/pypgx_summary.rs	1	PYPGX_IMAGE: reads the pythonX.Y folder name of PyPGx's install in its image to find its tables; runs no Python	strip_prefix(
+rust/crates/og-steps/tests/pgx_outside_calls.rs	3	PYPGX_IMAGE: builds a fake PyPGx install tree (a python3.12 folder link and a #! line) for that reader; runs no Python	python3.1"|#!/usr/local/bin/
+scripts/07-pharmacogenomics.sh	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3	/pharmcat/pharmcat_vcf_preprocessor
+scripts/20-mtoolbox.sh	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3	$EK
+scripts/21-cyrius.sh	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image	-m cyrius
+scripts/setup.sh	1	PYTHON_IMAGE: install_cyrius pip-installs the hash-locked Cyrius wheels (scripts/cyrius-constraints.txt) inside the pinned python image	--require-hashes
+tests/e2e/pharmcat-indel-refblocks-1.sh	1	PHARMCAT_IMAGE: the case's control runs PharmCAT's own preprocessor in its image	/pharmcat/pharmcat_vcf_preprocessor
+tests/fake-docker/pgx-opt-in-steps.sh	6	PYTHON_IMAGE: reads the fake docker log for step 21's python image runs, its python3 -m cyrius call and the pip install it must no longer run; runs no Python	run_lines python|grep
+tests/fake-docker/single-source-run-in.sh	2	PYTHON_IMAGE: checks that setup.sh --cyrius ran the python image, and names its pip install in a failure message; runs no Python	docker_log_has|fail "
+tests/parity/gen/report-corpus.sh	1	PYTHON_IMAGE: names the python image in a made-up run manifest; runs no Python	"PYTHON_IMAGE"
+tests/smoke/commands.tsv	3	PHARMCAT_IMAGE, EKLIPSE_IMAGE: each row runs the tool's own Python script in its image (PharmCAT's preprocessor, eKLIPse.py) with the image's python3. PGSC_PYYAML_IMAGE: command -v python only finds the interpreter's path, to check that the yaml module sits in its site-packages; no Python runs	/pharmcat/pharmcat_vcf_preprocessor|"$EK"|readlink -f "$(command -v python)"
+tests/smoke/cyrius.sh	2	PYTHON_IMAGE: the Cyrius smoke run pip-installs the hash-locked wheels, then runs python3 -m cyrius, in the python image	--require-hashes|-m cyrius
+tests/smoke/hipstr.sh	1	HIPSTR_IMAGE: prints the image's own python3 version for its smoke row	python_version.txt
+tests/test_owngenome_view.sh	3	a python3 that exits 127, put first on PATH to prove the viewer runs with no Python; runs no Python	NOPY

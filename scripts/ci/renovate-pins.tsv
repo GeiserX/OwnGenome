@@ -2,8 +2,8 @@
 # each must be a dependency Renovate detects in every place it is pinned, as often as the text has it.
 # dependency<TAB>file or glob (wildcards in the last part only)<TAB>regular expression for one pin,
 # with ^ and $ at line ends. A missing file or a glob that matches nothing is an error.
-# Only the files listed for a dependency are counted: python is also the docker image of
-# versions.env, which the image checks cover.
+# Only the files listed for a dependency are counted. The python image (also the image the
+# docs site is built in) is a versions.env image, which the image checks cover.
 # A setup-nextflow step is a pin when a version: line with a literal version follows its uses:
 # line inside the same step (the lines in between are blank or start with anything but '-',
 # which opens the next step); a computed version (an expression) is not a pin.
@@ -15,7 +15,6 @@ gitleaks/gitleaks	.github/workflows/*.yml	GITLEAKS_VERSION=\d
 koalaman/shellcheck	.github/workflows/lint.yml	^[ \t]+version: v\d
 renovate	.github/workflows/renovate-dry-run.yml	RENOVATE_VERSION: \d
 renovate	docs/updating.md	renovate@\d
-python	.github/workflows/docs.yml	python-version: ['\"]?\d
 ANHIG/IMGTHLA	scripts/lib/common.sh	^HLA_DB_RELEASE=\$\{HLA_DB_RELEASE:-\d
 PGScatalog/pgsc_calc	versions.env	^PGSC_CALC_VERSION="
 PGScatalog/pgsc_calc	conf/containers.config	ext\.pipeline_version = '
