@@ -299,7 +299,7 @@ struct Open {
 }
 
 /// A Nextflow line without its comments, read in order: `/* */` (`st`
-/// carries a block that spans lines), `//` anywhere but after a `:` (a URL scheme),
+/// carries a block that spans lines), `//` anywhere outside quotes (a JavaScript backtick quotes too),
 /// and, with `nf`, a `#` shell comment. With `nf`, a `"""` or `'''` opens
 /// and closes a shell body, where only `#` comments count (`rm cache/*` is
 /// a glob). Only a marker outside quotes counts, and a `/*` after `//` is
@@ -307,7 +307,8 @@ struct Open {
 fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
     let b = line.as_bytes();
     let mut out = String::new();
-    let (mut single, mut double) = (false, false);
+    // JavaScript also quotes with backticks: a template literal (`http://x`).
+    let (mut single, mut double, mut tick) = (false, false, false);
     let (mut i, mut seg) = (0, 0);
     while i < b.len() {
         if st.block {
@@ -320,29 +321,28 @@ fn strip_nf_comments(line: &str, st: &mut Open, nf: bool) -> String {
             }
             continue;
         }
-        let quoted = single || double;
+        let quoted = single || double || tick;
         if nf && !quoted && (b[i..].starts_with(b"\"\"\"") || b[i..].starts_with(b"'''")) {
             st.body = !st.body;
             i += 3;
             continue;
         }
-        // `//` right after a token is a comment too (`"ok";// note`); after
-        // a `:` it is the `//` of a URL scheme.
-        let after_scheme = i > 0 && b[i - 1] == b':';
         match b[i] {
             b'\\' if !single => {
                 i += 2;
                 continue;
             }
-            b'\'' if !double => single = !single,
-            b'"' if !single => double = !double,
+            b'\'' if !double && !tick => single = !single,
+            b'"' if !single && !tick => double = !double,
+            b'`' if !nf && !single && !double => tick = !tick,
             b'/' if !quoted && !st.body && b.get(i + 1) == Some(&b'*') => {
                 out.push_str(&line[seg..i]);
                 st.block = true;
                 i += 2;
                 continue;
             }
-            b'/' if !quoted && !st.body && !after_scheme && b.get(i + 1) == Some(&b'/') => {
+            // `//` right after a token is a comment too (`"ok";// note`).
+            b'/' if !quoted && !st.body && b.get(i + 1) == Some(&b'/') => {
                 out.push_str(&line[seg..i]);
                 return out;
             }
@@ -1771,7 +1771,10 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
     fn a_javascript_line_comment_right_after_a_token() {
         let js = "const label = \"ok\";// Example: /*\nspawn(\"@p3\", [\"-V\"]);\n";
         assert_eq!(k("a.js", js), [(2, "call")]);
-        // The // of a URL scheme is not a comment.
+        // After a colon too: `key:// note` is a comment in an object literal.
+        let js = "const c = { key:// Example: /*\n  spawn(\"@p3\", [\"-V\"]) };\n";
+        assert_eq!(k("a.js", js), [(2, "call")]);
+        // A // inside a template literal is text.
         assert_eq!(
             k("a.js", "const u = `http://x`; spawn(\"@p3\");\n"),
             [(1, "call")]
