@@ -568,6 +568,8 @@ install_yleaf_data() {
   rm -rf "${yt}.part"
   mkdir -p "${yt}.part"
   # A mask that matches its pin is kept: a new tree pin does not download it again.
+  # The two position tables are not: they are fetched again with the tree, even
+  # when YTREE_POSITIONS_COMMIT did not move.
   if $mask_ok; then
     cp "$mask" "${yt}.part/callable_mask_chrY.fasta.gz"
   fi
@@ -583,14 +585,14 @@ install_yleaf_data() {
     echo "[WARN] Could not download the current Y tree (${label}); step 37 will place the sample on Yleaf's tree only. Run this again to retry."
     rm -rf "${yt}.part"
     if $mask_ok; then
-      find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +  # not kept: the installed tree of an older pin; the mask that matches its pin stays
+      find "$yt" -mindepth 1 -maxdepth 1 ! -name callable_mask_chrY.fasta.gz -exec rm -rf {} +  # not kept: the installed tree of an older pin (its position tables are fetched again with the tree); the mask that matches its pin stays
     else
-      rm -rf "$yt"  # not kept: the installed tree of an older pin
+      rm -rf "$yt"  # not kept: the installed tree of an older pin; its position tables are fetched again with the tree
     fi
     return 0
   fi
   printf '%s\n' "$want" > "${yt}.part/version.txt"
-  rm -rf "$yt"  # not kept: the installed tree of an older pin, replaced
+  rm -rf "$yt"  # not kept: the installed tree of an older pin, replaced; its position tables were fetched again with the tree
   mv "${yt}.part" "$yt"
   echo "[OK] Current Y tree (${label}) and Yleaf ${YTREE_POSITIONS_VERSION}'s SNP positions (step 37): ${yt}"
 }
