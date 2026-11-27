@@ -443,13 +443,15 @@ pub fn build(
     };
     // The clinical section holds the ACMG card (step 23 ran and wrote one):
     // the index reads the card there, so the card of its own section, the
-    // same card, is skipped. Without it the reports show `sections.acmg_sf`,
-    // step 6's card alone (`acmg_sf::standalone`), and the index reads that.
+    // same card, is skipped. A card is there when it is true, as the reports
+    // and the live site test it (an empty or false one is none). Without it
+    // the reports show `sections.acmg_sf`, step 6's card alone
+    // (`acmg_sf::standalone`), and the index reads that.
     let clinical_card = match sections.and_then(|m| m.get("clinical")) {
         Some(Value::Object(c)) => {
             matches!(c.get("state"), Some(Value::Str(st)) if st == "ok" || st == "stale")
                 && matches!(c.get("data"), Some(Value::Object(d))
-                    if d.get("acmg_sf").is_some_and(|sf| !matches!(sf, Value::Null)))
+                    if d.get("acmg_sf").is_some_and(truthy))
         }
         _ => false,
     };

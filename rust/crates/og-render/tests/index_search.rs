@@ -820,4 +820,13 @@ fn a_step_6_card_alone_is_indexed_and_a_clinical_card_once() {
     let fi = index(&failed, None);
     let keys: Vec<String> = sections(&fi, "MUTYH").into_iter().map(|x| x.0).collect();
     assert_eq!(keys, ["acmg_sf"]);
+    // A clinical card that is empty or false is no card, as in the reports
+    // and on the live site (both test it for truth): step 6's card is read.
+    for empty in [Value::Object(Default::default()), Value::Bool(false)] {
+        let mut e = both.clone();
+        set(&mut e, &["sections", "clinical", "data", "acmg_sf"], empty.clone());
+        let ei = index(&e, None);
+        let keys: Vec<String> = sections(&ei, "MUTYH").into_iter().map(|x| x.0).collect();
+        assert_eq!(keys, ["acmg_sf"], "clinical.data.acmg_sf = {empty:?}");
+    }
 }
