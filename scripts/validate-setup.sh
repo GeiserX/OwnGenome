@@ -508,9 +508,10 @@ elif [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ]; then
   WORK_DIR="${GENOME_DIR}/${SAMPLE}/nextflow/work"
 fi
 # A run that stopped keeps its Nextflow work directory, and -resume needs it:
-# the space it holds is not lost, so under 200 GB a resume is a warning.
+# the space it holds is not lost, so under 200 GB a resume is a warning. An empty
+# directory (made ahead of a first run) holds no task to reuse, so it is no resume.
 RESUME_WORK=""
-if [ -n "$SAMPLE" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+if [ -n "$SAMPLE" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] && [ -n "$(ls -A "$WORK_DIR" 2>/dev/null)" ]; then
   RESUME_WORK=$WORK_DIR
 fi
 # disk_of DIR: "<free KB> <mount point>" of the disk that holds DIR, or its nearest parent that exists.
@@ -552,7 +553,7 @@ if command -v df &>/dev/null; then
   # the room too.
   if [ -n "$WORK_DIR" ]; then
     read -r WORK_KB WORK_MOUNT < <(disk_of "$WORK_DIR") || true
-    if [ -n "${WORK_KB:-}" ] && [ "$WORK_KB" -gt 0 ] 2>/dev/null && [ "${WORK_MOUNT:-}" != "${CHECK_MOUNT:-}" ]; then
+    if [ -n "${WORK_KB:-}" ] && [ "$WORK_KB" -ge 0 ] 2>/dev/null && [ "${WORK_MOUNT:-}" != "${CHECK_MOUNT:-}" ]; then
       check_free "$WORK_KB" "$WORK_MOUNT" "Free disk space for Nextflow's work directory ${WORK_DIR}"
     fi
   fi

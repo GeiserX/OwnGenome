@@ -43,7 +43,8 @@ process CNVPYTOR {
     def canonical_chroms = ((1..22).collect { "chr${it}" } + ['chrX', 'chrY']).join(' ')
     """
     # Root under Docker (nextflow.config): give every file of the work directory back on any exit,
-    # also when the task fails or is killed for memory. docker.fixOwnership gives them back only after
+    # also when the task fails or one of its programs is killed for memory (a kill of the whole container
+    # skips the trap). docker.fixOwnership gives them back only after
     # a task that succeeds, and only in an image whose chown knows GNU's --from (BusyBox's does not).
     # NXF_OWNER is set under docker.fixOwnership; -h leaves the files the staged links point to alone.
     trap '[ -z "\${NXF_OWNER:-}" ] || chown -Rh "\${NXF_OWNER}" . 2>/dev/null || true' EXIT

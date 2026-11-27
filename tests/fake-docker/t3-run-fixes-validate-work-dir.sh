@@ -55,13 +55,21 @@ FRESH="${WDISK}/owngenome/fresh"
 with_free 600 150 run_expect 1 work-low env NXF_WORK="$FRESH" "${SCRIPTS}/validate-setup.sh" sample1
 output_has work-low "\[FAIL\].*Free disk space for Nextflow's work directory ${FRESH}: 150 GB, under the 200 GB minimum"
 output_has work-low '\[OK\].*Free disk space: 600 GB in /'
+# A full work disk (0 free) is measured too, not skipped.
+with_free 600 0 run_expect 1 work-full env NXF_WORK="$FRESH" "${SCRIPTS}/validate-setup.sh" sample1
+output_has work-full "\[FAIL\].*Free disk space for Nextflow's work directory ${FRESH}: 0 GB, under the 200 GB minimum"
+# An empty work directory, made ahead of a first run, is no resume.
+mkdir -p "$FRESH"
+with_free 600 150 run_expect 1 work-empty env NXF_WORK="$FRESH" "${SCRIPTS}/validate-setup.sh" sample1
+output_has work-empty "\[FAIL\].*Free disk space for Nextflow's work directory ${FRESH}: 150 GB, under the 200 GB minimum"
+rmdir "$FRESH"
 with_free 600 150 run_expect 0 work-low-resume env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
 output_has work-low-resume "\[WARN\].*Free disk space for Nextflow's work directory ${WD}: 150 GB, under the 200 GB minimum, but ${WD} exists"
 # The default work directory sits on GENOME_DIR's disk: one line, as before.
 with_free 600 150 run_expect 0 same-disk "${SCRIPTS}/validate-setup.sh" sample1
 output_lacks same-disk "work directory"
 # A relative NXF_WORK is under <sample>/nextflow, where run-all.sh starts Nextflow.
-mkdir -p "${G}/sample1/nextflow/rel"
+mkdir -p "${G}/sample1/nextflow/rel/ab"
 with_free 150 600 run_expect 0 relative env NXF_WORK=rel "${SCRIPTS}/validate-setup.sh" sample1
 output_has relative "but ${G}/sample1/nextflow/rel exists"
 
@@ -81,7 +89,7 @@ with_free 150 600 run_expect 0 run-all-w "${SCRIPTS}/run-all.sh" sample1 male -w
 output_has run-all-w "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${WD} exists"
 output_lacks run-all-w 'setup validation failed'
 grep -qF -- "-w ${WD}" <(grep '^nextflow :: ' "$FAKE_DOCKER_LOG") || fail "nextflow did not get -w ${WD}"
-mkdir -p "${G}/sample1/nextflow/w2"
+mkdir -p "${G}/sample1/nextflow/w2/ab"
 : > "$FAKE_DOCKER_LOG"
 with_free 150 600 run_expect 0 run-all-w-relative "${SCRIPTS}/run-all.sh" sample1 male -work-dir w2
 output_has run-all-w-relative "but ${G}/sample1/nextflow/w2 exists"
