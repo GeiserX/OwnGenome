@@ -498,29 +498,62 @@ fi
 # Check free space in GENOME_DIR if set, otherwise CWD
 CHECK_DIR="${GENOME_DIR:-$(pwd)}"
 FREE_GB=""
+# Nextflow's work directory: NXF_WORK, which run-all.sh sets to the one its run uses (-w, -work-dir or NXF_WORK),
+# else <sample>/nextflow/work. A relative one is under <sample>/nextflow, where run-all.sh starts Nextflow.
+WORK_DIR=""
+if [ -n "${NXF_WORK:-}" ]; then
+  WORK_DIR=$NXF_WORK
+  case "$WORK_DIR" in /*) ;; *) if [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ]; then WORK_DIR="${GENOME_DIR}/${SAMPLE}/nextflow/${WORK_DIR}"; fi ;; esac
+elif [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ]; then
+  WORK_DIR="${GENOME_DIR}/${SAMPLE}/nextflow/work"
+fi
 # A run that stopped keeps its Nextflow work directory, and -resume needs it:
 # the space it holds is not lost, so under 200 GB a resume is a warning.
 RESUME_WORK=""
-if [ -n "$SAMPLE" ] && [ -n "${GENOME_DIR:-}" ] && [ -d "${GENOME_DIR}/${SAMPLE}/nextflow/work" ]; then
-  RESUME_WORK="${GENOME_DIR}/${SAMPLE}/nextflow/work"
+if [ -n "$SAMPLE" ] && [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+  RESUME_WORK=$WORK_DIR
 fi
-if command -v df &>/dev/null; then
-  # Use 1K blocks for portability (works on Linux and macOS)
-  FREE_KB=$(df -Pk "$CHECK_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
-  if [ -n "$FREE_KB" ] && [ "$FREE_KB" -gt 0 ] 2>/dev/null; then
-    FREE_GB=$(awk "BEGIN {printf \"%.0f\", ${FREE_KB}/1048576}")
-    if [ "$FREE_GB" -ge 500 ]; then
-      pass "Free disk space: ${FREE_GB} GB in $(df -Pk "$CHECK_DIR" | awk 'NR==2 {print $6}')"
-    elif [ "$FREE_GB" -ge 200 ]; then
-      warn "Free disk space: ${FREE_GB} GB — 500 GB+ recommended for full pipeline per sample"
-    elif [ -n "$RESUME_WORK" ]; then
-      warn "Free disk space: ${FREE_GB} GB, under the 200 GB minimum, but ${RESUME_WORK} exists: a resume of an earlier run."
+# disk_of DIR: "<free KB> <mount point>" of the disk that holds DIR, or its nearest parent that exists.
+disk_of() {
+  local d=$1
+  while [ ! -e "$d" ] && [ "$d" != / ] && [ "$d" != . ]; do d=$(dirname "$d"); done
+  df -Pk "$d" 2>/dev/null | awk 'NR == 2 {m = $6; for (i = 7; i <= NF; i++) m = m " " $i; print $4, m}'
+}
+# check_free FREE_KB MOUNT WHAT: the 200 GB minimum and the 500 GB advice, for the disk WHAT names.
+RESUME_TOLD=""
+check_free() {
+  local kb=$1 mount=$2 what=$3 gb
+  gb=$(awk "BEGIN {printf \"%.0f\", ${kb}/1048576}")
+  if [ "$gb" -ge 500 ]; then
+    pass "${what}: ${gb} GB in ${mount}"
+  elif [ "$gb" -ge 200 ]; then
+    warn "${what}: ${gb} GB — 500 GB+ recommended for full pipeline per sample"
+  elif [ -n "$RESUME_WORK" ]; then
+    warn "${what}: ${gb} GB, under the 200 GB minimum, but ${RESUME_WORK} exists: a resume of an earlier run."
+    if [ -z "$RESUME_TOLD" ]; then
       echo "       -resume reuses every task that finished, so it writes only what the unfinished tasks"
       echo "       write. A task that must start over needs its full space again: a redone alignment"
       echo "       writes the BAM (80-120 GB) into work/ and a copy into aligned/. Deleting work/ frees"
       echo "       its space but makes the next run start from the beginning."
-    else
-      fail "Free disk space: ${FREE_GB} GB, under the 200 GB minimum (500 GB+ recommended per sample)."
+      RESUME_TOLD=1
+    fi
+  else
+    fail "${what}: ${gb} GB, under the 200 GB minimum (500 GB+ recommended per sample)."
+  fi
+}
+if command -v df &>/dev/null; then
+  # Use 1K blocks for portability (works on Linux and macOS)
+  read -r FREE_KB CHECK_MOUNT < <(disk_of "$CHECK_DIR") || true
+  if [ -n "${FREE_KB:-}" ] && [ "$FREE_KB" -gt 0 ] 2>/dev/null; then
+    FREE_GB=$(awk "BEGIN {printf \"%.0f\", ${FREE_KB}/1048576}")
+    check_free "$FREE_KB" "$CHECK_MOUNT" "Free disk space"
+  fi
+  # Nextflow writes every task's files into the work directory: when it is on another disk (-w), that disk needs
+  # the room too.
+  if [ -n "$WORK_DIR" ]; then
+    read -r WORK_KB WORK_MOUNT < <(disk_of "$WORK_DIR") || true
+    if [ -n "${WORK_KB:-}" ] && [ "$WORK_KB" -gt 0 ] 2>/dev/null && [ "${WORK_MOUNT:-}" != "${CHECK_MOUNT:-}" ]; then
+      check_free "$WORK_KB" "$WORK_MOUNT" "Free disk space for Nextflow's work directory ${WORK_DIR}"
     fi
   fi
 fi

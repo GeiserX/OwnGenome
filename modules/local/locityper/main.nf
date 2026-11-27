@@ -10,7 +10,9 @@
     genotype picks two pangenome haplotypes at each locus of the database,
     and og locityper report (the static binary bin/og) writes one row per
     locus. Locityper's exit code goes to the table; a locus it did not finish
-    reads "not called".
+    reads "not called". A kill (exit 137 or 143) on an attempt with a retry
+    left ends the task with that code instead, so Nextflow runs it again
+    with twice the memory; the last attempt writes the table.
 
     Equivalent to: scripts/53-locityper.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -52,6 +54,10 @@ process LOCITYPER {
         && locityper genotype -a ${bam} -d ${data}/db -p work/preproc -o work/gt -@ ${task.cpus}; } \\
         > ${meta.id}_locityper.log 2>&1 || rc=\$?
     [ "\$rc" -eq 0 ] || { echo "WARNING: Locityper exited \$rc; last lines of its log:" >&2; tail -n 20 ${meta.id}_locityper.log >&2; }
+    # Killed (137, as for memory, or 143) on an attempt with a retry left: the task exits with that code, so
+    # conf/base.config's errorStrategy runs it again with twice the memory. The last attempt writes the table.
+    if { [ "\$rc" -eq 137 ] || [ "\$rc" -eq 143 ]; } && [ ${task.attempt} -le ${task.maxRetries} ]; then
+        echo "Locityper was killed (exit \$rc) on attempt ${task.attempt}: retrying with more memory" >&2; exit "\$rc"; fi
     og locityper report --gt-dir work/gt --loci ${data}/loci.bed --exit-code \$rc --out ${meta.id}_locityper.tsv
 
     cat <<-END_VERSIONS > versions.yml

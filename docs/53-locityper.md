@@ -65,7 +65,7 @@ With `run-all.sh`: `TOOLS=...,locityper`. It is opt-in, so a run lists step 53 o
 
 ## How the table is made
 
-`og locityper report` reads `gt/loci/<locus>/res.json.gz` and writes one row per locus. A locus Locityper did not finish reads "not called", with Locityper's exit code when it stopped.
+`og locityper report` reads `gt/loci/<locus>/res.json.gz` and writes one row per locus. A locus Locityper did not finish reads "not called", with Locityper's exit code when it stopped. In the pipeline, a Locityper killed with exit 137 (as for memory) or 143 on the first attempt ends the `LOCITYPER` task with that code instead, so Nextflow runs it again with twice the memory (still capped by `--max_memory`); only the last attempt writes the table. `scripts/53-locityper.sh` has no retry: its container gets 16 GB, and a kill there goes to the table.
 
 The filter is the one the authors used for their HLA and KIR benchmark (Zenodo 15879519, README): a call passes with no Locityper warning, a weighted distance of 30 or less, and fewer than 1000 or fewer than 20% unexplained reads. A call whose result gives no read counts fails it, and its `total_reads` and `unexplained_reads` read `.`. The weighted distance is the edit distance from the call to the other likely genotypes, weighted by their probability: a high value means the reads fit very different genotypes about as well.
 
