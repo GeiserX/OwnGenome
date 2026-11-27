@@ -63,8 +63,10 @@ process CPSR {
     # also when the task fails or one of its programs is killed for memory (a kill of the whole container
     # skips the trap). docker.fixOwnership gives them back only after
     # a task that succeeds, and only in an image whose chown knows GNU's --from (BusyBox's does not).
-    # NXF_OWNER is set under docker.fixOwnership; -h leaves the files the staged links point to alone.
-    trap '[ -z "\${NXF_OWNER:-}" ] || chown -Rh "\${NXF_OWNER}" . 2>/dev/null || true' EXIT
+    # They go to the owner of the work directory, who made it (you), whatever docker.fixOwnership says;
+    # -h leaves the files the staged links point to alone.
+    OWNER=\$(stat -c %u:%g .)
+    trap 'chown -Rh "\$OWNER" . 2>/dev/null || true' EXIT
     cpsr_id=\$(cpsr_sample_id '${meta.id}')
     cpsr \\
         --input_vcf ${vcf} \\

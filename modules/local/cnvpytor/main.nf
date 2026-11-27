@@ -46,8 +46,10 @@ process CNVPYTOR {
     # also when the task fails or one of its programs is killed for memory (a kill of the whole container
     # skips the trap). docker.fixOwnership gives them back only after
     # a task that succeeds, and only in an image whose chown knows GNU's --from (BusyBox's does not).
-    # NXF_OWNER is set under docker.fixOwnership; -h leaves the files the staged links point to alone.
-    trap '[ -z "\${NXF_OWNER:-}" ] || chown -Rh "\${NXF_OWNER}" . 2>/dev/null || true' EXIT
+    # They go to the owner of the work directory, who made it (you), whatever docker.fixOwnership says;
+    # -h leaves the files the staged links point to alone.
+    OWNER=\$(stat -c %u:%g .)
+    trap 'chown -Rh "\$OWNER" . 2>/dev/null || true' EXIT
     # Stage the pinned GC/mask resources into cnvpytor's data dir (the container
     # ships without them and its -download is broken in 1.3.2). This writes into
     # the image's site-packages, so this step needs a writable container FS —

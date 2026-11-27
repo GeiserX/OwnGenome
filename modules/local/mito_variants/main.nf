@@ -39,7 +39,8 @@ process MITO_VARIANTS {
     // "invalid null input: name"; HADOOP_USER_NAME and SPARK_USER do not
     // help). Step 20 runs that container as root too. A later --user wins.
     // docker.fixOwnership gives the work directory back only after a task
-    // that succeeds, so the script gives it back itself on any exit (below).
+    // that succeeds, so the script gives it back itself on any exit (below),
+    // to the directory's owner, also with docker.fixOwnership = false.
     // A process's containerOptions replaces the run's process.containerOptions
     // (the docker profile's '--network none', or any extra option of yours),
     // so '--network none' is repeated here unless the run's docker.runOptions
@@ -79,8 +80,10 @@ process MITO_VARIANTS {
     def depth_files = mosdepth_summary ? "${mosdepth_summary} ${mosdepth_dist}" : ''
     """
     # Root under Docker (above): give every file back on any exit, also when
-    # the task fails. NXF_OWNER is set under docker.fixOwnership.
-    trap '[ -z "\${NXF_OWNER:-}" ] || chown -R "\${NXF_OWNER}" . 2>/dev/null || true' EXIT
+    # the task fails, to the owner of the work directory, who made it (you),
+    # whatever docker.fixOwnership says.
+    OWNER=\$(stat -c %u:%g .)
+    trap 'chown -R "\$OWNER" . 2>/dev/null || true' EXIT
 
     # Step 1: Extract chrM reads
     gatk PrintReads \\
@@ -102,13 +105,13 @@ process MITO_VARIANTS {
     # with the linear ones outside it. A failure leaves the linear calls alone.
     shifted_pass() {
         rm -rf shifted && mkdir shifted || return 1
-        # Under Docker the task runs as root (above), and NXF_OWNER names
-        # you: shifted/ is yours from the start and the large files go to the
+        # Under Docker the task runs as root (above), and OWNER names you:
+        # shifted/ is yours from the start and the large files go to the
         # container's own /tmp, so a task killed outright (no EXIT trap)
         # leaves in shifted/ only plain files, which you can remove.
         # Elsewhere the task runs as you, and they stay in shifted/.
-        if [ -n "\${NXF_OWNER:-}" ]; then
-            chown "\${NXF_OWNER}" shifted || return 1
+        if [ "\$(id -u)" = 0 ]; then
+            chown "\$OWNER" shifted || return 1
             T=\$(mktemp -d) || return 1
         else
             T=shifted/tmp && mkdir "\$T" || return 1
