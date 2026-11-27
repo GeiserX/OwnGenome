@@ -45,9 +45,10 @@
 //! The `limit` column applies two footnotes of Table 1. TTN counts only a
 //! truncating variant in its exons with high PSI (SF v3.2 footnote f); the
 //! regions come from cardiodb's exon table, through `og dev build
-//! acmg-lof`. A ClinVar hit is truncating when its record in the clinical
-//! VCF is; a hit that file does not hold is reported with a
-//! `rule_condition` to check it. An LMNA variant that may be a missense one
+//! acmg-lof`; a record lies in one when any base its REF spans does. A
+//! ClinVar hit is truncating when its record in the clinical VCF is; a
+//! hit that file does not hold is reported with a `rule_condition` to
+//! check it. An LMNA variant that may be a missense one
 //! carries the case-evidence condition in `rule_condition`.
 
 use super::assets::{
@@ -370,9 +371,13 @@ fn gate(
                  canonical splice variant in an exon with high PSI, and OwnGenome counts one \
                  only in {name}"
             );
+            // The bases the record's REF spans, POS to POS + len(REF) - 1: a
+            // deletion that starts before a region and deletes into it (its
+            // canonical splice site) lies in it.
+            let last = key.1 + key.2.len().max(1) as i128 - 1;
             let inside = regions
                 .iter()
-                .any(|(c, start, end)| same_chrom(&key.0, c) && *start <= key.1 && key.1 <= *end);
+                .any(|(c, start, end)| same_chrom(&key.0, c) && *start <= last && key.1 <= *end);
             if !inside {
                 Err(format!("{rule}: this variant lies outside them"))
             } else if trunc {
@@ -1900,6 +1905,25 @@ mod tests {
                 "{pos}: {e}"
             );
         }
+        // A record counts by the bases its REF spans, not by its POS alone: a
+        // frameshift deletion that starts 3 bp before a region and deletes
+        // into it (its canonical splice site) counts; one whose REF ends a
+        // base before the region does not.
+        let del = |pos, r: &str| {
+            gate(
+                "TTN",
+                &ttn,
+                &("chr2".to_owned(), pos, r.to_owned(), "C".to_owned()),
+                true,
+                Some("frameshift_variant"),
+                Some(true),
+            )
+        };
+        assert_eq!(del(97, "CAAAAA"), Ok(None), "97 CAAAAA reaches 101");
+        assert_eq!(del(97, "CAAA"), Ok(None), "97 CAAA reaches 100");
+        assert!(del(97, "CAA").is_err(), "97 CAA ends at 99");
+        assert_eq!(del(399, "CAAAAA"), Ok(None), "399 CAAAAA starts inside");
+        assert!(del(401, "CAAAAA").is_err(), "401 starts past the end");
         assert_eq!(
             gate(
                 "TTN",
