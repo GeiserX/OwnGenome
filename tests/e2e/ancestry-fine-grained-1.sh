@@ -4,7 +4,7 @@
 # chr22:20-35 Mb (the slices are too short to paint: the painting needs 5 cM):
 #   - without the panel, step 26b says so in one line and exits 0;
 #   - the panel installs: both levels of the model, painting references, and
-#     neither person of the synthetic mix in it. Oceania, which has one
+#     none of the three people left out (A, B and C below) in it. Oceania, which has one
 #     unrelated person in the panel's metadata, is left out of the model at
 #     both levels (5 continental and 17 regional groups), and the install log
 #     and HG002T's report name it;
@@ -21,24 +21,34 @@
 #     both left out of the panel: Africa and East Asia each 25% to 75%, the
 #     painting African left of 25.5 Mb and East Asian right of 29.5 Mb, and
 #     neither side passing the other group's check;
+#   - SIM, three genomes that og ancestry-fine simulate builds from A, B and C
+#     (NA06984, a Utah resident of northern and western European ancestry,
+#     also left out of the panel), with their truth: Africa and East Asia at T 6, West
+#     Eurasia and East Asia at T 20, and one West Eurasian with no mix. On
+#     each, the painting of chr22:20-35 Mb must have the copies of each group
+#     right on enough of its bases and few false breakpoints per Morgan, and
+#     the fractions must be near the truth (floors measured on this panel,
+#     with a margin); a painting with its breakpoints moved must fail them;
 #   - TWO, a two-sample gVCF whose first sample is MIX and second HG002T: the
 #     step reads the first sample column, so it must stop with the reason and
 #     write no fractions, instead of reporting MIX's ancestry under TWO's name;
 #   - red control: the same panel with every reference person's labels moved
 #     to the next group (Africa's people called West Eurasia, and so on) and
 #     the group frequencies counted again: on it the HG002T fraction checks
-#     fail (sample HG002R, the same genotypes; the red copy loses the genetic
-#     map of chr22, so that run only estimates fractions);
+#     fail (sample HG002R, the same genotypes; the red copy then loses the
+#     genetic map of chr22, so that run only estimates fractions), and before
+#     that SIMAE against it (sample SIMAR) fails SIMAE's floors;
 #   - the Nextflow module on HG002T (with html_report) writes the fractions and
 #     the painting of the bash step, and the HTML report has its card; on
 #     TWO's gVCF it stops the same way and publishes nothing.
-# The time and disk of the panel install go to the job summary.
+# The time and disk of the panel install, and the scores and time of the
+# simulated genomes, go to the job summary.
 . "$(dirname "$0")/lib.sh"
 
 command -v nextflow >/dev/null || { fail "nextflow is not on PATH"; finish; }
 G="$GENOME_DIR"
 PANEL="${G}/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}"
-A=NA18486 B=NA18525
+A=NA18486 B=NA18525 C=NA06984
 LONG_CHR=chr22 LONG_START=20000000 LONG_END=35000000 JUNCTION=27500000
 
 frac() {  # frac SAMPLE LEVEL CODE: the fraction column of that row
@@ -62,9 +72,9 @@ check "that line says it was skipped and how to install the panel" has '^Step 26
 # --- the reduced panel ----------------------------------------------------------------
 REGIONS="${CASE_TMP}/regions.bed"
 { cat "${FIXTURE_DIR}/regions.bed"; printf '%s\t%s\t%s\n' "$LONG_CHR" "$LONG_START" "$LONG_END"; } > "$REGIONS"
-echo "+ ANCESTRY_FINE_REGIONS=... ANCESTRY_FINE_EXCLUDE=${A},${B} scripts/setup.sh --ancestry-fine-panel"
+echo "+ ANCESTRY_FINE_REGIONS=... ANCESTRY_FINE_EXCLUDE=${A},${B},${C} scripts/setup.sh --ancestry-fine-panel"
 T0=$(date +%s)
-ANCESTRY_FINE_REGIONS="$REGIONS" ANCESTRY_FINE_EXCLUDE="${A},${B}" \
+ANCESTRY_FINE_REGIONS="$REGIONS" ANCESTRY_FINE_EXCLUDE="${A},${B},${C}" \
   "${REPO}/scripts/setup.sh" --ancestry-fine-panel "$G" 2>&1 | tee "$STEP_LOG"
 check_eq "setup.sh --ancestry-fine-panel exits 0" "${PIPESTATUS[0]}" 0
 T_SETUP=$(( $(date +%s) - T0 ))
@@ -77,8 +87,8 @@ check "the install log names Oceania as left out" \
   has 'Left out of the model, fewer than 10 unrelated reference people: Oceania \(continental and regional group\)' "$(cat "$STEP_LOG")"
 check_ge "SNVs of the model" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
 check_ge "painting references" "$(wc -l < "${PANEL}/model/paint_map.tsv" 2>/dev/null | tr -d ' ')" 150
-check "the two people of the mix are not in the panel" \
-  awk -F'\t' -v a="$A" -v b="$B" '$1 == a || $1 == b {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
+check "the three people left out (the mix and the simulated genomes) are not in the panel" \
+  awk -F'\t' -v a="$A" -v b="$B" -v c="$C" '$1 == a || $1 == b || $1 == c {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
 printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s in the model\n\n' \
   "$LONG_CHR" "$LONG_START" "$LONG_END" "$T_SETUP" "$(du -sh "$PANEL" | cut -f1)" \
   "$(wc -l < "${PANEL}/panel/sites.tsv" | tr -d ' ')" "$(wc -l < "${PANEL}/model/ref.bim" | tr -d ' ')" >> "$E2E_NOTES"
@@ -148,18 +158,21 @@ check "HG002T: the painting wrote its fitted parameters" \
   "${G}/HG002T/ancestry_fine/work/paint/params.tsv"
 
 # --- MIX: half a Yoruba, half a Han Chinese ---------------------------------------------
-# Their genotypes at the panel's SNVs, from the same bucket (the panel holds
-# neither), unphased: the step phases them itself.
-mkdir -p "${G}/MIX/vcf" "${G}/MIX/tmp"
-# shellcheck disable=SC2016  # $1 to $3 belong to the inner bash
+# Their phased genotypes at the panel's SNVs, and those of C for the
+# simulated genomes below, from the same bucket (the panel holds none of
+# them), kept in MIX/tmp/held/<chrom>.vcf.gz. MIX gets A's and B's unphased:
+# the step phases them itself.
+mkdir -p "${G}/MIX/vcf" "${G}/MIX/tmp/held"
+# shellcheck disable=SC2016  # $1 to $4 belong to the inner bash
 docker run --rm -u "$(id -u):$(id -g)" -v "${G}:/genome" -w /genome/MIX/tmp "$BCFTOOLS_HTTPS_IMAGE" bash -c '
   for c in $(cut -f1 "$1" | uniq); do
     r=$(awk -v c="$c" '"'"'$1 == c {printf "%s%s:%d-%d", s, $1, $2 + 1, $3; s = ","}'"'"' "$3")
     bcftools view -s "$2" -T "$1" -r "$r" -m2 -M2 -v snps \
-      "https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_${c}.filtered.SNV_INDEL.phased.shapeit5.bcf" 2>/dev/null \
-      | bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n"
-  done; rm -f ./*.csi' _ "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/positions.tsv" "${A},${B}" \
-  "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/regions.bed" > "${CASE_TMP}/ab.tsv"
+      "https://storage.googleapis.com/gcp-public-data--gnomad/resources/hgdp_1kg/phased_haplotypes_v2/hgdp1kgp_${c}.filtered.SNV_INDEL.phased.shapeit5.bcf" \
+      -Oz -o "held/${c}.vcf.gz" 2>/dev/null && bcftools index -t "held/${c}.vcf.gz" \
+      && bcftools query -H -s "$4" -f "%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n" "held/${c}.vcf.gz"
+  done; rm -f ./*.csi' _ "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/panel/positions.tsv" "${A},${B},${C}" \
+  "/genome/reference/ancestry_fine/${ANCESTRY_FINE_PANEL}/regions.bed" "${A},${B}" > "${CASE_TMP}/ab.tsv"
 check_ge "genotypes of ${A} and ${B} at the panel's SNVs" "$(grep -vc '^#' "${CASE_TMP}/ab.tsv" || true)" 3000
 # The first half of each region (of chr22:20-35 Mb, below 27.5 Mb) from A,
 # the rest from B; the columns are found by name in bcftools' -H header.
@@ -194,6 +207,136 @@ check "MIX: the left side is not East Asian ($(side MIX "$LONG_CHR" "$LONG_START
 check "MIX: the right side is not African ($(side MIX "$LONG_CHR" $((JUNCTION + 2000000)) "$LONG_END" AFR))" \
   test "$(ge "$(side MIX "$LONG_CHR" $((JUNCTION + 2000000)) "$LONG_END" AFR)" 0.6 && echo pass)" != pass
 
+# --- SIM: simulated genomes with known truth ------------------------------------------
+# og ancestry-fine simulate builds each genome from the phased haplotypes of
+# A, B and C (fetched above, none of them in the panel) along the genetic map,
+# and writes the truth of each haplotype beside it. Fixed seeds, so the
+# genomes, their phasing and their painting are the same on every run. The
+# step runs on each as on any person (Beagle phases it first). On LONG_CHR,
+# the one chromosome long enough to paint, the painting is scored against
+# the truth: the share of the bases whose copies of each group are right,
+# and the false breakpoints per Morgan; the continental fractions are scored
+# against the truth's share of the bases of every simulated chromosome. The
+# floors and ceilings come from the scores measured on this reduced panel,
+# with a margin: accuracy 0.03 below the measured share and fraction error
+# 0.03 above; false breakpoints one more than measured, per Morgan of the
+# painted region (0.29 Morgan, so one breakpoint is 3.4 per Morgan), rounded
+# up. Measured: SIMAE 0.9837, 0 false of 1 called, 0.0867; SIMWE 0.9557, 2
+# of 5, 0.0466; SIMW 1.0000, 0 of 0, 0.0645. Two red controls must fail
+# them: SIMAE against the rotated labels (in the red control below), and
+# SIMWE's painting with every breakpoint moved 1.5 Mb (about 3 cM).
+#   name   mu                T   seed  acc   false/M  |q-t|
+SIM_CASES="SIMAE  AFR=0.5,EAS=0.5  6   1     0.9537  3.5      0.1167
+SIMWE  WEA=0.5,EAS=0.5  20  2     0.9257  10.3     0.0766
+SIMW   WEA=1            1   3     0.9700  3.5      0.0945"
+printf '%s\tAFR\n%s\tEAS\n%s\tWEA\n' "$A" "$B" "$C" > "${CASE_TMP}/held_people.tsv"
+# sim_score SAMPLE TRUTH [SHIFT]: SAMPLE's painting of LONG_CHR from
+# LONG_START to LONG_END against TRUTH, as "accuracy false-per-Morgan false
+# called true Morgans". A base is right when its two painted groups are its
+# two true groups in either order; a base painted on neither haplotype is
+# wrong. A breakpoint is a base where that pair of groups changes; a called
+# one with no true one within 1 cM is false. SHIFT moves the whole painting
+# that many bases to the right (a red control).
+sim_score() {
+  awk -F'\t' -v c="$LONG_CHR" -v lo="$LONG_START" -v hi="$LONG_END" -v sh="${3:-0}" -v map="${PANEL}/maps/${LONG_CHR}.map" '
+    function cm(p,   l, h, m) {
+      if (p <= mp[1]) return mc[1]
+      if (p >= mp[nm]) return mc[nm]
+      l = 1; h = nm
+      while (h - l > 1) { m = int((l + h) / 2); if (mp[m] <= p) l = m; else h = m }
+      return mp[h] == mp[l] ? mc[l] : mc[l] + (mc[h] - mc[l]) * (p - mp[l]) / (mp[h] - mp[l])
+    }
+    function grp(k, h, x,   i) {
+      for (i = 1; i <= n[k, h]; i++) if (s[k, h, i] <= x && x < e[k, h, i]) return g[k, h, i]
+      return "-"
+    }
+    function pair(x, y) { return x < y ? x "/" y : y "/" x }
+    BEGIN { while ((getline l < map) > 0) { split(l, f, /[ \t]+/); if (f[4] != "") { nm++; mp[nm] = f[4] + 0; mc[nm] = f[3] + 0 } } }
+    FNR == 1 { file++ }
+    /^#/ || $1 != c { next }
+    {
+      k = file == 1 ? "t" : "c"; h = file == 1 ? $4 + 1 : $4
+      a = $2 + (k == "c" ? sh : 0); b = $3 + (k == "c" ? sh : 0)
+      if (a < lo) a = lo
+      if (b > hi) b = hi
+      if (b <= a) next
+      i = ++n[k, h]; s[k, h, i] = a; e[k, h, i] = b; g[k, h, i] = $5
+      if (!(a in seen)) { seen[a] = 1; p[++np] = a }
+      if (!(b in seen)) { seen[b] = 1; p[++np] = b }
+    }
+    END {
+      for (i = 2; i <= np; i++) { v = p[i]; for (j = i - 1; j >= 1 && p[j] > v; j--) p[j + 1] = p[j]; p[j + 1] = v }
+      for (i = 1; i < np; i++) {
+        x = p[i]; t1 = grp("t", 1, x); t2 = grp("t", 2, x)
+        if (t1 == "-" || t2 == "-") continue
+        c1 = grp("c", 1, x); c2 = grp("c", 2, x)
+        tp = pair(t1, t2); cp = (c1 == "-" || c2 == "-") ? "" : pair(c1, c2)
+        if (first == "") first = x
+        last = p[i + 1]; tot += p[i + 1] - x
+        if (cp == tp) ok += p[i + 1] - x
+        if (ltp != "" && tp != ltp) tb[++nt] = cm(x)
+        if (lcp != "" && cp != "" && cp != lcp) cb[++nc] = cm(x)
+        ltp = tp; if (cp != "") lcp = cp
+      }
+      for (i = 1; i <= nc; i++) { hit = 0; for (j = 1; j <= nt; j++) if ((cb[i] - tb[j]) ^ 2 <= 1) hit = 1; if (!hit) nf++ }
+      mo = (tot > 0) ? (cm(last) - cm(first)) / 100 : 0
+      acc = (tot > 0) ? ok / tot : 0; fpm = (mo > 0) ? nf / mo : 0
+      printf "%.4f %.2f %d %d %d %.3f\n", acc, fpm, nf + 0, nc + 0, nt + 0, mo
+    }' "$2" "${G}/$1/ancestry_fine/$1_painting.bed" 2>/dev/null
+}
+# sim_qerr SAMPLE TRUTH: the largest |continental fraction - the truth's share
+# of the bases| over the groups of either.
+sim_qerr() {
+  awk -F'\t' 'FNR == 1 { file++ }
+    file == 1 && !/^#/ { bp[$5] += $3 - $2; tot += $3 - $2; next }
+    file == 2 && $1 == "continent" { q[$2] = $4 }
+    END {
+      if (tot == 0) exit
+      for (x in q) { d = q[x] - (x in bp ? bp[x] / tot : 0); if (d < 0) d = -d; if (d > m) m = d }
+      for (x in bp) if (!(x in q)) m = 1
+      printf "%.4f\n", m
+    }' "$2" "${G}/$1/ancestry_fine/$1_ancestry_fine.tsv" 2>/dev/null
+}
+# below / above VALUE LIMIT: VALUE is a number under / over LIMIT.
+below() { awk -v x="${1:-}" -v y="$2" 'BEGIN {exit !(x ~ /^[0-9.]+$/ && x + 0 < y)}'; }
+T_SIM=$(date +%s)
+printf '#### Step 26b on simulated genomes (%s:%s-%s painted)\n\n| genome | accuracy (floor) | false breakpoints per Morgan (ceiling) | max abs fraction error (ceiling) | breakpoints called / true |\n|---|---|---|---|---|\n' \
+  "$LONG_CHR" "$LONG_START" "$LONG_END" >> "$E2E_NOTES"
+# The loop reads its rows on fd 3: docker run -i in in_genome reads stdin.
+while read -r n mu t seed acc_min fbpm_max q_max <&3; do
+  mkdir -p "${G}/${n}/vcf"
+  echo "+ og ancestry-fine simulate --mu ${mu} --generations ${t} --seed ${seed} --sample ${n}"
+  "${REPO}/bin/og" ancestry-fine simulate --panel "${G}/MIX/tmp/held" --maps "${PANEL}/maps" \
+    --people "${CASE_TMP}/held_people.tsv" --mu "$mu" --generations "$t" --seed "$seed" --sample "$n" \
+    --out "${G}/${n}/vcf/${n}.vcf" --truth "${CASE_TMP}/${n}.truth.bed"
+  check_eq "${n}: og ancestry-fine simulate exits 0" "$?" 0
+  # shellcheck disable=SC2016  # $1 belongs to the inner bash
+  in_genome "$BCFTOOLS_IMAGE" bash -c 'bcftools view -Oz -o "$1/vcf/$1.vcf.gz" "$1/vcf/$1.vcf" && bcftools index -t "$1/vcf/$1.vcf.gz"' _ "$n"
+  ANCESTRY_FINE_BOOTSTRAP=0 run_step 26b-ancestry-fine.sh "$n"
+  check_step_exit "26b-ancestry-fine.sh ${n}"
+  check "${n}: og painted ${LONG_CHR} with no failure" test ! -e "${G}/${n}/ancestry_fine/work/paint/failed.txt"
+  read -r s_acc s_fbpm _ s_called s_true _ <<< "$(sim_score "$n" "${CASE_TMP}/${n}.truth.bed")"
+  s_q=$(sim_qerr "$n" "${CASE_TMP}/${n}.truth.bed")
+  echo "${n}: accuracy ${s_acc:-none}, false breakpoints per Morgan ${s_fbpm:-none} (${s_called:-?} called, ${s_true:-?} true), max |q - truth| ${s_q:-none}"
+  check "${n}: the copies of each group are right on ${acc_min} or more of the bases (${s_acc:-none})" ge "$s_acc" "$acc_min"
+  check "${n}: at most ${fbpm_max} false breakpoints per Morgan (${s_fbpm:-none})" \
+    test "$(ge "$s_fbpm" 0 && ! below "$fbpm_max" "$s_fbpm" && echo pass)" = pass
+  check "${n}: each continental fraction within ${q_max} of the truth (${s_q:-none})" \
+    test "$(ge "$s_q" 0 && ! below "$q_max" "$s_q" && echo pass)" = pass
+  printf '| %s (%s, T %s) | %s (%s) | %s (%s) | %s (%s) | %s / %s |\n' "$n" "$mu" "$t" "$s_acc" "$acc_min" \
+    "$s_fbpm" "$fbpm_max" "$s_q" "$q_max" "$s_called" "$s_true" >> "$E2E_NOTES"
+done 3<<< "$SIM_CASES"
+check_ge "SIMWE: the truth has breakpoints on ${LONG_CHR} to find" \
+  "$(sim_score SIMWE "${CASE_TMP}/SIMWE.truth.bed" | awk '{print $5}')" 2
+# Red control: SIMWE's painting moved 1.5 Mb to the right, so each called
+# breakpoint is about 3 cM from where it belongs, fails its floors.
+read -r r_acc r_fbpm _ <<< "$(sim_score SIMWE "${CASE_TMP}/SIMWE.truth.bed" 1500000)"
+WE_ACC=$(awk '$1 == "SIMWE" {print $5}' <<< "$SIM_CASES") WE_FBPM=$(awk '$1 == "SIMWE" {print $6}' <<< "$SIM_CASES")
+check "red: SIMWE's painting moved 1.5 Mb fails the accuracy floor (${r_acc:-none} < ${WE_ACC})" below "$r_acc" "$WE_ACC"
+check "red: and the false-breakpoint ceiling (${r_fbpm:-none} > ${WE_FBPM})" \
+  test "$(ge "$r_fbpm" 0 && below "$WE_FBPM" "$r_fbpm" && echo pass)" = pass
+printf '\nSimulated genomes: %s s for the three\n\n' "$(( $(date +%s) - T_SIM ))" >> "$E2E_NOTES"
+
 # --- TWO: a two-sample gVCF ------------------------------------------------------------
 # Its VCF is HG002T's (one sample), so the check that stops the run is the gVCF's.
 mkdir -p "${G}/TWO/vcf"
@@ -220,6 +363,18 @@ rm -f "${RED}/samples.tsv"
 ANCESTRY_FINE_DIR="$RED" ANCESTRY_FINE_REGIONS="$REGIONS" ANCESTRY_FINE_SAMPLE_MAP="${CASE_TMP}/rotated.tsv" \
   "${REPO}/scripts/setup.sh" --ancestry-fine-panel "$G" > "${CASE_TMP}/red_setup.log" 2>&1
 RED_RC=$?
+# SIMAE against the rotated labels, while the red copy still has the map of
+# the long chromosome: its painting and fractions must fail SIMAE's floors.
+mkdir -p "${G}/SIMAR/vcf"
+cp "${G}/SIMAE/vcf/SIMAE.vcf.gz" "${G}/SIMAR/vcf/SIMAR.vcf.gz"
+cp "${G}/SIMAE/vcf/SIMAE.vcf.gz.tbi" "${G}/SIMAR/vcf/SIMAR.vcf.gz.tbi"
+ANCESTRY_FINE_DIR="$RED" ANCESTRY_FINE_BOOTSTRAP=0 run_step 26b-ancestry-fine.sh SIMAR
+check_step_exit "26b-ancestry-fine.sh SIMAR (SIMAE against the rotated labels)"
+read -r r_acc _ <<< "$(sim_score SIMAR "${CASE_TMP}/SIMAE.truth.bed")"
+r_q=$(sim_qerr SIMAR "${CASE_TMP}/SIMAE.truth.bed")
+AE_ACC=$(awk '$1 == "SIMAE" {print $5}' <<< "$SIM_CASES") AE_Q=$(awk '$1 == "SIMAE" {print $7}' <<< "$SIM_CASES")
+check "red: SIMAE against the rotated labels fails the accuracy floor (${r_acc:-none} < ${AE_ACC})" below "$r_acc" "$AE_ACC"
+check "red: and the fraction ceiling (${r_q:-none} > ${AE_Q})" test "$(ge "$r_q" 0 && below "$AE_Q" "$r_q" && echo pass)" = pass
 # The genetic map of the long chromosome is then taken out of the red copy, so
 # no chromosome passes the 5 cM rule and the red run stops after the fractions:
 # this control is for the fraction checks, and the painting checks have theirs
