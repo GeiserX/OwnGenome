@@ -87,6 +87,7 @@ check "the install log names Oceania as left out" \
   has 'Left out of the model, fewer than 10 unrelated reference people: Oceania \(continental and regional group\)' "$(cat "$STEP_LOG")"
 check_ge "SNVs of the model" "$(wc -l < "${PANEL}/model/ref.bim" 2>/dev/null | tr -d ' ')" 500
 check_ge "painting references" "$(wc -l < "${PANEL}/model/paint_map.tsv" 2>/dev/null | tr -d ' ')" 150
+# shellcheck disable=SC2016 # $1 is awk's field
 check "the three people left out (the mix and the simulated genomes) are not in the panel" \
   awk -F'\t' -v a="$A" -v b="$B" -v c="$C" '$1 == a || $1 == b || $1 == c {bad = 1} END {exit bad}' "${PANEL}/samples.tsv"
 printf '#### Step 26b reduced panel (fixture slices plus %s:%s-%s)\n\n%s s to install, %s on disk, %s SNVs, %s in the model\n\n' \
