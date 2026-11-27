@@ -148,8 +148,8 @@ seed() {
   fi
 }
 
-# named REF: whether side A's log names REF whole, not as part of a longer
-# name, tag or path (repo:v1 names neither repo:v10 nor reg.example/repo:v1).
+# named REF: whether side A's log names REF whole: not inside a longer tag,
+# and not after a registry or folder name, which a slash would join to it.
 named() {
   awk -v t="$1" '
     {
