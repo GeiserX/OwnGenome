@@ -10,7 +10,8 @@ fn members(text: &str) -> (Members, Vec<String>) {
     build_members(&rows, &HashMap::new(), "p.tsv", "the samplesheet")
 }
 
-/// The twin of `test_kinship` in tests/test_family_report.py.
+/// The expected relatedness of each relation; `og family check` reads it
+/// (rust/crates/og-steps/tests/family_report.rs checks the verdicts).
 #[test]
 fn expected_relatedness() {
     let (m, errors) = members(
