@@ -371,6 +371,12 @@ cp "${G}/SIMAE/vcf/SIMAE.vcf.gz" "${G}/SIMAR/vcf/SIMAR.vcf.gz"
 cp "${G}/SIMAE/vcf/SIMAE.vcf.gz.tbi" "${G}/SIMAR/vcf/SIMAR.vcf.gz.tbi"
 ANCESTRY_FINE_DIR="$RED" ANCESTRY_FINE_BOOTSTRAP=0 run_step 26b-ancestry-fine.sh SIMAR
 check_step_exit "26b-ancestry-fine.sh SIMAR (SIMAE against the rotated labels)"
+# A painting that failed or wrote nothing would also score 0: the low score
+# counts only for a finished painting of both haplotypes of LONG_CHR.
+check "red: SIMAR painted ${LONG_CHR} with no failure" test ! -e "${G}/SIMAR/ancestry_fine/work/paint/failed.txt"
+# shellcheck disable=SC2016 # $1 and $4 are awk's fields
+check_eq "red: and its painting has ${LONG_CHR} calls on both haplotypes" \
+  "$(awk -F'\t' -v c="$LONG_CHR" '$1 == c && !($4 in h) {h[$4] = 1; n++} END {print n + 0}' "${G}/SIMAR/ancestry_fine/SIMAR_painting.bed" 2>/dev/null)" 2
 read -r r_acc _ <<< "$(sim_score SIMAR "${CASE_TMP}/SIMAE.truth.bed")"
 r_q=$(sim_qerr SIMAR "${CASE_TMP}/SIMAE.truth.bed")
 AE_ACC=$(awk '$1 == "SIMAE" {print $5}' <<< "$SIM_CASES") AE_Q=$(awk '$1 == "SIMAE" {print $7}' <<< "$SIM_CASES")
