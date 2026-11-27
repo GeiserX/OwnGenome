@@ -26,8 +26,9 @@
 //!   image (`PYTHON_IMAGE`, `python:3.15`, `library/python`) by `docker
 //!   run`, `podman run` or `run_in` with no program after the image is a
 //!   call too: the image's own python3 runs what comes on stdin
-//!   (`docker run -i "$PYTHON_IMAGE" <<'END'`, `... < tool.txt`); a command
-//!   continued with `\` is read whole. A workflow step that `uses:` a
+//!   (`docker run -i "$PYTHON_IMAGE" <<'END'`, `... < tool.txt`), wherever
+//!   the redirection stands; a command continued with `\` is read whole,
+//!   in a Rust string too. A workflow step that `uses:` a
 //!   `setup-python` or `setup-uv` action (in a block or a flow mapping) is
 //!   a call too. A shell
 //!   quote may span lines (a `#` inside it is text) but never opens inside
@@ -640,11 +641,25 @@ fn python_image_ref(word: &str) -> bool {
 /// Then the image's own python3, its default command, runs what comes on
 /// stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`, `… < tool.txt`). The run
 /// is `docker run`, `podman run` or `nerdctl run` (also `container run`),
-/// or the scripts' `run_in`. A bare `python` image is a program word
-/// already, so it is not counted twice.
+/// or the scripts' `run_in`. A redirection may stand anywhere in the
+/// command (`docker run -i < tool.txt "$PYTHON_IMAGE"`): it and its file
+/// are skipped, and a word after it is still the program (`... < x sh`).
+/// A bare `python` image is a program word already, so it is not counted
+/// twice.
 fn python_image_default(code: &str) -> bool {
     let toks = shell_tokens(code);
-    let op = |t: &str| t.starts_with([';', '|', '&', '(', ')', '<', '>']);
+    // `;`, `|`, `&`, `&&`, `||`, `(` and `)` end the command; `<`, `>`,
+    // `<<`, `>&`, `&>` and the like are redirections, each with one word
+    // after it.
+    let control = |t: &str| {
+        t.starts_with([';', '|', '(', ')']) || (t.starts_with('&') && !t.starts_with("&>"))
+    };
+    let redirect = |t: &str| t.starts_with(['<', '>']) || t.starts_with("&>");
+    // A file descriptor before a redirection (`2>/dev/null`) is no word of
+    // the command.
+    let fd = |p: usize| {
+        toks[p].bytes().all(|c| c.is_ascii_digit()) && toks.get(p + 1).is_some_and(|n| redirect(n))
+    };
     let mut i = 0;
     while i < toks.len() {
         let base = toks[i].rsplit('/').next().unwrap_or("");
@@ -661,18 +676,26 @@ fn python_image_default(code: &str) -> bool {
             from = Some(i + 1);
         }
         if let Some(mut j) = from {
-            while j < toks.len() && !op(&toks[j]) {
+            while j < toks.len() && !control(&toks[j]) {
+                if redirect(&toks[j]) {
+                    j += 2;
+                    continue;
+                }
                 if python_image_ref(&toks[j]) {
                     if is_python_program(&toks[j]) {
                         break;
                     }
-                    let next = toks.get(j + 1).map(String::as_str);
-                    // A file descriptor before a redirection (`2>/dev/null`)
-                    // is no program.
-                    let fd = next.is_some_and(|n| n.bytes().all(|c| c.is_ascii_digit()))
-                        && toks.get(j + 2).is_some_and(|n| n.starts_with(['<', '>']));
-                    if next.is_none_or(op) || fd {
-                        return true;
+                    // The program: the first word after the image that is no
+                    // redirection, no file of one and no descriptor.
+                    let mut p = j + 1;
+                    loop {
+                        match toks.get(p) {
+                            None => return true,
+                            Some(t) if control(t) => return true,
+                            Some(t) if redirect(t) => p += 2,
+                            Some(_) if fd(p) => p += 1,
+                            Some(_) => break,
+                        }
                     }
                     break;
                 }
@@ -683,6 +706,34 @@ fn python_image_default(code: &str) -> bool {
         i += 1;
     }
     false
+}
+
+/// A shell command continued with `\` from the lines before, so a run of
+/// the python image is read whole.
+#[derive(Default)]
+struct Continued(String);
+
+impl Continued {
+    /// Reads the next line's code. On the command's last line (one that
+    /// does not end in `\`): does the whole command run the python image's
+    /// own python3 (`python_image_default`)?
+    fn ends_python_image_run(&mut self, code: &str) -> bool {
+        let whole = if self.0.is_empty() {
+            code.to_owned()
+        } else {
+            format!("{} {code}", self.0)
+        };
+        match whole.trim_end().strip_suffix('\\') {
+            Some(head) => {
+                self.0 = head.to_owned();
+                false
+            }
+            None => {
+                self.0.clear();
+                python_image_default(&whole)
+            }
+        }
+    }
 }
 
 fn excerpt(line: &str) -> String {
@@ -764,9 +815,7 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
             // around it (`It's ready.` inside `cat <<EOF`).
             let mut bodies: std::collections::VecDeque<(String, bool)> =
                 std::collections::VecDeque::new();
-            // A command continued from the lines before (each ended in `\`),
-            // so a run of the python image is read whole.
-            let mut command = String::new();
+            let mut command = Continued::default();
             for (i, line) in text.lines().enumerate() {
                 let n = i + 1;
                 if l == Lang::CommandTable && line.starts_with('#') {
@@ -826,21 +875,7 @@ pub fn scan_text(rel: &str, text: &str) -> Vec<Finding> {
                 };
                 // A heredoc line holds at least the heredoc; a second command
                 // beside it is a second use.
-                let whole = if command.is_empty() {
-                    code.to_owned()
-                } else {
-                    format!("{command} {code}")
-                };
-                let default_python = match whole.trim_end().strip_suffix('\\') {
-                    Some(head) => {
-                        command = head.to_owned();
-                        false
-                    }
-                    None => {
-                        command.clear();
-                        python_image_default(&whole)
-                    }
-                };
+                let default_python = command.ends_python_image_run(code);
                 // A Python heredoc fed to the image is that one use.
                 let uses = if python_heredoc(code) {
                     (python_words(code).max(1), "heredoc")
@@ -1141,14 +1176,17 @@ fn scan_rust(rel: &str, src: &str, out: &mut Vec<Finding>) {
         // The body of `r"…"` or `r#"…"#` follows `r"` or `#"`; that of an
         // ordinary or byte string follows `"` or `b"`.
         let raw = start >= 2 && b[start - 1] == b'"' && matches!(b[start - 2], b'r' | b'#');
+        // Each literal starts a command of its own.
+        let mut command = Continued::default();
         for (piece, at) in literal_lines(&src[start..i], start, raw) {
             let code = strip_line_comment(&piece);
+            let default_python = command.ends_python_image_run(code);
             let k = if shebang_is_python(&piece) {
                 1
             } else if python_heredoc(code) {
                 python_words(code).max(1)
             } else {
-                python_words(code) + usize::from(python_image_default(code))
+                python_words(code) + usize::from(default_python)
             };
             if k > 0 {
                 add(at, k);
@@ -2152,6 +2190,34 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
             ),
             [(1, "call")]
         );
+    }
+
+    #[test]
+    fn a_redirection_anywhere_in_a_run_of_the_python_image() {
+        // A redirection may stand before the image too.
+        assert_eq!(
+            k("s.sh", "docker run --rm -i < tool.txt \"$@V\"\n"),
+            [(1, "call")]
+        );
+        assert_eq!(
+            k(
+                "s.sh",
+                "docker run -i 2>/dev/null \"$@V\" >out.txt <in.txt\n"
+            ),
+            [(1, "call")]
+        );
+        // A program after a redirection replaces the default command.
+        assert!(k("s.sh", "docker run -i \"$@V\" < tool.txt sh\n").is_empty());
+        assert!(k("s.sh", "docker run -i \"$@V\" 2>&1 bash -c 'og x'\n").is_empty());
+    }
+
+    #[test]
+    fn a_continued_command_in_a_rust_string() {
+        let rs = t("fn a() { let s = r#\"docker run -i \\\n  \"$@V\" < tool.txt\"#; }\n");
+        assert_eq!(kinds("x.rs", &rs), [(2, "rust")]);
+        // Each literal starts a command of its own.
+        let rs = t("fn a() { let _ = [\"docker run -i \\\\\", \"\\\"$@V\\\" < x\"]; }\n");
+        assert!(kinds("x.rs", &rs).is_empty());
     }
 
     #[test]
