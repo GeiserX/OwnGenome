@@ -16,7 +16,6 @@
 modules/local/cyrius/main.nf	1	PYTHON_IMAGE: Cyrius, hash-locked by scripts/cyrius-constraints.txt, runs as python3 -m cyrius in the pinned python image	-m cyrius
 modules/local/mito_variants/main.nf	1	EKLIPSE_IMAGE: eKLIPse's own eKLIPse.py, run by the image's python3	$EK
 modules/local/pharmcat/main.nf	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_preprocessor, run by the image's python3	/pharmcat/pharmcat_vcf_preprocessor
-rust/crates/og-browser/tests/live_map.rs	2	a python3 stub on PATH that runs og live serve; owngenome-live.sh no longer calls python3, so nothing runs it; runs no Python	stub.join(
 rust/crates/og-dev/src/images.rs	2	the image scanner's own words: python is a Docker Hub base name it refuses, and python3 x.py a test line that is no image; runs no Python	"python",|"python3 x.py",
 rust/crates/og-fresh/src/registry.rs	2	PYTHON_IMAGE: the python image's Docker Hub repository (library/python), which the pin reader asks the registry about; runs no Python	library/python
 rust/crates/og-fresh/src/selftest.rs	1	PYTHON_IMAGE: the python image's Docker Hub repository (library/python) in the pin reader's self-test; runs no Python	library/python

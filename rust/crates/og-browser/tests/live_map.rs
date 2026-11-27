@@ -15,7 +15,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -3635,11 +3634,11 @@ fn access_rows(path: &Path) -> Vec<String> {
 }
 
 /// The genome viewer on the live site, on a synthetic sample: scripts/owngenome-live.sh downloads
-/// the pinned igv.js and starts the site with the viewer behind its login (its `python3` is a
-/// stand-in that starts `og live serve` with the arguments the script gives); the viewer's page,
-/// policy, config and byte ranges; the report's links; the access log; files out of GENOME_DIR; a
-/// site without the viewer; the page in Chrome; and the map's reads panel. Checks 2, 3 and 5 also
-/// run against the planted mistakes of the Python tests, made by a proxy, and must fail there.
+/// the pinned igv.js and starts the site with the viewer behind its login (`og live serve`,
+/// through bin/og); the viewer's page, policy, config and byte ranges; the report's links; the
+/// access log; files out of GENOME_DIR; a site without the viewer; the page in Chrome; and the
+/// map's reads panel. Checks 2, 3 and 5 also run against planted mistakes (the ones the removed
+/// Python tests planted), made by a proxy, and must fail there.
 #[test]
 fn live_site_genome_viewer() {
     let Some(chrome) = chrome_or_skip("open the live site's genome viewer") else {
@@ -3659,31 +3658,12 @@ fn live_site_genome_viewer() {
     let mut r = Report::default();
 
     // 1. owngenome-live.sh, with a password.
-    let stub = work.join("bin");
-    fs::create_dir_all(&stub).unwrap();
-    fs::write(
-        stub.join("python3"),
-        "#!/bin/sh\n# owngenome-live.sh runs: python3 bin/owngenome_live.py ARGS\ncase \"$1\" in */owngenome_live.py) shift;; esac\n\
-         exec \"$OG_UNDER_TEST\" live serve --assets \"$OG_REPO/assets/live\" --steps \"$OG_REPO/assets/steps.tsv\" \"$@\"\n",
-    )
-    .unwrap();
-    fs::set_permissions(stub.join("python3"), fs::Permissions::from_mode(0o755)).unwrap();
     let (port, iport) = (free_port(), free_port());
     let log = work.join("site.log");
     let mut script = Reap(
         Command::new("bash")
             .arg(repo_root().join("scripts/owngenome-live.sh"))
             .arg("--quiet")
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    stub.display(),
-                    std::env::var("PATH").unwrap_or_default()
-                ),
-            )
-            .env("OG_UNDER_TEST", &og)
-            .env("OG_REPO", repo_root())
             .env("GENOME_DIR", &gd)
             .env("REF_FASTA", "reference/synthetic.fasta")
             .env("OWNGENOME_LIVE_PORT", port.to_string())
