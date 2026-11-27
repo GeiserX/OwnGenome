@@ -21,6 +21,8 @@ on:
       - 'docs/**'
       - 'zensical.toml'
       - '.github/workflows/docs.yml'
+      # PYTHON_IMAGE, the image the site is built in.
+      - 'versions.env'
       # Add every file a page includes with pymdownx.snippets (for example
       # docker-compose.yml, .env.example): a change to it must rebuild the
       # site, and a rename must fail the build.
@@ -36,7 +38,6 @@ on:
       # builds the demo's Figure 1, the genome map (og map build).
       - 'rust/**'
       - 'tests/fixtures/map/**'
-      - 'tests/og_binary.py'
   # No paths filter on pull requests, on purpose: a check skipped by a path
   # filter stays Pending and blocks the merge once it is a required check
   # (repos.md step 5 makes green checks required). The build takes seconds.
@@ -68,24 +69,26 @@ jobs:
           # This job never pushes; a persisted token is readable by pip and by the build.
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.15'
-          # pip's download cache only. Zensical's own build cache (.cache/) is
-          # never kept between runs: its docs advise against it on CI, and
-          # --clean below starts from nothing anyway.
-          cache: pip
-          cache-dependency-path: docs/requirements-docs.txt
-
-      - name: Install dependencies
-        run: pip install -r docs/requirements-docs.txt
-
-      # zensical.toml sets `strict = true`; the flag here keeps the build strict
-      # even if someone removes that line. `python -m zensical`, never the bare
-      # `zensical` command: it puts the repo root on sys.path, which the awesome
-      # lists' Markdown extension needs, and every repo builds the same way.
+      # Zensical is third-party Python, so it runs inside the pinned python
+      # image of versions.env, never on the runner's own Python (og dev
+      # python-gate and tests/python-allow.tsv hold this file to it).
+      # docs/requirements-docs.txt pins Zensical and every package it needs
+      # with the sha256 of each wheel, and pip installs exactly those wheels:
+      # nothing resolved (--no-deps), nothing built (--only-binary). The repo
+      # has no Markdown extension of its own; zensical.toml loads only
+      # pymdownx and Zensical modules. zensical.toml sets `strict = true`; the
+      # flag here keeps the build strict even if someone removes that line.
+      # Zensical's own build cache (.cache/) is never kept between runs:
+      # --clean starts from nothing.
       - name: Build
-        run: python -m zensical build --clean --strict
+        run: |
+          . ./versions.env
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "${PWD}:/work" -w /work "${PYTHON_IMAGE:?PYTHON_IMAGE is not set in versions.env}" sh -euc '
+              python -m venv /tmp/docs
+              /tmp/docs/bin/pip install -q --disable-pip-version-check --require-hashes --no-deps \
+                --only-binary :all: -r docs/requirements-docs.txt
+              /tmp/docs/bin/python -m zensical build --clean --strict'
 
       # og (rust/, docs/rust.md): og dev demo-sample writes the demo sample,
       # running the og verbs of the steps it stands in for (step 27's

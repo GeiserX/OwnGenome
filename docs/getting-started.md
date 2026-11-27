@@ -32,7 +32,6 @@
 | Java *(for a full run)* | 17+ | Any OpenJDK build, such as [Adoptium Temurin](https://adoptium.net/); [Install the requirements](#install-the-requirements) has the command for each platform |
 | Nextflow *(for a full run)* | `NEXTFLOW_VERSION` in `versions.env` | The pinned install command in [Install the requirements](#install-the-requirements) |
 | wget or curl | Any | For downloading references |
-| python3 *(optional)* | 3.6+ | Used by long-read alignment (02b) for symlink resolution. Falls back to `readlink -f` on GNU/Linux if absent |
 
 Every analysis tool runs inside Docker: no conda environments, no Python version conflicts, no compilation. Java and Nextflow run the whole pipeline in one command (`run-all.sh`); each step also runs on its own as a script with Docker alone.
 

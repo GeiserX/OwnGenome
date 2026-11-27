@@ -13,8 +13,9 @@
 //! - `og dev helpers` ([`helpers`]): the helper binaries each script and
 //!   module calls, and the image the call runs in
 //!   (`scripts/ci/check-container-helpers.sh`).
-//! - `og dev remnants` ([`remnants`]): does each Python file kept only for
-//!   its importers (`tests/parity/remnants.tsv`) hold nothing else?
+//! - `og dev python-gate` ([`python_gate`]): no owned Python is left; the
+//!   third-party Python the pipeline runs in its own images is named in
+//!   `tests/python-allow.tsv`.
 //! - `og dev scan personal-data` ([`personal_data`]): no tracked file holds
 //!   a home path, a private address or a genotype.
 //! - `og dev scan images`, `og dev versions coupled` ([`images`]): no file
@@ -39,8 +40,7 @@
 //!   rebuild a committed asset table from its pinned downloads.
 //! - Not ported yet, each says so and exits 2: `og dev demo-sample`
 //!   ([`demo`]), `og dev demo-events` ([`demo_events`]), `og dev params-doc`
-//!   ([`params_doc`]), `og dev python-gate` ([`python_gate`]),
-//!   `og dev everything-check` ([`everything`]), `og dev licences`
+//!   ([`params_doc`]), `og dev everything-check` ([`everything`]), `og dev licences`
 //!   ([`licences`]), `og dev docs-check` ([`docs_checks`]) and
 //!   `og dev steps-check` ([`steps_check`]).
 //! - `og dev stub-http` ([`stub_http`]): a local HTTP server with scripted
@@ -77,7 +77,6 @@ pub mod pgs;
 pub mod pharmcat;
 pub mod pictures;
 pub mod python_gate;
-pub mod remnants;
 pub mod renovate;
 pub mod report_only;
 pub mod schema;
@@ -93,7 +92,7 @@ mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev remnants [--list FILE] [--root DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev install-manifest DIR [--exclude PATH]...\n       og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --control B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --flip DIR PATH\n       og dev install-manifest --compare-logs A.log B.log\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [args]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev install-manifest DIR [--exclude PATH]...\n       og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --control B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --flip DIR PATH\n       og dev install-manifest --compare-logs A.log B.log\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [--root DIR] [--allow FILE] [--list]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -193,7 +192,6 @@ fn unknown(verb: &str) -> u8 {
 pub fn main(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
         Some("parity-compare") => parity::cli(&args[1..]),
-        Some("remnants") => remnants::cli(&args[1..]),
         Some("contract") => run(contract::cli, &args[1..]),
         Some("schema") => run(schema::cli, &args[1..]),
         Some("report-only") => run(report_only::cli, &args[1..]),

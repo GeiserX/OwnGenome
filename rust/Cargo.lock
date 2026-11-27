@@ -1024,6 +1024,7 @@ dependencies = [
  "og-filters",
  "og-intervals",
  "og-io",
+ "og-live",
  "og-pedigree",
  "og-setup",
  "og-vcf",
