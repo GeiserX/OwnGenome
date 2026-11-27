@@ -7,9 +7,9 @@
 #      sample keeps its own (<id>/multiqc, <id>/qc/somalier) and a run of one
 #      sample writes no shared folder.
 #   2. One run of both samples into another --outdir: each sample still gets
-#      its own MultiQC report, and the cohort's report and somalier tables go
-#      to multiqc/ and somalier/, which only a run of two samples or more
-#      writes.
+#      its own MultiQC report and somalier tables, and the cohort's report
+#      and somalier tables (every pair) go to multiqc/ and somalier/, which
+#      only a run of two samples or more writes.
 #   3. PRS failing (planted through beforeScript) with ROH waiting for its
 #      ancestry table (--roh_af_panel with prs, --pgs_scoring and
 #      --ancestry_ref): PRS is report-only, so the run goes on, ROH runs
@@ -72,6 +72,7 @@ check_eq "S1's somalier tables hold S1, after S2's run" "$(samples_in "${SHARED}
 check_eq "S2's somalier tables hold S2" "$(samples_in "${SHARED}/S2/qc/somalier/somalier.samples.tsv")" S2
 check "a run of one sample writes no shared somalier/" test ! -e "${SHARED}/somalier"
 check_eq "one sample: no cohort somalier task" "$(ran "$SHARED" SOMALIER_RELATE_COHORT)" 0
+check_eq "one sample: its own somalier task" "$(ran "$SHARED" SOMALIER_RELATE)" 1
 check_eq "one sample: no cohort MultiQC task" "$(ran "$SHARED" MULTIQC_COHORT)" 0
 
 # --- 2. S1 and S2 in one run --------------------------------------------------------
@@ -82,13 +83,15 @@ check_eq "the two-sample run exits 0" "$RC" 0
 check_eq "two samples: one MultiQC task each" "$(ran "$COHORT" MULTIQC)" 2
 check_eq "two samples: one cohort MultiQC task" "$(ran "$COHORT" MULTIQC_COHORT)" 1
 check_eq "two samples: one cohort somalier task" "$(ran "$COHORT" SOMALIER_RELATE_COHORT)" 1
-check_eq "two samples: no single-sample somalier task" "$(ran "$COHORT" SOMALIER_RELATE)" 0
+check_eq "two samples: one own somalier task each" "$(ran "$COHORT" SOMALIER_RELATE)" 2
 for id in S1 S2; do
   check "two samples: ${id}'s own MultiQC report" test -e "${COHORT}/${id}/multiqc/multiqc_report.html"
 done
 check "two samples: the cohort MultiQC report in multiqc/" test -e "${COHORT}/multiqc/multiqc_report.html"
 check_eq "two samples: the somalier tables in somalier/ hold both" "$(samples_in "${COHORT}/somalier/somalier.samples.tsv")" S1,S2
-check "two samples: no somalier tables in a sample's folder" test ! -e "${COHORT}/S1/qc/somalier/somalier.samples.tsv"
+for id in S1 S2; do
+  check_eq "two samples: ${id}'s own somalier tables hold ${id} only" "$(samples_in "${COHORT}/${id}/qc/somalier/somalier.samples.tsv")" "$id"
+done
 
 # --- 3. PRS fails, ROH waits for its ancestry table ---------------------------------
 printf "process { withName: 'PRS' { beforeScript = 'echo planted failure >&2; exit 1' } }\n" > "${CASE_TMP}/plant-prs.config"

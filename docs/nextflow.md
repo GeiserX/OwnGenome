@@ -207,8 +207,8 @@ results/
 │   ├── indexcov/           # goleft indexcov coverage plots and .ped (rows with a BAM)
 │   ├── <sample>_sex_check.tsv  # the sex indexcov infers, with CNchrX and CNchrY
 │   ├── qc/                 # <sample>_sample_qc.tsv: somalier's sex, FREEMIX, same person as (sample_qc);
-│   │                       #   somalier/ and verifybamid2/ hold each tool's own files (somalier/: also the
-│   │                       #   relate tables of a run of one sample);
+│   │                       #   somalier/ and verifybamid2/ hold each tool's own files (somalier/: also its
+│   │                       #   own somalier relate tables);
 │   │                       #   <sample>_read_count.tsv: reads in and primary records in the BAM (ALIGN_MINIMAP2)
 │   ├── multiqc/            # MultiQC report of the sample (reads mosdepth: needs a BAM; a VCF-only run logs the skip)
 │   ├── pharmcat/           # PharmCAT PGx reports (HTML + JSON)

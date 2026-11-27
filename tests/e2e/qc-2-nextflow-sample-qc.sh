@@ -18,8 +18,9 @@
 #     PharmCAT and the CPIC lookup, and the report fills the pypgx section,
 #     the PharmCAT vs pypgx comparison (CPIC_LOOKUP's table) and the indexcov
 #     sex check (INDEXCOV's folder), with the sex INDEXCOV's own table holds.
-#     With two rows SOMALIER_RELATE_COHORT's tables go to the shared somalier/
-#     folder, and MultiQC writes each sample's report in its folder and one
+#     With two rows SOMALIER_RELATE_COHORT's tables (both rows, every pair)
+#     go to the shared somalier/ folder and each row keeps its own in its
+#     qc/somalier; MultiQC writes each sample's report in its folder and one
 #     across both in multiqc/.
 # The Nextflow report receives every output the bash report reads: the report
 # of case nextflow-from-fastq-2-nextflow, whose run had telomere_hunter,
@@ -104,7 +105,7 @@ fi
 DUP_ID="$D" EXTRA_TOOLS=pypgx,pharmcat,cpic,multiqc nf_run male male --sex_check warn --pypgx_bundle "$BUNDLE"
 check_eq "declared male, --sex_check warn: the run exits 0" "$RC" 0
 check_eq "SOMALIER_RELATE_COHORT tasks (two rows)" "$(ran SOMALIER_RELATE_COHORT)" 1
-check_eq "SOMALIER_RELATE tasks (two rows: none)" "$(ran SOMALIER_RELATE)" 0
+check_eq "SOMALIER_RELATE tasks (two rows: one each)" "$(ran SOMALIER_RELATE)" 2
 for p in SOMALIER VERIFYBAMID2 SAMPLE_QC HTML_REPORT; do
   check_eq "${p} tasks (two rows)" "$(ran "$p")" 2
 done
@@ -123,7 +124,7 @@ check "VERIFYBAMID2 published its selfSM" test -s "${R}/qc/verifybamid2/${SAMPLE
 # Two samples: one table for both, in the shared somalier/ folder.
 REL="${OUT}/somalier"
 check "two samples: SOMALIER_RELATE_COHORT published its tables in somalier/" test -s "${REL}/somalier.samples.tsv"
-check "two samples: none in a sample's folder" test ! -e "${R}/qc/somalier/somalier.samples.tsv"
+check_eq "two samples: each sample's own table holds only it" "$(awk -F'\t' 'NR > 1 {print $2}' "${R}/qc/somalier/somalier.samples.tsv" 2>/dev/null | paste -sd, -)" "$SAMPLE"
 # MultiQC: each sample its own report, and one across both.
 check_eq "MULTIQC tasks (one per sample)" "$(ran MULTIQC)" 2
 check_eq "MULTIQC_COHORT tasks" "$(ran MULTIQC_COHORT)" 1
