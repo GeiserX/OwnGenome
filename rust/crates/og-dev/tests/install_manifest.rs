@@ -1768,3 +1768,209 @@ fn ab_sh_is_red_on_a_file_another_user_owns() {
     assert!(out.contains("[RED]  foreign-files"), "{out}");
     assert!(out.contains("kir/other.dat"), "{out}");
 }
+
+#[test]
+fn the_linear_index_length_is_in_the_index_digest() {
+    // One sequence, two records, one BGZF block each: the same name and
+    // record count, and each index fits both data files. Only the window
+    // of the last record differs, 100 against 5,000,000.
+    let rows = "x/*.tbi\tindex\ttest\toffsets move with the header's length\t-\n";
+    let body = |pos: u32| {
+        format!(
+            "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=10000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t10\t.\tA\tG\t.\tPASS\t.\nchr1\t{pos}\t.\tC\tT\t.\tPASS\t.\n"
+        )
+        .into_bytes()
+    };
+    let (t, a, b) = pair("tbi-linear");
+    vcf_with_index(&a.join("x"), "c.vcf.gz", &body(100));
+    vcf_with_index(&b.join("x"), "c.vcf.gz", &body(5_000_000));
+    let allow = allow_file(&t, rows);
+    let (code, out, err) = compare(&manifest(&a, &[]), &manifest(&b, &[]), Some(&allow));
+    assert_eq!(code, 1, "{out}{err}");
+    assert!(
+        out.contains("DIFF\tcontent\tx/c.vcf.gz.tbi\tindex "),
+        "an index whose last record moved by 5 Mb is green:\n{out}"
+    );
+}
+
+/// One gzip member laid out like a BGZF block, except that its extra field
+/// holds a second subfield after BC (XLEN 12). BSIZE, the CRC and ISIZE
+/// are right, so any gzip reader decodes it; htslib reads only XLEN 6 as
+/// BGZF.
+fn xlen12_block(body: &[u8]) -> Vec<u8> {
+    let mut e = flate2::write::DeflateEncoder::new(Vec::new(), Compression::default());
+    e.write_all(body).unwrap();
+    let deflated = e.finish().unwrap();
+    let mut crc = flate2::Crc::new();
+    crc.update(body);
+    let total = 12 + 12 + deflated.len() + 8;
+    let mut v = vec![0x1f, 0x8b, 8, 4, 0, 0, 0, 0, 0, 0xff, 12, 0];
+    v.extend(b"BC");
+    v.extend(2u16.to_le_bytes());
+    v.extend(u16::try_from(total - 1).unwrap().to_le_bytes());
+    v.extend(b"XY");
+    v.extend(2u16.to_le_bytes());
+    v.extend([0, 0]);
+    v.extend(&deflated);
+    v.extend(crc.sum().to_le_bytes());
+    v.extend(u32::try_from(body.len()).unwrap().to_le_bytes());
+    v
+}
+
+#[test]
+fn an_index_into_a_well_formed_block_with_xlen_12_is_invalid() {
+    let mut data = xlen12_block(&[7u8; 300]);
+    let eof = bgzf(b"");
+    data.extend_from_slice(&eof[eof.len() - 28..]);
+    // A gzip reader takes the block whole: only XLEN tells it from BGZF.
+    let mut plain = Vec::new();
+    let mut dec = flate2::bufread::GzDecoder::new(&data[..]);
+    std::io::Read::read_to_end(&mut dec, &mut plain).unwrap();
+    assert_eq!(plain, [7u8; 300]);
+    assert_eq!(
+        dec.into_inner().len(),
+        28,
+        "the block is not one whole member"
+    );
+    let t = Tmp::new("csi-xlen12-whole");
+    let d = t.0.join("d");
+    write(&d.join("x/d.bcf"), &data, 0o644);
+    write(&d.join("x/d.bcf.csi"), &csi(10, b""), 0o644);
+    let text = fs::read_to_string(manifest(&d, &[])).unwrap();
+    let row = text
+        .lines()
+        .find(|l| l.starts_with("x/d.bcf.csi\t"))
+        .unwrap_or_else(|| panic!("no index row:\n{text}"));
+    assert!(
+        row.ends_with(",index=invalid"),
+        "an index into a block with XLEN 12 fits:\n{row}"
+    );
+}
+
+#[test]
+fn two_broken_files_under_one_mode_row_differ_when_their_bytes_do() {
+    let rows = "x/*.tbi\tindex\ttest\toffsets move with the header's length\t-\nx/*.gz\tgzip\ttest\tthe header time\t-\n";
+    // Two stale indexes, neither of which fits a data file.
+    let (code, out) = modes_case(
+        "invalid-twice",
+        "x/d.vcf.gz.tbi",
+        b"not an index, side A",
+        b"not an index, side B",
+        rows,
+    );
+    assert!(
+        out.contains("\tx/d.vcf.gz.tbi\tindex invalid -> invalid: "),
+        "{out}"
+    );
+    assert_eq!(code, 1, "two different invalid indexes are green:\n{out}");
+    // Two gzip files that do not decode.
+    let (code, out) = modes_case(
+        "bad-twice",
+        "x/d.gz",
+        b"\x1f\x8b\x08\x00 not deflate, side A",
+        b"\x1f\x8b\x08\x00 not deflate, side B",
+        rows,
+    );
+    assert!(out.contains("\tx/d.gz\tgzip bad -> bad: "), "{out}");
+    assert_eq!(code, 1, "two different bad gzip files are green:\n{out}");
+}
+
+#[test]
+fn a_manifest_that_lists_one_path_twice_is_refused() {
+    let (t, a, _b) = pair("dup-path");
+    let m = manifest(&a, &[]);
+    let text = fs::read_to_string(&m).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    // After the magic line and the column names: the first entry, twice.
+    let mut dup: Vec<&str> = lines[..3].to_vec();
+    dup.extend(&lines[2..]);
+    let p = t.0.join("dup.tsv");
+    fs::write(&p, dup.join("\n") + "\n").unwrap();
+    for (x, y) in [(&m, &p), (&p, &m)] {
+        let (code, out, err) = compare(x, y, None);
+        assert_eq!(
+            code, 2,
+            "a manifest listing a path twice is read:\n{out}{err}"
+        );
+        assert!(err.contains("is listed twice"), "{err}");
+    }
+}
+
+/// Whether DIR's filesystem keeps file owners, by what the system says of
+/// its mount, not by ab.sh's own probe: a macOS volume mounted `noowners`
+/// does not; any Linux one this suite runs on does.
+fn mount_keeps_owners(dir: &Path) -> bool {
+    if !cfg!(target_os = "macos") {
+        return true;
+    }
+    let df = Command::new("df").arg("-P").arg(dir).output().unwrap();
+    let df = String::from_utf8_lossy(&df.stdout);
+    let mp = df
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().nth(5))
+        .unwrap()
+        .to_owned();
+    let mount = Command::new("mount").output().unwrap();
+    let line = String::from_utf8_lossy(&mount.stdout)
+        .lines()
+        .find(|l| l.contains(&format!(" on {mp} (")))
+        .unwrap()
+        .to_owned();
+    !line.contains("noowners")
+}
+
+#[test]
+fn ab_sh_checks_owners_only_where_the_filesystem_keeps_them() {
+    // The real probe, in the temp folder: run this suite once with TMPDIR on
+    // a folder that keeps owners and once on one that does not (a macOS
+    // volume mounted noowners) to see both branches.
+    let (code, out) = ab("ab-owners", "ok", &[]);
+    assert_eq!(code, 0, "{out}");
+    let root = Command::new("id").arg("-u").output().unwrap().stdout == b"0\n";
+    let groups = Command::new("id").arg("-G").output().unwrap().stdout;
+    let one_group = String::from_utf8_lossy(&groups).split_whitespace().count() < 2;
+    if !mount_keeps_owners(&std::env::temp_dir()) {
+        assert!(
+            out.contains("[SKIP] foreign-files: this filesystem does not keep file owners\n"),
+            "{out}"
+        );
+        assert!(!out.contains("[OK]   foreign-files"), "{out}");
+        assert!(
+            out.contains("every check is green, foreign-files skipped."),
+            "{out}"
+        );
+    } else if !root && one_group {
+        assert!(
+            out.contains(
+                "[SKIP] foreign-files: cannot tell whether this filesystem keeps file owners"
+            ),
+            "{out}"
+        );
+    } else {
+        assert!(out.contains("[OK]   foreign-files\n"), "{out}");
+        assert!(!out.contains("[SKIP]"), "{out}");
+    }
+}
+
+#[test]
+fn ab_sh_skips_the_owner_check_where_a_changed_owner_does_not_stay() {
+    // A chgrp and a chown that do what they do on a volume that ignores
+    // owners: succeed, and change nothing.
+    let fake = Tmp::new("ab-noowners-bin");
+    for c in ["chgrp", "chown"] {
+        write(&fake.0.join(c), b"#!/bin/sh\nexit 0\n", 0o755);
+    }
+    let path = format!("{}:{}", s(&fake.0), std::env::var("PATH").unwrap());
+    let (code, out) = ab("ab-noowners", "ok", &[("PATH", &path)]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("[SKIP] foreign-files: this filesystem does not keep file owners\n"),
+        "{out}"
+    );
+    assert!(!out.contains("[OK]   foreign-files"), "{out}");
+    assert!(
+        out.contains("every check is green, foreign-files skipped."),
+        "{out}"
+    );
+}
