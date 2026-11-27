@@ -207,6 +207,13 @@ pub const ROH_NOTE: &str = roh_note!(
     read the total and the short segments as rough; the long segments are the signal."
 );
 const ROH_GLOBAL_NOTE: &str = roh_note!("Allele frequencies came from the global panel.");
+const ROH_GLOBAL_NO_TABLE_NOTE: &str = roh_note!(
+    "Allele frequencies came from the global panel: there was no step 26 ancestry table \
+    (no ancestry was run, or PRS failed)."
+);
+const ROH_GLOBAL_NO_GROUP_NOTE: &str = roh_note!(
+    "Allele frequencies came from the global panel: no step 26 ancestry group reached 0.8."
+);
 const ROH_AFR_NOTE: &str = roh_note!(group "afr");
 const ROH_AMR_NOTE: &str = roh_note!(group "amr");
 const ROH_EAS_NOTE: &str = roh_note!(group "eas");
@@ -217,12 +224,19 @@ const ROH_UNKNOWN_AF_NOTE: &str =
 
 /// The ROH caveat identified by the first word of the step's AF header.
 /// The flat-AF run has no header, as in summaries from before the panel.
+/// A global header says why the global frequencies were used at its end
+/// (scripts/11-roh-analysis.sh, modules/local/roh); one without a reason,
+/// from an older run, gets the plain global note.
 pub fn roh_note_key(af_used: Option<&pycompat::json::Value>) -> &'static str {
     use pycompat::json::Value;
     let Some(Value::Str(af)) = af_used else {
         return "ROH_NOTE";
     };
     match af.split_whitespace().next() {
+        Some("global") if af.ends_with("; no step 26 ancestry table") => "ROH_GLOBAL_NO_TABLE_NOTE",
+        Some("global") if af.ends_with("; no step 26 group at 0.8 or more") => {
+            "ROH_GLOBAL_NO_GROUP_NOTE"
+        }
         Some("global") => "ROH_GLOBAL_NOTE",
         Some("afr") => "ROH_AFR_NOTE",
         Some("amr") => "ROH_AMR_NOTE",
@@ -274,7 +288,7 @@ pub const CONSUMER_NOTE: &str = "These files stay on this machine. Uploading one
     weigh first.";
 
 /// Report caveats by name, including the ROH allele-frequency modes.
-pub const NOTES: [(&str, &str); 63] = [
+pub const NOTES: [(&str, &str); 65] = [
     ("CLINVAR_FREQ_NOTE", CLINVAR_FREQ_NOTE),
     ("CALLABILITY_NOTE", CALLABILITY_NOTE),
     ("HLA_NOTE", HLA_NOTE),
@@ -320,6 +334,8 @@ pub const NOTES: [(&str, &str); 63] = [
     ("MCA_NOTE", MCA_NOTE),
     ("ROH_NOTE", ROH_NOTE),
     ("ROH_GLOBAL_NOTE", ROH_GLOBAL_NOTE),
+    ("ROH_GLOBAL_NO_TABLE_NOTE", ROH_GLOBAL_NO_TABLE_NOTE),
+    ("ROH_GLOBAL_NO_GROUP_NOTE", ROH_GLOBAL_NO_GROUP_NOTE),
     ("ROH_AFR_NOTE", ROH_AFR_NOTE),
     ("ROH_AMR_NOTE", ROH_AMR_NOTE),
     ("ROH_EAS_NOTE", ROH_EAS_NOTE),
@@ -447,6 +463,34 @@ mod tests {
             for n in names {
                 assert!(text(n).is_some(), "{sid}: no caveat {n}");
             }
+        }
+    }
+
+    #[test]
+    fn a_global_roh_note_says_why_the_global_frequencies_were_used() {
+        use pycompat::json::Value;
+        let key = |s: &str| roh_note_key(Some(&Value::Str(s.into())));
+        let p = "global (panel roh_af_gnomad_v4.1.tsv.gz)";
+        assert_eq!(
+            key(&format!("{p}; no step 26 ancestry table")),
+            "ROH_GLOBAL_NO_TABLE_NOTE"
+        );
+        assert_eq!(
+            key(&format!("{p}; no step 26 group at 0.8 or more")),
+            "ROH_GLOBAL_NO_GROUP_NOTE"
+        );
+        assert_eq!(key(p), "ROH_GLOBAL_NOTE");
+        assert_eq!(
+            key("nfe (panel roh_af_gnomad_v4.1.tsv.gz); step 26 gives EUR 0.93"),
+            "ROH_NFE_NOTE"
+        );
+        assert_eq!(roh_note_key(None), "ROH_NOTE");
+        for k in ["ROH_GLOBAL_NO_TABLE_NOTE", "ROH_GLOBAL_NO_GROUP_NOTE"] {
+            let t = text(k).unwrap();
+            assert!(
+                t.starts_with(&ROH_GLOBAL_NOTE[..ROH_GLOBAL_NOTE.len() - 1]),
+                "{k}: {t}"
+            );
         }
     }
 }
