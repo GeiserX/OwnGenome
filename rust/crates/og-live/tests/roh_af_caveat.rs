@@ -26,17 +26,26 @@ fn summary(sec: &str) -> String {
 fn card_caveats(sec: &str) -> Vec<String> {
     let v = json::loads(&summary(sec)).unwrap();
     let out = og_live::results::build("S", &v, None).unwrap();
-    let Value::Object(root) = &out else { panic!("{out:?}") };
-    let Some(Value::Array(chapters)) = root.get("chapters") else { panic!("no chapters") };
+    let Value::Object(root) = &out else {
+        panic!("{out:?}")
+    };
+    let Some(Value::Array(chapters)) = root.get("chapters") else {
+        panic!("no chapters")
+    };
     for ch in chapters {
         let Value::Object(ch) = ch else { continue };
-        let Some(Value::Array(cards)) = ch.get("sections") else { continue };
+        let Some(Value::Array(cards)) = ch.get("sections") else {
+            continue;
+        };
         for card in cards {
             let Value::Object(card) = card else { continue };
-            if !matches!(card.get("keys"), Some(Value::Array(k)) if k.iter().any(|k| matches!(k, Value::Str(s) if s == "roh"))) {
+            if !matches!(card.get("keys"), Some(Value::Array(k)) if k.iter().any(|k| matches!(k, Value::Str(s) if s == "roh")))
+            {
                 continue;
             }
-            let Some(Value::Array(c)) = card.get("caveat") else { panic!("{card:?}") };
+            let Some(Value::Array(c)) = card.get("caveat") else {
+                panic!("{card:?}")
+            };
             return c
                 .iter()
                 .map(|c| match c {
@@ -65,7 +74,10 @@ fn a_run_with_a_panel_group_names_it_on_both_pages() {
     assert!(!want.contains(NONE_USED), "{want}");
     let caveats = card_caveats(&sec);
     assert!(caveats.iter().any(|c| c == want), "{caveats:?}");
-    assert!(!caveats.iter().any(|c| c.contains(NONE_USED)), "{caveats:?}");
+    assert!(
+        !caveats.iter().any(|c| c.contains(NONE_USED)),
+        "{caveats:?}"
+    );
     let line = home_line(&sec);
     assert!(line.contains(want), "{line}");
     assert!(!line.contains(NONE_USED), "{line}");
@@ -73,7 +85,10 @@ fn a_run_with_a_panel_group_names_it_on_both_pages() {
 
 #[test]
 fn the_global_panel_and_an_unknown_mode_each_get_their_own_caveat() {
-    for (af, key) in [("global", "ROH_GLOBAL_NOTE"), ("xyz", "ROH_UNKNOWN_AF_NOTE")] {
+    for (af, key) in [
+        ("global", "ROH_GLOBAL_NOTE"),
+        ("xyz", "ROH_UNKNOWN_AF_NOTE"),
+    ] {
         let want = notes::text(key).unwrap();
         let sec = roh(Some(af));
         assert!(card_caveats(&sec).iter().any(|c| c == want), "{af}");

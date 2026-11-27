@@ -11,8 +11,7 @@ const LIST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../assets/pgs_scores.tsv"
 );
-const REASON: &str =
-    "academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, or --pgs_academic true in Nextflow, to include)";
+const REASON: &str = "academic-only licence (setup.sh --prs-academic, then PRS_ACADEMIC=true, or --pgs_academic true in Nextflow, to include)";
 
 /// The ids of the shipped list and their licence column, in its order.
 fn listed() -> Vec<(String, String, String)> {

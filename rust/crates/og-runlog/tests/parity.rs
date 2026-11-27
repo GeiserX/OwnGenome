@@ -552,16 +552,21 @@ fn small_host(og_stdout: &str) -> bool {
 
 #[test]
 fn the_terabyte_warning_is_compared_only_on_a_host_below_a_terabyte() {
-    assert!(small_host("memory host: 15.6 GB, max_memory 2.0 TB; WARN: x\n"));
+    assert!(small_host(
+        "memory host: 15.6 GB, max_memory 2.0 TB; WARN: x\n"
+    ));
     assert!(small_host("disk /w: 1 GB\nmemory host: 512.0 GB\n"));
     // A host of a terabyte or more, or one og cannot measure: not compared.
-    assert!(!small_host("memory host: 1.0 TB, max_memory 2.0 TB; WARN: x\n"));
+    assert!(!small_host(
+        "memory host: 1.0 TB, max_memory 2.0 TB; WARN: x\n"
+    ));
     assert!(!small_host("memory host: 2.0 TB, max_memory 1.5 TB\n"));
     assert!(!small_host("memory host: unknown, max_memory 2.0 TB\n"));
     assert!(!small_host("no memory line\n"));
     // So the answer of a host with 2 TB, with no warning, matches the one
     // recorded on a smaller machine, which warned.
-    let recorded = "memory host: 15.6 GB, max_memory 2.0 TB; WARN: max_memory is above the host's memory";
+    let recorded =
+        "memory host: 15.6 GB, max_memory 2.0 TB; WARN: max_memory is above the host's memory";
     let big = "memory host: 2.0 TB, max_memory 2.0 TB";
     assert_eq!(
         mask_host(recorded, small_host(big)),
