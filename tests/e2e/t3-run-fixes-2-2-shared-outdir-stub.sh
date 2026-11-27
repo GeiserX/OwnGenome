@@ -102,6 +102,7 @@ check_eq "PRS failing: the run goes on and exits 0" "$RC" 0
 check_eq "PRS ran (and failed)" "$(ran "$PRSOUT" PRS)" 1
 check_eq "ROH ran without the ancestry table" "$(ran "$PRSOUT" ROH)" 1
 check "ROH's summary is published" test -e "${PRSOUT}/S1/roh/S1_roh_summary.txt"
+# shellcheck disable=SC2016  # the awk program is awk's, not the shell's
 check "failed_tasks.tsv names PRS as ignored" \
   awk -F'\t' '$1 ~ /(^|:)PRS$/ && $2 == "ignored" {f = 1} END {exit !f}' "${DIR}/failed_tasks.tsv"
 

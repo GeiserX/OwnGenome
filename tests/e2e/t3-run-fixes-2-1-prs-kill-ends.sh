@@ -127,6 +127,7 @@ check "the kill is the kernel's: FORMAT_SCOREFILES exits 137 in pgsc_calc" \
   grep -qF 'FORMAT_SCOREFILES (1)` terminated with an error exit status (137)' "${NLOG:-/dev/null}"
 check "pgsc_calc ends at the kill (Session aborted), not after its pending tasks" \
   grep -q 'Session aborted' "${NLOG:-/dev/null}"
+# shellcheck disable=SC2016  # bash -c expands its own "$1"
 check "pgsc_calc never waits for its pending tasks (no 'Execution cancelled')" \
   bash -c '! grep -q "Execution cancelled" "$1"' _ "${NLOG:-/dev/null}"
 check "PRS names the memory kill" \
