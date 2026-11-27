@@ -1,1 +1,51 @@
-zensical==0.1.3
+# The docs site builder, Zensical, and every package it needs, each pinned
+# with the sha256 of its wheels. .github/workflows/docs.yml installs them in
+# PYTHON_IMAGE (versions.env), never on the runner's own Python, with
+#   pip install --require-hashes --no-deps --only-binary :all: -r this file
+# so pip installs exactly these wheels: nothing resolved, nothing built. The
+# hashes cover the pure-Python wheels and the CPython 3.15 (or abi3)
+# manylinux wheels for x86_64 and aarch64.
+#
+# To refresh (a new Zensical, or a new Python minor in PYTHON_IMAGE), from
+# the repository root, with docker, curl and jq:
+#   . ./versions.env
+#   docker run --rm "$PYTHON_IMAGE" pip install -q --disable-pip-version-check \
+#     --root-user-action=ignore --dry-run --only-binary :all: --report - \
+#     zensical==<version> </dev/null \
+#     | jq -r '.install[].metadata | "\(.name | ascii_downcase)==\(.version)"' | sort
+# then, for each name==version it prints, write the line and one --hash per
+# wheel sha256 from
+#   curl -fsSL https://pypi.org/pypi/<name>/<version>/json | jq -r '.urls[]
+#     | select(.packagetype == "bdist_wheel") | .filename as $f
+#     | select(($f | endswith("-py3-none-any.whl"))
+#       or (($f | test("-(cp315-cp315|cp3[0-9]+-abi3)-"))
+#         and ($f | test("manylinux[^-]*_(x86_64|aarch64)\\.whl$"))))
+#     | .digests.sha256' | sort
+# (replace cp315 with the new Python's tag). Resolved on 2026-11-26.
+click==8.5.1 \
+    --hash=sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37
+jinja2==3.1.6 \
+    --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+markdown==3.11.4 \
+    --hash=sha256:2e30b19cead1968f391206e184ca67dfe6805c2eb8f383fb07b4dc90f8288075
+markupsafe==3.0.4 \
+    --hash=sha256:4bced6e2a6dba6a28f7dd3c6ce14df1b2dd495923f16ea484cad03decd463b2b \
+    --hash=sha256:925f929d6b59a8b3f8b8c6ac363cd0af7eecc81efb3071770b3c6717c450a369
+pathspec==1.1.1 \
+    --hash=sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+pygments==2.21.0 \
+    --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
+pymdown-extensions==13.1.2 \
+    --hash=sha256:20eec6babdadcdb47b5a91b3e69ff9f846d506e887125dcb027518c47d412693
+pyyaml==6.0.4 \
+    --hash=sha256:872d2a592289061c1b987e335b3568a2616b474be02bd0608d8f551a385441cd \
+    --hash=sha256:c57e40928738c4a202852759f9e1ee2c7063429a9469ee1ac15651bbf7d69963
+tomli==2.5.0 \
+    --hash=sha256:32a7b79ac57a2e83670ce329ccf675798bc5a2094783a63676866b70503f2e2b \
+    --hash=sha256:752e8b1aa6a4367ef8bf6a1a1e005540f7ed055ba36d7193796812ca5404eb52 \
+    --hash=sha256:c47300f9bf791808f77d82747691c4bb09cb14bdf3060cca99b42cdc4361d5a7
+zensical-ui==0.0.43 \
+    --hash=sha256:804bfe979ccc1b96244b7decde09e3a92a3c67da64e6887a617877a30ce02ff2
+zensical==0.1.3 \
+    --hash=sha256:6d8a797347cf94ebae348bdf09ee67dd8d131b9508222fa5731dd39fa270382d \
+    --hash=sha256:a033f82e089abb76cc2c7531cf1702782472acceb14c96e7020edc8c3d8a736c

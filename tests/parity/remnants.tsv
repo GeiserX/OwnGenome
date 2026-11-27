@@ -1,5 +1,0 @@
-# Python files kept after their tool moved to og, only because other Python
-# still imports names from them. `og dev remnants` checks that each holds the
-# names listed here and nothing else, that every name has a user, and that
-# the importers are exactly these (docs/rust.md).
-# file<TAB>names<TAB>importers<TAB>lane

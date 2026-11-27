@@ -1,6 +1,6 @@
 # Families fixtures
 
-Invented names only, for `tests/test_family_report.py` (`og family`).
+Invented names only, for `rust/crates/og-steps/tests/family_report.rs` (`og family`).
 
 - `two_families.tsv`: a families file with the family column, two families
   (a trio and a couple).
