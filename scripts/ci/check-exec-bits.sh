@@ -3,15 +3,15 @@
 # committed with its executable bit, and starts with a #! line.
 #
 # Nextflow puts bin/ on the PATH of every task, so a module calls a helper by
-# its bare name (`cdna_scan.py --out ...`). A helper committed as 100644 then
+# its bare name (`helper.sh --out ...`). A helper committed as 100644 then
 # fails only inside a real task ("Permission denied", exit 126): the stub runs
-# and the unit tests, which call it through python3, never see it. That is how
-# bin/cdna_scan.py reached main without the bit.
+# and the unit tests, which call it through an interpreter, never see it.
+# That is how bin/cdna_scan.py reached main without the bit.
 #
 # A helper counts as called when its file name appears in main.nf,
 # workflows/*.nf or modules/**/*.nf as a word that no "/" or word character
-# comes before (`bin/foo.py` in a comment is a path, not a call). A bare name
-# after an interpreter (`python3 foo.py`) or in a comment counts as a call
+# comes before (`bin/foo.sh` in a comment is a path, not a call). A bare name
+# after an interpreter (`bash foo.sh`) or in a comment counts as a call
 # too: the guard asks for a bit it may not need rather than tell a mention
 # from a call, since a missing bit only shows inside a real task. The mode is
 # the one git records (git ls-files -s), which is what a checkout gets.

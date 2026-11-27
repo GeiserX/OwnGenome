@@ -481,11 +481,13 @@ fn stranger(
     .arg(env("STRANGER_IMAGE"));
     match catalog {
         Some(c) => cmd.args(["stranger", "--repeats-file", &format!("/w/{c}"), "/w/in.vcf"]),
+        // Stranger's own GRCh38 catalog, the file its package ships.
         None => cmd.args([
             "sh",
             "-c",
-            "exec stranger --repeats-file \"$(python -c 'import os, stranger; print(os.path.join(\
-             os.path.dirname(stranger.__file__), \"resources\", \"variant_catalog_grch38.json\"))')\" /w/in.vcf",
+            "c=$(find / -xdev -path '*/stranger/resources/variant_catalog_grch38.json' 2>/dev/null | head -n 1); \
+             [ -n \"$c\" ] || { echo 'the image ships no GRCh38 catalog of Stranger' >&2; exit 1; }; \
+             exec stranger --repeats-file \"$c\" /w/in.vcf",
         ]),
     };
     let o = cmd.output().unwrap_or_else(|e| panic!("docker: {e}"));
