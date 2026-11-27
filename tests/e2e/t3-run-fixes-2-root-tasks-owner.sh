@@ -109,15 +109,17 @@ check_eq "the Nextflow run exits 0" "$rc" 0
 [ "$rc" -eq 0 ] || tail -n 60 "${T}/nf.log"
 cat "${T}/trace.txt" 2>/dev/null
 
-# workdir NAME_REGEX ATTEMPT: the work directory of that attempt of the task.
+# workdir TASK ATTEMPT: the work directory of that attempt of the task named TASK
+# (a plain string, not a regex: in a -v value gawk turns "\(" into "(").
 workdir() {
-  awk -F'\t' -v pat="$1" -v a="$2" 'NR > 1 && $2 ~ pat && $3 == a { print $5; exit }' "${T}/trace.txt" 2>/dev/null
+  awk -F'\t' -v task="$1" -v a="$2" 'NR > 1 && $2 == task && $3 == a { print $5; exit }' "${T}/trace.txt" 2>/dev/null
 }
-# foreign DIR: the files under DIR that are not this runner's, one per line.
-foreign() { [ -d "$1" ] && find "$1" ! -user "$ME" 2>/dev/null | sed "s|^$1|.|"; }
+# foreign DIR: the files under DIR that are not this runner's, one per line; a
+# line naming DIR when it is no directory, so a lost work directory fails the check.
+foreign() { [ -d "$1" ] || { echo "no directory '$1'"; return; }; find "$1" ! -user "$ME" 2>/dev/null | sed "s|^$1|.|"; }
 
-CPSR1=$(workdir 'CPSR \(once\)' 1) CPSR2=$(workdir 'CPSR \(once\)' 2)
-CNV=$(workdir 'CNVPYTOR \(s1\)' 1) CTL=$(workdir 'ROOT_CONTROL' 1)
+CPSR1=$(workdir 'CPSR (once)' 1) CPSR2=$(workdir 'CPSR (once)' 2)
+CNV=$(workdir 'CNVPYTOR (s1)' 1) CTL=$(workdir 'ROOT_CONTROL' 1)
 check "CPSR's killed attempt and its retry are in the trace" test -d "$CPSR1" -a -d "$CPSR2"
 check "the killed attempt wrote a file as root before it died" test -e "${CPSR1}/once.cpsr.partial.tsv"
 check_eq "files left to another user by CPSR's killed attempt" "$(foreign "$CPSR1" | paste -sd' ' -)" ""
@@ -127,7 +129,7 @@ check_eq "files left to another user by CNVPYTOR" "$(foreign "$CNV" | paste -sd'
 check_eq "the root-owned files the staged links point to stay root's" \
   "$(stat -c %u "${T}/once.vcf.gz.tbi" "${T}/s1.bam.bai" 2>/dev/null | paste -sd' ' -)" "0 0"
 check "control: BusyBox's chown refused Nextflow's --from" grep -q "unrecognized option '--from'" "${CTL}/.command.err"
-check_ge "control: a root task with no give-back leaves root's files" "$(foreign "$CTL" | grep -c .)" 1
+check_ge "control: a root task with no give-back leaves root's files" "$(find "$CTL" ! -user "$ME" 2>/dev/null | grep -c .)" 1
 
 # The control's files are root's: only a container can delete them.
 [ -z "$CTL" ] || docker run --rm --user 0:0 -v "${CTL}:/c" "$CNVPYTOR_IMAGE" sh -c 'rm -rf /c/d /c/o /c/.command.trace' >/dev/null 2>&1

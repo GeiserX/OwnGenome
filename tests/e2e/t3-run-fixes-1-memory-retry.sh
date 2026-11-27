@@ -119,22 +119,23 @@ nf_go() {
   [ "$rc" -eq 0 ] || tail -n 40 "${T}/${name}.log"
   cat "${T}/${name}.trace" 2>/dev/null
 }
-# attempts NAME REGEX: "attempt:exit:GB" for each attempt of the task whose
-# name matches, in attempt order, one row per task_id.
+# attempts NAME TASK: "attempt:exit:GB" for each attempt of the task named TASK,
+# in attempt order, one row per task_id. TASK is matched as a plain string, not
+# a regex: in a -v value gawk turns "\(" into "(", and mawk keeps it.
 attempts() {
-  awk -F'\t' -v pat="$2" 'NR > 1 && $2 ~ pat {
+  awk -F'\t' -v task="$2" 'NR > 1 && $2 == task {
       if (!($1 in ex) || ex[$1] == "-") { ex[$1] = $4; row[$1] = $3 ":" $4 ":" int($5 / 1073741824) } }
     END { for (k in row) print row[k] }' "${T}/$1.trace" 2>/dev/null | sort -t: -k1,1n | paste -sd, -
 }
 
 nf_go big --max_cpus 8 --max_memory 64.GB
 check_eq "LOCITYPER killed once: attempt 1 exits 137 at 32 GB, attempt 2 passes at 64 GB" \
-  "$(attempts big 'LOCITYPER \(once\)')" "1:137:32,2:0:64"
+  "$(attempts big 'LOCITYPER (once)')" "1:137:32,2:0:64"
 check_eq "LOCITYPER killed on every attempt: the retry at 64 GB writes the table" \
-  "$(attempts big 'LOCITYPER \(always\)')" "1:137:32,2:0:64"
-check_eq "LOCITYPER not killed: one attempt at 32 GB" "$(attempts big 'LOCITYPER \(ok\)')" "1:0:32"
+  "$(attempts big 'LOCITYPER (always)')" "1:137:32,2:0:64"
+check_eq "LOCITYPER not killed: one attempt at 32 GB" "$(attempts big 'LOCITYPER (ok)')" "1:0:32"
 check_eq "LOCITYPER stopped by SIGTERM once: attempt 1 exits 143 at 32 GB, attempt 2 passes at 64 GB" \
-  "$(attempts big 'LOCITYPER \(term\)')" "1:143:32,2:0:64"
+  "$(attempts big 'LOCITYPER (term)')" "1:143:32,2:0:64"
 check_eq "the term table is the retry's: Locityper ended well" \
   "$(cut -f2 "${T}/big-out/term/locityper/term_locityper.tsv" 2>/dev/null)" 0
 check_eq "the once table is the retry's: Locityper ended well" \
@@ -143,11 +144,11 @@ check_eq "the always table holds the last kill's exit code" \
   "$(cut -f2 "${T}/big-out/always/locityper/always_locityper.tsv" 2>/dev/null)" 137
 check "the killed attempt says why it ends" \
   grep -rqF "Locityper was killed (exit 137) on attempt 1: retrying with more memory" --include=.command.err "${T}/big-work"
-check_eq "CPSR asks for 16 GB, and 32 GB on the retry after a kill" "$(attempts big 'CPSR \(once\)')" "1:137:16,2:0:32"
+check_eq "CPSR asks for 16 GB, and 32 GB on the retry after a kill" "$(attempts big 'CPSR (once)')" "1:137:16,2:0:32"
 check "CPSR's report is published" test -e "${T}/big-out/once/cpsr/once.cpsr.grch38.html"
 
 nf_go capped --max_cpus 8 --max_memory 8.GB --samples ok --cpsr_samples ok
-check_eq "--max_memory 8.GB still caps CPSR's 16 GB" "$(attempts capped 'CPSR \(ok\)')" "1:0:8"
+check_eq "--max_memory 8.GB still caps CPSR's 16 GB" "$(attempts capped 'CPSR (ok)')" "1:0:8"
 
 rm -rf "$T"
 finish
