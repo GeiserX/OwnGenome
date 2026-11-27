@@ -93,6 +93,28 @@ nf_log "$WD"
 ln -s "$WDISK" "${CASE_WORK}/wlink"
 with_free 150 600 run_expect 0 resume-via-link env NXF_WORK="${CASE_WORK}/wlink/owngenome/sample1" "${SCRIPTS}/validate-setup.sh" sample1
 output_has resume-via-link "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${CASE_WORK}/wlink/owngenome/sample1 exists: a resume"
+# Each part of the rule guards a real input. A deleted <sample>/nextflow/.nextflow
+# leaves no cache, so -resume reuses nothing: no resume.
+mv "${G}/sample1/nextflow/.nextflow/cache" "${G}/sample1/nextflow/.nextflow/cache.off"
+with_free 150 600 run_expect 1 no-cache env NXF_WORK="$WD" "${SCRIPTS}/validate-setup.sh" sample1
+output_has no-cache '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
+output_lacks no-cache 'a resume'
+mv "${G}/sample1/nextflow/.nextflow/cache.off" "${G}/sample1/nextflow/.nextflow/cache"
+# A user who frees space by deleting work/'s contents keeps the cache and a log
+# that names work/: an empty work directory holds no task to reuse, so no resume.
+E="${WDISK}/owngenome/emptied"
+mkdir -p "$E"
+nf_log "$E"
+with_free 150 600 run_expect 1 work-emptied env NXF_WORK="$E" "${SCRIPTS}/validate-setup.sh" sample1
+output_has work-emptied '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
+output_lacks work-emptied 'a resume'
+rmdir "$E"
+# The same symlinked -w on every run: Nextflow logs an absolute -w as given, so
+# the log names the link path, and the run is a resume.
+nf_log "${CASE_WORK}/wlink/owngenome/sample1"
+with_free 150 600 run_expect 0 resume-link-as-given env NXF_WORK="${CASE_WORK}/wlink/owngenome/sample1" "${SCRIPTS}/validate-setup.sh" sample1
+output_has resume-link-as-given "\[WARN\].*Free disk space: 150 GB, under the 200 GB minimum, but ${CASE_WORK}/wlink/owngenome/sample1 exists: a resume"
+nf_log "$WD"
 # Control: without NXF_WORK the same run is not a resume, so the old FAIL stands.
 with_free 150 600 run_expect 1 resume-unseen "${SCRIPTS}/validate-setup.sh" sample1
 output_has resume-unseen '\[FAIL\].*Free disk space: 150 GB, under the 200 GB minimum \(500 GB'
