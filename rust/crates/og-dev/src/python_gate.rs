@@ -4,8 +4,9 @@
 //! Every file `git ls-files` lists (tracked, plus new files that are not
 //! ignored) is read, and these are the findings:
 //!
-//! - `file`: a `*.py`, `*.pyw`, `*.pyi`, `*.ipynb`, Cython `*.pyx` or
-//!   `*.pxd`, a `*.py.in` template, or a Snakemake `Snakefile` or `*.smk`;
+//! - `file`: a `*.py`, `*.pyw`, `*.pyi`, `*.ipynb`, a zip app `*.pyz`,
+//!   Cython `*.pyx` or `*.pxd`, a `*.py.in` template, or a Snakemake
+//!   `Snakefile` or `*.smk`;
 //! - `shebang`: a `#!` line whose program is python, python3, pythonX.Y,
 //!   pypy, pypy3 or pypyX.Y, or a package runner that runs Python (`uv run
 //!   --script`, `uvx`, `pipx run`), directly or through `env`: the first line of
@@ -27,14 +28,20 @@
 //!   image (`PYTHON_IMAGE` in any `${PYTHON_IMAGE…}` form, `python:3.15`,
 //!   `library/python`, `docker.io/python`, and the same names of `pypy`)
 //!   by `docker`, `podman`, `nerdctl` or the engine variable
-//!   (`"$CONTAINER_ENGINE"`, `"$ENGINE"`) `run` or `create`, after any
-//!   global options (`docker --log-level error run`), or by `run_in`, with
-//!   no program after the image is a call too: the image's own python3
+//!   (`"$CONTAINER_ENGINE"`, `"$ENGINE"`) `run`, or `create` with `-i`
+//!   (`--interactive`, `-it`), after any global options (`docker
+//!   --log-level error run`), or by `run_in`, with no program after the
+//!   image is a call too: the image's own python3
 //!   runs what comes on stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`,
 //!   `... < tool.txt`, `<<< '...'`), wherever the redirection stands and
 //!   whatever its target (a quoted path with a blank, a process
 //!   substitution `< <(cat x)`), unless an `--entrypoint` runs in place
-//!   of python3. A run inside quotes or a substitution
+//!   of python3. The image operand is the first python image word, and
+//!   the scan stops at another image's variable (`docker run "$OG_IMAGE"
+//!   og fresh check "$PYTHON_IMAGE"` runs no Python): Guard's image check
+//!   makes every pinned image such a variable. A `create` without `-i`
+//!   keeps no stdin, so `docker create "$PYTHON_IMAGE"` before a `docker
+//!   cp` runs no Python. A run inside quotes or a substitution
 //!   (`sh -c '...'`, `$(...)`) is read too, and a command continued with
 //!   `\`, in a Rust string too, or over the lines of a workflow's folded
 //!   block (`run: >-`) is read whole. A workflow step that `uses:` a
@@ -58,7 +65,11 @@
 //! A comment, a doc sentence and a Markdown, text, JSON or image file are
 //! prose: they never count. `python:3.15` (an image), `python=...` (a
 //! stamp), `PYTHON_IMAGE`, `setup-python` outside a `uses:` line and a
-//! `site-packages/python3.12/` path are not calls.
+//! `site-packages/python3.12/` path are not calls. A Python word inside a
+//! string of code counts, even when the line runs no Python (a message, a
+//! grep pattern, a label, a Rust literal: `echo "pip install needs the
+//! network"`, `grep -q python3 log.txt`): reword it, or give the file a
+//! row whose reason says it runs no Python.
 //!
 //! What the gate is for: it guards against regressions. It is not a proof
 //! that no Python can run. It catches every form a contributor to this
@@ -78,7 +89,10 @@
 //! a value, an empty expansion standing where the program would be
 //! (`docker run -i "$PYTHON_IMAGE" ${EXTRA:-} < x`, a `"$@"` with no
 //! arguments: the gate counts it as the program), and apptainer or
-//! singularity (`apptainer run "docker://$PYTHON_IMAGE" < x`). YAML other
+//! singularity (`apptainer run "docker://$PYTHON_IMAGE" < x`). The other
+//! way, a python image name passed to a container whose image is written
+//! out rather than named by its variable (`docker run docker:27-cli pull
+//! "$PYTHON_IMAGE"`) counts, though it runs no Python. YAML other
 //! than workflows and actions is data (a `.pre-commit-config.yaml` `entry:
 //! python3`, a compose `command:`), and so is a plain multi-line YAML
 //! scalar (a `run:` value with no `|` or `>` whose next line goes on with
@@ -933,19 +947,47 @@ fn python_image_ref(word: &str) -> bool {
     })
 }
 
+/// Is this word a whole image variable other than the python image's
+/// (`$OG_IMAGE`, `${CRANE_IMAGE}`, `${CRANE_IMAGE:?}`)? Guard's image check
+/// makes every pinned image a `versions.env` `*_IMAGE` variable, so in a
+/// run this word is the image operand and the words after it its program.
+fn other_image_var(word: &str) -> bool {
+    let name = if let Some(r) = word.strip_prefix("${") {
+        let end = r.find(|c: char| !name_char(c)).unwrap_or(r.len());
+        let rest = &r[end..];
+        if !(rest == "}" || (rest.ends_with('}') && rest.starts_with([':', '-', '%', '#']))) {
+            return false;
+        }
+        &r[..end]
+    } else if let Some(r) = word.strip_prefix('$') {
+        if !r.chars().all(name_char) {
+            return false;
+        }
+        r
+    } else {
+        return false;
+    };
+    name.len() > "_IMAGE".len() && name.ends_with("_IMAGE") && name != PYTHON_IMAGE
+}
+
 /// Does a command run the python image with no program after the image?
 /// Then the image's own python3, its default command, runs what comes on
 /// stdin (`docker run -i "$PYTHON_IMAGE" <<'END'`, `… < tool.txt`,
-/// `<<< '…'`). The run is `run` or `create` (a container made with no
-/// program runs python3 when it starts) of docker, podman, nerdctl or the
+/// `<<< '…'`). The run is `run`, or `create` with stdin kept open (`-i`,
+/// `--interactive`, a cluster such as `-it`: the container's python3 reads
+/// it when `docker start -ai` starts it; without it python3 gets nothing,
+/// so a `docker create "$PYTHON_IMAGE"` before a `docker cp` runs no
+/// Python) of docker, podman, nerdctl or the
 /// repository's engine variable, after any global options and an optional
 /// `container`, or the scripts' `run_in`. A redirection may stand anywhere
 /// in the command (`docker run -i < tool.txt "$PYTHON_IMAGE"`): it and its
 /// target are skipped, and a word after it is still the program
 /// (`... < x sh`). A target is one word even when quoted with blanks or a
 /// process substitution (`< <(cat x)`). A bare `python` image is a program
-/// word already, so it is not counted twice. A command inside quotes or a
-/// substitution is read the same way (`sh -c '…'`, `$(…)`).
+/// word already, so it is not counted twice. The scan stops at another
+/// image's variable (`other_image_var`): that is the image operand, and a
+/// python image after it is an argument of its program. A command inside
+/// quotes or a substitution is read the same way (`sh -c '…'`, `$(…)`).
 fn python_image_default(code: &str) -> bool {
     let (toks, inner) = shell_tokens(code);
     runs_python_image_default(&toks) || inner.iter().any(|s| python_image_default(s))
@@ -967,8 +1009,19 @@ fn runs_python_image_default(toks: &[String]) -> bool {
     let fd = |p: usize| {
         toks[p].bytes().all(|c| c.is_ascii_digit()) && toks.get(p + 1).is_some_and(|n| redirect(n))
     };
+    // An option that keeps a created container's stdin open: `-i`,
+    // `--interactive`, `--interactive=true`, or a short cluster with an `i`
+    // (`-it`, `-ti`).
+    let interactive = |t: &str| {
+        t == "--interactive"
+            || t == "--interactive=true"
+            || t.strip_prefix('-').is_some_and(|c| {
+                !c.is_empty() && c.bytes().all(|b| b.is_ascii_alphabetic()) && c.contains('i')
+            })
+    };
     for i in 0..toks.len() {
         let mut from = None;
+        let mut create = false;
         if engine_word(&toks[i]) {
             let mut j = i + 1;
             while let Some(t) = toks.get(j).filter(|t| t.starts_with('-')) {
@@ -982,6 +1035,7 @@ fn runs_python_image_default(toks: &[String]) -> bool {
                 j += 1;
             }
             if toks.get(j).is_some_and(|t| t == "run" || t == "create") {
+                create = toks[j] == "create";
                 from = Some(j + 1);
             }
         } else if toks[i] == "run_in" {
@@ -992,10 +1046,18 @@ fn runs_python_image_default(toks: &[String]) -> bool {
         // one (`--entrypoint ''`) leaves python3 to run. A python program
         // as the entrypoint is a program word, counted already.
         let mut entrypoint = false;
+        // A `create` counts only with stdin kept open.
+        let mut stdin = !create;
         while j < toks.len() && !control(&toks[j]) {
             if redirect(&toks[j]) {
                 j += 2;
                 continue;
+            }
+            if other_image_var(&toks[j]) {
+                break;
+            }
+            if interactive(&toks[j]) {
+                stdin = true;
             }
             if toks[j] == "--entrypoint" {
                 entrypoint = toks.get(j + 1).is_some_and(|v| !v.is_empty());
@@ -1008,7 +1070,7 @@ fn runs_python_image_default(toks: &[String]) -> bool {
                 continue;
             }
             if python_image_ref(&toks[j]) {
-                if entrypoint || python_words(&toks[j]) > 0 {
+                if entrypoint || !stdin || python_words(&toks[j]) > 0 {
                     break;
                 }
                 // The program: the first word after the image that is no
@@ -1083,12 +1145,12 @@ fn finding(rel: &str, line: usize, kind: &'static str, text: &str, code: &str) -
 }
 
 /// The `file` finding of a path whose name is a Python file's: Python,
-/// a notebook, Cython (`.pyx`, `.pxd`), a template of a Python file
+/// a notebook, a zip app (`.pyz`), Cython (`.pyx`, `.pxd`), a template of a Python file
 /// (`.py.in`) or Snakemake, which is Python (`Snakefile`, `.smk`).
 fn python_name(rel: &str) -> Option<Finding> {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     ([
-        ".py", ".pyw", ".pyi", ".ipynb", ".pyx", ".pxd", ".py.in", ".smk",
+        ".py", ".pyw", ".pyi", ".ipynb", ".pyz", ".pyx", ".pxd", ".py.in", ".smk",
     ]
     .iter()
     .any(|e| name.ends_with(e))
@@ -2613,6 +2675,7 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
             "src/a.pyx",
             "src/a.pxd",
             "bin/tool.py.in",
+            "tools/app.pyz",
         ] {
             assert_eq!(k(rel, "x\n"), [(0, "file")], "{rel}");
         }
@@ -2883,6 +2946,57 @@ fn f() { let _ = ["lib/@p3.12/x", "@p:3.15", "--@p-free", "PYTHON_IMAGE"]; }
             k("s.sh", "docker ru\\\nn -i \"$@V\" < tool.txt\n"),
             [(2, "call")]
         );
+    }
+
+    #[test]
+    fn a_create_counts_only_with_stdin_open() {
+        // A container made without -i keeps no stdin, so python3 gets
+        // nothing to read: copying files out of the image runs no Python.
+        for line in [
+            "id=$(docker create \"$@V\"); docker cp \"$id:/usr/local/lib\" out; docker rm \"$id\"\n",
+            "docker create --name pyc \"$@V\"\n",
+            "docker container create --rm \"$@V\"\n",
+            "docker create --interactive=false \"$@V\"\n",
+            "docker create -v /x/ci:/ci -t \"$@V\"\n",
+        ] {
+            assert!(k("s.sh", line).is_empty(), "{line}");
+        }
+        for line in [
+            "docker create -i \"$@V\"\n",
+            "docker container create -it \"$@V\"\n",
+            "docker create -ti --name pyc \"$@V\"\n",
+            "docker create --interactive \"$@V\"\n",
+            "docker create --interactive=true \"$@V\"\n",
+            "podman create --name pyc -i \"$@V\"\n",
+        ] {
+            assert_eq!(k("s.sh", line), [(1, "call")], "{line}");
+        }
+        // A run needs no -i: a redirection gives python3 its stdin.
+        assert_eq!(k("s.sh", "docker run \"$@V\" < tool.txt\n"), [(1, "call")]);
+    }
+
+    #[test]
+    fn another_image_variable_is_the_image_operand() {
+        // The python image as an argument to a container of another image
+        // runs no Python: the other image variable is the image operand.
+        for line in [
+            "docker run --rm \"$CRANE_IMAGE\" digest @p:3.15.2\n",
+            "docker run --rm \"$OG_IMAGE\" og fresh check \"$@V\"\n",
+            "docker run --rm \"${CRANE_IMAGE:?}\" pull \"${@V}\"\n",
+            "run_in \"$OG_IMAGE\" og x \"$@V\"\n",
+        ] {
+            assert!(k("s.sh", line).is_empty(), "{line}");
+        }
+        // Only a whole image variable stops the scan: a longer name, an
+        // option value that holds one, or the python image itself does not.
+        for line in [
+            "docker run -i -v \"$X_IMAGE_DIR:/d\" \"$@V\" < x\n",
+            "docker run -i -e IMG=\"$OG_IMAGE\" \"$@V\" < x\n",
+            "docker run -i --label \"${OG_IMAGES}\" \"$@V\" < x\n",
+            "docker run -i \"${@V:?}\" < x\n",
+        ] {
+            assert_eq!(k("s.sh", line), [(1, "call")], "{line}");
+        }
     }
 
     #[cfg(unix)]
