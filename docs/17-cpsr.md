@@ -43,11 +43,13 @@ See [reference setup](00-reference-setup.md) for disk peaks.
 ### Upgrading from PCGR 2.2.5
 PCGR 2.2.5 read bundle `20250314` and the release-113 cache. 2.3.2 needs both new ones: about 31 GB to download (the 7 GB bundle and the 24 GB cache). Once step 17 runs on 2.3.2, `pcgr_data/20250314/` and `vep_cache/homo_sapiens/113_GRCh38/` are no longer read and can be deleted.
 
+CPSR needs 16 GB of memory on a whole genome: its trace in our end test showed a peak of 12.3-15.6 GB, and under an 8 GB limit it was killed. The script and the pipeline's `CPSR` task both give it 16 GB (`--max_memory` still caps the task).
+
 ## Command
 ```bash
 source versions.env   # from the repository root
 docker run --rm --user root \
-  --cpus 4 --memory 8g \
+  --cpus 4 --memory 16g \
   -v ${GENOME_DIR}/vep_cache:/mnt/.vep \
   -v ${GENOME_DIR}/pcgr_data/${PCGR_DATA_BUNDLE}:/mnt/bundle \
   -v ${GENOME_DIR}/${SAMPLE}/vcf:/mnt/inputs \
