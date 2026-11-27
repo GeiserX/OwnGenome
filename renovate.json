@@ -120,14 +120,6 @@
     },
     {
       "customType": "regex",
-      "description": "The Python the docs workflow builds the site with (python-version of setup-python in docs.yml), read as the python image's tags. The python rule below sends every update to the dependency dashboard.",
-      "managerFilePatterns": ["/^\\.github/workflows/docs\\.yml$/"],
-      "matchStrings": ["python-version: ['\"]?(?<currentValue>\\d+\\.\\d+)['\"]?\\n"],
-      "depNameTemplate": "python",
-      "datasourceTemplate": "docker"
-    },
-    {
-      "customType": "regex",
       "description": "IPD-IMGT/HLA release step 8 types against: HLA_DB_RELEASE in scripts/lib/common.sh. The IMGTHLA repository tags each release v<x.y.z>-alpha. setup.sh checks the new hla.dat against the md5 that release lists, and step 8 builds a new T1K index for it.",
       "managerFilePatterns": ["/^scripts/lib/common\\.sh$/"],
       "matchStrings": ["HLA_DB_RELEASE=\\$\\{HLA_DB_RELEASE:-(?<currentValue>\\d+\\.\\d+\\.\\d+)\\}"],
@@ -193,7 +185,7 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "The python image, and the Python of the docs workflow, wait for approval on the dependency dashboard. Step 21 installs Cyrius into the image with wheels hash-locked for the image's Python (the header of scripts/cyrius-constraints.txt names it); a new minor or major needs them resolved again in the same PR. A patch of the same minor is safe to approve: the image test runs Cyrius on it.",
+      "description": "The python image waits for approval on the dependency dashboard. Step 21 installs Cyrius into the image, and the docs workflow installs Zensical into it, each with wheels hash-locked for the image's Python (the headers of scripts/cyrius-constraints.txt and docs/requirements-docs.txt name it and say how to refresh them); a new minor or major needs both resolved again in the same PR. A patch of the same minor is safe to approve: the image test runs Cyrius on it.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["python"],
       "dependencyDashboardApproval": true
