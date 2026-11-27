@@ -167,7 +167,7 @@ for PGS_ID in "${PGS_IDS[@]}"; do
   # A cached file from an older version may be the author-reported build.
   if [ -f "$SCORE_FILE" ] && [ "$(hm_build "$SCORE_FILE")" != "GRCh38" ]; then
     echo "  Cached ${PGS_ID} is not a GRCh38-harmonised file; downloading it again."
-    rm -f "$SCORE_FILE"
+    rm -f "$SCORE_FILE"  # not kept: a file of the wrong build, which fetch would refuse
   fi
   if [ -f "$SCORE_FILE" ]; then
     continue

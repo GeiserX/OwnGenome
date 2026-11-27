@@ -1757,25 +1757,52 @@ fn spells_url(text: &str, url: &str, prefix: &str, tail: &str) -> bool {
     })
 }
 
+/// URL with a leading `${NAME}` (a pin) replaced by NAME's value in
+/// versions.env (ENV); None when ENV does not set NAME.
+fn literal_url(url: &str, env: &str) -> Option<String> {
+    let Some(rest) = url.strip_prefix("${") else {
+        return Some(url.to_owned());
+    };
+    let (name, after) = rest.split_once('}')?;
+    let v = env.lines().find_map(|l| {
+        let l = l.trim_start();
+        let l = l.strip_prefix("export ").unwrap_or(l);
+        l.strip_prefix(name)?.strip_prefix('=')
+    })?;
+    let v = match v.strip_prefix('"') {
+        Some(q) => q.split('"').next()?,
+        None => v.split_whitespace().next()?,
+    };
+    Some(format!("{v}{after}"))
+}
+
 /// URLs of the table that a script also spells (`spells_url`): the start
 /// of a row's URL up to its first `${` or `{part}` (at least a host and a
 /// folder) and, after it, the URL's end after its last `}` (the file name's
-/// tail): (id, prefix, file). A row whose installer builds its URL says `-`;
-/// every other script reads its URL from the table.
+/// tail): (id, prefix, file). A row whose URL is a pin, `${NAME}...`, is
+/// tested with NAME's value from versions.env. A row whose installer builds
+/// its URL says `-`; every other script reads its URL from the table.
 fn repeated_urls(s: &Sources, files: &[(String, String)]) -> Vec<(String, String, String)> {
+    let env = files
+        .iter()
+        .find(|(f, _)| f == "versions.env")
+        .map_or("", |(_, t)| t.as_str());
     let mut out = vec![];
     for r in s.rows.values() {
-        if r.url == "-" || r.url.starts_with("${") {
+        if r.url == "-" {
             continue;
         }
-        let end = [r.url.find("${"), r.url.find("{part}")]
+        let Some(url) = literal_url(&r.url, env) else {
+            continue;
+        };
+        let end = [url.find("${"), url.find("{part}")]
             .into_iter()
             .flatten()
             .min()
-            .unwrap_or(r.url.len());
-        let prefix = r.url[..end].trim_end_matches('/');
-        let tail = if end < r.url.len() {
-            r.url.rsplit('}').next().unwrap_or("")
+            .unwrap_or(url.len());
+        let prefix = url[..end].trim_end_matches('/');
+        let tail = if end < url.len() {
+            url.rsplit('}').next().unwrap_or("")
         } else {
             ""
         };
@@ -1786,7 +1813,7 @@ fn repeated_urls(s: &Sources, files: &[(String, String)]) -> Vec<(String, String
             continue;
         }
         for (f, text) in files {
-            if *f != "versions.env" && spells_url(text, &r.url, prefix, tail) {
+            if *f != "versions.env" && spells_url(text, &url, prefix, tail) {
                 out.push((r.id.clone(), prefix.to_owned(), f.clone()));
             }
         }
@@ -1863,6 +1890,23 @@ fn a_planted_default_or_url_is_caught() {
         u.iter()
             .any(|(id, _, f)| id == "revel" && f == "scripts/25-prs.sh"),
         "a literal URL split {u:#?}"
+    );
+    // U3: a row whose URL is a pin, its value from versions.env written again.
+    let mito = literal_url("${GNOMAD_MITO_URL}", &read("versions.env")).unwrap();
+    assert!(mito.starts_with("https://"), "{mito}");
+    let mut files = pin_files();
+    let cpsr = files
+        .iter()
+        .position(|(f, _)| f == "scripts/17-cpsr.sh")
+        .expect("pin_files reads the step scripts");
+    files[cpsr]
+        .1
+        .push_str(&format!("\n  fetch \"{mito}\" \"$out\"\n"));
+    let u = repeated_urls(&s, &files);
+    assert!(
+        u.iter()
+            .any(|(id, _, f)| id == "gnomad_mito" && f == "scripts/17-cpsr.sh"),
+        "U3 {u:#?}"
     );
 }
 
@@ -2150,13 +2194,82 @@ fn deleted_downloads(name: &str, text: &str) -> Vec<String> {
     out
 }
 
+/// The scripts the delete and stream guards read: setup.sh, common.sh and
+/// every other scripts/*.sh that calls fetch or done_with.
+fn guarded_scripts() -> Vec<(String, String)> {
+    let mut names = vec![
+        "scripts/setup.sh".to_owned(),
+        "scripts/lib/common.sh".to_owned(),
+    ];
+    let mut more: Vec<String> = std::fs::read_dir(repo().join("scripts"))
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            let n = p.file_name()?.to_str()?.to_owned();
+            n.ends_with(".sh").then(|| format!("scripts/{n}"))
+        })
+        .filter(|n| !names.contains(n) && calls_fetch(&read(n)))
+        .collect();
+    more.sort();
+    names.extend(more);
+    names
+        .into_iter()
+        .map(|n| {
+            let t = read(&n);
+            (n, t)
+        })
+        .collect()
+}
+
+/// True when TEXT calls fetch or done_with on a path (not in a comment).
+fn calls_fetch(text: &str) -> bool {
+    text.lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .any(|l| {
+            words(l).windows(2).any(|p| {
+                (p[0] == "fetch" || p[0] == "done_with")
+                    && (p[1].starts_with('"') || p[1].starts_with('$'))
+            })
+        })
+}
+
+fn delete_guard(files: &[(String, String)]) -> Vec<String> {
+    files
+        .iter()
+        .flat_map(|(n, t)| deleted_downloads(n, t))
+        .collect()
+}
+
+fn stream_guard(files: &[(String, String)]) -> Vec<String> {
+    files
+        .iter()
+        .flat_map(|(n, t)| unsaved_streams(n, t))
+        .collect()
+}
+
+/// FILES with LINE planted right after the pgsc_calc fetch of 25-prs.sh,
+/// which the guards must read.
+fn planted_in_prs(line: &str) -> Vec<(String, String)> {
+    let mut files = guarded_scripts();
+    for n in ["scripts/25-prs.sh", "scripts/04b-gridss.sh"] {
+        assert!(
+            files.iter().any(|(f, _)| f == n),
+            "{n} calls fetch, so the guards must read it"
+        );
+    }
+    let at = "  fetch \"$PGSC_URL\" \"$PGSC_TGZ\" sha256 \"$PGSC_CALC_SHA256\"\n";
+    let prs = files
+        .iter_mut()
+        .find(|(f, _)| f == "scripts/25-prs.sh")
+        .unwrap();
+    assert!(prs.1.contains(at), "25-prs.sh no longer has: {at}");
+    prs.1 = prs.1.replacen(at, &format!("{at}{line}\n"), 1);
+    files
+}
+
 #[test]
 fn no_installer_deletes_a_raw_download() {
-    let mut bad = deleted_downloads("scripts/setup.sh", &read("scripts/setup.sh"));
-    bad.extend(deleted_downloads(
-        "scripts/lib/common.sh",
-        &read("scripts/lib/common.sh"),
-    ));
+    let bad = delete_guard(&guarded_scripts());
     assert!(
         bad.is_empty(),
         "raw downloads deleted outside done_with:\n{}",
@@ -2210,6 +2323,12 @@ fn a_planted_delete_of_a_download_is_caught() {
     // The staged copy, marked, deletes no download.
     let staged = "install_ancient_panel() {\n  [ -n \"$src\" ] || raw=$(dl \"aadr-${AADR_VERSION}\")\n  if [ -n \"$src\" ]; then\n    rm -rf \"$raw\"  # not kept: the staged copy\n  else\n    done_with \"$raw\"\n  fi\n}\n";
     assert!(deleted_downloads("staged.sh", staged).is_empty());
+    // D8: a step script that fetches is read too: pgsc_calc deleted in 25-prs.sh.
+    let bad = delete_guard(&planted_in_prs("  rm -f \"$PGSC_TGZ\""));
+    assert!(
+        bad.iter().any(|b| b.starts_with("scripts/25-prs.sh:")),
+        "D8 {bad:#?}"
+    );
 }
 
 /// Why a network read may stream: `slice` (only the regions a user chose,
@@ -2258,14 +2377,17 @@ fn get_calls(l: &str) -> Vec<usize> {
 }
 
 /// True when L streams a body read into another command: to stdout (`-`,
-/// `/dev/stdout`, `/dev/fd/N`) through a pipe, or inside a process
-/// substitution `<(...)`.
+/// `/dev/stdout`, `/dev/fd/N`) through a pipe or into an output process
+/// substitution `>(...)`, or inside a process substitution `<(...)` or `>(...)`.
 fn piped_get(l: &str) -> bool {
     let calls = get_calls(l);
-    let substituted = l.match_indices("<(").any(|(s, _)| {
-        let end = l[s..].find(')').map_or(l.len(), |e| s + e);
-        calls.iter().any(|&c| c > s && c < end)
-    });
+    let substituted = l
+        .match_indices("<(")
+        .chain(l.match_indices(">("))
+        .any(|(s, _)| {
+            let end = l[s..].find(')').map_or(l.len(), |e| s + e);
+            calls.iter().any(|&c| c > s && c < end)
+        });
     let Some(&at) = calls.iter().min() else {
         return false;
     };
@@ -2277,10 +2399,11 @@ fn piped_get(l: &str) -> bool {
                 .strip_prefix("/dev/fd/")
                 .is_some_and(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
     };
-    substituted
-        || rest
-            .find('|')
-            .is_some_and(|p| words(&rest[..p]).iter().any(to_stdout))
+    let into = [rest.find('|'), rest.find(">(")]
+        .into_iter()
+        .flatten()
+        .min();
+    substituted || into.is_some_and(|p| words(&rest[..p]).iter().any(to_stdout))
 }
 
 /// Every network read in TEXT that saves nothing and has no `# net:` comment
@@ -2309,7 +2432,7 @@ fn unsaved_streams(name: &str, text: &str) -> Vec<String> {
                 .any(|x| x.starts_with("-") && !x.starts_with("--") && x.contains('I'));
             let message = w[..p]
                 .iter()
-                .any(|x| x == "echo" || x.starts_with("\"") || x == "command");
+                .any(|x| x == "echo" || x == "printf" || x == "command");
             if !head_only && !message {
                 out.push(format!("{name}:{}: {}", i + 1, l.trim()));
             }
@@ -2320,11 +2443,7 @@ fn unsaved_streams(name: &str, text: &str) -> Vec<String> {
 
 #[test]
 fn no_source_is_streamed_without_being_saved() {
-    let mut bad = unsaved_streams("scripts/setup.sh", &read("scripts/setup.sh"));
-    bad.extend(unsaved_streams(
-        "scripts/lib/common.sh",
-        &read("scripts/lib/common.sh"),
-    ));
+    let bad = stream_guard(&guarded_scripts());
     assert!(
         bad.is_empty(),
         "network reads that save nothing, or say nothing:\n{}",
@@ -2377,6 +2496,22 @@ fn a_planted_stream_is_caught() {
         unsaved_streams("block.sh", block).is_empty(),
         "a reason in the comment block right above"
     );
+    // S6: a step script that fetches is read too: pgsc_calc streamed in 25-prs.sh.
+    let bad = stream_guard(&planted_in_prs(
+        "  curl -fsSL \"$PGSC_URL\" | tar -xzf - -C \"${PGSC_CALC_DIR}.part\"",
+    ));
+    assert!(
+        bad.iter().any(|b| b.starts_with("scripts/25-prs.sh:")),
+        "S6 {bad:#?}"
+    );
+    // S3: a body read into an output process substitution.
+    let s3 = "install_x() {\n  _get \"$url\" - > >(tar -xzf - -C \"$dir\")\n}\n";
+    assert_eq!(unsaved_streams("s3.sh", s3).len(), 1, "S3");
+    // S5: a quoted word before curl makes no message; echo, printf or command does.
+    let s5 = "install_x() {\n  docker run --rm \"$IMG\" curl -fsSL \"$url\" | tar -xzf - -C \"$dir\"\n}\n";
+    assert_eq!(unsaved_streams("s5.sh", s5).len(), 1, "S5");
+    let said = "x() {\n  printf '%s\\n' curl wget\n  echo curl is missing\n}\n";
+    assert!(unsaved_streams("said.sh", said).is_empty(), "a message");
 }
 
 #[test]
