@@ -486,9 +486,10 @@ done_with() {
 # downloaded). NEW that matches: OLD is a second copy and goes. NEW that
 # does not, and OLD that does: OLD replaces it. Otherwise (no check given,
 # neither matches, the checksum list cannot be read) both stay, and fetch
-# then refuses NEW and says so. Unless NEW passed that check, OLD.part is
-# never deleted: beside a whole NEW it stays where it is, and of two partial
-# downloads the larger resumes at NEW.part and the other is kept at OLD.part.
+# then refuses NEW and says so. OLD.part beside a whole NEW goes once NEW
+# passes that check; with no check, or one that fails, it stays where it is
+# and setup says it is safe to delete. Of two partial downloads neither is
+# deleted: the larger resumes at NEW.part and the other is kept at OLD.part.
 adopt() {
   local old=$1 new=$2 x
   shift 2
@@ -515,13 +516,20 @@ adopt() {
   for x in "" .part; do
     [ -e "${old}${x}" ] || continue
     if [ "$x" = .part ] && [ -e "$new" ]; then
-      # A whole NEW is there, which fetch checks; a partial copy beside it
-      # would be an orphan, so OLD.part stays where it is.
-      echo "  [WARN] ${old}.part, a partial download left by an older setup, stays: ${new} is already there and fetch checks it."
+      # A whole NEW is there, which fetch checks. A partial copy beside it
+      # would be an orphan: it goes once NEW passes the check given here, and
+      # with no check, or one that fails, it stays where it is.
+      if [ $# -ge 3 ] && [ -f "$new" ] && fetch "$1" "$new" "${@:2}" > /dev/null 2>&1; then
+        rm -rf -- "${old}.part"  # not kept: a partial copy of a checked file in the downloads folder
+        echo "  Deleted ${old}.part, a partial download left by an older setup: ${new} is the whole download, checked."
+      else
+        echo "  [WARN] ${old}.part, a partial download left by an older setup, stays: ${new} is already there and fetch checks it. Once setup has finished, ${old}.part is safe to delete."
+      fi
     elif [ -e "${new}${x}" ]; then
       # Two partial downloads: neither is deleted unchecked. The larger one
       # moves to NEW.part, so fetch resumes the most progress.
       if [ "$x" = .part ] && [ -f "${old}.part" ] && [ -f "${new}.part" ] \
+          && [ -r "${old}.part" ] && [ -r "${new}.part" ] \
           && [ "$(wc -c < "${old}.part")" -gt "$(wc -c < "${new}.part")" ] \
           && mv -- "${new}.part" "${new}.part.adopt" \
           && { mv -- "${old}.part" "${new}.part" || { mv -- "${new}.part.adopt" "${new}.part"; false; }; } \

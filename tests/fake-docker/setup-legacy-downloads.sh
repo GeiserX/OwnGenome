@@ -9,8 +9,11 @@
 #   - an old copy beside one already in the downloads folder: the copy that
 #     passes its check stays, the other goes; a download is never deleted
 #     before a check says which is the right one;
-#   - an old partial download is never deleted: beside a whole one it stays,
-#     and of two partial ones the larger resumes.
+#   - an old partial download is deleted only once a whole copy in the
+#     downloads folder passes its check; beside one that fails it stays, and
+#     setup says it is safe to delete; of two partial ones neither is deleted
+#     and the larger resumes, and one that cannot be read is left alone with
+#     no shell error.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 seed_clinical_downloads
@@ -113,7 +116,24 @@ installed "$G"
 cmp -s "${G}/downloads/${V115}" "${D}/${V115}" || fail "VEP 115 is not the whole download after the resume"
 cmp -s "${G}/vep_cache/${V115}.part" "${CASE_WORK}/small.part" || fail "of two partial downloads one was deleted, or the smaller one resumed"
 output_has two_parts "was the larger partial download: it resumes at"
-# Beside a whole one: it stays where it is, and nothing is downloaded.
+# Unreadable: neither is deleted or compared, and no shell error is printed.
+G="${CASE_WORK}/unreadable-part"
+mkdir -p "${G}/vep_cache" "${G}/downloads"
+head -c "$(( n * 3 / 4 ))" "${D}/${V115}" > "${G}/vep_cache/${V115}.part"
+head -c "$(( n / 10 ))" "${D}/${V115}" > "${G}/downloads/${V115}.part"
+cp "${G}/vep_cache/${V115}.part" "${CASE_WORK}/large.part"
+chmod 000 "${G}/vep_cache/${V115}.part"
+if [ -r "${G}/vep_cache/${V115}.part" ]; then
+  echo "SKIP unreadable-part: this user reads a file with no permissions (root)"
+else
+  run_expect 0 unreadable "${SCRIPTS}/setup.sh" --clinical-data "$G"
+  installed "$G"
+  output_lacks unreadable "integer expression expected|Permission denied"
+  output_has unreadable "vep_cache/${V115//./\\.}\\.part, left by an older setup, and .* are both here; neither is deleted"
+  chmod 644 "${G}/vep_cache/${V115}.part"
+  cmp -s "${G}/vep_cache/${V115}.part" "${CASE_WORK}/large.part" || fail "the unreadable old partial download was deleted, moved or changed"
+fi
+# Beside a whole one that passes its check: it goes, and nothing is downloaded.
 G="${CASE_WORK}/part-beside-whole"
 mkdir -p "${G}/vep_cache" "${G}/downloads"
 head -c "$(( $(wc -c < "${D}/${V116}") / 2 ))" "${D}/${V116}" > "${G}/vep_cache/${V116}.part"
@@ -122,8 +142,22 @@ cp "${D}/${V116}" "${G}/downloads/"
 : > "$FAKE_DOCKER_LOG"
 run_expect 0 part_whole "${SCRIPTS}/setup.sh" --clinical-data "$G"
 installed "$G"
-cmp -s "${G}/vep_cache/${V116}.part" "${CASE_WORK}/half.part" || fail "the old partial download was deleted or moved"
+[ ! -e "${G}/vep_cache/${V116}.part" ] || fail "the old partial download stayed beside a whole copy that passed its check"
 [ ! -e "${G}/downloads/${V116}.part" ] || fail "the old partial download was moved beside the whole one"
-output_has part_whole "a partial download left by an older setup, stays"
+cmp -s "${G}/downloads/${V116}" "${D}/${V116}" || fail "the whole VEP 116 archive in the downloads folder changed"
+output_has part_whole "Deleted ${G//./\\.}/vep_cache/${V116//./\\.}\\.part, a partial download left by an older setup: .* is the whole download, checked"
 [ -z "$(downloaded "$V116")" ] || fail "VEP 116 was downloaded although a whole copy was there: $(downloaded "$V116")"
+# Beside a whole one that fails its check: it stays, and setup says it is
+# safe to delete; fetch refuses the whole one.
+G="${CASE_WORK}/part-beside-wrong"
+mkdir -p "${G}/vep_cache" "${G}/downloads"
+cp "${CASE_WORK}/half.part" "${G}/vep_cache/${V116}.part"
+printf 'kept and broken\n' > "${G}/downloads/${V116}"
+: > "$FAKE_DOCKER_LOG"
+run_expect 1 part_wrong "${SCRIPTS}/setup.sh" --clinical-data "$G"
+cmp -s "${G}/vep_cache/${V116}.part" "${CASE_WORK}/half.part" || fail "the old partial download was deleted or moved beside a whole copy that failed its check"
+grep -qx 'kept and broken' "${G}/downloads/${V116}" || fail "the kept copy was deleted or changed with no check passed"
+output_has part_wrong "a partial download left by an older setup, stays: .* Once setup has finished, ${G//./\\.}/vep_cache/${V116//./\\.}\\.part is safe to delete"
+output_has part_wrong "is there but is not the file of vep_cache"
+[ -z "$(downloaded "$V116")" ] || fail "the refused archive was downloaded over: $(downloaded "$V116")"
 echo "PASS old downloads move to the downloads folder, are checked there, and are never deleted unchecked"
