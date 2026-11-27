@@ -7,8 +7,9 @@
 #      lines, and each exon once as chrom, 0-based start, end, sorted.
 #   2. validate-setup.sh reports both present.
 #   3. With the exon BED deleted, validate-setup.sh names it missing and what
-#      steps 06 and 17 do without it; the next setup fetches once more and
-#      writes only the exon BED, leaving the gene file as it was.
+#      steps 06 and 17 do without it; the next setup downloads nothing (the
+#      GTF kept in the downloads folder matches its MD5SUMS line) and writes
+#      only the exon BED, leaving the gene file as it was.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -50,7 +51,7 @@ FAKE_DOWNLOAD_DIR="$SERVED" run_expect 3 setup "${SCRIPTS}/setup.sh" "$GENOME_DI
 [ "$(wc -l < "$GENES" | tr -d ' ')" -eq 2 ] || fail "the gene file has $(wc -l < "$GENES") lines, expected 2"
 want=$(printf 'chr1\t100\t300\nchr1\t700\t900\nchr2\t1000\t1200\nchr2\t4000\t5000')
 [ "$(cat "$EXONS")" = "$want" ] || fail "the exon BED is not each exon once, 0-based and sorted: $(tr '\n\t' '| ' < "$EXONS")"
-[ ! -e "${GENES}.download.gz" ] || fail "setup.sh kept the GTF download"
+[ -s "${GENOME_DIR}/downloads/${GTF}" ] || fail "setup.sh did not keep the GTF download in the downloads folder"
 output_has setup "\[OK\] GENCODE ${REL} gene coordinates \(step 08\): "
 output_has setup "\[OK\] GENCODE ${REL} exons \(steps 06 and 17\) already present\."
 
@@ -66,7 +67,7 @@ run_rc validate-missing "${SCRIPTS}/validate-setup.sh" sample1
 output_has validate-missing "GENCODE ${REL} exons \(steps 06 and 17 skip their cDNA read check without them\) not found at: ${EXONS//./\\.}"
 : > "$FAKE_DOCKER_LOG"
 FAKE_DOWNLOAD_DIR="$SERVED" run_expect 3 setup-again "${SCRIPTS}/setup.sh" "$GENOME_DIR"
-[ "$(fetches)" -eq 1 ] || fail "the second setup.sh downloaded ${GTF} $(fetches) times, expected once"
+[ "$(fetches)" -eq 0 ] || fail "the second setup.sh downloaded ${GTF} $(fetches) times, expected none: the kept download matches"
 [ "$(cat "$EXONS" 2>/dev/null)" = "$want" ] || fail "the second setup.sh did not rebuild the exon BED"
 [ -z "$(find "$GENES" -newer "${SERVED}/MD5SUMS")" ] || fail "the second setup.sh rewrote the gene file it already had"
 output_has setup-again "\[OK\] GENCODE ${REL} gene coordinates \(step 08\) already present\."

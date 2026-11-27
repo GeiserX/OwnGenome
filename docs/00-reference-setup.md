@@ -22,13 +22,27 @@ A bare `nextflow run` still needs its tools and data parameters. Setup does not 
 
 See [Licences for downloads](licences.md) for the terms that apply to individual bundles and tools.
 
+## The downloads folder
+
+Setup keeps every raw download, the archive or file as the server sent it, in one folder: `<genome_dir>/downloads`, or the folder `OG_DOWNLOADS` names (a relative one is taken from the working directory). A rerun, a `--refresh`, or a second install with the same `OG_DOWNLOADS` then downloads nothing it already has. That matters when a server is slow or limits how much you can download. `assets/data-sources.tsv` lists every source: its path, URL, checksum, size and licence.
+
+- **Before you start**, `bin/og setup plan --for setup` (or `--all` for `--everything`, or `--for <flag>`) lists each source the chosen options need, whether it is already there, its size, the total to download, the raw files kept, and the free disk. `setup.sh` runs the same check first and stops before any download when the raw downloads it still needs do not fit in the downloads folder's disk. A download whose install is already done is not counted, so a rerun after `bin/og setup prune` needs no extra space. `SETUP_DISK_CHECK=false` skips that check. A source kept as a folder of many files (the archaic genomes, Locityper's region) counts as there only once its install is done; until then the files it holds are taken off its size, and a lock, a `.part` or another source's file in it counts for nothing. An install that setup records with a stamp (the fine ancestry and MoChA panels, the archaic tables, Locityper, gnomAD-SV and MANE for AnnotSV) counts as done only while its stamp names today's release, checksum and image. Only those are compared: a rebuild that the archaic masks or table format, the fine panel's thinning or sample list, Locityper's loci or a regions setting forces is not counted.
+- **A file already there** that matches its pinned checksum is used with no download. When the checksum is a list on the server (VEP's `CHECKSUMS`, an md5 list), that small list is read first. The checksum that matched is saved beside the file as `<name>.checksum`, and when the list cannot be read (the server is down), a kept file that matches that saved checksum is used. A file with the wrong checksum is refused with a message that names the source and its row of the table, and it is never overwritten: delete it or replace it yourself.
+- **An older install**: a raw file or `.part` that an older setup left at its old place (in `vep_cache/`, `pcgr_data/`, `reference/archaic/<version>/download/` and the like) is moved into the downloads folder before the fetch, which checks it there. When a copy is in both places, the one that passes its check stays and the other goes; when no check says which one is right, both stay and setup says so.
+- **og does the downloads**: `setup.sh` builds `bin/og` before its first download and stops when it cannot (`setup.sh --og` shows why). A step script that calls `fetch` needs `bin/og` too.
+- **A failed unpack** of a download that matched its pinned checksum keeps the download: the cause is the disk or the tool, not the file. Only a download with no checksum is deleted, so the next run fetches it again.
+- **Bring your own file**: copy it into the downloads folder under its name in the table (`bin/og setup source <id> path` prints the full path). Setup checks it like a download.
+- **A cut transfer** resumes from `<name>.part`. A failed try is tried again `FETCH_TRIES` times (default 3), `FETCH_WAIT` seconds apart (default 5, then 10, ...). A transfer under 1 KB/s for `FETCH_STALL` seconds (default 120) counts as failed. curl, or wget when there is no curl, comes from `PATH`. Two setups that share the folder take turns on the same file: the second one waits, then uses the file the first one checked.
+- **The cost**: the kept raw files take about 69 GB for a plain setup and about 344 GB for `--everything` (the 150 GB of archaic genomes are most of it). `bin/og setup plan` prints the figure for your options.
+- **To keep less**: `setup.sh --no-keep-downloads` (or `SETUP_KEEP_DOWNLOADS=false`) deletes each raw download once it is installed. `bin/og setup prune` deletes the kept downloads later, and nothing else. It refuses a file whose folder resolves outside the downloads folder (a subfolder moved away and linked back).
+
 ## Install data for an everything run
 
 ```bash
 ./scripts/setup.sh --everything "$GENOME_DIR"
 ```
 
-This runs base setup, then installs the data listed in [the everything manifest](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv) in order. It includes the extra STR loci, even if `STR_EXTRA_LOCI` is unset. Setup prints the restricted-use terms before downloading. Review the terms and the [hardware requirements](hardware-requirements.md#shared-reference-data-one-time) before starting. MEGAnE alone needs about 50 GB of memory for the full reference.
+This runs base setup, then installs the data listed in [the everything manifest](https://github.com/GeiserX/OwnGenome/blob/main/assets/everything.tsv) in order. It includes the extra STR loci, even if `STR_EXTRA_LOCI` is unset. Setup prints the restricted-use terms before downloading. Review the terms and the [hardware requirements](hardware-requirements.md#shared-reference-data-one-time) before starting. MEGAnE's k-mer set needs about 6 GB of memory.
 
 A failed installer goes on the missing list with a retry command, and setup continues through the manifest. An incomplete setup exits with status 3. After retrying, complete downloads and indexes stay in place. User inputs such as HPO terms and family relationships are still supplied when you run the pipeline.
 
@@ -209,7 +223,7 @@ Required for step 5. `setup.sh` downloads them (about 5 GB, about 20 GB unpacked
 
 | File | Source | Used by | Without it |
 |---|---|---|---|
-| `annotsv_annotations/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed` | gnomAD-SV `GNOMAD_SV_VERSION` (4.1) sites, sha256 checked; its common SVs are merged into AnnotSV's benign set and the download deleted, and this file records the release | step 5 (population frequencies for the benign criteria) | step 5 and the Nextflow `ANNOTSV` stop and point at `--annotsv-data` |
+| `annotsv_annotations/Annotations_Human/SVincludedInFt/BenignSV/GRCh38/gnomad-sv.installed` | gnomAD-SV `GNOMAD_SV_VERSION` (4.1) sites, sha256 checked; its common SVs are merged into AnnotSV's benign set, the download stays in the downloads folder, and this file records the release | step 5 (population frequencies for the benign criteria) | step 5 and the Nextflow `ANNOTSV` stop and point at `--annotsv-data` |
 | `annotsv_annotations/mane_select_refseq.txt` | the MANE Select RefSeq ids of NCBI's MANE `MANE_RELEASE` (1.5) summary, sha256 checked | step 5 (`-txFile`: the MANE Select transcript of each gene) | step 5 and the Nextflow `ANNOTSV` stop and point at `--annotsv-data` |
 
 [Step 5](05-annotsv.md#gnomad-sv-frequencies-and-mane-select-transcripts) says what each one changes.
@@ -222,7 +236,7 @@ Ensembl Variant Effect Predictor annotation database. Required for step 13 and t
 ./scripts/setup.sh --vep-cache ${GENOME_DIR}
 ```
 
-It downloads the release-116 cache, checks it against Ensembl's `CHECKSUMS` file, unpacks it into a temporary folder and moves it to `${GENOME_DIR}/vep_cache/homo_sapiens/116_GRCh38/` only when it is complete. The tarball (~26 GB) and the unpacked cache (~30 GB) are both on disk until the install ends, then the tarball is deleted. An interrupted download resumes when you run the command again. It runs on the host (curl or wget, then tar), not in a container. Most of its time is the download: 26 GB at 100 Mbit/s is about 35 minutes, plus the unpacking.
+It downloads the release-116 cache, checks it against Ensembl's `CHECKSUMS` file, unpacks it into a temporary folder and moves it to `${GENOME_DIR}/vep_cache/homo_sapiens/116_GRCh38/` only when it is complete. The tarball (~26 GB) and the unpacked cache (~30 GB) are both on disk; the tarball stays in the downloads folder (`--no-keep-downloads` deletes it once the cache is in place). An interrupted download resumes when you run the command again. It runs on the host (curl or wget, then tar), not in a container. Most of its time is the download: 26 GB at 100 Mbit/s is about 35 minutes, plus the unpacking.
 
 By hand, without the checksum check and the move from a temporary folder:
 
@@ -261,7 +275,7 @@ Setup installs it by default. To add the clinical data to an existing setup:
 
 The installer checks the archive against `PCGR_DATA_SHA256` in `versions.env`, then extracts it into a temporary folder.
 The server publishes no checksum, so the size (`PCGR_DATA_BYTES`) and the digest are measured from a full download. `PCGR_DATA_MEASURED_FOR` names the image tag and bundle date they belong to, and `scripts/ci/check-coupled-versions.sh` fails when `PCGR_IMAGE` or `PCGR_DATA_BUNDLE` moves without it.
-Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive is deleted after installation.
+Only a complete tree is moved to `pcgr_data/20260620/data/`. The archive stays in the downloads folder (`--no-keep-downloads` deletes it after installation).
 
 ## VEP 115 Cache for CPSR (~24 GB)
 
@@ -314,7 +328,7 @@ Only needed for step 50, the mobile element insertions ([50-mei.md](50-mei.md)).
 # Creates: ${GENOME_DIR}/reference/megane/GRCh38_no_alt_analysis_set.mk and .mi
 ```
 
-It pulls `MEGANE_IMAGE` (about 6.4 GB) and runs MEGAnE's `build_kmerset` on `REF_FASTA`. The builder holds two 8-byte k-mers per reference base in memory, so GRCh38 needs about 50 GB of RAM (MEGAnE's authors give 48 GB and about 10 minutes); `setup.sh` checks the memory Docker has first and stops with a message when it is short. On a smaller machine, build it where the memory is and copy `reference/megane/` over. A set newer than the reference is kept; a new reference needs a new set.
+It pulls `MEGANE_IMAGE` (about 6.4 GB) for step 50. og builds the set from `REF_FASTA` (`og setup megane-kmers`), byte for byte the files MEGAnE's own `build_kmerset` writes. For GRCh38 it needs about 5 GB of memory and a few minutes, where MEGAnE's own builder peaked at about 67 GB, RAM plus swap. `setup.sh` gives it 6 GB, checks the memory Docker has first, and stops with a message when it is short. [How og builds the k-mer set](50-mei.md#how-og-builds-the-k-mer-set) explains the method. On a smaller machine, build it where the memory is and copy `reference/megane/` over. A set newer than the reference is kept; a new reference needs a new set.
 
 ## Locityper Database (Optional, for Step 53)
 

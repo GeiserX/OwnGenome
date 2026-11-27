@@ -7,7 +7,10 @@
 #   - scripts/**/*.sh (not scripts/ci/): every URL on a line that is not a
 #     comment (download calls, URL variables and the "try manually" hints);
 #   - docs/**/*.md: every URL inside a fenced code block (the commands a
-#     user pastes).
+#     user pastes);
+#   - assets/data-sources.tsv: the url and value columns of each row that
+#     are URLs, one per part for a family ({part}, A..B), so a source setup
+#     downloads through og setup fetch is checked where its pin lives.
 # ${NAME} and $NAME are filled in from versions.env, so a URL built from a pin
 # (the PCGR bundle date, the GRIDSS commit) is checked at that pin. A URL that
 # still holds a variable, a printf %s or a glob is listed as skipped.
@@ -46,6 +49,24 @@ raw_urls() {
       find "${root}/scripts" -name '*.sh' -type f -not -path '*/scripts/ci/*' | sort | while read -r f; do
         awk -v F="${f#"${root}"/}" '!/^[[:space:]]*#/ && /https?:\/\// { print F ":" FNR "\t" $0 }' "$f"
       done
+    fi
+    if [ -f "${root}/assets/data-sources.tsv" ]; then
+      awk -F'\t' -v F=assets/data-sources.tsv '
+        /^#/ || $1 == "id" || NF < 8 { next }
+        {
+          split("", p); np = 0; nw = split($5, w, " ")
+          for (i = 1; i <= nw; i++) {
+            k = index(w[i], "..")
+            if (k > 0) { for (x = substr(w[i], 1, k - 1) + 0; x <= substr(w[i], k + 2) + 0; x++) p[++np] = x }
+            else p[++np] = w[i]
+          }
+          for (c = 6; c <= 8; c += 2) {
+            u = $c
+            if (u !~ /^https?:\/\//) continue
+            if (np == 0 || index(u, "{part}") == 0) { print F ":" FNR "\t" u; continue }
+            for (j = 1; j <= np; j++) { v = u; gsub(/\{part\}/, p[j], v); print F ":" FNR "\t" v }
+          }
+        }' "${root}/assets/data-sources.tsv"
     fi
     if [ -d "${root}/docs" ]; then
       find "${root}/docs" -name '*.md' -type f | sort | while read -r f; do
@@ -173,7 +194,7 @@ check_tree() {
   if [ -n "$since" ]; then
     echo "Checked ${n} download URLs that are new since ${since} (${nold} unchanged, not requested)."
   else
-    echo "Checked ${n} download URLs from scripts/ and docs/ code blocks."
+    echo "Checked ${n} download URLs from scripts/, docs/ code blocks and assets/data-sources.tsv."
   fi
   echo ""
   while IFS=$'\t' read -r code url; do
@@ -240,6 +261,9 @@ URL=\${URL:-https://github.com/GeiserX/OwnGenome/blob/main/README.md}
 echo "https://ftp.example.invalid/x/\${UNKNOWN_VAR}.tgz"
 EOF
   echo "wget ${bad}/in-scripts-ci" > "${d}/scripts/ci/tool.sh"
+  # The sources table: a family whose one part is a dead URL.
+  mkdir -p "${d}/assets"
+  printf '# a table\nid\tinstallers\tsteps\tpath\tparts\turl\tcheck\tvalue\tbytes\tlicence\tinstalled\nx\tsetup\t1\tdownloads/x{part}\t7..7\t%s/in-the-table-{part}\t\t\t\t\tx{part}.done\n' "$bad" > "${d}/assets/data-sources.tsv"
   cat > "${d}/docs/a.md" <<EOF
 Prose link, not checked: ${bad}/in-prose
 
@@ -253,9 +277,10 @@ EOF
   outage "$out" || fail=1
   [ "$rc" -ne 0 ] || { echo "SELF-TEST FAIL: a tree with a dead URL passed"; fail=1; }
   grep -qF "| 404 | ${bad} | scripts/a.sh:4 |" <<<"$out" || { echo "SELF-TEST FAIL: the 404 URL was not reported"; fail=1; }
+  grep -qF "| 404 | ${bad}/in-the-table-7 | assets/data-sources.tsv:3 |" <<<"$out" || { echo "SELF-TEST FAIL: the dead URL of the sources table was not reported"; fail=1; }
   grep -qF "| no answer | https://192.0.2.1/unreachable.tgz |" <<<"$out" || { echo "SELF-TEST FAIL: a URL with no answer was not a failure"; fail=1; }
-  grep -qF 'Checked 5 download URLs' <<<"$out" || { echo "SELF-TEST FAIL: expected 5 URLs (expanded \${TESTREPO}, default value, 404, no answer, docs)"; fail=1; }
-  grep -qF '2 of 5 did not answer 200' <<<"$out" || { echo "SELF-TEST FAIL: a URL that answers was reported as failed"; fail=1; }
+  grep -qF 'Checked 6 download URLs' <<<"$out" || { echo "SELF-TEST FAIL: expected 6 URLs (expanded \${TESTREPO}, default value, 404, no answer, docs, the table)"; fail=1; }
+  grep -qF '3 of 6 did not answer 200' <<<"$out" || { echo "SELF-TEST FAIL: a URL that answers was reported as failed"; fail=1; }
   if grep -qF 'TESTREPO' <<<"$out"; then
     echo "SELF-TEST FAIL: \${TESTREPO} was not filled in from versions.env"; fail=1
   fi
@@ -303,7 +328,7 @@ EOF
   [ "$rc" -ne 0 ] || { echo "SELF-TEST FAIL: an empty tree passed"; fail=1; }
 
   if [ "$fail" -eq 0 ]; then
-    echo "SELF-TEST OK: a 404, no answer, an unreadable versions.env line and an empty tree fail; comments, prose and scripts/ci are left out; \${VAR} is filled from versions.env; --since requests only added URLs."
+    echo "SELF-TEST OK: a 404 (in a script and in the sources table), no answer, an unreadable versions.env line and an empty tree fail; comments, prose and scripts/ci are left out; \${VAR} is filled from versions.env; --since requests only added URLs."
   fi
   return "$fail"
 }

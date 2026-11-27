@@ -38,7 +38,7 @@ UCSC allows free non-commercial use of its hg19ToHg38 chain by independent resea
 3. Lifts the 1240K sites from GRCh37 to GRCh38 and keeps the autosomal sites one of whose two alleles is the GRCh38 reference base; a site the chain places twice, or on another chromosome, is dropped.
 4. Runs smartpca on the whole release with the present-day groups as the population list and every ancient person projected (`panel.evec`), then runs it again on the present-day people alone, as step 44 does, and stops if any of the first four axes (the ones the distances use) of the two runs correlate below 0.999 up to sign.
 
-`ANCIENT_SOURCE_DIR=<dir>` copies the four AADR files from a folder instead of downloading them (not checked), and `ANCIENT_CHAIN=<file inside GENOME_DIR>` uses another chain file. The download is deleted once the panel is built.
+`ANCIENT_SOURCE_DIR=<dir>` copies the four AADR files from a folder instead of downloading them (not checked), and `ANCIENT_CHAIN=<file inside GENOME_DIR>` uses another chain file. The download stays in the downloads folder (`setup.sh --no-keep-downloads` deletes it once the panel is built).
 
 ## How Step 44 Works
 

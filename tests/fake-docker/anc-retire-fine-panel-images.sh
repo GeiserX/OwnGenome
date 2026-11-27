@@ -5,7 +5,8 @@
 # so neither is pulled, named in the install log or pinned in versions.env.
 # Every image reads as not pulled yet, so each one the install wants is
 # pulled; then rust/og.sh reports og as not built, which stops the install
-# right after the pulls, before any download.
+# right after the pulls, before any download. OG names bin/og for the
+# downloads (og setup fetch), so only need_og sees the og.sh that fails.
 # shellcheck source=../../scripts/ci/fake-docker/lib.sh
 . "${REPO_ROOT:?}/scripts/ci/fake-docker/lib.sh"
 
@@ -22,7 +23,7 @@ chmod +x "${COPY}/rust/og.sh"
 
 G="${CASE_WORK}/genome"
 mkdir -p "$G"
-export FAKE_DOCKER_MISSING_IMAGES='.' FETCH_TRIES=1 FETCH_WAIT=0
+export FAKE_DOCKER_MISSING_IMAGES='.' FETCH_TRIES=1 FETCH_WAIT=0 OG="${REPO_ROOT}/bin/og"
 
 run_rc fine "${COPY}/scripts/setup.sh" --ancestry-fine-panel "$G"
 expect_rc fine 1

@@ -19,6 +19,9 @@
 //!    version.txt, so no step reads the tree; the next run asks for the
 //!    tree files only;
 //! 6. a missing mask beside current tables is downloaded on its own.
+//!
+//! Setup downloads through `og setup fetch`; the og it runs (`OG`) is this
+//! test binary, re-entered in [`og_child`].
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -46,6 +49,44 @@ src="$SERVE/$(basename "$url")"
 [ -f "$src" ] || exit 22
 if [ -z "$out" ] || [ "$out" = "-" ]; then cat "$src"; else cat "$src" > "$out"; fi
 "#;
+
+const CHILD: &str = "OG_TEST_YMASK_CHILD";
+
+/// In the child process only: `og setup TOOL ARGS` with the arguments in
+/// [`CHILD`] (separated by U+001F); its stdout goes to the file
+/// `OG_TEST_YMASK_OUT`, as the test harness writes its own lines to stdout.
+#[test]
+fn og_child() {
+    let Ok(joined) = std::env::var(CHILD) else {
+        return;
+    };
+    let args: Vec<String> = joined.split('\u{1f}').map(str::to_owned).collect();
+    let (mut out, mut err) = (Vec::new(), std::io::stderr());
+    let code = match args.get(1).map(String::as_str) {
+        Some("fetch") => og_setup::fetch::cli(&args[2..], &mut out, &mut err),
+        Some("source") => og_setup::fetch::source_cli(&args[2..], &mut out, &mut err),
+        Some("plan") => og_setup::plan::cli(&args[2..], &mut out, &mut err),
+        _ => 2,
+    };
+    fs::write(std::env::var("OG_TEST_YMASK_OUT").unwrap(), out).unwrap();
+    std::process::exit(i32::from(code));
+}
+
+/// The og setup.sh runs: this test binary in [`og_child`].
+fn og_wrapper(bindir: &Path) -> PathBuf {
+    let exe = std::env::current_exe().unwrap();
+    let p = bindir.join("og");
+    fs::write(
+        &p,
+        format!(
+            "#!/usr/bin/env bash\no=$(mktemp); rc=0\n{CHILD}=\"$(IFS=$'\\037'; echo \"$*\")\" OG_TEST_YMASK_OUT=\"$o\" \\\n  '{}' og_child --exact -q --test-threads=1 > /dev/null || rc=$?\ncat \"$o\"; rm -f \"$o\"; exit \"$rc\"\n",
+            exe.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    p
+}
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -131,6 +172,7 @@ impl World {
             .env("CURL_LOG", &self.log)
             .env("CURL_FAIL", fail)
             .env("CONTAINER_ENGINE", "true")
+            .env("OG", self.bindir.join("og"))
             .env("FETCH_TRIES", "1")
             .env("FETCH_WAIT", "0")
             .output()
@@ -161,6 +203,12 @@ fn setup_keeps_the_checked_chry_mask() {
         work,
     };
     fs::create_dir_all(w.root.join("scripts/lib")).unwrap();
+    fs::create_dir_all(w.root.join("assets")).unwrap();
+    fs::copy(
+        repo().join("assets/data-sources.tsv"),
+        w.root.join("assets/data-sources.tsv"),
+    )
+    .unwrap();
     fs::create_dir_all(&w.serve).unwrap();
     fs::create_dir_all(&w.bindir).unwrap();
     fs::copy(
@@ -207,6 +255,7 @@ fn setup_keeps_the_checked_chry_mask() {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, "seeded\n").unwrap();
     }
+    og_wrapper(&w.bindir);
     let curl = w.bindir.join("curl");
     fs::write(&curl, FAKE_CURL).unwrap();
     fs::set_permissions(&curl, fs::Permissions::from_mode(0o755)).unwrap();

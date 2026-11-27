@@ -100,7 +100,8 @@ check "the panel is finished (DONE)" test -s "${MD}/DONE"
 check_ge "panel SNVs on the chr20 slice" "$(vcf_count "reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr20.vcf.gz")" 1000
 check_eq "people in the panel" "$(bcf query -l "reference/mocha-${MOCHA_PANEL_VERSION}/panel/chr20.vcf.gz" 2>/dev/null | grep -c .)" 3202
 check_ge "lines of the chr20 genetic map" "$(wc -l < "${MD}/maps/chr20.map" 2>/dev/null | tr -d ' ')" 1000
-check "the downloaded chromosome file is deleted" test ! -e "${MD}/raw"
+check "the downloaded chromosome file is kept in the downloads folder, not the panel folder" \
+  test -s "${G}/downloads/mocha-${MOCHA_PANEL_VERSION}/1kGP_high_coverage_Illumina.chr20.filtered.SNV_INDEL_SV_phased_panel.vcf.gz" -a ! -e "${MD}/raw"
 check "the common CNV list is written (cnps.bed)" test -f "${MD}/cnps.bed"
 check "cnps.bed is in MoChA's --cnp format ($(grep -c . "${MD}/cnps.bed" || true) regions)" cnp_format "${MD}/cnps.bed"
 printf 'chr20\t100\t50\tINV\n' > "${T}/bad_cnps.bed"
