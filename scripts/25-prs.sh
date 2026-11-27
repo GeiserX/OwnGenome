@@ -167,7 +167,7 @@ for PGS_ID in "${PGS_IDS[@]}"; do
   # A cached file from an older version may be the author-reported build.
   if [ -f "$SCORE_FILE" ] && [ "$(hm_build "$SCORE_FILE")" != "GRCh38" ]; then
     echo "  Cached ${PGS_ID} is not a GRCh38-harmonised file; downloading it again."
-    rm -f "$SCORE_FILE"
+    rm -f "$SCORE_FILE"  # not kept: a file of the wrong build; the skip below would keep it (outside the downloads folder fetch replaces it)
   fi
   if [ -f "$SCORE_FILE" ]; then
     continue
@@ -285,14 +285,17 @@ echo "  ${N_TARGET} genotyped positions for pgsc_calc"
 echo ""
 echo "[4/5] pgsc_calc ${PGSC_CALC_VERSION}..."
 if [ ! -f "${PGSC_CALC_DIR}/main.nf" ]; then
-  # GitHub's archive of the tag, checked against PGSC_CALC_SHA256 (setup.sh holds the same).
+  # GitHub's archive of the tag, the pgsc_calc row of assets/data-sources.tsv,
+  # checked against PGSC_CALC_SHA256 and kept in the downloads folder, as
+  # setup.sh keeps it.
   echo "  Installing pgsc_calc ${PGSC_CALC_VERSION} into ${PGSC_CALC_DIR} (setup.sh does this once)..."
-  fetch "https://github.com/PGScatalog/pgsc_calc/archive/refs/tags/${PGSC_CALC_VERSION}.tar.gz" "${PGSC_CALC_DIR}.tar.gz" \
-    sha256 "$PGSC_CALC_SHA256"
+  PGSC_URL=$(source_of pgsc_calc url)
+  PGSC_TGZ=$(source_of pgsc_calc path)
+  fetch "$PGSC_URL" "$PGSC_TGZ" sha256 "$PGSC_CALC_SHA256"
   rm -rf "${PGSC_CALC_DIR}.part"
   mkdir -p "${PGSC_CALC_DIR}.part"
-  tar -xzf "${PGSC_CALC_DIR}.tar.gz" -C "${PGSC_CALC_DIR}.part" --strip-components 1
-  rm -f "${PGSC_CALC_DIR}.tar.gz"
+  tar -xzf "$PGSC_TGZ" -C "${PGSC_CALC_DIR}.part" --strip-components 1
+  done_with "$PGSC_TGZ"
   # An incomplete folder left by an earlier run would receive the new one inside it.
   rm -rf "$PGSC_CALC_DIR"
   mv "${PGSC_CALC_DIR}.part" "$PGSC_CALC_DIR"

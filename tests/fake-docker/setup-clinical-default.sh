@@ -54,7 +54,7 @@ output_has low '52 GB.*5 GB margin'
 cat > "${CASE_WORK}/low-bin/du" <<'DU'
 #!/usr/bin/env bash
 case "$2" in
-  */resume/vep_cache/*.part) printf '23068672\t%s\n' "$2" ;;
+  */resume/downloads/*.part) printf '23068672\t%s\n' "$2" ;;
   *) /usr/bin/du "$@" ;;
 esac
 DU
@@ -63,19 +63,21 @@ chmod +x "${CASE_WORK}/low-bin/du"
 # A partial download counts as space already taken: 40 GiB free plus a
 # 22 GiB .part covers VEP 116's 56 GB peak and margin, so it resumes.
 G="${CASE_WORK}/resume"
-mkdir -p "${G}/vep_cache"
-dd if=/dev/null of="${G}/vep_cache/homo_sapiens_vep_116_GRCh38.tar.gz.part" bs=1048576 seek=22528 2>/dev/null
+mkdir -p "${G}/downloads"
+dd if=/dev/null of="${G}/downloads/homo_sapiens_vep_116_GRCh38.tar.gz.part" bs=1048576 seek=22528 2>/dev/null
 PATH="${CASE_WORK}/low-bin:${PATH}" run_expect 1 resume "${SCRIPTS}/setup.sh" --clinical-data "$G"
 output_lacks resume 'Skipping VEP 116'
 [ -s "${G}/vep_cache/homo_sapiens/116_GRCh38/info.txt" ] || fail 'partial VEP 116 download not resumed with low space'
-[ ! -e "${G}/vep_cache/homo_sapiens_vep_116_GRCh38.tar.gz.part" ] || fail 'resumed VEP 116 left its .part'
+[ ! -e "${G}/downloads/homo_sapiens_vep_116_GRCh38.tar.gz.part" ] || fail 'resumed VEP 116 left its .part'
+[ -s "${G}/downloads/homo_sapiens_vep_116_GRCh38.tar.gz" ] || fail 'resumed VEP 116 archive not kept in the downloads folder'
 
-# An install stopped during extraction keeps its checked archive: the next
-# run unpacks it without downloading again and removes the old staging tree.
+# An install stopped during extraction keeps its checked archive in the
+# downloads folder: the next run unpacks it without downloading again and
+# removes the old staging tree.
 G="${CASE_WORK}/extract"
-mkdir -p "${G}/vep_cache/.extract.old" "${G}/pcgr_data/.extract.old"
-cp "${FAKE_DOWNLOAD_DIR}/homo_sapiens_vep_116_GRCh38.tar.gz" "${G}/vep_cache/"
-cp "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" "${G}/pcgr_data/"
+mkdir -p "${G}/vep_cache/.extract.old" "${G}/pcgr_data/.extract.old" "${G}/downloads"
+cp "${FAKE_DOWNLOAD_DIR}/homo_sapiens_vep_116_GRCh38.tar.gz" "${G}/downloads/"
+cp "${FAKE_DOWNLOAD_DIR}/pcgr_ref_data.20260620.grch38.tgz" "${G}/downloads/"
 # Model space held by each stale tree. Only cleanup can make its preflight pass.
 mkdir -p "${CASE_WORK}/staging-bin"
 cat > "${CASE_WORK}/staging-bin/df" <<'DF'
@@ -94,19 +96,23 @@ PATH="${CASE_WORK}/staging-bin:${PATH}" FAKE_DOWNLOAD_FAIL='vep_116|pcgr_ref_dat
 [ ! -e "${G}/vep_cache/.extract.old" ] || fail 'stale VEP staging tree kept'
 [ ! -e "${G}/pcgr_data/.extract.old" ] || fail 'stale PCGR staging tree kept'
 
-# A retained archive with a valid layout but wrong data must be replaced.
+# A kept archive with a valid layout but wrong data is refused, named, and
+# left as it is: never unpacked, never overwritten. The rest still installs.
 G="${CASE_WORK}/retained-bad"
-mkdir -p "${G}/pcgr_data" "${CASE_WORK}/altered/data/grch38"
+mkdir -p "${G}/downloads" "${CASE_WORK}/altered/data/grch38"
 printf 'modified reference\n' > "${CASE_WORK}/altered/data/grch38/README"
-tar -czf "${G}/pcgr_data/pcgr_ref_data.20260620.grch38.tgz" -C "${CASE_WORK}/altered" data
-run_expect 0 retained_bad "${SCRIPTS}/setup.sh" --clinical-data "$G"
-cmp "${G}/pcgr_data/20260620/data/grch38/README" "${CASE_WORK}/bundle/data/grch38/README" || fail 'unverified retained PCGR archive published'
-[ ! -e "${G}/pcgr_data/pcgr_ref_data.20260620.grch38.tgz" ] || fail 'replaced archive kept'
+tar -czf "${G}/downloads/pcgr_ref_data.20260620.grch38.tgz" -C "${CASE_WORK}/altered" data
+cp "${G}/downloads/pcgr_ref_data.20260620.grch38.tgz" "${CASE_WORK}/altered.tgz"
+run_expect 1 retained_bad "${SCRIPTS}/setup.sh" --clinical-data "$G"
+output_has retained_bad 'pcgr_ref_data\.20260620\.grch38\.tgz.*sha256'
+[ ! -e "${G}/pcgr_data/20260620" ] || fail 'unverified kept PCGR archive published'
+cmp "${G}/downloads/pcgr_ref_data.20260620.grch38.tgz" "${CASE_WORK}/altered.tgz" || fail 'the refused kept archive was overwritten'
+[ -s "${G}/vep_cache/homo_sapiens/115_GRCh38/info.txt" ] || fail 'a refused archive stopped the remaining install'
 
 # Sparse holes occupy no disk: they must not grant space for an installation.
 G="${CASE_WORK}/sparse"
-mkdir -p "${G}/vep_cache"
-dd if=/dev/null of="${G}/vep_cache/homo_sapiens_vep_116_GRCh38.tar.gz.part" bs=1048576 seek=22528 2>/dev/null
+mkdir -p "${G}/downloads"
+dd if=/dev/null of="${G}/downloads/homo_sapiens_vep_116_GRCh38.tar.gz.part" bs=1048576 seek=22528 2>/dev/null
 PATH="${CASE_WORK}/low-bin:${PATH}" run_expect 1 sparse "${SCRIPTS}/setup.sh" --clinical-data "$G"
 output_has sparse 'Skipping VEP 116'
 [ ! -e "${G}/vep_cache/homo_sapiens/116_GRCh38" ] || fail 'sparse holes counted as allocated space'
@@ -118,6 +124,7 @@ run_expect 1 corrupt "${SCRIPTS}/setup.sh" --clinical-data "$G"
 output_has corrupt 'sha256 checksum.*expected'
 output_has corrupt '\[WARN\].*PCGR'
 [ ! -e "${G}/pcgr_data/20260620" ] || fail 'corrupt bundle published'
-[ ! -e "${G}/pcgr_data/pcgr_ref_data.20260620.grch38.tgz.part" ] || fail 'bad bundle kept'
+[ ! -e "${G}/downloads/pcgr_ref_data.20260620.grch38.tgz.part" ] || fail 'bad bundle kept'
+[ ! -e "${G}/downloads/pcgr_ref_data.20260620.grch38.tgz" ] || fail 'bad bundle kept'
 [ -s "${G}/vep_cache/homo_sapiens/115_GRCh38/info.txt" ] || fail 'bundle failure stopped remaining install'
 
