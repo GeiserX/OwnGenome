@@ -586,9 +586,9 @@ install_yleaf_data() {
     fi
   done
   if ! fetch "$tree_url" "${yt}.part/current_tree.json" sha256 "$YTREE_SHA256" \
-     || { [ -f "${yt}.part/positions_ftdna_hg38.txt" ] || fetch "$ftdna_url" "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256"; } \
-     || { [ -f "${yt}.part/positions_yfull_hg38.txt" ] || fetch "$yfull_url" "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256"; } \
-     || { [ -f "${yt}.part/callable_mask_chrY.fasta.gz" ] || fetch "$mask_url" "${yt}.part/callable_mask_chrY.fasta.gz" sha256 "$YCALLABLE_MASK_SHA256"; }; then
+     || ! { [ -f "${yt}.part/positions_ftdna_hg38.txt" ] || fetch "$ftdna_url" "${yt}.part/positions_ftdna_hg38.txt" sha256 "$YTREE_FTDNA_SHA256"; } \
+     || ! { [ -f "${yt}.part/positions_yfull_hg38.txt" ] || fetch "$yfull_url" "${yt}.part/positions_yfull_hg38.txt" sha256 "$YTREE_YFULL_SHA256"; } \
+     || ! { [ -f "${yt}.part/callable_mask_chrY.fasta.gz" ] || fetch "$mask_url" "${yt}.part/callable_mask_chrY.fasta.gz" sha256 "$YCALLABLE_MASK_SHA256"; }; then
     # Yleaf's own data is in place, so step 37 still runs: it says the
     # current tree is not installed and writes Yleaf's result only. An older
     # tree from an earlier pin goes too, so no step places on tables that
