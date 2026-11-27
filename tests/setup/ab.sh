@@ -4,7 +4,8 @@
 # install trees file by file (og dev install-manifest), the exit codes, the
 # logs with times masked, the missing list, the images and pinned tags each
 # side added or removed, the Nextflow plugin folder, bin/.og, and who owns
-# what each side wrote.
+# what each side wrote (skipped, with [SKIP], where WORK_DIR keeps no file
+# owners).
 #
 # Usage: tests/setup/ab.sh [--bash-vs-bash] COMPONENT [WORK_DIR]
 #
@@ -203,6 +204,31 @@ delta() {
     | awk -F'\t' '{ if ($1 != "") print "-\t" $1 "\t" $2; else print "+\t" $2 "\t" $3 }' >"${work}/$1.images.delta"
 }
 
+# owners_probe DIR: nothing when a file in DIR keeps the owner it is given,
+# else why the foreign-files check cannot fail there. A probe file gets
+# another group (as root, another owner) and is read back: a volume that
+# ignores owners, such as a macOS volume mounted "noowners", takes the
+# change and still shows every file as ours.
+owners_probe() {
+  local f g="" x rc=0
+  f=$(mktemp "$1/.ab-owners.XXXXXX")
+  if [ "$uid" = 0 ]; then
+    { chown 65534 "$f" && [ -n "$(find "$f" -user 65534)" ]; } 2>/dev/null || rc=1
+  else
+    for x in $(id -G); do
+      if [ "$x" != "$(id -g)" ]; then g=$x; break; fi
+    done
+    if [ -z "$g" ]; then
+      rm -f "$f"
+      echo "cannot tell whether this filesystem keeps file owners: uid ${uid} is in one group only"
+      return 0
+    fi
+    { chgrp "$g" "$f" && [ -n "$(find "$f" -group "$g")" ]; } 2>/dev/null || rc=1
+  fi
+  rm -f "$f"
+  if [ "$rc" -ne 0 ]; then echo "this filesystem does not keep file owners"; fi
+}
+
 # One run per checkout: each run snapshots bin/.og before side A and puts it
 # back before side B, so a second run would snapshot or delete files the
 # first one is using.
@@ -241,6 +267,10 @@ og_restore() {
   rm -rf "$og_dir"
   if [ -d "${work}/og.before" ]; then cp -pR "${work}/og.before" "$og_dir"; fi
 }
+
+# Where WORK_DIR keeps no file owners, every file reads as ours and the
+# foreign-files check cannot fail: it is skipped, and says why.
+owners_why=$(owners_probe "$work")
 
 for side in a b; do
   if [ "$side" = a ]; then cmd=("${side_a[@]}"); else cmd=("${side_b[@]}"); fi
@@ -321,7 +351,13 @@ check nxf-home manifest --compare "${work}/a.nxf.tsv" "${work}/b.nxf.tsv" --allo
 check logs manifest --compare-logs "${work}/a.log" "${work}/b.log"
 check images same_file "${work}/a.images.delta" "${work}/b.images.delta"
 check bin-og same_file "${work}/a.og.tsv" "${work}/b.og.tsv"
-check foreign-files no_foreign
+skipped=""
+if [ -n "$owners_why" ]; then
+  skipped=foreign-files
+  echo "[SKIP] foreign-files: ${owners_why}"
+else
+  check foreign-files no_foreign
+fi
 if [ -n "${AB_SEED:-}" ]; then
   take seed.after "$AB_SEED"
   check seed-unchanged manifest --compare "${work}/seed.before.tsv" "${work}/seed.after.tsv"
@@ -372,8 +408,8 @@ echo "[OK]   control: one flipped bit in ${path} is red, and restored"
 
 if $bvb; then label="bash vs bash (no og side ran)"; else label="bash vs og"; fi
 if [ "$red" -eq 0 ]; then
-  echo "[OK] ${comp}, ${label}: every check is green. Files: ${work}"
+  echo "[OK] ${comp}, ${label}: every check is green${skipped:+, ${skipped} skipped}. Files: ${work}"
   exit 0
 fi
-echo "[FAIL] ${comp}, ${label}: ${red} check(s) red. Files: ${work}"
+echo "[FAIL] ${comp}, ${label}: ${red} check(s) red${skipped:+, ${skipped} skipped}. Files: ${work}"
 exit 1

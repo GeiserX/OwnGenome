@@ -92,7 +92,7 @@ mod zip;
 
 use std::io::Write;
 
-const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev install-manifest DIR [--exclude PATH]...\n       og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --control B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --flip DIR PATH\n       og dev install-manifest --compare-logs A.log B.log\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [--root DIR] [--allow FILE] [--list]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
+const USAGE: &str = "usage: og dev parity-compare KIND ORACLE NEW\n       og dev parity-compare --self-test\n       og dev contract --static [--repo DIR] [--contract FILE]\n       og dev contract --outputs DIR --leg bash|nextflow --sample S [--observe]\n       og dev schema SCHEMA.json DOC.json\n       og dev report-only [--repo DIR]\n       og dev fixture comphet|trim-pharmcat [args]\n       og dev evidence clashes|hg002-gvcf|y-bench [args]\n       og dev renovate-check LOG [--pins FILE] [--repo DIR]\n       og dev helpers --list|--static|--images|--orad-calls [--root DIR]\n       og dev helpers --orad --help-file FILE [--orad-version V] [--root DIR]\n       og dev install-manifest DIR [--exclude PATH]...\n       og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]\n       og dev install-manifest --control B.tsv [--allow ALLOW.tsv] [--not-in SEED.tsv]\n       og dev install-manifest --flip DIR PATH\n       og dev install-manifest --compare-logs A.log B.log\n       og dev build cn-intervals|callability|sv-rule-regions|roh-af|acmg-lof [args]\n       og dev scan personal-data|images [args]\n       og dev versions check-run|expand|coupled [args]\n       og dev pgs trait|label-match|metric-match [args]\n\n       og dev pharmcat diplotypes REPORT [--called|--called-lines]\n       og dev nf-trace requests|attempts TRACE [options]\n       og dev smoke mini-ref|long-reads|eh-catalog|csv-cell|check [args]\n       og dev demo-sample [args]\n       og dev demo-events [args]\n       og dev params-doc [args]\n       og dev python-gate [--root DIR] [--allow FILE] [--list]\n       og dev everything-check [args]\n       og dev licences [args]\n       og dev docs-check [args]\n       og dev stub-http [args]\n       og dev steps-check [args]\n       og dev site-check SITE_DIR [ZENSICAL_TOML]\n       og dev traits-sources [--table T] [--fasta F [--min-fasta-rows N]] [--online]\n       og dev pictures take|live|check|same-sample [args]";
 
 /// Python's `str(OSError)`: `[Errno 2] No such file or directory: 'path'`.
 pub(crate) fn py_os_error(e: &std::io::Error, path: &str) -> String {
@@ -344,5 +344,19 @@ mod stream_tests {
             run_with_writers(clean, &[], &mut Fails { flush_only: true }, &mut Vec::new()),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn og_dev_usage_lists_every_install_manifest_form() {
+        for form in super::install_manifest::USAGE.lines() {
+            let form = form.trim_start_matches("usage: ").trim();
+            assert!(
+                super::USAGE.contains(&format!("       {form}\n")),
+                "og dev usage lacks: {form}"
+            );
+        }
     }
 }

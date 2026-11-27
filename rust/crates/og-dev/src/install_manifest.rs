@@ -130,7 +130,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::LazyLock;
 
-const USAGE: &str = "usage: og dev install-manifest DIR [--exclude PATH]...
+pub(crate) const USAGE: &str = "usage: og dev install-manifest DIR [--exclude PATH]...
        og dev install-manifest --compare A.tsv B.tsv [--allow ALLOW.tsv]
        og dev install-manifest --control B.tsv [--allow ALLOW.tsv] [--not-in SEED.tsv]
        og dev install-manifest --flip DIR PATH
@@ -342,8 +342,7 @@ fn digest_file(path: &Path, meta: &fs::Metadata) -> Result<(String, String), Str
     let mut digests: Vec<(&str, String)> = Vec::new();
     let sha;
     if len <= SMALL {
-        let mut buf = Vec::with_capacity(len as usize);
-        f.read_to_end(&mut buf).map_err(&e)?;
+        let buf = read_capped(&f, len).map_err(&e)?;
         read = buf.len() as u64;
         sha = sha_of(&buf);
         if gz {
@@ -366,7 +365,8 @@ fn digest_file(path: &Path, meta: &fs::Metadata) -> Result<(String, String), Str
             digests.push(("jellyfish", d));
         }
     } else {
-        let (s, d, n) = stream_digests(BufReader::with_capacity(1 << 20, &f), head).map_err(&e)?;
+        let (s, d, n) = stream_digests(BufReader::with_capacity(1 << 20, (&f).take(len + 1)), head)
+            .map_err(&e)?;
         sha = s;
         read = n;
         digests.extend(d);
@@ -391,6 +391,15 @@ fn digest_file(path: &Path, meta: &fs::Metadata) -> Result<(String, String), Str
             .join(",")
     };
     Ok((sha, col))
+}
+
+/// A file of `len` bytes read whole, but never more than `len + 1` bytes:
+/// one byte more shows the file grew, at once, and memory stays at its
+/// size whatever a writer appends meanwhile.
+fn read_capped(r: impl Read, len: u64) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(len as usize + 1);
+    r.take(len + 1).read_to_end(&mut buf)?;
+    Ok(buf)
 }
 
 fn read_full(f: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -1670,6 +1679,14 @@ fn logs_cli(args: &[String], out: &mut dyn Write) -> Result<u8, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_small_file_read_stops_one_byte_past_its_size() {
+        // A writer that keeps appending while the file is read: the read
+        // stops one byte past the size the walk saw.
+        let got = read_capped(std::io::repeat(7).take(1 << 20), 10).unwrap();
+        assert_eq!(got.len(), 11);
+    }
 
     #[test]
     fn glob_segments() {
