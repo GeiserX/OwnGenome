@@ -20,6 +20,7 @@ modules/local/pharmcat/main.nf	1	PHARMCAT_IMAGE: PharmCAT's own pharmcat_vcf_pre
 rust/crates/og-dev/src/images.rs	2	the image scanner's own words: python is a Docker Hub base name it refuses, and python3 x.py a test line that is no image; runs no Python	"python",|"python3 x.py",
 rust/crates/og-fresh/src/registry.rs	2	PYTHON_IMAGE: the python image's Docker Hub repository (library/python), which the pin reader asks the registry about; runs no Python	library/python
 rust/crates/og-fresh/src/selftest.rs	1	PYTHON_IMAGE: the python image's Docker Hub repository (library/python) in the pin reader's self-test; runs no Python	library/python
+rust/crates/og-setup/src/install/tools.rs	1	PYTHON_IMAGE: og's --cyrius pip-installs the hash-locked Cyrius wheels (scripts/cyrius-constraints.txt) inside the pinned python image, as setup.sh's install_cyrius does	"pip",
 rust/crates/og-setup/tests/fetch.rs	1	the net-read reason label pip (setup.sh's Cyrius install in PYTHON_IMAGE); runs no Python	"pip",
 rust/crates/og-steps/src/pypgx_summary.rs	1	PYPGX_IMAGE: reads the pythonX.Y folder name of PyPGx's install in its image to find its tables; runs no Python	strip_prefix(
 rust/crates/og-steps/tests/pgx_outside_calls.rs	3	PYPGX_IMAGE: builds a fake PyPGx install tree (a python3.12 folder link and a #! line) for that reader; runs no Python	python3.1"|#!/usr/local/bin/
