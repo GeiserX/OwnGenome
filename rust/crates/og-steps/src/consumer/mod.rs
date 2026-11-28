@@ -7,10 +7,12 @@
 //! nothing else: uploading one is the user's decision
 //! (docs/40-export-consumer.md).
 //!
-//! - `og consumer build-sites --template T.txt.gz --dbsnp VCF|- --out
-//!   SITES.tsv.gz --dropped DROPPED.tsv [--source TEXT]` ([`sites`]): the
+//! - `og consumer build-sites --template T.txt.gz --dbsnp VCF|- --chain
+//!   hg19ToHg38.over.chain.gz --out SITES.tsv.gz --dropped DROPPED.tsv
+//!   [--source TEXT]` ([`sites`]): the
 //!   site table, the 23andMe v5 list joined by rsID with dbSNP's GRCh38
-//!   VCF, which it reads itself, BGZF on many cores.
+//!   VCF, which it reads itself, BGZF on many cores, each site's strand from
+//!   UCSC's hg19ToHg38 chain.
 //! - `og consumer export --gvcf G.g.vcf.gz --sites SITES.tsv.gz --sample ID
 //!   [--sex male|female] [--par PAR.bed] --out-dir DIR [--date YYYY-MM-DD]`
 //!   ([`export`]): every site genotyped from the gVCF, in the 23andMe layout
@@ -38,6 +40,16 @@ pub const CHROMS: [&str; 25] = [
 pub const X: u8 = 22;
 pub const Y: u8 = 23;
 pub const MT: u8 = 24;
+
+/// The format of the site table, the first word of its `## table_format:`
+/// line. Format 2 takes each site's strand from UCSC's hg19ToHg38 chain. A
+/// table with no such line was built before that, from the alleles alone,
+/// and has the wrong strand at sites on inverted blocks: `og consumer
+/// export` refuses it.
+pub const TABLE_FORMAT: &str = "2";
+/// The whole `## table_format:` line `og consumer build-sites` writes.
+pub const TABLE_FORMAT_LINE: &str =
+    "## table_format: 2 (each site's strand from UCSC's hg19ToHg38 liftover chain)";
 
 /// The place of a 23andMe chromosome name in [`CHROMS`].
 pub fn chrom_index(name: &str) -> Option<u8> {
@@ -199,7 +211,7 @@ impl Args {
     }
 }
 
-const USAGE: &str = "usage: og consumer build-sites --template T --dbsnp VCF|- --out SITES.tsv.gz --dropped DROPPED.tsv [--source TEXT]
+const USAGE: &str = "usage: og consumer build-sites --template T --dbsnp VCF|- --chain CHAIN --out SITES.tsv.gz --dropped DROPPED.tsv [--source TEXT]
        og consumer export --gvcf G.g.vcf.gz --sites SITES.tsv.gz --sample ID [--sex male|female] [--par PAR.bed] --out-dir DIR [--date YYYY-MM-DD]
        og consumer check --layout 23andme|ancestrydna FILE
 ";

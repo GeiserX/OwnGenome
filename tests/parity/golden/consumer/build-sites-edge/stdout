@@ -1,3 +1,6 @@
 Site list: 7 sites; kept 5, dropped 2
+  kept, strand from the liftover chain: 1
+  kept, strand from the alleles (the chain does not place the site at its dbSNP position): 3
+  kept, chrM (one sequence in both builds): 1
   dropped, on chromosome Y in GRCh38: 1
   dropped, not an SNV in dbSNP: 1

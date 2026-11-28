@@ -47,6 +47,13 @@ if [ ! -s "$SITES" ]; then
   echo "ERROR: the site table is not built (${SITES}): run scripts/setup.sh --consumer-sites ${GENOME_DIR}" >&2
   exit 1
 fi
+# og consumer export refuses such a table too; here the message names the host paths.
+if ! consumer_sites_current "$SITES"; then
+  echo "ERROR: the site table ${SITES} was built before og took each site's strand from the liftover chain," >&2
+  echo "  so it has the wrong bases at sites on inverted blocks: run scripts/setup.sh --consumer-sites ${GENOME_DIR}," >&2
+  echo "  which builds it again." >&2
+  exit 1
+fi
 if [ ! -s "$GVCF" ]; then
   echo "ERROR: no gVCF for ${SAMPLE} (${GVCF}): run scripts/03-deepvariant.sh ${SAMPLE} first." >&2
   echo "  A VCF alone has no reference calls, so most chip sites would be '--'." >&2
