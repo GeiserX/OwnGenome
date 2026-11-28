@@ -234,7 +234,8 @@ if [ -z "$GENOME_DIR" ] && ! $PULL_ONLY; then
   echo "  --yleaf-data  Install Yleaf ${YLEAF_DATA_VERSION:-}'s Y marker tables and trees and the current YFull tree (step 37, about 210 MB to download, 220 MB on disk), pull its image and exit."
   echo "  --consumer-sites"
   echo "                Build the site table of the raw-data export (step 40): the 23andMe v5 site list joined with"
-  echo "                dbSNP ${CONSUMER_DBSNP_BUILD:-}'s GRCh38 VCF (~30 GB download, kept in the downloads folder); then exit."
+  echo "                dbSNP ${CONSUMER_DBSNP_BUILD:-}'s GRCh38 VCF (~30 GB download, kept in the downloads folder), with UCSC's"
+  echo "                hg19ToHg38 chain for each site's strand; then exit."
   echo "  --archaic     Build the archaic table of step 43: the Altai and Vindija Neanderthals and the Altai Denisovan"
   echo "                (MPI-EVA, ~165 GB, kept in the downloads folder) with 1000 Genomes frequencies, lifted to GRCh38"
   echo "                (hours on a home connection; --no-keep-downloads keeps 13 GB at most at a time); then exit."
@@ -908,23 +909,33 @@ install_tandem_repeats() {
 # rsID with dbSNP CONSUMER_DBSNP_BUILD's GRCh38 VCF (about 30 GB, checked
 # against CONSUMER_DBSNP_MD5) in og's `og consumer build-sites`
 # (rust/crates/og-steps), which takes the GRCh38 position from dbSNP instead
-# of a liftover and lists every site it drops with the reason. It reads the
+# of a liftover, each site's strand from UCSC's hg19ToHg38 chain (the one
+# step 44 uses, checked against HG19_TO_HG38_CHAIN_SHA256), and lists every
+# site it drops with the reason. It reads the
 # BGZF file on 4 cores and looks at the ID column of a line before anything
 # else, so no grep pass runs first. It runs in OG_IMAGE with bin/
 # mounted, so og is built first when it is missing or stale.
-# The dbSNP file stays in the downloads folder (done_with). The table built is then
-# compared with CONSUMER_SITES_TABLE_SHA256: a difference is a warning.
+# The dbSNP file stays in the downloads folder (done_with). A table already
+# there is kept only when it is the pinned build (CONSUMER_SITES_TABLE_SHA256);
+# any other table, such as one built before the strand came from the chain, is
+# built again in its place. A built table that differs from the pin fails.
 install_consumer_sites() {
-  local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped url
+  local dir="${GENOME_DIR}/reference/consumer" tpl db out dropped url chain
   out="${dir}/23andme_v5_sites_dbsnp${CONSUMER_DBSNP_BUILD}.tsv.gz"
   dropped="${dir}/23andme_v5_dropped_dbsnp${CONSUMER_DBSNP_BUILD}.tsv"
+  chain="${GENOME_DIR}/reference/liftover/hg19ToHg38.over.chain.gz"
   if [ -s "$out" ]; then
-    consumer_sites_pin_check "$out" "already present"
-    return 0
+    if consumer_sites_pin_check "$out" "already present"; then return 0; fi
+    echo "       It was built by another version of og consumer build-sites: building it again in its place."
   fi
   tpl=$(source_of consumer_sites_template path) && url=$(source_of consumer_sites_template url) || return 1
   if ! fetch "$url" "$tpl" sha256 "$CONSUMER_SITES_SHA256"; then
     echo "[WARN] Could not download the 23andMe v5 site list."
+    return 1
+  fi
+  [ -s "$chain" ] || echo "  ${UCSC_CHAIN_TERMS} See docs/40-export-consumer.md."
+  if ! fetch "$HG19_TO_HG38_CHAIN_URL" "$chain" sha256 "$HG19_TO_HG38_CHAIN_SHA256"; then
+    echo "[WARN] Could not download UCSC's hg19ToHg38 chain; run: $0 --consumer-sites ${GENOME_DIR}"
     return 1
   fi
   # In the downloads folder: fetch reuses a copy whose md5 matches the pin
@@ -945,29 +956,32 @@ install_consumer_sites() {
   # The table is written to reference/consumer/, outside any sample directory.
   if ! run_in --rw "$dir" -v "${PGP_ROOT}/bin:/pgp-bin:ro" --cpus 4 --memory 4g "$OG_IMAGE" \
        /pgp-bin/og consumer build-sites --template "$(cpath "$tpl")" --dbsnp "$(cpath "$db")" \
-       --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
-       --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40"; then
+       --chain "$(cpath "$chain")" --out "$(cpath "$out")" --dropped "$(cpath "$dropped")" \
+       --source "23andme2vcf ${CONSUMER_SITES_COMMIT} 23andme_v5_hg19_ref.txt.gz; dbSNP ${CONSUMER_DBSNP_BUILD} GCF_000001405.40; UCSC hg19ToHg38.over.chain.gz"; then
     rm -f "$out"
     echo "[WARN] Could not build the site table of step 40; the dbSNP download is kept: run this command again."
     return 1
   fi
   done_with "$db"
-  consumer_sites_pin_check "$out" "built (dropped sites and their reasons: ${dropped})"
+  if ! consumer_sites_pin_check "$out" "built (dropped sites and their reasons: ${dropped})"; then
+    echo "       The inputs match their pins, so this checkout's og consumer build-sites does not give the pinned table."
+    return 1
+  fi
 }
 
 # consumer_sites_pin_check TABLE WHAT: compare the site table with
-# CONSUMER_SITES_TABLE_SHA256 and say so. A difference is a warning: both
-# inputs are checked against their own pins, so it means build-sites changed
-# since the pin was taken, and step 40 can still use the table.
+# CONSUMER_SITES_TABLE_SHA256 and say so; false when it differs. All three
+# inputs are checked against their own pins, so a difference means another
+# version of og consumer build-sites built the table.
 consumer_sites_pin_check() {
   local got
   got=$(consumer_sites_digest "$1")
   if [ "$got" = "$CONSUMER_SITES_TABLE_SHA256" ]; then
     echo "[OK] Site table of step 40 $2: $1, the same as the pinned build"
-  else
-    echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
-    echo "       It was built by another version of og consumer build-sites. Step 40 uses it; to rebuild it, remove it and run this command again."
+    return 0
   fi
+  echo "[WARN] Site table of step 40 $2: $1 differs from the pinned build (content sha256 ${got}, pinned ${CONSUMER_SITES_TABLE_SHA256})."
+  return 1
 }
 
 # --- Step 44: the ancient populations panel (opt-in) ---------------------------------
