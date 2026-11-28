@@ -1596,10 +1596,9 @@ case "$AB_STUB" in
     echo "Status: Downloaded newer image for registry.example/example/tool:$t"
     # A digest-pinned image, pulled only when the engine lacks it, as
     # setup does; the pull gives it NAME:<none> and the digest reference.
+    # An image already there is pinned without a word, as setup does.
     d=$(printf 'example/pin@sha256:%064d' 7)
-    if "$CONTAINER_ENGINE" image inspect --format '{{.Id}}' "$d" >/dev/null 2>&1; then
-      echo "  already present: $d"
-    else
+    if ! "$CONTAINER_ENGINE" image inspect --format '{{.Id}}' "$d" >/dev/null 2>&1; then
       echo "  Pulling: $d"
       printf '%s\tid4\n' "$d" >>"$AB_ENGINE_STATE.digests"
       printf 'example/pin:<none>\tid4\n' >>"$AB_ENGINE_STATE"
@@ -1815,7 +1814,11 @@ fn ab_pull_only(
         ("AB_ENGINE_STATE", state.as_str()),
     ];
     all.extend_from_slice(env);
-    ab_comp(tag, "pull-only", stub, &all, &|_| {})
+    // The stub's digest-pinned image is one versions.env pins.
+    let pins = format!("PIN_IMAGE=example/pin@sha256:{:064}\n", 7);
+    ab_comp(tag, "pull-only", stub, &all, &|t| {
+        fs::write(t.join("repo/versions.env"), &pins).unwrap();
+    })
 }
 
 #[test]
@@ -1839,7 +1842,9 @@ fn ab_sh_compares_pull_only_by_its_images() {
 #[test]
 fn ab_sh_keeps_a_digest_image_the_engine_had_before_side_a() {
     // The digest-pinned image is on the engine already, untagged: neither
-    // side pulls it, and ab.sh must not remove it between them.
+    // side pulls it, and ab.sh must not remove it between them. Each side
+    // pins it without a word in the log; the pinned tag side A added goes,
+    // for side B to add again.
     let ref7 = format!("example/pin@sha256:{:064}", 7);
     let (code, out) = ab_pull_only(
         "ab-pull-had",
@@ -1849,6 +1854,7 @@ fn ab_sh_keeps_a_digest_image_the_engine_had_before_side_a() {
     );
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("side A: 2 image tag(s) added"), "{out}");
+    assert!(out.contains("removed 2 image tag(s) side A added"), "{out}");
     assert!(
         !out.contains("digest reference(s)"),
         "an image that was there before side A was removed:\n{out}"

@@ -197,9 +197,17 @@ named() {
 # its last tag goes, so setup finds it and pulls nothing: each digest
 # reference side A's log names is removed too, when its image is one side A
 # added (its id was not on the engine before side A).
+# setup pins an image already on the engine without a word in the log, so
+# the pinned tag of each digest versions.env pins is side A's too when side
+# A added it.
 undo_images() {
   local tag ref name last pinned id n=0 m=0
-  pinned=$(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
+  pinned=$({
+    grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log"
+    if [ -f "${ROOT}/versions.env" ]; then
+      grep -E '^[A-Z0-9_]+_IMAGE=' "${ROOT}/versions.env" | grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}'
+    fi
+  } |
     while IFS= read -r ref; do
       name=${ref%@sha256:*} last=${ref%@sha256:*}
       last=${last##*/}
