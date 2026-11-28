@@ -5,7 +5,7 @@
     CYP2D6_DEPTH runs mosdepth over CYP2D6 and two flanks, once for all reads
     and once for MAPQ >= 1, before pypgx or Cyrius calls copy number from
     depth. PYPGX and CYRIUS judge the two files with
-    bin/cyp2d6_depth_check.py, which also refuses regions other than its own,
+    og pgx cyp2d6-check, which also refuses regions other than its own,
     so the copy of them below cannot drift unnoticed.
 
     PGX_CONSENSUS runs og pgx outside-calls: PharmCAT's outside-call file
@@ -35,7 +35,7 @@ process CYP2D6_DEPTH {
     task.ext.when == null || task.ext.when
 
     script:
-    // The regions of `cyp2d6_depth_check.py bed` (GRCh38, 0-based).
+    // The regions of `og pgx cyp2d6-bed` (GRCh38, 0-based).
     """
     printf 'chr22\\t42050000\\t42100000\\tflank\\nchr22\\t42123192\\t42132032\\tCYP2D6\\nchr22\\t42200000\\t42250000\\tflank\\n' \\
         > cyp2d6_regions.bed

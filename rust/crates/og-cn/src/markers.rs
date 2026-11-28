@@ -12,8 +12,8 @@
 //!
 //! The values are those `bin/traits_report.py` held (MARKERS), each copy
 //! checked against the 21-base context and the dbSNP record by
-//! `marker_errors` (a unit test here, and `tests/test_traits_report.py`
-//! compares the records with what collect_summary reads).
+//! `marker_errors` (a unit test here, and check 1 of
+//! `tests/genome_markers.rs`).
 
 use crate::input::each_pileup_site;
 use crate::{Error, fixed};

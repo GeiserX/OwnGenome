@@ -2,8 +2,7 @@
 # shellcheck disable=SC2016  # the $ expressions in bash -c bodies expand inside the Manta container
 # Step 04 (Manta) keeps a whole-span inversion only where Manta saw both
 # junctions. On a planted Manta-style VCF on the fixture's chr20, converted
-# with the real Manta image (convertInversion.py, then bin/manta_inv_filter.py
-# on the image's Python 2.7):
+# with the real Manta image (convertInversion.py, then og sv inv-filter):
 #   - a reciprocal inversion chr20:10.1-10.6 Mb (an INV3 and an INV5
 #     junction, 101 bp apart) stays two INV records, INV_JUNCTIONS=2;
 #   - a lone INV3 junction whose breakends lie 50 Mb apart is no INV record:

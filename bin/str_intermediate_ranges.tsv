@@ -1,10 +1,10 @@
 # bin/str_intermediate_ranges.tsv: the repeat ranges between normal and disease-causing that the report names (steps 09 and 09b).
-# Read by bin/collect_summary.py. It sits in bin/ because bin/ is the only repository folder the report
+# Read by og summary collect. It sits in bin/ because bin/ is the only repository folder the report
 # containers mount (scripts/24-html-report.sh and the Nextflow HTML_REPORT process).
 # locus: the ExpansionHunter locus id (REPID). intermediate_min, intermediate_max: the range, in repeat units, both ends included.
 # next_min: the first count of the next class, named in next_class; the range ends right below it.
 # label: what the report prints beside a count in the range. citation: the GeneReviews chapter that defines the range.
-# Only loci whose GeneReviews chapter defines such a range are listed. tests/test_str_ranges.py checks the rows
+# Only loci whose GeneReviews chapter defines such a range are listed. og-setup's tests/genome_str_ranges.rs checks the rows
 # and that docs/results/structural-and-repeats.md prints the same ranges.
 locus	intermediate_min	intermediate_max	next_min	next_class	label	citation
 HTT	27	35	36	reduced penetrance	intermediate (not disease-causing; may expand in offspring)	GeneReviews: Huntington Disease, https://www.ncbi.nlm.nih.gov/books/NBK1305/

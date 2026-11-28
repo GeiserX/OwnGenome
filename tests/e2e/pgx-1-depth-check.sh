@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The CYP2D6 depth check (bin/cyp2d6_depth_check.py) before pypgx and Cyrius:
+# The CYP2D6 depth check (og pgx cyp2d6-check) before pypgx and Cyrius:
 # step 32 (case 38) and step 21 (case 37) wrote it. On the fixture BAM step 02
 # aligned to the no-ALT reference the reads at CYP2D6 map uniquely, so step
 # 32's check passes and pypgx's CYP2D6 row keeps its call. (The with-ALT side is

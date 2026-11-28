@@ -3,8 +3,8 @@
 //! tests/parity/golden/summary-collect/all/all.json has one, Short/PGS1).
 //! Both reports render it, and the row reads "not available" in those
 //! cells and, in the HTML report, in the result cell: with no score there
-//! is no raw score either. bin/render_report.py stops the whole HTML report on that row
-//! (`html.escape(None)`) and writes "None" in the text report, so this is a
+//! is no raw score either. bin/render_report.py stopped the whole HTML report on that row
+//! (`html.escape(None)`) and wrote "None" in the text report, so this is a
 //! known difference from the Python, outside the parity corpus.
 
 use std::path::Path;

@@ -8,7 +8,7 @@
 #     the run, naming both sexes; the report is never written; somalier's own
 #     table holds the samplesheet's female as the pedigree's sex;
 #   - declared male with --sex_check warn (for INDEXCOV's reading): the run
-#     ends, and the report, rendered by bin/render_report.py, shows somalier's
+#     ends, and the report, rendered by og report render, shows somalier's
 #     sex, FREEMIX and the ROH and haplogroup cards, with the numbers of the
 #     summary it was rendered from. The same BAM is given a second time under
 #     another id (BAMs with the same @RG SM): somalier keeps the two rows

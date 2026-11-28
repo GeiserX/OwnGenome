@@ -124,7 +124,7 @@ pub fn pypgx_called(diplotype: &str) -> bool {
 
 // --- step 36 -------------------------------------------------------------
 
-/// One row of the consensus table `bin/pgx_outside_calls.py` writes.
+/// One row of the consensus table `og pgx outside-calls` writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsensusRow {
     pub gene: String,

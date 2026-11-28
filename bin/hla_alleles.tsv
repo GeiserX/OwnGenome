@@ -1,5 +1,5 @@
 # bin/hla_alleles.tsv: the HLA alleles the report marks present or absent (step 08, docs/08-hla-typing.md).
-# Read by bin/collect_summary.py. It sits in bin/ because bin/ is the only repository folder the report
+# Read by og summary collect. It sits in bin/ because bin/ is the only repository folder the report
 # containers mount (scripts/24-html-report.sh and the Nextflow HTML_REPORT process).
 # allele: an allele group at a field boundary: B*27 matches B*27:05:02, B*57:01 matches B*57:01:01.
 # kind: drug (a drug reaction) or disease (a condition). association: what the study in pmids reports.

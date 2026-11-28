@@ -7,8 +7,8 @@
 //! The note now says it: MEGAnE called an insertion there but flagged it, so
 //! it is not a finding, and not proof of absence either.
 //!
-//! `bin/render_report.py` writes the same note; the report-render parity
-//! cases (tests/parity/cases.tsv) compare the two byte for byte.
+//! The report-render parity goldens (tests/parity/cases.tsv) hold the same
+//! note, byte for byte.
 
 use og_render::model::Summary;
 use og_render::notes::MEI_NOTE;

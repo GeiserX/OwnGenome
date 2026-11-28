@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Step 46's KIV-2 4925G>A reading (og cn call --marker LPA_KIV2_4925, the
-# marker of MARKERS in bin/traits_report.py) on real reads:
+# marker of og-cn's markers.rs) on real reads:
 #   - dbSNP orientation, online: the record pinned for the marker is what
 #     dbSNP's GRCh38 VCF of the build versions.env pins holds for rs1484919544
 #     (same position and REF, the pinned ALT among dbSNP's); control: the same

@@ -20,7 +20,6 @@ FILES=(
   docs/results/traits-and-somatic.md
   rust/crates/og-render/src/notes.rs
   rust/crates/og-render/src/sections/telomere.rs
-  bin/render_report.py
 )
 REQUIRED="scripts/10-telomere-hunter.sh modules/local/telomere_hunter/main.nf"
 PHRASE='biological[[:space:]-]+(age|ageing|aging)'

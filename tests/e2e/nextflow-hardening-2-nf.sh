@@ -168,7 +168,7 @@ check "the declared sex goes on with a warning" has "indexcov infers .* --sex_ch
 
 # --- HTML_REPORT on the outputs of this run ---------------------------------------------------
 # Each output goes through one case arm of modules/local/html_report/main.nf
-# to the folder bin/collect_summary.py reads; the task prints the layout it
+# to the folder og summary collect reads; the task prints the layout it
 # built. A file whose name no arm matches fails the task (exit 1), so its
 # section stays missing and the layout line is absent.
 HR_DIR=$(awk -F'\t' 'NR == 1 {for (i = 1; i <= NF; i++) c[$i] = i; next} $c["name"] ~ /:HTML_REPORT / {print $c["hash"]}' "${TRACE:-/dev/null}")
