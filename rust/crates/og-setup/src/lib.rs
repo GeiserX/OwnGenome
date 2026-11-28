@@ -6,7 +6,8 @@
 //!   setup.sh's bash. [`components`] is the one table of setup's flags;
 //!   [`engine`] builds the container runs, [`images`] pulls and tags the
 //!   images, [`lock`] is the installers' lock and [`disk`] the disk checks
-//!   before a large install. [`check`] is `og setup check`, to come.
+//!   before a large install. [`check`] is `og setup check`, the check
+//!   before a run, from the same table.
 //! - [`fetch`] (`og setup fetch`, `og setup source`, `og setup path`): every
 //!   download of setup, checked and kept, from the table
 //!   `assets/data-sources.tsv`; [`plan`] (`og setup plan`) lists what a

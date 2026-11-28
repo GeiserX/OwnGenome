@@ -286,6 +286,10 @@ jobs:
         if: steps.scope.outputs.run != 'false'
         env:
           STORE: ${{ matrix.store }}
+          # og runs both setup.sh --pull-only and validate-setup.sh here (og
+          # setup check); OG_SETUP=og stops validate-setup.sh from falling
+          # back to its own bash checks when og cannot run them.
+          OG_SETUP: og
         run: |
           mapfile -t imgs < <(bash -c '. scripts/lib/common.sh && pipeline_images' | grep '@sha256:')
           if [ "${#imgs[@]}" -eq 0 ]; then
