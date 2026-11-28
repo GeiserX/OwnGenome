@@ -516,8 +516,10 @@ fn open_events(state_dir: &Path, run: &str) -> io::Result<(File, File)> {
             io::ErrorKind::PermissionDenied,
             format!(
                 "{}: refused: it must be a plain file of the account the server runs as, with \
-                 no other name (a hard link), that no other account may write to; check it, then \
-                 run 'chmod go-w' on it or replace it",
+                 no other name (a hard link), that no other account may write to: stop every \
+                 server of this state folder and replace it with a new file that holds only its \
+                 checked lines ('chmod go-w' alone does not close a copy another account already \
+                 holds open)",
                 shown.display()
             ),
         ));
@@ -1052,7 +1054,14 @@ mod tests {
         for mode in [0o664, 0o646] {
             fs::set_permissions(&events, fs::Permissions::from_mode(mode)).unwrap();
             match append_within(10, &dir) {
-                Some(Err((_, e))) => assert!(e.contains("chmod go-w"), "{e}"),
+                // chmod alone leaves a copy another account opened while it
+                // could write, so the message asks for a new file.
+                Some(Err((_, e))) => assert!(
+                    e.contains("chmod go-w")
+                        && e.contains("stop every server")
+                        && e.contains("replace it with a new file"),
+                    "{e}"
+                ),
                 other => panic!("an events file of mode {mode:o} was written: {other:?}"),
             }
             assert_eq!(fs::read_to_string(&events).unwrap(), "{\"event\":\"x\"}\n");

@@ -14,8 +14,8 @@
 #       writes the ACMG card (sections.acmg_sf) with the 84 rules, says the
 #       HIGH-impact source was not screened, and keeps every ClinVar row the
 #       full run's card has. Control: without step 06's hits the section is
-#       not run. The reports still read the card from the clinical section
-#       until they move to sections.acmg_sf.
+#       not run. With no card in the clinical section the reports read
+#       sections.acmg_sf.
 #   2. Nextflow: HTML_REPORT on the sample's ClinVar hits and clinical VCF,
 #      with the two assets staged as main.nf stages them, applies the rules,
 #      and its carrier list equals the bash one. Control: the same task

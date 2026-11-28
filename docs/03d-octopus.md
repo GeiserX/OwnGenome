@@ -32,11 +32,13 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tag.
 
 ```bash
 export GENOME_DIR=/path/to/data
-./scripts/03d-octopus.sh <sample_name>
+./scripts/03d-octopus.sh <sample_name> [male|female]
 
 # Test on one chromosome first:
-INTERVALS=chr22 ./scripts/03d-octopus.sh <sample_name>
+INTERVALS=chr22 ./scripts/03d-octopus.sh <sample_name> [male|female]
 ```
+
+With `male`, chrX and chrY are called with ploidy 1 outside the pseudoautosomal regions (`assets/par_grch38.bed`), as step 03 does, so a male sample gets no impossible heterozygous call there. Octopus sets ploidy per contig, not per region, so those parts are called in a run of their own and joined with the rest. `female` calls every contig as Octopus does by default: diploid, except chrY and chrM, which it calls haploid. With no sex, the sex `run-all.sh` recorded for the sample in `logs/run_status.tsv` counts; with none there either, Octopus' default holds and a note says so.
 
 ## Output
 

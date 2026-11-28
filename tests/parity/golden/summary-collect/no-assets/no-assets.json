@@ -52,7 +52,7 @@
    "state": "unreadable",
    "source": null,
    "file_date": null,
-   "note": "callability_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)",
+   "note": "callability_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)",
    "data": {}
   },
   "sex_check": {

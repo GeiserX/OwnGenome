@@ -1,5 +1,5 @@
 // family-page.js: a family's page (assets/live/family.html), from family.json
-// (bin/owngenome_live_family.py), the Journal design: a report in chapters, with a lead that answers
+// (og live serve, rust/crates/og-live/src/family.rs), the Journal design: a report in chapters, with a lead that answers
 // "what does it mean for our children?". The pedigree with each sequenced person a link to their page, the
 // members with their run progress, what steps 38 and 39 planned, each couple's carrier screen in full
 // (both carry, then X-linked, then one partner), who is related how as a grid (a list of pairs on a

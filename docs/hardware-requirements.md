@@ -177,6 +177,10 @@ To let the other services on the machine win, give the pipeline fewer shares and
 // shared-host.config, used as:
 //   THREADS=6 ./scripts/run-all.sh <sample> <sex> --max_memory 24.GB -c shared-host.config
 // This value replaces the docker profile's container options, so it repeats --network none.
+// A process with container options of its own keeps them instead and does not
+// get the lower share: EXOMISER and MITO_VARIANTS (in their modules), and
+// VNTYPER, CPSR and CNVPYTOR (the docker profile in nextflow.config). Give
+// those a withName block of their own with their options plus --cpu-shares.
 process.containerOptions = '--network none --cpu-shares 256'
 // Everything running at once stays within this. Keep it at least --max_cpus and
 // --max_memory, or Nextflow refuses the tasks that ask for more.

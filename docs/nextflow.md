@@ -281,7 +281,7 @@ results/
     ├── report_*.html
     ├── trace_*.txt       # one row per task: the 14 default columns, then process, tag, attempt, cpus,
     │                     #   memory, start, complete (trace.fields in nextflow.config)
-    ├── step_history/     # <box>.tsv: bin/run_eta.py's per-task history of this box, for the step times
+    ├── step_history/     # <box>.tsv: og run eta's per-task history of this box, for the step times
     │                     #   and the hours left (Where a Run Stands); no sample id, no path
     └── dag_*.svg
 ```
