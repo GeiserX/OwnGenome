@@ -219,7 +219,7 @@ jobs:
   pinned-images:
     name: pinned-images (${{ matrix.store }} store)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -242,7 +242,7 @@ jobs:
         run: |
           if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only "${BASE}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"
-          if grep -qxE 'versions\.env|scripts/setup\.sh|scripts/validate-setup\.sh|scripts/lib/common\.sh|\.github/workflows/container-test\.yml' "${RUNNER_TEMP}/changed.txt"; then
+          if grep -qxE 'versions\.env|scripts/setup\.sh|scripts/validate-setup\.sh|scripts/lib/common\.sh|rust/crates/og-setup/.*|rust/og/src/main\.rs|\.github/workflows/container-test\.yml' "${RUNNER_TEMP}/changed.txt"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing the pinned-image check exercises changed: it is skipped."
@@ -270,6 +270,17 @@ jobs:
           if [ "$got" != "$STORE" ]; then
             echo "::error::asked for the ${STORE} image store, docker info reports the ${got} one"; exit 1
           fi
+
+      # setup.sh --pull-only runs in og (og setup install, rust/crates/og-setup),
+      # so the job builds this checkout's og and names it as OG.
+      - name: Build og, which runs setup.sh --pull-only
+        if: steps.scope.outputs.run != 'false'
+        working-directory: rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+          cargo build --locked -p og
+          echo "OG=${PWD}/target/debug/og" >> "$GITHUB_ENV"
 
       - name: setup.sh --pull-only leaves no digest-pinned image dangling
         if: steps.scope.outputs.run != 'false'

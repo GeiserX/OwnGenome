@@ -14,15 +14,16 @@
 #   side A: OG_SETUP=bash scripts/setup.sh --COMPONENT <install folder>
 #   side B: OG_SETUP=og og setup install --COMPONENT <install folder>
 # Side B calls og directly and never setup.sh, so it cannot fall back to
-# bash; when og has no `setup install`, ab.sh stops before side A, so build
-# an og that has it first. --bash-vs-bash runs side A's command on both
+# bash; when og has no `setup install`, or does not run COMPONENT itself
+# (og setup ported), ab.sh stops before side A. --bash-vs-bash runs side A's command on both
 # sides: it finds the bytes that change from one run to the next (the
 # allowlist's rows), and its result says no og side ran.
 #
 # Both sides install into the same empty folder, WORK_DIR/install, moved to
 # WORK_DIR/a or WORK_DIR/b afterwards, so a path written into a file is the
-# same on both. WORK_DIR must not hold install, a or b; it defaults to a new
-# temporary folder and is kept, with each side's log, exit code, manifests
+# same on both. WORK_DIR must not hold install, a, b or og.before; it
+# defaults to a new temporary folder and is kept, with each side's log,
+# exit code, manifests
 # (and their errors, NAME.manifest.err), and the compares.
 #
 # Environment (anything else exported, such as ARCHAIC_REGIONS, reaches
@@ -49,9 +50,17 @@
 # component wrote and the compare reads byte for byte is flipped in tree B,
 # and the compare must go red and name it.
 #
+# pull-only runs in image-only mode: --pull-only installs no files, so both
+# sides run without an install folder, as a user runs it, and side A must
+# add at least one image instead (run it on an engine that lacks some of
+# versions.env's images). The control drops one image side B added from
+# its image list, and the images compare must go red and name it. Every
+# other check runs as for any component.
+#
 # Exit 0 when every check is green, 1 when one is red, 2 when an argument is
 # wrong, side B has no og to run, a manifest cannot be taken, tree A holds
-# nothing new, or the control did not go red.
+# nothing new (pull-only: side A added no image), or the control did not go
+# red.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -70,6 +79,9 @@ fi
 comp=$1
 case "$comp" in '' | -* | */* | *' '*) usage ;; esac
 if [ "$comp" = refresh-clinvar ]; then words=(--refresh clinvar); else words=("--${comp}"); fi
+# --pull-only writes no files: compare it by what it does to the images.
+images_only=false
+if [ "$comp" = pull-only ]; then images_only=true; fi
 expect=${AB_EXPECT_EXIT:-0}
 case "$expect" in '' | *[!0-9]*)
   echo "ERROR: AB_EXPECT_EXIT=${expect} is not an exit code." >&2
@@ -83,9 +95,9 @@ else
   work=$(mktemp -d "${TMPDIR:-/tmp}/og-ab.XXXXXX")
 fi
 work=$(cd "$work" && pwd)
-for d in install a b; do
+for d in install a b og.before; do
   if [ -e "${work}/${d}" ]; then
-    echo "ERROR: ${work}/${d} exists; give a WORK_DIR without install, a and b." >&2
+    echo "ERROR: ${work}/${d} exists; give a WORK_DIR without install, a, b and og.before." >&2
     exit 2
   fi
 done
@@ -117,6 +129,12 @@ else
   if [[ "$help" != *"og setup install"* ]]; then
     echo "ERROR: side B runs ${OG} setup install, and that does not run here. ab.sh never runs bash in its place;" >&2
     echo "       build og from this checkout (scripts/setup.sh --og), or pass --bash-vs-bash to compare bash with bash." >&2
+    exit 2
+  fi
+  # A flag og does not run goes back to setup.sh: side B would be bash too.
+  if ! "$OG" setup ported "${words[0]}" >/dev/null 2>&1; then
+    echo "ERROR: og does not run ${words[0]} (og setup ported ${words[0]}): side B would hand it back to setup.sh, so both sides would be bash." >&2
+    echo "       Pass --bash-vs-bash to compare bash with bash." >&2
     exit 2
   fi
 fi
@@ -166,7 +184,7 @@ named() {
 }
 
 # undo_images: remove the tags side A added for an image its log names (an
-# image with no other tag goes with its last one), so side B starts from the
+# image pulled by tag goes with its last tag), so side B starts from the
 # images side A started from: it pulls and pins what side A pulled and
 # pinned, and logs it the same way. A tag another job on the engine added
 # while side A ran is not named in side A's log and is left alone. A tag is
@@ -175,8 +193,12 @@ named() {
 # that gives that tag the way setup.sh's pinned_tag does. Another tag of the
 # same image name, another image's pinned tag at the same digest, or a tag
 # with the name of one logged image and the digest of another, is not side A's.
+# An image pulled by digest keeps its digest reference NAME@sha256:HEX when
+# its last tag goes, so setup finds it and pulls nothing: each digest
+# reference side A's log names is removed too, when its image is one side A
+# added (its id was not on the engine before side A).
 undo_images() {
-  local tag ref name last pinned n=0
+  local tag ref name last pinned id n=0 m=0
   pinned=$(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
     while IFS= read -r ref; do
       name=${ref%@sha256:*} last=${ref%@sha256:*}
@@ -194,6 +216,22 @@ undo_images() {
     "$ENGINE" rmi "$tag" >/dev/null 2>&1 && n=$((n + 1))
   done < <(LC_ALL=C comm -13 "${work}/a.before.images" "${work}/a.images" | grep -v ':<none>' || true)
   echo "   removed ${n} image tag(s) side A added, for side B to add again"
+  while IFS= read -r ref; do
+    id=$("$ENGINE" image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || continue
+    id=${id#sha256:}
+    [ -n "$id" ] || continue
+    # The list shows a short id: the full one starts with it.
+    awk -F'\t' -v i="$id" '$2 != "" && index(i, $2) == 1 { f = 1 } END { exit !f }' "${work}/a.images" || continue
+    ! awk -F'\t' -v i="$id" '$2 != "" && index(i, $2) == 1 { f = 1 } END { exit !f }' "${work}/a.before.images" || continue
+    "$ENGINE" rmi "$ref" >/dev/null 2>&1 && m=$((m + 1))
+  done < <(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
+    while IFS= read -r ref; do
+      name=${ref%@sha256:*} last=${ref%@sha256:*}
+      last=${last##*/}
+      [[ "$last" == *:* ]] && name=${name%:*}
+      printf '%s@sha256:%s\n' "$name" "${ref##*@sha256:}"
+    done | LC_ALL=C sort -u || true)
+  if [ "$m" -gt 0 ]; then echo "   removed ${m} digest reference(s) of images side A pulled"; fi
 }
 
 # delta SIDE: what the side changed in the image list, "+" added and "-"
@@ -281,10 +319,13 @@ for side in a b; do
   images >"${work}/${side}.before.images"
   mkdir "${work}/install" "${work}/${side}.nxf"
   seed "${work}/install"
-  echo "== side ${side}: ${cmd[*]} ${work}/install"
+  # A user runs --pull-only with no folder.
+  dir="${work}/install"
+  if $images_only; then dir=""; fi
+  echo "== side ${side}: ${cmd[*]}${dir:+ ${dir}}"
   start=$SECONDS
   rc=0
-  NXF_HOME="${work}/${side}.nxf" "${cmd[@]}" "${work}/install" >"${work}/${side}.log" 2>&1 || rc=$?
+  NXF_HOME="${work}/${side}.nxf" "${cmd[@]}" ${dir:+"$dir"} >"${work}/${side}.log" 2>&1 || rc=$?
   echo "$rc" >"${work}/${side}.exit"
   echo "   exit ${rc} after $((SECONDS - start)) s"
   mv "${work}/install" "${work}/${side}"
@@ -300,15 +341,25 @@ done
 
 # Tree A must hold something the seed did not: a file or link that is not
 # in the seed as it is, or a new folder. Otherwise the run proves nothing.
-new=$(awk -F'\t' '
-  FILENAME == ARGV[1] { if (FNR > 2) { row[$0] = 1; if ($2 == "d") dir[$1] = 1 } next }
-  FNR > 2 && !($0 in row) && !($2 == "d" && ($1 in dir)) { n++ }
-  END { print n + 0 }' "$seed_tsv" "${work}/a.tsv")
-if [ "$new" -eq 0 ]; then
-  echo "ERROR: tree A holds nothing the seed did not (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; read ${work}/a.log." >&2
-  exit 2
+# In image-only mode, side A must have added an image instead.
+if $images_only; then
+  added=$(grep -c '^+' "${work}/a.images.delta" || true)
+  if [ "$added" -eq 0 ]; then
+    echo "ERROR: side A added no image (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; run on an engine that lacks some of versions.env's images, and read ${work}/a.log." >&2
+    exit 2
+  fi
+  echo "   side A: ${added} image tag(s) added"
+else
+  new=$(awk -F'\t' '
+    FILENAME == ARGV[1] { if (FNR > 2) { row[$0] = 1; if ($2 == "d") dir[$1] = 1 } next }
+    FNR > 2 && !($0 in row) && !($2 == "d" && ($1 in dir)) { n++ }
+    END { print n + 0 }' "$seed_tsv" "${work}/a.tsv")
+  if [ "$new" -eq 0 ]; then
+    echo "ERROR: tree A holds nothing the seed did not (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; read ${work}/a.log." >&2
+    exit 2
+  fi
+  echo "   tree A: ${new} entries the seed did not hold"
 fi
-echo "   tree A: ${new} entries the seed did not hold"
 
 red=0
 check() { # NAME COMMAND...: run a check, print its verdict, keep its output.
@@ -364,47 +415,63 @@ if [ -n "${AB_SEED:-}" ]; then
 fi
 grep '^ALLOWED' "${work}/check.tree.txt" "${work}/check.nxf-home.txt" 2>/dev/null | sed 's/^/         /' || true
 
-# The control: one flipped bit in a file the component wrote in tree B must
-# turn the tree compare red.
-control_args=(--control "${work}/b.tsv" --allow "$allow")
-# With no seed there is nothing to leave out.
-if [ -n "${AB_SEED:-}" ]; then control_args+=(--not-in "$seed_tsv"); fi
-path=$(manifest "${control_args[@]}") || {
-  echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
-  exit 2
-}
-# The file may still be a hard link into the seed: give B its own copy first.
-# printf -v keeps a trailing newline in the name, which $( ) would strip.
-printf -v rel '%b' "$path"
-real="${work}/b/${rel}"
-# A short name beside it: a 255-byte name plus a suffix would be too long.
-copy=$(mktemp "${real%/*}/.ab-copy.XXXXXX")
-if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
-  rm -f "$copy"
-  echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
-  exit 2
-fi
-# A read-only file gets owner write for each flip only, so tree B keeps its
-# mode and the compare sees one difference, the content.
-flip() {
-  if [ -w "$real" ]; then
-    manifest --flip "${work}/b" "$path" >/dev/null
-  else
-    chmod u+w "$real"
-    manifest --flip "${work}/b" "$path" >/dev/null
-    chmod u-w "$real"
+# The control. In image-only mode, side B's image list less one image it
+# added must turn the images compare red. Otherwise one flipped bit in a
+# file the component wrote in tree B must turn the tree compare red.
+if $images_only; then
+  line=$(grep -m 1 '^+' "${work}/b.images.delta" || true)
+  tag=$(printf '%s\n' "$line" | cut -f 2)
+  ctl=0
+  if [ -n "$line" ]; then
+    grep -vxF -- "$line" "${work}/b.images.delta" >"${work}/b.images.control" || true
+    same_file "${work}/a.images.delta" "${work}/b.images.control" >"${work}/check.control.txt" 2>&1 || ctl=$?
   fi
-}
-flip
-take b.control "${work}/b"
-crc=0
-manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
-flip
-if [ "$crc" -ne 1 ] || ! grep -qF "DIFF	content	${path}	" "${work}/check.control.txt"; then
-  echo "ERROR: one flipped bit in ${path} did not turn the compare red (exit ${crc}): the compare cannot fail." >&2
-  exit 2
+  if [ -z "$line" ] || [ "$ctl" -eq 0 ] || ! grep -qF -- "$tag" "${work}/check.control.txt"; then
+    echo "ERROR: side B's image list less one image it added did not turn the images compare red${tag:+ (${tag})}: the compare cannot fail." >&2
+    exit 2
+  fi
+  echo "[OK]   control: side B's image list less ${tag} is red"
+else
+  control_args=(--control "${work}/b.tsv" --allow "$allow")
+  # With no seed there is nothing to leave out.
+  if [ -n "${AB_SEED:-}" ]; then control_args+=(--not-in "$seed_tsv"); fi
+  path=$(manifest "${control_args[@]}") || {
+    echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
+    exit 2
+  }
+  # The file may still be a hard link into the seed: give B its own copy first.
+  # printf -v keeps a trailing newline in the name, which $( ) would strip.
+  printf -v rel '%b' "$path"
+  real="${work}/b/${rel}"
+  # A short name beside it: a 255-byte name plus a suffix would be too long.
+  copy=$(mktemp "${real%/*}/.ab-copy.XXXXXX")
+  if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
+    rm -f "$copy"
+    echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
+    exit 2
+  fi
+  # A read-only file gets owner write for each flip only, so tree B keeps its
+  # mode and the compare sees one difference, the content.
+  flip() {
+    if [ -w "$real" ]; then
+      manifest --flip "${work}/b" "$path" >/dev/null
+    else
+      chmod u+w "$real"
+      manifest --flip "${work}/b" "$path" >/dev/null
+      chmod u-w "$real"
+    fi
+  }
+  flip
+  take b.control "${work}/b"
+  crc=0
+  manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
+  flip
+  if [ "$crc" -ne 1 ] || ! grep -qF "DIFF	content	${path}	" "${work}/check.control.txt"; then
+    echo "ERROR: one flipped bit in ${path} did not turn the compare red (exit ${crc}): the compare cannot fail." >&2
+    exit 2
+  fi
+  echo "[OK]   control: one flipped bit in ${path} is red, and restored"
 fi
-echo "[OK]   control: one flipped bit in ${path} is red, and restored"
 
 if $bvb; then label="bash vs bash (no og side ran)"; else label="bash vs og"; fi
 if [ "$red" -eq 0 ]; then
