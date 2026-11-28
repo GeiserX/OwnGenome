@@ -48,6 +48,9 @@ Pipeline helpers (the steps run these):
   og map build --root DIR --run RUN --assets DIR --cache-dir DIR [--predicate-table]
   og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names)
   og map svg [args]
+  og setup install [FLAG] <genome_dir>
+                       setup.sh's installers, run by og (the ported ones)
+  og setup ported FLAG | og setup flags [--long]
   og setup fetch URL DEST [KIND VALUE] | --source ID [--part P] | --get URL OUT
   og setup source ID [--part P] path|url|check|value|bytes
   og setup path
@@ -360,6 +363,15 @@ fn main() -> ExitCode {
         "map" if rest.first().is_some_and(|v| v == "svg") => io(og_map::svg::cli, &rest[1..]),
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
+            // Not io(): an installer runs containers and downloads whose
+            // output goes to the terminal between its own lines.
+            Some("install") => ExitCode::from(og_setup::install::cli(
+                &rest[1..],
+                &mut std::io::stdout(),
+                &mut std::io::stderr(),
+            )),
+            Some("ported") => io(og_setup::install::ported_cli, &rest[1..]),
+            Some("flags") => io(og_setup::install::flags_cli, &rest[1..]),
             Some("fetch") => io(og_setup::fetch::cli, &rest[1..]),
             Some("source") => io(og_setup::fetch::source_cli, &rest[1..]),
             Some("path") => io(og_setup::fetch::path_cli, &rest[1..]),

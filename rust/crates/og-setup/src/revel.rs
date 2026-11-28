@@ -124,14 +124,15 @@ fn convert(zip: &str, tsv: &Path) -> Result<(), ZipError> {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let mut sort = Command::new("sort")
-        .env("LC_ALL", "C")
-        .arg("-T")
-        .arg(dir)
-        .args(["-S", "256M", "-k1,1V", "-k2,2n"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()?;
+    let (mut sort, ticket) = crate::child::spawn(
+        Command::new("sort")
+            .env("LC_ALL", "C")
+            .arg("-T")
+            .arg(dir)
+            .args(["-S", "256M", "-k1,1V", "-k2,2n"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped()),
+    )?;
     let input = sort.stdin.take().expect("piped stdin");
     let mut sorted = sort.stdout.take().expect("piped stdout");
     let (projected, copied) = std::thread::scope(|scope| {
@@ -141,7 +142,9 @@ fn convert(zip: &str, tsv: &Path) -> Result<(), ZipError> {
         drop(sorted);
         (writer.join().expect("REVEL projection thread"), copied)
     });
-    let status = sort.wait()?;
+    let status = sort.wait();
+    ticket.done();
+    let status = status?;
     copied?;
     projected?;
     if !status.success() {

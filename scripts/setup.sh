@@ -322,6 +322,32 @@ if ! $PULL_ONLY; then
   fi
 fi
 
+# og runs the installers it has ported (og setup install, rust/crates/og-setup;
+# og setup flags --long lists who runs each flag): a ported flag is handed to
+# og here with the install folder, and og does the rest. OG_SETUP=bash keeps
+# every installer in this script, the reference tests/setup/ab.sh compares og
+# with. --pull-only needs og now too, built as above.
+case "${OG_SETUP:-og}" in
+  bash) ;;
+  og)
+    if $PULL_ONLY; then SETUP_FLAG=--pull-only
+    elif $SAMPLE_QC_ONLY; then SETUP_FLAG=--sample-qc-data
+    else SETUP_FLAG=${OPT_IN:+--${OPT_IN}}; fi
+    if $PULL_ONLY; then
+      if [ -n "${OG:-}" ]; then
+        [ -x "$OG" ] || { echo "ERROR: OG=${OG} is not an executable og" >&2; exit 1; }
+      elif { ! "${PGP_ROOT}/rust/og.sh" check > /dev/null 2>&1 || ! "${PGP_ROOT}/bin/og" version > /dev/null 2>&1; } \
+          && ! "${PGP_ROOT}/rust/og.sh" install; then
+        echo "ERROR: could not build og, which runs setup.sh --pull-only: run ${0} --og and look at its error." >&2
+        exit 1
+      fi
+    fi
+    if [ -n "$SETUP_FLAG" ] && og_setup ported "$SETUP_FLAG" > /dev/null; then
+      OG_SETUP_SCRIPT=$0 PGP_ROOT=$PGP_ROOT exec "$(og_bin)" setup install "$SETUP_FLAG" "$@"
+    fi ;;
+  *) echo "ERROR: OG_SETUP must be og or bash, got '${OG_SETUP}' (bash runs this script's own installers)" >&2; exit 2 ;;
+esac
+
 # What a full setup could not install, one "what|retry command" entry each.
 # The summary lists them, and a run with any left exits SETUP_PARTIAL_EXIT.
 MISSING=()
