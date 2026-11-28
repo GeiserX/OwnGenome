@@ -1371,6 +1371,55 @@ fn a_file_that_grows_while_it_is_read_stops_the_manifest() {
 }
 
 #[test]
+fn the_log_compare_skips_download_retries_and_nothing_else() {
+    let t = Tmp::new("retries");
+    let log = |name: &str, body: &str| {
+        let p = t.0.join(name);
+        fs::write(&p, body).unwrap();
+        s(&p)
+    };
+    let base = "[OK] Docker is running.\nDownloading the KIR data...\n[OK] KIR data ready\n  Setup finished: core ready\n";
+    let a = log("a.log", base);
+    // A rerun whose server failed twice before it answered: curl's own
+    // message and fetch's retry notice, for a file and for a checksum.
+    let b = log(
+        "b.log",
+        &base.replace(
+            "Downloading the KIR data...\n",
+            "Downloading the KIR data...\ncurl: (22) The requested URL returned error: 503\n  Download attempt 1/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\ncurl: (28) Operation too slow. Less than 1024 bytes/sec transferred the last 60 seconds\n  Download attempt 2/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\ncurl: (56) Recv failure: Connection reset by peer\n  Checksum download attempt 1/3 failed: https://github.com/o/r/releases/download/v1/SHA256SUMS\n",
+        ),
+    );
+    let (code, out, err) = run(&["--compare-logs", &a, &b]);
+    assert_eq!(code, 0, "a retry-only difference is red:\n{out}{err}");
+    let (code, out, err) = run(&["--compare-logs", &b, &a]);
+    assert_eq!(code, 0, "a retry-only difference is red:\n{out}{err}");
+    // Any other extra line is still a difference, even next to retries.
+    for planted in [
+        "[WARN] one more line\n",
+        "  Download attempt 1/3 failed its check: sha256 mismatch. Removed it.\n",
+        "ERROR: could not download https://ftp.ebi.ac.uk/x.tar.gz (the partial file /g/x.part is kept and resumed next time)\n",
+        "  Pull attempt 1/3 failed: ubuntu:24.04 (Docker's message is above)\n",
+        "note: curl: (22) quoted in a sentence\n",
+    ] {
+        let c = log(
+            "c.log",
+            &base.replace(
+                "Downloading the KIR data...\n",
+                &format!(
+                    "Downloading the KIR data...\ncurl: (22) The requested URL returned error: 503\n  Download attempt 1/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\n{planted}"
+                ),
+            ),
+        );
+        let (code, out, _) = run(&["--compare-logs", &a, &c]);
+        assert_eq!(code, 1, "a planted {planted:?} is green:\n{out}");
+        assert!(
+            out.contains(&format!("DIFF\tlog\tB only\t{}", planted.trim_end())),
+            "{out}"
+        );
+    }
+}
+
+#[test]
 fn the_log_compare_masks_times_and_sees_the_missing_list() {
     let t = Tmp::new("logs");
     let log = |name: &str, body: &str| {
