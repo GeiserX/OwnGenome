@@ -14,15 +14,16 @@
 #   side A: OG_SETUP=bash scripts/setup.sh --COMPONENT <install folder>
 #   side B: OG_SETUP=og og setup install --COMPONENT <install folder>
 # Side B calls og directly and never setup.sh, so it cannot fall back to
-# bash; when og has no `setup install`, ab.sh stops before side A, so build
-# an og that has it first. --bash-vs-bash runs side A's command on both
+# bash; when og has no `setup install`, or does not run COMPONENT itself
+# (og setup ported), ab.sh stops before side A. --bash-vs-bash runs side A's command on both
 # sides: it finds the bytes that change from one run to the next (the
 # allowlist's rows), and its result says no og side ran.
 #
 # Both sides install into the same empty folder, WORK_DIR/install, moved to
 # WORK_DIR/a or WORK_DIR/b afterwards, so a path written into a file is the
-# same on both. WORK_DIR must not hold install, a or b; it defaults to a new
-# temporary folder and is kept, with each side's log, exit code, manifests
+# same on both. WORK_DIR must not hold install, a, b or og.before; it
+# defaults to a new temporary folder and is kept, with each side's log,
+# exit code, manifests
 # (and their errors, NAME.manifest.err), and the compares.
 #
 # Environment (anything else exported, such as ARCHAIC_REGIONS, reaches
@@ -94,9 +95,9 @@ else
   work=$(mktemp -d "${TMPDIR:-/tmp}/og-ab.XXXXXX")
 fi
 work=$(cd "$work" && pwd)
-for d in install a b; do
+for d in install a b og.before; do
   if [ -e "${work}/${d}" ]; then
-    echo "ERROR: ${work}/${d} exists; give a WORK_DIR without install, a and b." >&2
+    echo "ERROR: ${work}/${d} exists; give a WORK_DIR without install, a, b and og.before." >&2
     exit 2
   fi
 done
@@ -128,6 +129,12 @@ else
   if [[ "$help" != *"og setup install"* ]]; then
     echo "ERROR: side B runs ${OG} setup install, and that does not run here. ab.sh never runs bash in its place;" >&2
     echo "       build og from this checkout (scripts/setup.sh --og), or pass --bash-vs-bash to compare bash with bash." >&2
+    exit 2
+  fi
+  # A flag og does not run goes back to setup.sh: side B would be bash too.
+  if ! "$OG" setup ported "${words[0]}" >/dev/null 2>&1; then
+    echo "ERROR: og does not run ${words[0]} (og setup ported ${words[0]}): side B would hand it back to setup.sh, so both sides would be bash." >&2
+    echo "       Pass --bash-vs-bash to compare bash with bash." >&2
     exit 2
   fi
 fi
@@ -177,7 +184,7 @@ named() {
 }
 
 # undo_images: remove the tags side A added for an image its log names (an
-# image with no other tag goes with its last one), so side B starts from the
+# image pulled by tag goes with its last tag), so side B starts from the
 # images side A started from: it pulls and pins what side A pulled and
 # pinned, and logs it the same way. A tag another job on the engine added
 # while side A ran is not named in side A's log and is left alone. A tag is
@@ -186,8 +193,12 @@ named() {
 # that gives that tag the way setup.sh's pinned_tag does. Another tag of the
 # same image name, another image's pinned tag at the same digest, or a tag
 # with the name of one logged image and the digest of another, is not side A's.
+# An image pulled by digest keeps its digest reference NAME@sha256:HEX when
+# its last tag goes, so setup finds it and pulls nothing: each digest
+# reference side A's log names is removed too, when its image is one side A
+# added (its id was not on the engine before side A).
 undo_images() {
-  local tag ref name last pinned n=0
+  local tag ref name last pinned id n=0 m=0
   pinned=$(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
     while IFS= read -r ref; do
       name=${ref%@sha256:*} last=${ref%@sha256:*}
@@ -205,6 +216,22 @@ undo_images() {
     "$ENGINE" rmi "$tag" >/dev/null 2>&1 && n=$((n + 1))
   done < <(LC_ALL=C comm -13 "${work}/a.before.images" "${work}/a.images" | grep -v ':<none>' || true)
   echo "   removed ${n} image tag(s) side A added, for side B to add again"
+  while IFS= read -r ref; do
+    id=$("$ENGINE" image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || continue
+    id=${id#sha256:}
+    [ -n "$id" ] || continue
+    # The list shows a short id: the full one starts with it.
+    awk -F'\t' -v i="$id" '$2 != "" && index(i, $2) == 1 { f = 1 } END { exit !f }' "${work}/a.images" || continue
+    ! awk -F'\t' -v i="$id" '$2 != "" && index(i, $2) == 1 { f = 1 } END { exit !f }' "${work}/a.before.images" || continue
+    "$ENGINE" rmi "$ref" >/dev/null 2>&1 && m=$((m + 1))
+  done < <(grep -oE '[[:alnum:]][[:alnum:]_./:-]*@sha256:[0-9a-f]{64}' "${work}/a.log" |
+    while IFS= read -r ref; do
+      name=${ref%@sha256:*} last=${ref%@sha256:*}
+      last=${last##*/}
+      [[ "$last" == *:* ]] && name=${name%:*}
+      printf '%s@sha256:%s\n' "$name" "${ref##*@sha256:}"
+    done | LC_ALL=C sort -u || true)
+  if [ "$m" -gt 0 ]; then echo "   removed ${m} digest reference(s) of images side A pulled"; fi
 }
 
 # delta SIDE: what the side changed in the image list, "+" added and "-"

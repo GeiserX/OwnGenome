@@ -8,9 +8,10 @@
 //! A live one is waited for, five seconds at a time. The lock goes when its
 //! [`Lock`] is dropped, and when SIGINT, SIGTERM or SIGHUP ends og (Ctrl-C,
 //! a kill, a closed terminal): the shell's `trap 'lock_release ...' EXIT`
-//! removed it then too. A signal ignored when og started (nohup's SIGHUP) stays
-//! ignored, as bash keeps it. A lock left by a run killed with SIGKILL is
-//! taken over as stale.
+//! removed it then too, after the command it was waiting for had exited,
+//! so og first stops and reaps its children ([`crate::child`]). A signal
+//! ignored when og started (nohup's SIGHUP) stays ignored, as bash keeps
+//! it. A lock left by a run killed with SIGKILL is taken over as stale.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -40,8 +41,9 @@ fn held() -> MutexGuard<'static, Vec<PathBuf>> {
 }
 
 /// Once per process, before the first lock is made: on SIGINT, SIGTERM or
-/// SIGHUP, remove every held lock and exit 128 + the signal (130, 143,
-/// 129), the status a shell gives a script those signals end. A signal
+/// SIGHUP, stop and reap every child og started, then remove every held
+/// lock and exit 128 + the signal (130, 143, 129), the status a shell gives
+/// a script those signals end. A signal
 /// this process ignored when it started stays ignored, as bash keeps it:
 /// nohup's SIGHUP, the SIGINT of a job a script started with `&`.
 fn on_signals() -> std::io::Result<()> {
@@ -63,6 +65,8 @@ fn on_signals() -> std::io::Result<()> {
                 .name("og-lock-signals".to_owned())
                 .spawn(move || {
                     if let Some(sig) = signals.forever().next() {
+                        // No child is left to write under a lock that goes.
+                        crate::child::stop_all(sig);
                         // Held to the end, so no lock is made or dropped
                         // after the list is emptied.
                         let mut h = held();
@@ -94,12 +98,12 @@ fn ignored_at_start() -> Vec<i32> {
             .map(|mask| (1..=64).filter(|n| mask >> (n - 1) & 1 == 1).collect())
             .unwrap_or_default();
     }
-    let Ok(o) = std::process::Command::new("bash")
-        .args(["-c", "trap -p"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-    else {
+    let Ok(o) = crate::child::output(
+        std::process::Command::new("bash")
+            .args(["-c", "trap -p"])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null()),
+    ) else {
         return Vec::new();
     };
     String::from_utf8_lossy(&o.stdout)
@@ -178,9 +182,23 @@ pub fn acquire(lock: &Path, out: &mut dyn Write) -> std::io::Result<Lock> {
         }
         if let Some(why) = stale(lock, SystemTime::now()) {
             let aside = PathBuf::from(format!("{}.stale.{}", lock.display(), std::process::id()));
-            if std::fs::rename(lock, &aside).is_ok() {
-                let _ = writeln!(out, "  Removing stale lock {} ({why}).", lock.display());
-                let _ = std::fs::remove_dir_all(&aside);
+            match std::fs::rename(lock, &aside) {
+                Ok(()) => {
+                    let _ = writeln!(out, "  Removing stale lock {} ({why}).", lock.display());
+                    let _ = std::fs::remove_dir_all(&aside);
+                }
+                // Another waiter took it over first.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // A lock that cannot be moved aside would be tried forever.
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        e.kind(),
+                        format!(
+                            "cannot remove the stale lock {} ({why}): {e}",
+                            lock.display()
+                        ),
+                    ));
+                }
             }
             continue;
         }
@@ -201,11 +219,12 @@ pub fn acquire(lock: &Path, out: &mut dyn Write) -> std::io::Result<Lock> {
             "  Waiting for {} (held by process {by})...",
             lock.display()
         );
-        let ran = std::process::Command::new("sleep")
-            .arg("5")
-            .stdin(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success());
+        let ran = crate::child::status(
+            std::process::Command::new("sleep")
+                .arg("5")
+                .stdin(std::process::Stdio::null()),
+        )
+        .is_ok_and(|s| s.success());
         if !ran {
             std::thread::sleep(Duration::from_secs(5));
         }
@@ -319,6 +338,125 @@ mod tests {
                 "cannot create the lock {}: Permission denied (os error 13)",
                 lock.display()
             )
+        );
+    }
+
+    /// A stale lock that cannot be moved aside (its folder is read-only)
+    /// is an error at once, naming the lock: acquire tried it again with
+    /// no wait and no message, forever.
+    #[test]
+    fn a_stale_lock_that_cannot_be_moved_aside_is_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        if rustix::process::geteuid().is_root() {
+            return; // root renames inside a read-only folder
+        }
+        let d = tmp("stale-ro");
+        let ro = d.join("ro");
+        std::fs::create_dir(&ro).unwrap();
+        let lock = ro.join("x.lock");
+        std::fs::create_dir(&lock).unwrap();
+        std::fs::write(lock.join("pid"), "2147483646\n").unwrap();
+        std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let l = lock.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(acquire(&l, &mut std::io::sink()).map(drop));
+        });
+        let got = rx.recv_timeout(Duration::from_secs(20));
+        std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        let e = got
+            .expect("acquire did not return for a stale lock it cannot move aside")
+            .expect_err("acquire took a lock it could not move aside");
+        assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied, "{e}");
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "cannot remove the stale lock {} (process 2147483646 is gone): Permission denied (os error 13)",
+                lock.display()
+            )
+        );
+    }
+
+    /// A signal stops the child og is waiting for (a download, a container
+    /// run) and removes the lock only once that child is gone, as the
+    /// shell's EXIT trap runs only after its command: a child left running
+    /// would write under a lock the next run takes. The thread that waited
+    /// for the child goes no further. This test runs itself as og.
+    #[test]
+    fn a_signal_stops_the_children_before_the_lock_goes() {
+        use std::io::BufRead;
+        use std::process::{Command, Stdio};
+        const CHILD: &str = "OG_LOCK_TEST_CHILDREN";
+        if let Some(dir) = std::env::var_os(CHILD) {
+            let dir = PathBuf::from(dir);
+            let _held = acquire(&dir.join("x.lock"), &mut std::io::sink()).unwrap();
+            println!("lock-held");
+            let _ = std::io::stdout().flush();
+            let _ = crate::child::status(
+                Command::new("bash")
+                    .args([
+                        "-c",
+                        "echo $$ > \"$0.tmp\" && mv \"$0.tmp\" \"$0\" && exec sleep 60",
+                    ])
+                    .arg(dir.join("child.pid"))
+                    // Its own stdio: a child holding og's stdout open
+                    // would keep the test reading until it ends by itself.
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null()),
+            );
+            println!("went on after its child");
+            let _ = std::io::stdout().flush();
+            std::process::exit(9);
+        }
+        if ignored_at_start().contains(&rustix::process::Signal::TERM.as_raw()) {
+            return;
+        }
+        let d = tmp("children");
+        let mut og = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "lock::tests::a_signal_stops_the_children_before_the_lock_goes",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, &d)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut lines = std::io::BufReader::new(og.stdout.take().unwrap()).lines();
+        assert!(lines.any(|l| l.is_ok_and(|l| l.contains("lock-held"))));
+        let pid_file = d.join("child.pid");
+        let start = std::time::Instant::now();
+        while !pid_file.exists() && start.elapsed() < Duration::from_secs(20) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let child: i32 = std::fs::read_to_string(&pid_file)
+            .expect("the child never started")
+            .trim()
+            .parse()
+            .unwrap();
+        let child = rustix::process::Pid::from_raw(child).unwrap();
+        let og_pid = rustix::process::Pid::from_raw(og.id() as i32).unwrap();
+        rustix::process::kill_process(og_pid, rustix::process::Signal::TERM).unwrap();
+        let status = og.wait().unwrap();
+        // Looked at the moment og is gone: its child must be gone already.
+        let left = rustix::process::test_kill_process(child).is_ok();
+        if left {
+            let _ = rustix::process::kill_process(child, rustix::process::Signal::KILL);
+        }
+        let rest: Vec<String> = lines.map_while(Result::ok).collect();
+        let lock_left = d.join("x.lock").exists();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(!left, "og exited and left its child running");
+        assert_eq!(status.code(), Some(143), "{status}");
+        assert!(!lock_left, "the lock stayed");
+        assert!(
+            !rest.iter().any(|l| l.contains("went on after its child")),
+            "the waiting thread went on: {rest:?}"
         );
     }
 

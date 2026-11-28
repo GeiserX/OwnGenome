@@ -236,23 +236,34 @@ const USAGE: &[&str] = &[
 ];
 
 /// The usage text of SCRIPT, with versions.env's values from VERSIONS.
+/// Only the template's own `$0` and `${NAME}` are expanded: a value that
+/// holds `${...}` is written as it is.
 pub fn usage(script: &str, versions: &dyn Fn(&str) -> String) -> String {
     let mut s = String::new();
     for line in USAGE {
-        let mut l = line.replace("$0", script);
-        while let Some(i) = l.find("${") {
-            let Some(j) = l[i..].find('}') else { break };
-            let inner = &l[i + 2..i + j];
-            let name = inner.split(":-").next().unwrap_or(inner);
-            let v = match name {
-                "ANNOTSV_TERMS" => components::ANNOTSV_TERMS.to_owned(),
-                "EXOMISER_TERMS" => components::EXOMISER_TERMS.to_owned(),
-                "UCSC_CHAIN_TERMS" => components::UCSC_CHAIN_TERMS.to_owned(),
-                n => versions(n),
-            };
-            l.replace_range(i..i + j + 1, &v);
+        let mut rest = *line;
+        while let Some(i) = rest.find('$') {
+            s.push_str(&rest[..i]);
+            let at = &rest[i..];
+            if let Some(after) = at.strip_prefix("$0") {
+                s.push_str(script);
+                rest = after;
+            } else if let Some(j) = at.strip_prefix("${").and_then(|a| a.find('}')) {
+                let inner = &at[2..2 + j];
+                let name = inner.split(":-").next().unwrap_or(inner);
+                s.push_str(&match name {
+                    "ANNOTSV_TERMS" => components::ANNOTSV_TERMS.to_owned(),
+                    "EXOMISER_TERMS" => components::EXOMISER_TERMS.to_owned(),
+                    "UCSC_CHAIN_TERMS" => components::UCSC_CHAIN_TERMS.to_owned(),
+                    n => versions(n),
+                });
+                rest = &at[3 + j..];
+            } else {
+                s.push('$');
+                rest = &at[1..];
+            }
         }
-        s.push_str(&l);
+        s.push_str(rest);
         s.push('\n');
     }
     s
@@ -337,7 +348,10 @@ pub fn parse(
     }
     let after: Vec<String> = rest.iter().skip(shift).cloned().collect();
     // One flag at a time: setup.sh would read a second one as the folder.
-    if let Some(second) = after.iter().find(|a| a.starts_with("--")) {
+    // A flag og hands back to setup.sh keeps setup.sh's reading.
+    if ported(mode.key())
+        && let Some(second) = after.iter().find(|a| a.starts_with("--"))
+    {
         let by = if first.starts_with("--") {
             first.clone()
         } else {
@@ -382,7 +396,7 @@ pub fn ported(key: &str) -> bool {
     .any(|p| p.contains(&key))
 }
 
-/// A word as bash's `printf %q` writes it.
+/// A word as bash's `printf %q` writes it (bash 5.2, in a UTF-8 locale).
 pub fn shell_quote(s: &str) -> String {
     if s.is_empty() {
         return "''".to_owned();
@@ -391,12 +405,23 @@ pub fn shell_quote(s: &str) -> String {
         let mut o = String::from("$'");
         for c in s.chars() {
             match c {
-                '\n' => o.push_str("\\n"),
+                '\x07' => o.push_str("\\a"),
+                '\x08' => o.push_str("\\b"),
                 '\t' => o.push_str("\\t"),
+                '\n' => o.push_str("\\n"),
+                '\x0b' => o.push_str("\\v"),
+                '\x0c' => o.push_str("\\f"),
                 '\r' => o.push_str("\\r"),
+                '\x1b' => o.push_str("\\E"),
                 '\'' => o.push_str("\\'"),
                 '\\' => o.push_str("\\\\"),
-                c if c.is_control() => o.push_str(&format!("\\{:03o}", c as u32)),
+                // Each byte of its UTF-8 form: U+0085 is $'\302\205',
+                // which $'...' turns back into those two bytes.
+                c if c.is_control() => {
+                    for b in c.to_string().bytes() {
+                        o.push_str(&format!("\\{b:03o}"));
+                    }
+                }
                 c => o.push(c),
             }
         }
@@ -428,9 +453,14 @@ pub struct Vars {
 }
 
 impl Vars {
+    /// The process's environment. A variable whose name or value is not
+    /// UTF-8 is left out (none of setup's settings can be one), where
+    /// `std::env::vars` would panic.
     pub fn from_process() -> Vars {
         Vars {
-            map: std::env::vars().collect(),
+            map: std::env::vars_os()
+                .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+                .collect(),
         }
     }
 
@@ -630,13 +660,14 @@ impl Run {
     /// `_get URL -` of common.sh with its errors discarded: the body, or
     /// `None` when the transfer failed.
     pub fn get_quiet(&self, url: &str) -> Option<Vec<u8>> {
-        let o = Command::new(&self.og)
-            .args(["setup", "fetch", "--get", url, "-"])
-            .env("PGP_ROOT", &self.root)
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()?;
+        let o = crate::child::output(
+            Command::new(&self.og)
+                .args(["setup", "fetch", "--get", url, "-"])
+                .env("PGP_ROOT", &self.root)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null()),
+        )
+        .ok()?;
         o.status.success().then_some(o.stdout)
     }
 }
@@ -822,7 +853,7 @@ fn hand_to_bash(root: &Path, args: &[String], err: &mut dyn Write) -> u8 {
     {
         c.env("OG", me);
     }
-    match c.status() {
+    match crate::child::status(&mut c) {
         Ok(s) => s.code().map_or(1, |c| u8::try_from(c).unwrap_or(1)),
         Err(e) => {
             let _ = writeln!(err, "ERROR: cannot run {}: {e}", script.display());

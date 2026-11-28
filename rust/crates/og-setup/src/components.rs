@@ -327,7 +327,23 @@ pub const TABLE: &[Component] = &[
             "--annotation-scores",
             "13",
             "CADD, masked SpliceAI, REVEL and AlphaMissense",
-            &["annotation_scores"],
+            // The masked SpliceAI files are what this flag downloads; a
+            // user's own raw SpliceAI files beside them take their place in
+            // step 13, which this list cannot say.
+            &[
+                "annotations/whole_genome_SNVs.tsv.gz",
+                "annotations/whole_genome_SNVs.tsv.gz.tbi",
+                "annotations/gnomad.genomes.r4.0.indel.tsv.gz",
+                "annotations/gnomad.genomes.r4.0.indel.tsv.gz.tbi",
+                "annotations/spliceai_scores.masked.snv.hg38.vcf.gz",
+                "annotations/spliceai_scores.masked.snv.hg38.vcf.gz.tbi",
+                "annotations/spliceai_scores.masked.indel.hg38.vcf.gz",
+                "annotations/spliceai_scores.masked.indel.hg38.vcf.gz.tbi",
+                "annotations/revel_grch38.tsv.gz",
+                "annotations/revel_grch38.tsv.gz.tbi",
+                "annotations/AlphaMissense_hg38.tsv.gz",
+                "annotations/AlphaMissense_hg38.tsv.gz.tbi",
+            ],
             &[],
         ),
         &ANNOTATION_SCORE_TERMS,
@@ -475,13 +491,23 @@ impl Component {
 
     /// The installed paths, expanded: `${NAME}` from versions.env and
     /// `{ref}`, `{ref_stem}`, `{ref_name}` from REF (the reference FASTA),
-    /// each under GENOME unless it names the reference.
+    /// each under GENOME unless it names the reference. MEGAnE's k-mer set
+    /// is where `MEGANE_KMERS` says when it is set (a relative path under
+    /// GENOME), with its `.mi` beside it, as setup.sh's megane_kmers_path.
     pub fn installed_paths(
         &self,
         ctx: &Ctx,
         genome: &Path,
         reference: &Path,
     ) -> Result<Vec<PathBuf>, String> {
+        if self.key == "megane-kmers"
+            && let Some(mk) = ctx.setting("MEGANE_KMERS")
+        {
+            let mk = genome.join(mk);
+            let t = mk.to_string_lossy();
+            let mi = format!("{}.mi", t.strip_suffix(".mk").unwrap_or(&t));
+            return Ok(vec![mk.clone(), PathBuf::from(mi)]);
+        }
         let r = reference.to_string_lossy().into_owned();
         let stem = match r.rfind('.') {
             Some(i) if !r[i..].contains('/') => r[..i].to_owned(),
