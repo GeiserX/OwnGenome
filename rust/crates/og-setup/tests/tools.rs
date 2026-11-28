@@ -628,3 +628,58 @@ fn the_masked_reference_lies_beside_its_source() {
         "/g/ref_maskedGRC.fasta"
     );
 }
+
+// --- what the table says the built installers install -------------------------------
+
+/// The installed paths components.rs gives FLAG, under /g with the
+/// default reference.
+fn table_paths(flag: &str, g: &Path) -> Vec<String> {
+    let gs = g.to_string_lossy().into_owned();
+    let ctx = og_setup::fetch::Ctx::new(
+        &root(),
+        Box::new(move |k| (k == "GENOME_DIR").then(|| gs.clone())),
+    )
+    .unwrap();
+    let reference = g.join("reference/GRCh38_no_alt_analysis_set.fasta");
+    og_setup::components::by_flag(flag)
+        .unwrap()
+        .installed_paths(&ctx, g, &reference)
+        .unwrap()
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// No download writes what these installers install (tests/core.rs leaves
+/// them out for that), so the table's paths are tied here to the files
+/// each installer writes: the names its own code builds, or the files a
+/// whole run left.
+#[test]
+fn the_built_installers_name_the_files_they_write() {
+    let g = Path::new("/g");
+    let reference = "/g/reference/GRCh38_no_alt_analysis_set.fasta";
+    // --masked-reference: the masked FASTA, its .fai and its .dict.
+    let (dest, dict, _) = tools::masked_paths(reference, &pin("GRC_EXCLUSIONS_URL"));
+    assert_eq!(
+        table_paths("--masked-reference", g),
+        [dest.clone(), format!("{dest}.fai"), dict]
+    );
+    // --megane-kmers: the .mk where megane_kmers_path puts it, and its .mi.
+    let mk = tools::megane_kmers_path(reference, None, "/g");
+    let mi = format!("{}.mi", mk.strip_suffix(".mk").unwrap());
+    assert_eq!(table_paths("--megane-kmers", g), [mk, mi]);
+    // --bwa-index: the five files an index needs to count as there.
+    let bwa: Vec<String> = tools::BWA_INDEX_EXTS
+        .iter()
+        .map(|e| format!("{reference}.{e}"))
+        .collect();
+    assert_eq!(table_paths("--bwa-index", g), bwa);
+    // --pypgx-data: the bundle a run at the pinned tag leaves, on both sides.
+    let d = scratch("pypgx-table");
+    for ((code, _, err), g) in pypgx_both(&d, &pin("PYPGX_BUNDLE_COMMIT"), &|_| {}) {
+        assert_eq!(code, 0, "{err}");
+        for f in table_paths("--pypgx-data", &g) {
+            assert!(Path::new(&f).exists(), "{f} is not there after the install");
+        }
+    }
+}

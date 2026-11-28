@@ -23,6 +23,7 @@
 //! and when SIGINT, SIGTERM or SIGHUP ends og, as the trap did.
 
 use super::{Run, nonempty, sha256};
+use crate::child;
 use crate::engine::{self, Place, RunIn};
 use crate::images::{self, Engine};
 use crate::lock;
@@ -225,14 +226,15 @@ fn mv(from: &Path, to: &Path, err: &mut dyn Write) -> bool {
         Ok(()) => true,
         Err(e) if e.raw_os_error() == Some(rustix::io::Errno::XDEV.raw_os_error()) => {
             let _ = std::io::stdout().flush();
-            Command::new("mv")
-                .arg("-f")
-                .arg("--")
-                .arg(from)
-                .arg(to)
-                .stdin(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success())
+            child::status(
+                Command::new("mv")
+                    .arg("-f")
+                    .arg("--")
+                    .arg(from)
+                    .arg(to)
+                    .stdin(Stdio::null()),
+            )
+            .is_ok_and(|s| s.success())
         }
         Err(e) => {
             let _ = writeln!(
@@ -318,11 +320,7 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 fn host(prog: &str, args: &[&str], out: &mut dyn Write) -> bool {
     let _ = out.flush();
     let _ = std::io::stdout().flush();
-    Command::new(prog)
-        .args(args)
-        .stdin(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+    child::status(Command::new(prog).args(args).stdin(Stdio::null())).is_ok_and(|s| s.success())
 }
 
 /// `run_in [--net] --rw DIR... REST`: the engine's exit code.
@@ -374,12 +372,12 @@ fn run_in_capture(
             return (1, String::new());
         }
     };
-    match Command::new(&e.cmd)
-        .args(&argv)
-        .stdin(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-    {
+    match child::output(
+        Command::new(&e.cmd)
+            .args(&argv)
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::inherit()),
+    ) {
         Ok(o) => (
             o.status.code().unwrap_or(1),
             String::from_utf8_lossy(&o.stdout)
@@ -642,13 +640,14 @@ pub fn done_with(r: &Run, f: &Path, out: &mut dyn Write) {
 fn need_og(r: &Run, what: &str, out: &mut dyn Write) -> bool {
     let og_sh = r.root.join("rust/og.sh");
     let _ = out.flush();
-    let quiet = Command::new(&og_sh)
-        .args(["check", "--required"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
+    let quiet = child::status(
+        Command::new(&og_sh)
+            .args(["check", "--required"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    )
+    .is_ok_and(|s| s.success());
     if quiet || host(&show(&og_sh), &["install"], out) {
         return true;
     }
@@ -1745,10 +1744,7 @@ pub fn locityper_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         return 1;
     }
     let _ = out.flush();
-    let du = Command::new("du")
-        .args(["-sh", &dir])
-        .stdin(Stdio::null())
-        .output()
+    let du = child::output(Command::new("du").args(["-sh", &dir]).stdin(Stdio::null()))
         .map(|o| {
             String::from_utf8_lossy(&o.stdout)
                 .split('\t')
@@ -1767,9 +1763,13 @@ pub fn locityper_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
 
 // --- --bwa-index --------------------------------------------------------------------
 
+/// The five files of a classic BWA index, by extension after the
+/// reference's name.
+pub const BWA_INDEX_EXTS: [&str; 5] = ["amb", "ann", "bwt", "pac", "sa"];
+
 /// has_bwa_index PREFIX: the five files of a classic BWA index, not empty.
 fn has_bwa_index(prefix: &str) -> bool {
-    ["amb", "ann", "bwt", "pac", "sa"]
+    BWA_INDEX_EXTS
         .iter()
         .all(|ext| nonempty(&p(&format!("{prefix}.{ext}"))))
 }
@@ -1851,7 +1851,7 @@ fn git(r: &Run, args: &[&str], quiet: bool, out: &mut dyn Write) -> Option<Strin
     if quiet {
         cmd.stderr(Stdio::null());
     }
-    let o = cmd.output().ok()?;
+    let o = child::output(&mut cmd).ok()?;
     o.status.success().then(|| {
         String::from_utf8_lossy(&o.stdout)
             .trim_end_matches('\n')
@@ -1906,7 +1906,7 @@ pub fn pypgx_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         clone.env("PATH", path);
     }
     let _ = std::io::stdout().flush();
-    if !clone.status().is_ok_and(|s| s.success()) {
+    if !child::status(&mut clone).is_ok_and(|s| s.success()) {
         return 1;
     }
     let head = git(r, &["-C", &bundle, "rev-parse", "HEAD"], false, out).unwrap_or_default();

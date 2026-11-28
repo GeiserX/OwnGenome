@@ -527,10 +527,44 @@ fn source_paths(c: &Component, ctx: &Ctx, s: &Sources) -> Vec<PathBuf> {
     v
 }
 
+/// The files a raw download of C feeds (its row's `installed` column, a
+/// stamp's words left out): what unpacking it writes.
+fn fed_paths(c: &Component, ctx: &Ctx, s: &Sources, genome: &Path) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    for r in c.sources(s) {
+        let parts: Vec<Option<&str>> = if r.parts.is_empty() {
+            vec![None]
+        } else {
+            r.parts.iter().map(|p| Some(p.as_str())).collect()
+        };
+        for part in parts {
+            for f in &r.installed {
+                let e = ctx.expand(f, part).unwrap();
+                v.push(genome.join(e.split('#').next().unwrap_or_default()));
+            }
+        }
+    }
+    v
+}
+
+/// The installers that build their files from the reference or install a
+/// tool, so no download writes what they install: tests/tools.rs ties
+/// each one's installed paths to the files its installer writes.
+const BUILT: [&str; 6] = [
+    "--masked-reference",
+    "--megane-kmers",
+    "--locityper-data",
+    "--bwa-index",
+    "--cyrius",
+    "--pypgx-data",
+];
+
 /// The installed paths of C that none of its sources writes: a path of a
-/// source, or a file inside a source that is a folder.
+/// source, a file inside a source that is a folder, or a file a raw
+/// download feeds.
 fn unwritten(c: &Component, ctx: &Ctx, s: &Sources, genome: &Path) -> Vec<PathBuf> {
-    let written = source_paths(c, ctx, s);
+    let mut written = source_paths(c, ctx, s);
+    written.extend(fed_paths(c, ctx, s, genome));
     let reference = genome.join("reference/GRCh38_no_alt_analysis_set.fasta");
     c.installed_paths(ctx, genome, &reference)
         .unwrap()
@@ -548,13 +582,17 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
     let genome = Path::new("/g");
     let ctx = ctx_with("/g");
     let s = Sources::read(&root()).unwrap();
-    let mut seen = 0;
+    let (mut seen, mut built) = (0, 0);
     for c in components::TABLE {
         if !c.ported() || c.kind != CKind::Installer {
             continue;
         }
-        seen += 1;
         assert!(!c.installed.is_empty(), "{} has no installed paths", c.flag);
+        if BUILT.contains(&c.flag) {
+            built += 1;
+            continue;
+        }
+        seen += 1;
         assert!(!c.sources(&s).is_empty(), "{} has no source row", c.flag);
         let bad = unwritten(c, &ctx, &s, genome);
         assert!(
@@ -563,7 +601,16 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
             c.flag
         );
     }
-    assert_eq!(seen, 7, "the seven small data installers");
+    assert!(
+        seen >= 7,
+        "the seven small data installers at least, got {seen}"
+    );
+    // Every name in BUILT is an installer og runs, so none hides a typo.
+    assert_eq!(
+        built,
+        BUILT.len(),
+        "BUILT names an installer og does not run"
+    );
     // The check can fail: a row naming a path nothing writes.
     let planted = Component {
         installed: &["reference/viral-${VIRAL_REF_VERSION}/viral_genome.fa"],
