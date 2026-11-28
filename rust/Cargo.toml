@@ -54,6 +54,9 @@ shlex = "1"
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # statvfs(2) without unsafe code.
 rustix = { version = "1", default-features = false, features = ["std", "fs", "system"] }
+# The installers remove their locks on Ctrl-C, a kill or a closed terminal
+# (og-setup lock.rs); its iterator needs no unsafe code here.
+signal-hook = { version = "0.4", default-features = false, features = ["iterator"] }
 # Pure Rust deflate for BGZF (no C to cross-compile); the backend noodles-bgzf uses.
 zlib-rs = { version = "0.6", default-features = false, features = ["std"] }
 # htslib built from source and linked statically. curl, S3 and GCS are

@@ -350,11 +350,13 @@ fn mkdir(dir: &Path, err: &mut dyn Write) -> bool {
     }
 }
 
+/// The lock of an installer, or `None` after `ERROR: cannot create the lock
+/// ...` (or `cannot write .../pid`) on ERR; the installer then exits 1.
 fn hold(lock_path: &Path, out: &mut dyn Write, err: &mut dyn Write) -> Option<lock::Lock> {
     match lock::acquire(lock_path, out) {
         Ok(l) => Some(l),
         Err(e) => {
-            let _ = writeln!(err, "ERROR: cannot write {}/pid: {e}", show(lock_path));
+            let _ = writeln!(err, "ERROR: {e}");
             None
         }
     }

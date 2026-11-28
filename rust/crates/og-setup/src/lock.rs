@@ -6,10 +6,14 @@
 //! folder and writing the pid). A stale lock is renamed before it is
 //! removed, so of two waiters that judged it stale only one takes it over.
 //! A live one is waited for, five seconds at a time. The lock goes when its
-//! [`Lock`] is dropped.
+//! [`Lock`] is dropped, and when SIGINT, SIGTERM or SIGHUP ends og (Ctrl-C,
+//! a kill, a closed terminal): the shell's `trap 'lock_release ...' EXIT`
+//! removed it then too. A lock left by a run killed with SIGKILL is
+//! taken over as stale.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, SystemTime};
 
 /// A held lock; dropping it removes the folder (lock_release).
@@ -20,8 +24,48 @@ pub struct Lock {
 
 impl Drop for Lock {
     fn drop(&mut self) {
+        let mut h = held();
         let _ = std::fs::remove_dir_all(&self.path);
+        h.retain(|p| p != &self.path);
     }
+}
+
+/// The locks this process holds, for [`on_signals`].
+static HELD: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn held() -> MutexGuard<'static, Vec<PathBuf>> {
+    HELD.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Once per process, before the first lock is made: on SIGINT, SIGTERM or
+/// SIGHUP, remove every held lock and exit 128 + the signal (130, 143,
+/// 129), the status a shell gives a script those signals end.
+fn on_signals() -> std::io::Result<()> {
+    use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+    static ARMED: OnceLock<Result<(), String>> = OnceLock::new();
+    ARMED
+        .get_or_init(|| {
+            let mut signals = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP])
+                .map_err(|e| e.to_string())?;
+            std::thread::Builder::new()
+                .name("og-lock-signals".to_owned())
+                .spawn(move || {
+                    if let Some(sig) = signals.forever().next() {
+                        // Held to the end, so no lock is made or dropped
+                        // after the list is emptied.
+                        let mut h = held();
+                        for p in h.drain(..) {
+                            let _ = std::fs::remove_dir_all(&p);
+                        }
+                        std::process::exit(128 + sig);
+                    }
+                })
+                .map(drop)
+                .map_err(|e| e.to_string())
+        })
+        .clone()
+        .map_err(|e| std::io::Error::other(format!("cannot watch for signals: {e}")))
 }
 
 /// Whether a process with this pid text is alive, as `kill -0 PID` says:
@@ -59,10 +103,29 @@ pub fn stale(lock: &Path, now: SystemTime) -> Option<String> {
 
 /// lock_acquire LOCK: wait for LOCK, take it over when it is stale, and hold
 /// it with this process's id. Messages go to OUT, as the shell's echo did.
+///
+/// Only a lock that is there already is waited for. Any other reason the
+/// folder cannot be made (its parent is not writable, the disk is
+/// read-only) is an error at once, `cannot create the lock LOCK: ...`.
+/// lock_acquire waits forever in that case, printing that the lock is held.
 pub fn acquire(lock: &Path, out: &mut dyn Write) -> std::io::Result<Lock> {
+    on_signals()?;
     loop {
-        if std::fs::create_dir(lock).is_ok() {
-            break;
+        // Made and listed under the list's mutex, so a signal removes
+        // every lock this process made and none it did not.
+        let mut h = held();
+        match std::fs::create_dir(lock) {
+            Ok(()) => {
+                h.push(lock.to_path_buf());
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => drop(h),
+            Err(e) => {
+                return Err(std::io::Error::new(
+                    e.kind(),
+                    format!("cannot create the lock {}: {e}", lock.display()),
+                ));
+            }
         }
         if let Some(why) = stale(lock, SystemTime::now()) {
             let aside = PathBuf::from(format!("{}.stale.{}", lock.display(), std::process::id()));
@@ -79,14 +142,14 @@ pub fn acquire(lock: &Path, out: &mut dyn Write) -> std::io::Result<Lock> {
         let pid = std::fs::read_to_string(lock.join("pid"))
             .map(|p| p.trim_end_matches('\n').to_owned())
             .unwrap_or_default();
-        let held = if pid.is_empty() {
+        let by = if pid.is_empty() {
             "starting"
         } else {
             pid.as_str()
         };
         let _ = writeln!(
             out,
-            "  Waiting for {} (held by process {held})...",
+            "  Waiting for {} (held by process {by})...",
             lock.display()
         );
         let ran = std::process::Command::new("sleep")
@@ -98,11 +161,16 @@ pub fn acquire(lock: &Path, out: &mut dyn Write) -> std::io::Result<Lock> {
             std::thread::sleep(Duration::from_secs(5));
         }
     }
-    let held = Lock {
+    let guard = Lock {
         path: lock.to_path_buf(),
     };
-    std::fs::write(lock.join("pid"), format!("{}\n", std::process::id()))?;
-    Ok(held)
+    std::fs::write(lock.join("pid"), format!("{}\n", std::process::id())).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("cannot write {}/pid: {e}", lock.display()),
+        )
+    })?;
+    Ok(guard)
 }
 
 #[cfg(test)]
@@ -168,6 +236,91 @@ mod tests {
             stale(&lock, now + Duration::from_secs(62)).as_deref(),
             Some("no owner after a minute")
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A folder this user may not write into is no contention: acquire
+    /// says so at once instead of trying again (it spun with no message).
+    #[test]
+    fn a_lock_that_cannot_be_made_is_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        if rustix::process::geteuid().is_root() {
+            return; // root writes into a read-only folder
+        }
+        let d = tmp("readonly");
+        let ro = d.join("ro");
+        std::fs::create_dir(&ro).unwrap();
+        std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let lock = ro.join("x.lock");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let l = lock.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(acquire(&l, &mut std::io::sink()).map(drop));
+        });
+        let got = rx.recv_timeout(Duration::from_secs(20));
+        std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        let e = got
+            .expect("acquire did not return for a folder it may not write into")
+            .expect_err("acquire took a lock it could not make");
+        assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied, "{e}");
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "cannot create the lock {}: Permission denied (os error 13)",
+                lock.display()
+            )
+        );
+    }
+
+    /// Ctrl-C, a kill or a closed terminal removes the lock and exits
+    /// 128 + the signal, as setup.sh's `trap 'lock_release ...' EXIT` does.
+    /// This test runs itself as the child that holds the lock.
+    #[test]
+    fn a_signal_removes_the_held_lock() {
+        use std::io::BufRead;
+        use std::process::{Command, Stdio};
+        const CHILD: &str = "OG_LOCK_TEST_HOLD";
+        if let Some(lock) = std::env::var_os(CHILD) {
+            let _held = acquire(Path::new(&lock), &mut std::io::sink()).unwrap();
+            println!("lock-held");
+            let _ = std::io::stdout().flush();
+            std::thread::sleep(Duration::from_secs(60));
+            std::process::exit(9);
+        }
+        let d = tmp("signal");
+        for (sig, code) in [
+            (rustix::process::Signal::INT, 130),
+            (rustix::process::Signal::TERM, 143),
+            (rustix::process::Signal::HUP, 129),
+        ] {
+            let lock = d.join(format!("{code}.lock"));
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "lock::tests::a_signal_removes_the_held_lock",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, &lock)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+            assert!(
+                lines.any(|l| l.is_ok_and(|l| l.contains("lock-held"))),
+                "the child never held {}",
+                lock.display()
+            );
+            assert!(lock.join("pid").exists());
+            let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();
+            rustix::process::kill_process(pid, sig).unwrap();
+            let status = child.wait().unwrap();
+            assert_eq!(status.code(), Some(code), "after {sig:?}: {status}");
+            assert!(!lock.exists(), "{sig:?} left {}", lock.display());
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 
