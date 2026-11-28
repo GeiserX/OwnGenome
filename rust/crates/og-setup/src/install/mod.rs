@@ -841,10 +841,14 @@ fn disk_check(run: &Run, p: &Parsed, err: &mut dyn Write) -> Option<u8> {
     (code != 0).then_some(1)
 }
 
-/// Runs scripts/setup.sh with OG_SETUP=bash and ARGS; its exit status.
-/// OG names this og unless it is set already, so setup.sh uses the og that
-/// runs it (a dev build too) instead of checking or rebuilding bin/og.
+/// Runs scripts/setup.sh with OG_SETUP=bash and ARGS in og's place (exec),
+/// so a signal sent to og reaches setup.sh's bash, as it did before og
+/// dispatched: no bash keeps installing after og is gone. Returns only when
+/// setup.sh cannot be run (exit 1). OG names this og unless it is set
+/// already, so setup.sh uses the og that runs it (a dev build too) instead
+/// of checking or rebuilding bin/og.
 fn hand_to_bash(root: &Path, args: &[String], err: &mut dyn Write) -> u8 {
+    use std::os::unix::process::CommandExt;
     let _ = std::io::stdout().flush();
     let script = root.join("scripts/setup.sh");
     let mut c = Command::new(&script);
@@ -854,13 +858,9 @@ fn hand_to_bash(root: &Path, args: &[String], err: &mut dyn Write) -> u8 {
     {
         c.env("OG", me);
     }
-    match crate::child::status(&mut c) {
-        Ok(s) => s.code().map_or(1, |c| u8::try_from(c).unwrap_or(1)),
-        Err(e) => {
-            let _ = writeln!(err, "ERROR: cannot run {}: {e}", script.display());
-            1
-        }
-    }
+    let e = c.exec();
+    let _ = writeln!(err, "ERROR: cannot run {}: {e}", script.display());
+    1
 }
 
 /// `[ -x PATH ]` for a file.

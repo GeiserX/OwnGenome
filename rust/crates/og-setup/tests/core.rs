@@ -835,6 +835,83 @@ fn a_variable_that_is_not_utf8_is_left_out() {
     assert!(String::from_utf8_lossy(&o.stdout).contains("1 passed"));
 }
 
+/// A flag og hands back runs setup.sh in og's place (exec): setup.sh's
+/// bash has og's pid, so a SIGTERM sent to og ends it, and nothing keeps
+/// installing after og is gone. This test runs itself as og, with a
+/// stand-in checkout whose setup.sh prints its pid and waits.
+#[test]
+fn a_flag_handed_back_runs_in_og_s_place() {
+    use std::io::BufRead;
+    const CHILD: &str = "OG_SETUP_TEST_HANDBACK";
+    if std::env::var_os(CHILD).is_some() {
+        let args = ["--archaic".to_owned(), "/g".to_owned()];
+        let code = install::cli(&args, &mut std::io::stdout(), &mut std::io::stderr());
+        println!("og went on after the hand-back (exit {code})");
+        std::process::exit(i32::from(code));
+    }
+    let d = scratch("handback-exec");
+    let sh = d.join("scripts/setup.sh");
+    fs::create_dir_all(sh.parent().unwrap()).unwrap();
+    fs::write(
+        &sh,
+        "#!/usr/bin/env bash\necho \"setup.sh pid $$\"\nexec sleep 60\n",
+    )
+    .unwrap();
+    fs::set_permissions(&sh, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut og = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "a_flag_handed_back_runs_in_og_s_place",
+            "--test-threads=1",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .env("PGP_ROOT", &d)
+        .env_remove("OG_SETUP")
+        .env_remove("OG_SETUP_SCRIPT")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut said = String::new();
+    let mut lines = std::io::BufReader::new(og.stdout.take().unwrap()).lines();
+    let pid = loop {
+        let Some(Ok(l)) = lines.next() else {
+            break None;
+        };
+        said.push_str(&l);
+        said.push('\n');
+        if let Some(p) = l.split("setup.sh pid ").nth(1) {
+            break p.trim().parse::<i32>().ok();
+        }
+    };
+    let og_pid = i32::try_from(og.id()).unwrap();
+    let _ = rustix::process::kill_process(
+        rustix::process::Pid::from_raw(og_pid).unwrap(),
+        rustix::process::Signal::TERM,
+    );
+    let status = og.wait().unwrap();
+    // A setup.sh that ran as og's child is still there: stop it.
+    let left = pid
+        .filter(|&p| p != og_pid)
+        .and_then(rustix::process::Pid::from_raw);
+    if let Some(p) = left {
+        let _ = rustix::process::kill_process(p, rustix::process::Signal::KILL);
+    }
+    let _ = fs::remove_dir_all(&d);
+    assert!(pid.is_some(), "setup.sh never ran: {said}");
+    assert_eq!(
+        pid,
+        Some(og_pid),
+        "setup.sh ran as og's child, not in its place: {said}"
+    );
+    assert_eq!(
+        std::os::unix::process::ExitStatusExt::signal(&status),
+        Some(15),
+        "{status}"
+    );
+}
+
 /// Every process og's setup starts goes through og_setup::child, so a
 /// signal stops it before a lock goes (lock.rs).
 #[test]
