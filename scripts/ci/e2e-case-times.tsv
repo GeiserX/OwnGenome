@@ -186,7 +186,7 @@ sv-mito-telomere-steps-6-scatter	shard	104	-
 t3-run-fixes-1-memory-retry	shard	60	-
 t3-run-fixes-2-1-prs-kill-ends	shard	15	-
 t3-run-fixes-2-2-shared-outdir-stub	shard	25	-
-t3-run-fixes-2-root-tasks-owner	shard	50	-
+t3-run-fixes-2-root-tasks-owner	shard	30	-
 traits-panel-1	shard	75	-
 vcf-precheck-ref-spotcheck-1	shard	33	-
 vendor-vcf-intake-1-bash	shard	13	-
