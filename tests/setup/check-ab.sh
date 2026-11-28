@@ -21,7 +21,9 @@
 # when {{.MemTotal}} gives no number, as og does (validate-setup.sh asked a
 # literal docker). Side B runs with OG_SETUP unset, the default: og when it
 # can run og setup check, else validate-setup.sh's own checks; the report
-# counts the calls og answered and those it left to bash.
+# counts the calls og answered and those it left to bash. A call made with
+# OG_SETUP=bash (a test of the bash checks themselves) runs side A only and
+# is not counted.
 #
 # --control adds one byte to side B's stdout in every call before the
 # compare: every call must then be reported as differing, or the compare
@@ -55,6 +57,9 @@ mkdir -p "$copy" "$ab"
   | tar --null -T - -cf - ) | tar -C "$copy" -xf -
 if [ -d "${ROOT}/bin/.og" ]; then mkdir -p "${copy}/bin/.og" && cp -p "${ROOT}"/bin/.og/og-* "${copy}/bin/.og/" 2>/dev/null || true; fi
 $control && : > "${ab}/control"
+# A checkout of its own, so og.sh can stamp and check rust/'s tree.
+( cd "$copy" && git init -q && git add -A -f \
+  && git -c user.name=check-ab -c user.email=check-ab@example.invalid commit -qm copy )
 
 real="${copy}/scripts/validate-setup.real.sh"
 mv "${copy}/scripts/validate-setup.sh" "$real"
@@ -70,6 +75,8 @@ cat > "${copy}/scripts/validate-setup.sh" <<SHIM
 # check-ab.sh's shim: side A, side B, compare, then side B's output.
 set -uo pipefail
 here=\$(cd "\$(dirname "\$0")" && pwd)
+# A caller that asks for the bash checks gets them, with no compare.
+[ "\${OG_SETUP:-}" = bash ] && exec "\${here}/validate-setup.real.sh" "\$@"
 ab='${ab}'
 n=1; while ! mkdir "\${ab}/run.\${n}" 2>/dev/null; do n=\$((n + 1)); done
 d="\${ab}/run.\${n}"
@@ -110,7 +117,7 @@ for d in "${ab}"/run.*; do
   if [ -f "${d}/same" ]; then
     same=$((same + 1))
   elif ! $control; then
-    echo "--- $(basename "$d"): validate-setup.sh $(cat "${d}/args")(from $(cat "${d}/cwd")) differs in: $(tr '\n' ' ' < "${d}/differs")"
+    echo "=== check-ab $(basename "$d"): validate-setup.sh $(cat "${d}/args")(from $(cat "${d}/cwd")) differs in: $(tr '\n' ' ' < "${d}/differs")"
     for k in $(cat "${d}/differs"); do diff "${d}/a.${k}" "${d}/b.${k}" | head -40 || true; done
   fi
 done
