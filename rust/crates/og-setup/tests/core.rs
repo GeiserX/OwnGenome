@@ -588,6 +588,47 @@ fn every_row_expands_and_names_real_images() {
     );
 }
 
+/// The retry command of every row is one setup takes, and runs that row:
+/// its words parse, and to the row's own mode.
+#[test]
+fn every_retry_command_parses_to_its_row() {
+    for c in components::TABLE {
+        let cmd = c.retry_command("./scripts/setup.sh", "/g");
+        let words: Vec<&str> = cmd.split(' ').skip(1).collect();
+        let p = og_parse(&words, &[])
+            .unwrap_or_else(|s| panic!("{}: `{cmd}` stops with {}: {}", c.flag, s.code, s.stderr));
+        assert_eq!(p.mode.key(), c.key, "{}: `{cmd}`", c.flag);
+        if c.kind == CKind::Installer {
+            assert!(
+                matches!(p.mode, Mode::OptIn(_) | Mode::SampleQc),
+                "{}: {:?}",
+                c.flag,
+                p.mode
+            );
+        }
+    }
+}
+
+/// OPT_IN is the pattern of setup.sh's opt-in case, flag for flag and in
+/// its order, while setup.sh has the case; each one is an installer row.
+#[test]
+fn opt_in_is_setup_sh_s_case() {
+    let text = fs::read_to_string(setup_sh()).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    if let Some(i) = lines.iter().position(|l| l.trim() == "OPT_IN=${1#--}") {
+        let pattern = lines[i - 1].trim().strip_suffix(')').unwrap();
+        let case: Vec<&str> = pattern
+            .split('|')
+            .map(|f| f.strip_prefix("--").unwrap())
+            .collect();
+        assert_eq!(case, install::OPT_IN, "setup.sh's opt-in case");
+    }
+    for k in install::OPT_IN {
+        let c = components::by_key(k).unwrap_or_else(|| panic!("--{k} has no row"));
+        assert_eq!(c.kind, CKind::Installer, "--{k}");
+    }
+}
+
 #[test]
 fn every_ported_key_is_a_row() {
     for k in install::small::PORTED {

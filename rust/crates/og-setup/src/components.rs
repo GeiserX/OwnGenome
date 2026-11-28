@@ -433,11 +433,15 @@ pub const TABLE: &[Component] = &[
         ],
         &[],
     ),
-    mode(
-        "refresh",
-        "--refresh",
-        "ClinVar replaced with NCBI's current release (--refresh clinvar)",
-    ),
+    // The one database --refresh takes is part of its arguments.
+    Component {
+        retry: "--refresh clinvar",
+        ..mode(
+            "refresh",
+            "--refresh",
+            "ClinVar replaced with NCBI's current release (--refresh clinvar)",
+        )
+    },
 ];
 
 /// The row of FLAG (with its dashes).
