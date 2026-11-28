@@ -10,7 +10,9 @@
 //! - the parameters of `nextflow.config`'s `params` block that default to
 //!   `false`, and those whose comment says `opt-in`;
 //! - the words of `SWITCHES=(...)` in `scripts/run-all.sh`;
-//! - the flags of the first `case "${1:-}" in` of `scripts/setup.sh`;
+//! - the flags of og's setup table (`og setup flags`,
+//!   rust/crates/og-setup/src/components.rs), which must equal the first
+//!   `case "${1:-}" in` of `scripts/setup.sh` while setup.sh still has one;
 //! - the images of `versions.env` whose comment starts with `optional`;
 //!
 //! and fails when one of them has no row, when a row names an item that is
@@ -47,6 +49,8 @@ struct Items {
     nf_params: BTreeSet<String>,
     switches: BTreeSet<String>,
     setup_flags: BTreeSet<String>,
+    /// The flags of setup.sh's case, while it has one.
+    setup_case: Option<BTreeSet<String>>,
     images: BTreeSet<String>,
 }
 
@@ -199,12 +203,23 @@ fn switches(run_all: &str) -> Result<BTreeSet<String>, String> {
 }
 
 /// The flags of the first `case "${1:-}" in` of `setup.sh`: every `--flag`
-/// of each pattern line, up to its `esac`.
-fn setup_flags(setup: &str) -> Result<BTreeSet<String>, String> {
+/// of each pattern line, up to its `esac`. `None` only for the wrapper
+/// setup.sh becomes once og runs every installer: no `case "${1` anywhere,
+/// and a line that execs `setup install` with `"$@"`. Anything else without
+/// that exact opener is setup.sh read wrong, an error.
+fn setup_flags(setup: &str) -> Result<Option<BTreeSet<String>>, String> {
     let mut lines = setup.lines();
-    lines
-        .find(|l| l.trim() == r#"case "${1:-}" in"#)
-        .ok_or(r#"scripts/setup.sh: no `case "${1:-}" in`"#)?;
+    if !lines.any(|l| l.trim() == r#"case "${1:-}" in"#) {
+        let code = || setup.lines().map(str::trim).filter(|l| !l.starts_with('#'));
+        let wrapper = !setup.contains(r#"case "${1"#)
+            && code().any(|l| {
+                l.starts_with("exec ") && l.contains(" setup install ") && l.ends_with(r#""$@""#)
+            });
+        if wrapper {
+            return Ok(None);
+        }
+        return Err(r#"scripts/setup.sh: no `case "${1:-}" in` line, and it is not a wrapper that execs `og setup install "$@"`: the flags cannot be read"#.to_owned());
+    }
     let mut out = BTreeSet::new();
     for line in lines.take_while(|l| l.trim() != "esac") {
         let t = line.trim();
@@ -221,7 +236,7 @@ fn setup_flags(setup: &str) -> Result<BTreeSet<String>, String> {
             out.len()
         ));
     }
-    Ok(out)
+    Ok(Some(out))
 }
 
 /// The images of `versions.env` whose comment starts with `optional`.
@@ -269,7 +284,8 @@ fn read_items(repo: &Path) -> Result<Items, String> {
         tools: known_tools(&read(repo, "main.nf")?)?,
         nf_params: optional_params(&read(repo, "nextflow.config")?)?,
         switches: switches(&read(repo, "scripts/run-all.sh")?)?,
-        setup_flags: setup_flags(&read(repo, "scripts/setup.sh")?)?,
+        setup_flags: og_setup::components::flags().map(str::to_owned).collect(),
+        setup_case: setup_flags(&read(repo, "scripts/setup.sh")?)?,
         images,
     })
 }
@@ -372,9 +388,23 @@ fn problems(repo: &Path) -> Result<(Vec<String>, usize), String> {
             ));
         }
     }
+    // og's table is the list of setup's flags; while setup.sh parses its
+    // own flags, the two must agree.
+    if let Some(case) = &items.setup_case {
+        for f in case.difference(&items.setup_flags) {
+            bad.push(format!(
+                "scripts/setup.sh: flag {f} is not in og's setup table (rust/crates/og-setup/src/components.rs)"
+            ));
+        }
+        for f in items.setup_flags.difference(case) {
+            bad.push(format!(
+                "rust/crates/og-setup/src/components.rs: flag {f} is not a flag of scripts/setup.sh"
+            ));
+        }
+    }
     for f in &items.setup_flags {
         if !has(f) {
-            bad.push(format!("scripts/setup.sh: flag {f} has no row in {LIST}"));
+            bad.push(format!("og setup flags: flag {f} has no row in {LIST}"));
         }
     }
     for i in &items.images {
@@ -611,7 +641,80 @@ mod tests {
             "|--archaic)",
             "|--archaic|--new-data)",
         );
-        assert_fails(&d, "scripts/setup.sh: flag --new-data has no row");
+        assert_fails(
+            &d,
+            "scripts/setup.sh: flag --new-data is not in og's setup table",
+        );
+    }
+
+    /// A case opener the parse does not know is no wrapper: the check
+    /// fails instead of skipping the compare (a planted flag got through).
+    #[test]
+    fn an_unknown_case_opener_fails() {
+        let d = copy("setup-opener");
+        edit(
+            &d,
+            "scripts/setup.sh",
+            "case \"${1:-}\" in\n  --everything)",
+            "case \"${1:-}\" in  # the flags\n  --everything)",
+        );
+        edit(
+            &d,
+            "scripts/setup.sh",
+            "|--archaic)",
+            "|--archaic|--planted-data)",
+        );
+        let (code, text) = run(&d);
+        let _ = fs::remove_dir_all(&d);
+        // 2, as for any file the check cannot read.
+        assert_eq!(code, 2, "{text}");
+        assert!(
+            text.contains("scripts/setup.sh: no `case \"${1:-}\" in` line"),
+            "{text}"
+        );
+    }
+
+    /// The last slice's setup.sh, a wrapper that hands its arguments to og,
+    /// has no case to compare: the table alone lists the flags.
+    #[test]
+    fn a_forwarding_wrapper_has_no_case_to_compare() {
+        let d = copy("setup-wrapper");
+        fs::write(
+            d.join("scripts/setup.sh"),
+            "#!/usr/bin/env bash\n# setup is og's now.\nexec \"$(dirname \"$0\")/../bin/og\" setup install \"$@\"\n",
+        )
+        .unwrap();
+        let (code, text) = run(&d);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(code, 0, "{text}");
+    }
+
+    #[test]
+    fn a_flag_gone_from_setup_sh_fails() {
+        let d = copy("setup-gone");
+        edit(&d, "scripts/setup.sh", "|--archaic)", ")");
+        assert_fails(
+            &d,
+            "rust/crates/og-setup/src/components.rs: flag --archaic is not a flag of scripts/setup.sh",
+        );
+    }
+
+    #[test]
+    fn a_table_flag_with_no_row_fails() {
+        let d = copy("setup-row");
+        let p = d.join(LIST);
+        let text = fs::read_to_string(&p).unwrap();
+        let kept: Vec<&str> = text
+            .lines()
+            .filter(|l| l.split('\t').nth(1) != Some("--kir-data"))
+            .collect();
+        assert_ne!(
+            kept.len(),
+            text.lines().count(),
+            "{LIST} has no --kir-data row"
+        );
+        fs::write(&p, kept.join("\n") + "\n").unwrap();
+        assert_fails(&d, "og setup flags: flag --kir-data has no row in");
     }
 
     #[test]

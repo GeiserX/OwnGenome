@@ -1371,6 +1371,55 @@ fn a_file_that_grows_while_it_is_read_stops_the_manifest() {
 }
 
 #[test]
+fn the_log_compare_skips_download_retries_and_nothing_else() {
+    let t = Tmp::new("retries");
+    let log = |name: &str, body: &str| {
+        let p = t.0.join(name);
+        fs::write(&p, body).unwrap();
+        s(&p)
+    };
+    let base = "[OK] Docker is running.\nDownloading the KIR data...\n[OK] KIR data ready\n  Setup finished: core ready\n";
+    let a = log("a.log", base);
+    // A rerun whose server failed twice before it answered: curl's own
+    // message and fetch's retry notice, for a file and for a checksum.
+    let b = log(
+        "b.log",
+        &base.replace(
+            "Downloading the KIR data...\n",
+            "Downloading the KIR data...\ncurl: (22) The requested URL returned error: 503\n  Download attempt 1/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\ncurl: (28) Operation too slow. Less than 1024 bytes/sec transferred the last 60 seconds\n  Download attempt 2/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\ncurl: (56) Recv failure: Connection reset by peer\n  Checksum download attempt 1/3 failed: https://github.com/o/r/releases/download/v1/SHA256SUMS\n",
+        ),
+    );
+    let (code, out, err) = run(&["--compare-logs", &a, &b]);
+    assert_eq!(code, 0, "a retry-only difference is red:\n{out}{err}");
+    let (code, out, err) = run(&["--compare-logs", &b, &a]);
+    assert_eq!(code, 0, "a retry-only difference is red:\n{out}{err}");
+    // Any other extra line is still a difference, even next to retries.
+    for planted in [
+        "[WARN] one more line\n",
+        "  Download attempt 1/3 failed its check: sha256 mismatch. Removed it.\n",
+        "ERROR: could not download https://ftp.ebi.ac.uk/x.tar.gz (the partial file /g/x.part is kept and resumed next time)\n",
+        "  Pull attempt 1/3 failed: ubuntu:24.04 (Docker's message is above)\n",
+        "note: curl: (22) quoted in a sentence\n",
+    ] {
+        let c = log(
+            "c.log",
+            &base.replace(
+                "Downloading the KIR data...\n",
+                &format!(
+                    "Downloading the KIR data...\ncurl: (22) The requested URL returned error: 503\n  Download attempt 1/3 failed: https://ftp.ebi.ac.uk/x.tar.gz\n{planted}"
+                ),
+            ),
+        );
+        let (code, out, _) = run(&["--compare-logs", &a, &c]);
+        assert_eq!(code, 1, "a planted {planted:?} is green:\n{out}");
+        assert!(
+            out.contains(&format!("DIFF\tlog\tB only\t{}", planted.trim_end())),
+            "{out}"
+        );
+    }
+}
+
+#[test]
 fn the_log_compare_masks_times_and_sees_the_missing_list() {
     let t = Tmp::new("logs");
     let log = |name: &str, body: &str| {
@@ -1536,6 +1585,26 @@ case "$AB_STUB" in
       # digest of the other.
       printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid7\n' 8 >>"$AB_ENGINE_STATE"
     fi ;;
+  pull)
+    # --pull-only, as a user runs it: no folder. With AB_PULL_SKEW=1 the
+    # second run pulls another tag than the first.
+    [ "$*" = --pull-only ] || { echo "pull-only got more than --pull-only: $*"; exit 3; }
+    t=1.0
+    if [ "${AB_PULL_SKEW:-}" = 1 ] && [ -e "$AB_ENGINE_STATE.ran" ]; then t=1.1; fi
+    : >"$AB_ENGINE_STATE.ran"
+    printf 'registry.example/example/tool:%s\tid8\n' "$t" >>"$AB_ENGINE_STATE"
+    echo "Status: Downloaded newer image for registry.example/example/tool:$t"
+    # A digest-pinned image, pulled only when the engine lacks it, as
+    # setup does; the pull gives it NAME:<none> and the digest reference.
+    d=$(printf 'example/pin@sha256:%064d' 7)
+    if "$CONTAINER_ENGINE" image inspect --format '{{.Id}}' "$d" >/dev/null 2>&1; then
+      echo "  already present: $d"
+    else
+      echo "  Pulling: $d"
+      printf '%s\tid4\n' "$d" >>"$AB_ENGINE_STATE.digests"
+      printf 'example/pin:<none>\tid4\n' >>"$AB_ENGINE_STATE"
+    fi
+    printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid4\n' 7 >>"$AB_ENGINE_STATE" ;;
   nothing)
     echo "nothing to do" ;;
   foreign)
@@ -1556,6 +1625,28 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
 /// [`ab`], with `prep` called on the scratch folder (the repo copy is in
 /// its `repo` folder) before ab.sh runs.
 fn ab_with(tag: &str, stub: &str, env: &[(&str, &str)], prep: &dyn Fn(&Path)) -> (i32, String) {
+    ab_comp(tag, "kir-data", stub, env, prep)
+}
+
+/// [`ab_with`] for another component than kir-data.
+fn ab_comp(
+    tag: &str,
+    comp: &str,
+    stub: &str,
+    env: &[(&str, &str)],
+    prep: &dyn Fn(&Path),
+) -> (i32, String) {
+    ab_run(tag, &["--bash-vs-bash", comp], stub, env, prep)
+}
+
+/// ab.sh ARGS (and the work folder) in the scratch copy of [`ab_with`].
+fn ab_run(
+    tag: &str,
+    args: &[&str],
+    stub: &str,
+    env: &[(&str, &str)],
+    prep: &dyn Fn(&Path),
+) -> (i32, String) {
     let t = Tmp::new(tag);
     let root = t.0.join("repo");
     for f in [
@@ -1571,7 +1662,7 @@ fn ab_with(tag: &str, stub: &str, env: &[(&str, &str)], prep: &dyn Fn(&Path)) ->
     prep(&t.0);
     let mut cmd = Command::new("bash");
     cmd.arg(root.join("tests/setup/ab.sh"))
-        .args(["--bash-vs-bash", "kir-data"])
+        .args(args)
         .arg(t.0.join("work"))
         .env("OG", og_bin())
         .env("CONTAINER_ENGINE", "true")
@@ -1682,15 +1773,108 @@ fn ab_sh_refuses_a_checkout_another_run_uses() {
     );
 }
 
+/// A container engine whose images are the lines of `$AB_ENGINE_STATE`
+/// (`NAME:TAG<tab>ID`): `image ls` prints them and `rmi TAG` removes one.
+/// A digest reference (`NAME@sha256:HEX<tab>ID` in `$AB_ENGINE_STATE.digests`)
+/// stays when the image's tags go, as in Docker: `image inspect` finds
+/// it, and only `rmi NAME@sha256:HEX` removes it with its `NAME:<none>` line.
+const STATE_ENGINE: &[u8] = br#"#!/usr/bin/env bash
+st=$AB_ENGINE_STATE
+touch "$st.digests"
+case "$1 ${2:-}" in
+  "image ls") cat "$st" ;;
+  "image inspect")
+    awk -F'\t' -v r="${!#}" '$1 == r { print "sha256:" $2; f = 1 } END { exit !f }' "$st.digests" ;;
+  rmi\ *@sha256:*)
+    id=$(awk -F'\t' -v r="$2" '$1 == r { print $2 }' "$st.digests")
+    [ -n "$id" ] || exit 1
+    awk -F'\t' -v r="$2" '$1 != r' "$st.digests" >"$st.new" && mv "$st.new" "$st.digests"
+    awk -F'\t' -v t="${2%@*}:<none>" -v i="$id" '!($1 == t && $2 == i)' "$st" >"$st.new" && mv "$st.new" "$st" ;;
+  rmi\ *) awk -F'\t' -v t="$2" '$1 != t' "$st" >"$st.new" && mv "$st.new" "$st" ;;
+esac
+"#;
+
+/// ab.sh pull-only against [`STATE_ENGINE`], with `env` on top, the engine
+/// holding the images `before` gives (its image list and its digest
+/// references); its exit code and output.
+fn ab_pull_only(
+    tag: &str,
+    stub: &str,
+    env: &[(&str, &str)],
+    before: (&str, &str),
+) -> (i32, String) {
+    let t = Tmp::new(&format!("{tag}-engine"));
+    let engine = t.0.join("engine");
+    write(&engine, STATE_ENGINE, 0o755);
+    let state = t.0.join("images.tsv");
+    fs::write(&state, before.0).unwrap();
+    fs::write(t.0.join("images.tsv.digests"), before.1).unwrap();
+    let (engine, state) = (s(&engine), s(&state));
+    let mut all = vec![
+        ("CONTAINER_ENGINE", engine.as_str()),
+        ("AB_ENGINE_STATE", state.as_str()),
+    ];
+    all.extend_from_slice(env);
+    ab_comp(tag, "pull-only", stub, &all, &|_| {})
+}
+
+#[test]
+fn ab_sh_compares_pull_only_by_its_images() {
+    let (code, out) = ab_pull_only("ab-pull", "pull", &[], ("", ""));
+    assert_eq!(code, 0, "a pull-only run is not green:\n{out}");
+    assert!(out.contains("side A: 3 image tag(s) added"), "{out}");
+    assert!(out.contains("removed 2 image tag(s) side A added"), "{out}");
+    // The digest-pinned image goes too, or side B finds it and pulls nothing.
+    assert!(
+        out.contains("removed 1 digest reference(s) of images side A pulled"),
+        "{out}"
+    );
+    assert!(
+        out.contains("[OK]   control: side B's image list less example/pin:<none> is red"),
+        "the image-only control did not run:\n{out}"
+    );
+    assert!(!out.contains("flipped bit"), "{out}");
+}
+
+#[test]
+fn ab_sh_keeps_a_digest_image_the_engine_had_before_side_a() {
+    // The digest-pinned image is on the engine already, untagged: neither
+    // side pulls it, and ab.sh must not remove it between them.
+    let ref7 = format!("example/pin@sha256:{:064}", 7);
+    let (code, out) = ab_pull_only(
+        "ab-pull-had",
+        "pull",
+        &[],
+        ("example/pin:<none>\tid4\n", &format!("{ref7}\tid4\n")),
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("side A: 2 image tag(s) added"), "{out}");
+    assert!(
+        !out.contains("digest reference(s)"),
+        "an image that was there before side A was removed:\n{out}"
+    );
+}
+
+#[test]
+fn ab_sh_is_red_when_pull_only_pulls_another_image() {
+    let (code, out) = ab_pull_only("ab-pull-skew", "pull", &[("AB_PULL_SKEW", "1")], ("", ""));
+    assert_eq!(code, 1, "side B pulling another tag is green:\n{out}");
+    assert!(out.contains("[RED]  images"), "{out}");
+    assert!(out.contains("registry.example/example/tool:1.1"), "{out}");
+}
+
+#[test]
+fn ab_sh_stops_when_pull_only_adds_no_image() {
+    let (code, out) = ab_pull_only("ab-pull-nothing", "nothing", &[], ("", ""));
+    assert_eq!(code, 2, "a pull-only run that adds no image passes:\n{out}");
+    assert!(out.contains("side A added no image"), "{out}");
+}
+
 #[test]
 fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
     let t = Tmp::new("ab-engine");
     let engine = t.0.join("engine");
-    write(
-        &engine,
-        b"#!/usr/bin/env bash\nst=$AB_ENGINE_STATE\ncase \"$1\" in\n  image) cat \"$st\" ;;\n  rmi) awk -F'\\t' -v t=\"$2\" '$1 != t' \"$st\" >\"$st.new\" && mv \"$st.new\" \"$st\" ;;\nesac\n",
-        0o755,
-    );
+    write(&engine, STATE_ENGINE, 0o755);
     let state = t.0.join("images.tsv");
     fs::write(&state, "").unwrap();
     let (_, out) = ab(
@@ -1716,6 +1900,48 @@ fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
             "another job's tag {tag:?} was removed:\n{left}\n{out}"
         );
     }
+}
+
+/// A component og does not run would be handed back to setup.sh on side
+/// B, so a bash-versus-og run of it compares bash with bash: ab.sh stops
+/// before side A (it ran both and said "bash vs og").
+#[test]
+fn ab_sh_refuses_a_component_og_hands_back() {
+    let t = Tmp::new("ab-unported-og");
+    let og = t.0.join("og");
+    write(
+        &og,
+        format!(
+            "#!/usr/bin/env bash\ncase \"$1 $2\" in\n  'setup install') [ \"${{3:-}}\" = --help ] && echo 'og setup install'; exit 0 ;;\n  'setup ported') exit 1 ;;\nesac\nexec {} \"$@\"\n",
+            s(&og_bin())
+        )
+        .as_bytes(),
+        0o755,
+    );
+    let (code, out) = ab_run(
+        "ab-unported",
+        &["kir-data"],
+        "ok",
+        &[("OG", &s(&og))],
+        &|_| {},
+    );
+    assert_eq!(
+        code, 2,
+        "a component og hands back ran as bash vs og:\n{out}"
+    );
+    assert!(out.contains("og does not run --kir-data"), "{out}");
+    assert!(!out.contains("== side a"), "side A ran:\n{out}");
+}
+
+/// A WORK_DIR that holds og.before already is refused: ab.sh would copy
+/// bin/.og into it and restore the wrong folder before side B.
+#[test]
+fn ab_sh_refuses_a_work_dir_with_an_og_snapshot() {
+    let (code, out) = ab_with("ab-og-before", "ok", &[], &|t| {
+        fs::create_dir_all(t.join("work/og.before")).unwrap();
+    });
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("og.before exists"), "{out}");
 }
 
 #[test]
