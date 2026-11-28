@@ -715,7 +715,11 @@ vep_cache_url() {
 # CHECKSUMS file), unpack it in a temporary directory and move it to
 # DIR/homo_sapiens/RELEASE_GRCh38 only when complete. The tarball is kept in
 # the downloads folder (done_with).
+# og runs it (og setup install --part vep-cache, rust/crates/og-setup/src/
+# install/clinical.rs); OG_SETUP=bash keeps the bash below, the reference
+# tests/setup/ab.sh compares og with.
 install_vep_cache() {
+  [ "${OG_SETUP:-og}" = bash ] || { og_setup install --part vep-cache "$@"; return; }
   local dir=$1 rel=$2 row url tarball sums tmp final
   row=$(vep_cache_row "$rel") || return 1
   url=$(source_of "$row" url) && tarball=$(source_of "$row" path) && sums=$(source_of "$row" value) || return 1
@@ -729,7 +733,7 @@ install_vep_cache() {
     echo "  Remove it and run again." >&2
     return 1
   fi
-  mkdir -p "${dir}/homo_sapiens"
+  mkdir -p "${dir}/homo_sapiens" || return 1
   adopt "${dir}/${tarball##*/}" "$tarball" "$url" sum "$sums"
   # fetch uses a kept tarball that matches its CHECKSUMS line with no
   # download (it reads that small list first), so an install stopped during
@@ -737,7 +741,7 @@ install_vep_cache() {
   fetch "$url" "$tarball" sum "$sums" || return 1
   echo "  Extracting $(basename "$tarball")..."
   rm -rf "${dir}"/.extract.*
-  tmp=$(mktemp -d "${dir}/.extract.XXXXXX")
+  tmp=$(mktemp -d "${dir}/.extract.XXXXXX") || return 1
   if ! tar xzf "$tarball" -C "$tmp" || [ ! -f "${tmp}/homo_sapiens/${rel}_GRCh38/info.txt" ]; then
     rm -rf "$tmp"
     echo "ERROR: could not unpack ${tarball} into a ${rel}_GRCh38 cache." >&2
@@ -757,7 +761,9 @@ install_vep_cache() {
 # Allocated blocks of ARCHIVE, or of its interrupted ARCHIVE.part, are already
 # part of the peak, so a resumed download needs only the rest.
 # An unreadable df is a failed preflight, never permission to fill the disk.
+# og runs it (og setup install --part disk-ok); OG_SETUP=bash keeps the bash.
 clinical_disk_ok() {
+  [ "${OG_SETUP:-og}" = bash ] || { og_setup install --part disk-ok "$@"; return; }
   local dir=$1 peak=$2 label=$3 archive=${4:-} free have=0 f
   mkdir -p "$dir" || return 1
   # A stopped extraction is disposable. Reclaim it before measuring space,
@@ -789,8 +795,11 @@ clinical_disk_ok() {
 # staging tree. Upstream ships data/ at the root; CPSR reads BUNDLE/data/.
 # fetch resumes an interrupted transfer, deletes a bad one, uses a kept
 # archive that matches the pin and refuses one that does not.
+# og runs it (og setup install --part pcgr-bundle); OG_SETUP=bash keeps the
+# bash.
 # shellcheck disable=SC2154  # PCGR_DATA_BUNDLE and PCGR_DATA_SHA256 are pins in versions.env
 install_pcgr_bundle() {
+  [ "${OG_SETUP:-og}" = bash ] || { og_setup install --part pcgr-bundle "$@"; return; }
   local dir=$1 url tarball tmp
   if [ -d "${dir}/${PCGR_DATA_BUNDLE}/data" ]; then
     echo "[OK] PCGR/CPSR ${PCGR_DATA_BUNDLE} bundle already present."

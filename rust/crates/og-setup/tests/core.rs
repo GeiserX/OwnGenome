@@ -492,15 +492,23 @@ fn ctx_with(genome: &str) -> Ctx {
     .unwrap()
 }
 
-/// The paths of a component's sources (each part of a family), or a folder.
+/// The paths of a component's sources (each part of a family), or a folder,
+/// and the files the table says a raw download installs (an archive's
+/// unpacked files, its installed column without a stamp's words).
 fn source_paths(c: &Component, ctx: &Ctx, s: &Sources) -> Vec<PathBuf> {
     let mut v = Vec::new();
+    let genome = ctx.genome_dir().unwrap();
     for r in c.sources(s) {
-        if r.parts.is_empty() {
-            v.push(ctx.path(r, None).unwrap());
+        let parts: Vec<Option<&str>> = if r.parts.is_empty() {
+            vec![None]
         } else {
-            for p in &r.parts {
-                v.push(ctx.path(r, Some(p)).unwrap());
+            r.parts.iter().map(|p| Some(p.as_str())).collect()
+        };
+        for p in parts {
+            v.push(ctx.path(r, p).unwrap());
+            for f in &r.installed {
+                let e = ctx.expand(f, p).unwrap();
+                v.push(genome.join(e.split('#').next().unwrap_or_default()));
             }
         }
     }
@@ -543,7 +551,10 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
             c.flag
         );
     }
-    assert_eq!(seen, 7, "the seven small data installers");
+    assert!(
+        seen >= 7,
+        "at least the seven small data installers, {seen} seen"
+    );
     // The check can fail: a row naming a path nothing writes.
     let planted = Component {
         installed: &["reference/viral-${VIRAL_REF_VERSION}/viral_genome.fa"],

@@ -8,6 +8,7 @@
 //! fill the disk. [`Probe`] reads the disk; the shell's `df` and `du` are
 //! the default, so a fake `df` of the tests answers both the same way.
 
+use crate::install::keep;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -75,21 +76,16 @@ pub fn clinical_disk_ok(
     genome: &str,
     out: &mut dyn Write,
 ) -> bool {
-    if std::fs::create_dir_all(dir).is_err() {
+    // mkdir -p and rm -rf as the shell runs them: a failure prints their message.
+    if !keep::mkdir_p(&dir.to_string_lossy(), out) {
         return false;
     }
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
-            if e.file_name().to_string_lossy().starts_with(".extract.") {
-                let p = e.path();
-                let gone = if p.is_dir() && !p.is_symlink() {
-                    std::fs::remove_dir_all(&p)
-                } else {
-                    std::fs::remove_file(&p)
-                };
-                if gone.is_err() {
-                    return false;
-                }
+            if e.file_name().to_string_lossy().starts_with(".extract.")
+                && !keep::rm_rf(&e.path().to_string_lossy(), out)
+            {
+                return false;
             }
         }
     }

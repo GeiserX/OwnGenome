@@ -405,6 +405,7 @@ pub const TABLE: &[Component] = &[
             &[
                 "vep_cache/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38/info.txt",
                 "pcgr_data/${PCGR_DATA_BUNDLE}/data",
+                "vep_cache/homo_sapiens/${PCGR_VEP_CACHE_RELEASE}_GRCh38/info.txt",
             ],
             &[],
         ),

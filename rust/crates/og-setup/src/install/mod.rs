@@ -25,10 +25,13 @@
 //! default run, `--everything`, `--refresh clinvar`). [`small`] holds the
 //! eight small installers. A module lists the flags it runs in its `PORTED`
 //! and answers them in its `run`, so adding one edits no shared list.
+//! [`keep`] holds common.sh's adopt and done_with, for each installer
+//! that keeps a raw download.
 
 pub mod annotation;
 pub mod base;
 pub mod clinical;
+pub mod keep;
 pub mod panels;
 pub mod small;
 pub mod tools;
@@ -700,6 +703,10 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     if matches!(args, [h] if h == "--help" || h == "-h") {
         let _ = write!(out, "{HELP}");
         return 0;
+    }
+    // common.sh's clinical helpers, which step 13 and a full setup's bash call.
+    if let Some(code) = clinical::part_cli(args, out, err) {
+        return code;
     }
     let root = fetch::root_of(None);
     let vars = Vars::from_process();
