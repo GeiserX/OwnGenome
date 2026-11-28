@@ -103,6 +103,25 @@ compare() {
   echo "[OK] ${name}: og and setup.sh's bash give exit $(cat "${CASE_WORK}/${name}-og.rc"), the same messages, $(wc -l < "${CASE_WORK}/${name}-og.calls" | tr -d ' ') calls and $(wc -l < "${CASE_WORK}/${name}-og.tree" | tr -d ' ') files"
 }
 
+# --pypgx-data clones a tag with the host's git. Its compare gets a fake git
+# that clones the pinned commit with no network and notes each call in the
+# fake docker's log, with mktemp's stage name masked, so the two sides' git
+# calls are compared as well.
+mkdir -p "${CASE_WORK}/git-bin"
+cat > "${CASE_WORK}/git-bin/git" <<'GIT'
+#!/usr/bin/env bash
+printf 'git :: %s\n' "$*" | sed -E 's/\.pypgx\.[A-Za-z0-9]{6}/.pypgx.STAGE/g' >> "${FAKE_DOCKER_LOG:?}"
+case "$1" in
+  clone) mkdir -p "${@: -1}" && printf '%s\n' "${FAKE_GIT_COMMIT:?}" > "${@: -1}/commit" ;;
+  -C) [ "$3 $4" = 'rev-parse HEAD' ] && cat "$2/commit" ;;
+  -c) [ "$2" = "safe.directory=$4" ] && [ "$3 $5 $6" = '-C rev-parse HEAD' ] && cat "$4/commit" ;;
+  *) exit 1 ;;
+esac
+GIT
+chmod +x "${CASE_WORK}/git-bin/git"
+pypgx_commit=$(sed -n 's/^PYPGX_BUNDLE_COMMIT="\(.*\)"$/\1/p' "${REPO_ROOT}/versions.env")
+[ -n "$pypgx_commit" ] || fail 'versions.env has no PYPGX_BUNDLE_COMMIT'
+
 ported=()
 while IFS= read -r flag; do
   if "$OG" setup ported "$flag" > /dev/null 2>&1; then ported+=("$flag"); fi
@@ -114,6 +133,10 @@ for flag in "${ported[@]}"; do
     --pull-only)
       compare pull-only --pull-only
       FAKE_DOCKER_MISSING_IMAGES=deepvariant compare pull-missing --pull-only ;;
+    --pypgx-data)
+      FAKE_GIT_COMMIT=$pypgx_commit PATH="${CASE_WORK}/git-bin:${PATH}" compare pypgx-data "$flag" @G@
+      FAKE_GIT_COMMIT=$pypgx_commit PATH="${CASE_WORK}/git-bin:${PATH}" compare pypgx-data-no-keep --no-keep-downloads "$flag" @G@
+      grep -q '^git :: clone --depth 1 --branch ' "${CASE_WORK}/pypgx-data-og.calls" || fail 'pypgx-data: the fake git was not called' ;;
     *)
       compare "${flag#--}" "$flag" @G@
       compare "${flag#--}-no-keep" --no-keep-downloads "$flag" @G@ ;;
