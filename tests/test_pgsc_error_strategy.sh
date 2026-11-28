@@ -123,8 +123,11 @@ audit() {
               print rel ":" FNR ": " proc " sets its own errorStrategy and the withName line does not name it"
           } else {
             top = depth ? head[depth] : ""
+            # A one-line selector (withLabel:x { errorStrategy = ... }) balances
+            # its braces, so depth never enters it: the line is the context.
+            if (code ~ /with(Label|Name)[[:space:]]*:[^{]*\{/) { top = code; sub(/[[:space:]]*\{.*$/, "", top); sub(/^[[:space:]]+/, "", top) }
             if (top == "process") { }
-            else if (top ~ /^with(Label|Name)[[:space:]]*:/ && code ~ /errorStrategy[[:space:]]*=[[:space:]]*["\047](retry|ignore)["\047][[:space:]]*$/) { }
+            else if (top ~ /^with(Label|Name)[[:space:]]*:/ && code ~ /errorStrategy[[:space:]]*=[[:space:]]*["\047](retry|ignore)["\047][[:space:]]*\}?[[:space:]]*$/) { }
             else print rel ":" FNR ": an errorStrategy under \"" top "\" that may be finish: " line
           }
         }
@@ -213,6 +216,16 @@ if grep -q 'conf/planted.config:3: an errorStrategy under "withName:' <<< "$(aud
   ok "the audit reports a planted withName 'finish' in pgsc_calc's conf/"
 else
   bad "the audit misses a planted withName 'finish' in pgsc_calc's conf/"
+fi
+# The one-line selector form: its braces balance on the line, so the line itself
+# is the context. A 'finish' must be reported, a 'retry' must not.
+printf "process {\n    withLabel:planted { errorStrategy = 'finish' }\n    withLabel:planted_ok { errorStrategy = 'retry' }\n}\n" > "${P}/conf/planted_one_line.config"
+ONE=$(audit "$P" "$(names "$PL")")
+if grep -q 'conf/planted_one_line.config:2: an errorStrategy under "withLabel:planted"' <<< "$ONE" \
+  && ! grep -q 'conf/planted_one_line.config:3:' <<< "$ONE"; then
+  ok "the audit reports a one-line withLabel 'finish' and accepts a one-line 'retry'"
+else
+  bad "the audit misreads one-line selectors: ${ONE:-nothing}"
 fi
 grep -v 'own errorStrategy' "$MODULE" > "${WORK}/noblock.nf"
 if module_line "$PGSC" "${WORK}/noblock.nf" >/dev/null 2>&1; then
