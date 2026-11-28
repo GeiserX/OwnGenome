@@ -586,6 +586,16 @@ mod tests {
         c.request(&Request::get(url, Want::Json))
     }
 
+    /// A port of 127.0.0.1 where nothing listens, and the two ends of the connection that hold
+    /// it: the port is the local end of a connection to a listener of our own. A connection to
+    /// it is refused at once, and the system gives it to no other socket while it is held.
+    fn closed_port() -> ([std::net::TcpStream; 2], u16) {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let c = std::net::TcpStream::connect(l.local_addr().unwrap()).unwrap();
+        let port = c.local_addr().unwrap().port();
+        ([c, l.accept().unwrap().0], port)
+    }
+
     #[test]
     fn no_answer_is_unreachable() {
         for code in [500, 502, 503, 429, 403] {
@@ -595,11 +605,9 @@ mod tests {
                 "{code}: {e:?}"
             );
         }
-        // A port nobody listens on: no connection.
-        let port = {
-            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
+        // A port nobody listens on: no connection. It stays held while the check runs, so no
+        // other test is given it.
+        let (_down, port) = closed_port();
         let e = ask(&format!("http://127.0.0.1:{port}/x"), 0).unwrap_err();
         assert!(
             matches!(&e, LookupError::Unreachable(m) if m.contains("no answer")),

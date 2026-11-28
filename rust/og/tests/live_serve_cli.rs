@@ -15,10 +15,13 @@
 //!
 //! Every answer is awaited for at most 10 s, so a blocked request fails a
 //! test instead of hanging it. `--assets` and `--steps` name the checkout's
-//! files, because the test binary's `og` is not inside the checkout.
+//! files, because the test binary's `og` is not inside the checkout. Each
+//! site binds port 0 for both of its listeners and the case reads the
+//! browser port from the site's start line, so no two cases, and no other
+//! process, can be given the same port.
 
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -39,13 +42,20 @@ fn dir(name: &str) -> PathBuf {
     d
 }
 
-/// A port on 127.0.0.1 that nothing listens on now.
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// The browser port of `og live serve`'s start line (`og live serve:
+/// browser http://HOST:PORT/ ; ingest ...`) in `err`, once that whole line,
+/// up to its newline, is there: the line is written in parts.
+fn browser_port(err: &str) -> Option<u16> {
+    err.split_inclusive('\n')
+        .filter_map(|l| l.strip_suffix('\n'))
+        .find_map(|l| l.strip_prefix("og live serve: browser "))?
+        .split_whitespace()
+        .next()?
+        .trim_end_matches('/')
+        .rsplit_once(':')?
+        .1
+        .parse()
+        .ok()
 }
 
 /// The checkout's assets, for a binary outside it.
@@ -59,10 +69,12 @@ fn asset_flags() -> Vec<String> {
     ]
 }
 
-/// The site's process, killed when the case ends; its stderr in a file.
+/// The site's process, killed when the case ends; its stderr in a file and
+/// the browser port it bound.
 struct Site {
     child: Child,
     err: PathBuf,
+    port: u16,
 }
 
 impl Drop for Site {
@@ -73,7 +85,10 @@ impl Drop for Site {
 }
 
 impl Site {
-    fn start(mut cmd: Command, work: &Path, port: u16) -> Site {
+    /// Starts `cmd`, an `og live serve` told to bind port 0 for the browser
+    /// and the ingest listener, and waits for its start line, which it
+    /// prints once both listen.
+    fn start(mut cmd: Command, work: &Path) -> Site {
         let err = work.join("site.err");
         let child = cmd
             .stdin(Stdio::null())
@@ -81,17 +96,30 @@ impl Site {
             .stderr(std::fs::File::create(&err).unwrap())
             .spawn()
             .expect("the site starts");
-        let site = Site { child, err };
+        let mut site = Site {
+            child,
+            err,
+            port: 0,
+        };
         let end = Instant::now() + Duration::from_secs(30);
-        while TcpStream::connect(("127.0.0.1", port)).is_err() {
+        loop {
+            if let Some(port) = browser_port(&site.stderr()) {
+                site.port = port;
+                return site;
+            }
+            let exited = site.child.try_wait().unwrap();
+            assert!(
+                exited.is_none(),
+                "the site exited ({exited:?}) before it listened: {}",
+                site.stderr()
+            );
             assert!(
                 Instant::now() < end,
                 "the site never listened: {}",
                 site.stderr()
             );
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(50));
         }
-        site
     }
 
     fn stderr(&self) -> String {
@@ -135,19 +163,18 @@ fn the_default_launcher_answers_get_root() {
     let w = dir("launcher");
     let genome = w.join("genome");
     std::fs::create_dir_all(&genome).unwrap();
-    let (port, ingest) = (free_port(), free_port());
     let mut cmd = Command::new("bash");
     cmd.arg(repo().join("scripts/owngenome-live.sh"))
         .args(asset_flags())
         .env("GENOME_DIR", &genome)
         .env("OG", env!("CARGO_BIN_EXE_og"))
-        .env("OWNGENOME_LIVE_PORT", port.to_string())
-        .env("OWNGENOME_LIVE_INGEST_PORT", ingest.to_string())
+        .env("OWNGENOME_LIVE_PORT", "0")
+        .env("OWNGENOME_LIVE_INGEST_PORT", "0")
         .env("OWNGENOME_LIVE_VIEWER", "off")
         .env_remove("OWNGENOME_LIVE_STATE_DIR")
         .env_remove("OWNGENOME_LIVE_PASSWORD_FILE");
-    let site = Site::start(cmd, &w, port);
-    let got = request(port, "GET", "/", "");
+    let site = Site::start(cmd, &w);
+    let got = request(site.port, "GET", "/", "");
     assert!(
         matches!(got, Ok((200, _))),
         "GET / of the default launcher: {:?}; stderr: {}",
@@ -192,22 +219,15 @@ fn an_unreadable_family_is_a_500_through_the_command_line() {
         let _ = std::fs::remove_dir_all(&w);
         return;
     }
-    let (port, ingest) = (free_port(), free_port());
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_og"));
     cmd.args(["live", "serve", "--root"])
         .arg(&genome)
         .arg("--state-dir")
         .arg(w.join("state"))
-        .args([
-            "--port",
-            &port.to_string(),
-            "--ingest-port",
-            &ingest.to_string(),
-            "--quiet",
-        ])
+        .args(["--port", "0", "--ingest-port", "0", "--quiet"])
         .args(asset_flags());
-    let site = Site::start(cmd, &w, port);
-    let got = request(port, "GET", "/runs/family_a/family.json", "");
+    let site = Site::start(cmd, &w);
+    let got = request(site.port, "GET", "/runs/family_a/family.json", "");
     let err = site.stderr();
     drop(site);
     std::fs::set_permissions(&rel, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -225,26 +245,20 @@ fn a_post_to_the_browser_port_never_prints_the_token() {
     let w = dir("wrong-port");
     let genome = w.join("genome");
     std::fs::create_dir_all(&genome).unwrap();
-    let (port, ingest) = (free_port(), free_port());
     let state = w.join("state");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_og"));
     cmd.args(["live", "serve", "--root"])
         .arg(&genome)
         .arg("--state-dir")
         .arg(&state)
-        .args([
-            "--port",
-            &port.to_string(),
-            "--ingest-port",
-            &ingest.to_string(),
-        ])
+        .args(["--port", "0", "--ingest-port", "0"])
         .args(asset_flags());
-    let site = Site::start(cmd, &w, port);
+    let site = Site::start(cmd, &w);
     let token = std::fs::read_to_string(state.join("ingest-token")).unwrap();
     let token = token.trim();
     assert_eq!(token.len(), 43, "the ingest token has its shape");
     let got = request(
-        port,
+        site.port,
         "POST",
         &format!("/{token}/ingest/run1"),
         r#"{"event":"started"}"#,

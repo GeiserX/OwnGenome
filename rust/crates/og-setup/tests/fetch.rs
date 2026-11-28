@@ -194,12 +194,15 @@ fn plain<'a>(url: &'a str, dest: &'a Path, kind: Kind, want: &'a str) -> Fetch<'
     }
 }
 
-/// A URL on a port nothing listens on: a host that is down.
-fn down_url(path: &str) -> String {
+/// A URL on a port nothing listens on: a host that is down, and the two ends of the connection
+/// that hold the port. The port is the local end of a connection to a listener of our own: a
+/// connection to it is refused at once, and the system gives it to no other socket while it is
+/// held.
+fn down_url(path: &str) -> (String, [TcpStream; 2]) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    let a = l.local_addr().unwrap();
-    drop(l);
-    format!("http://{a}{path}")
+    let c = TcpStream::connect(l.local_addr().unwrap()).unwrap();
+    let url = format!("http://{}{path}", c.local_addr().unwrap());
+    (url, [c, l.accept().unwrap().0])
 }
 
 // --- the fetch behaviours ---------------------------------------------------
@@ -654,7 +657,7 @@ fn a_kept_file_checked_against_a_list_is_used_when_the_list_cannot_be_read() {
     assert_eq!(s.requests("/k/MD5SUMS").len(), 2);
     assert_eq!(s.requests("/k/x.gz.bin").len(), 1);
     // The list's host down: the kept file matches what was saved, so it is used.
-    let gone = down_url("/k/MD5SUMS");
+    let (gone, _down) = down_url("/k/MD5SUMS");
     let (r, log) = run(&kept(&url, &dest, &gone), &knobs(2));
     assert_eq!(r, Ok(Done::Reused), "{log}");
     assert!(

@@ -18,13 +18,20 @@ check "versions.env pins nf-weblog with a version" has '^nf-weblog@[0-9]+\.[0-9]
 G="$GENOME_DIR"
 ROOT="${CASE_TMP}/root" STATE="${CASE_TMP}/state"
 mkdir -p "${ROOT}/${SAMPLE}/nextflow"   # a run folder the site lists (it has nextflow/)
-port() { "${REPO}/bin/og" dev fixture free-port; }
-WEB=$(port) ING=$(port)
-"${REPO}/bin/og" live serve --root "$ROOT" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet \
+"${REPO}/bin/og" live serve --root "$ROOT" --state-dir "$STATE" --port 0 --ingest-port 0 --quiet \
   2> "${CASE_TMP}/site.err" &
 SITE=$!
 trap 'kill "$SITE" 2>/dev/null' EXIT
-for _ in $(seq 50); do [ -s "${STATE}/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${WEB}/" && break; sleep 0.2; done
+# Port 0: the site's start line, printed once both listen, names the ports it bound. Each port
+# must be followed by '/', so a line still being written is never read.
+WEB="" ING=""
+for _ in $(seq 100); do
+  read -r WEB ING < <(sed -n 's|^og live serve: browser http://127\.0\.0\.1:\([0-9]*\)/ ; ingest http://127\.0\.0\.1:\([0-9]*\)/.*|\1 \2|p' \
+    "${CASE_TMP}/site.err") && break
+  kill -0 "$SITE" 2>/dev/null || break
+  sleep 0.1
+done
+check "the site printed the ports it bound" has '^[0-9]+ [0-9]+$' "${WEB} ${ING}"
 # og live serve takes a message only with its token (docs/live-site.md).
 TOK=$(cat "${STATE}/ingest-token")
 check "the site made a token of 43 characters" has '^[A-Za-z0-9_-]{43}$' "$TOK"
