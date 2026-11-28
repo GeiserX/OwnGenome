@@ -49,9 +49,17 @@
 # component wrote and the compare reads byte for byte is flipped in tree B,
 # and the compare must go red and name it.
 #
+# pull-only runs in image-only mode: --pull-only installs no files, so both
+# sides run without an install folder, as a user runs it, and side A must
+# add at least one image instead (run it on an engine that lacks some of
+# versions.env's images). The control drops one image side B added from
+# its image list, and the images compare must go red and name it. Every
+# other check runs as for any component.
+#
 # Exit 0 when every check is green, 1 when one is red, 2 when an argument is
 # wrong, side B has no og to run, a manifest cannot be taken, tree A holds
-# nothing new, or the control did not go red.
+# nothing new (pull-only: side A added no image), or the control did not go
+# red.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -70,6 +78,9 @@ fi
 comp=$1
 case "$comp" in '' | -* | */* | *' '*) usage ;; esac
 if [ "$comp" = refresh-clinvar ]; then words=(--refresh clinvar); else words=("--${comp}"); fi
+# --pull-only writes no files: compare it by what it does to the images.
+images_only=false
+if [ "$comp" = pull-only ]; then images_only=true; fi
 expect=${AB_EXPECT_EXIT:-0}
 case "$expect" in '' | *[!0-9]*)
   echo "ERROR: AB_EXPECT_EXIT=${expect} is not an exit code." >&2
@@ -281,10 +292,13 @@ for side in a b; do
   images >"${work}/${side}.before.images"
   mkdir "${work}/install" "${work}/${side}.nxf"
   seed "${work}/install"
-  echo "== side ${side}: ${cmd[*]} ${work}/install"
+  # A user runs --pull-only with no folder.
+  dir="${work}/install"
+  if $images_only; then dir=""; fi
+  echo "== side ${side}: ${cmd[*]}${dir:+ ${dir}}"
   start=$SECONDS
   rc=0
-  NXF_HOME="${work}/${side}.nxf" "${cmd[@]}" "${work}/install" >"${work}/${side}.log" 2>&1 || rc=$?
+  NXF_HOME="${work}/${side}.nxf" "${cmd[@]}" ${dir:+"$dir"} >"${work}/${side}.log" 2>&1 || rc=$?
   echo "$rc" >"${work}/${side}.exit"
   echo "   exit ${rc} after $((SECONDS - start)) s"
   mv "${work}/install" "${work}/${side}"
@@ -300,15 +314,25 @@ done
 
 # Tree A must hold something the seed did not: a file or link that is not
 # in the seed as it is, or a new folder. Otherwise the run proves nothing.
-new=$(awk -F'\t' '
-  FILENAME == ARGV[1] { if (FNR > 2) { row[$0] = 1; if ($2 == "d") dir[$1] = 1 } next }
-  FNR > 2 && !($0 in row) && !($2 == "d" && ($1 in dir)) { n++ }
-  END { print n + 0 }' "$seed_tsv" "${work}/a.tsv")
-if [ "$new" -eq 0 ]; then
-  echo "ERROR: tree A holds nothing the seed did not (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; read ${work}/a.log." >&2
-  exit 2
+# In image-only mode, side A must have added an image instead.
+if $images_only; then
+  added=$(grep -c '^+' "${work}/a.images.delta" || true)
+  if [ "$added" -eq 0 ]; then
+    echo "ERROR: side A added no image (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; run on an engine that lacks some of versions.env's images, and read ${work}/a.log." >&2
+    exit 2
+  fi
+  echo "   side A: ${added} image tag(s) added"
+else
+  new=$(awk -F'\t' '
+    FILENAME == ARGV[1] { if (FNR > 2) { row[$0] = 1; if ($2 == "d") dir[$1] = 1 } next }
+    FNR > 2 && !($0 in row) && !($2 == "d" && ($1 in dir)) { n++ }
+    END { print n + 0 }' "$seed_tsv" "${work}/a.tsv")
+  if [ "$new" -eq 0 ]; then
+    echo "ERROR: tree A holds nothing the seed did not (side A exit $(cat "${work}/a.exit")): the compare would prove nothing; read ${work}/a.log." >&2
+    exit 2
+  fi
+  echo "   tree A: ${new} entries the seed did not hold"
 fi
-echo "   tree A: ${new} entries the seed did not hold"
 
 red=0
 check() { # NAME COMMAND...: run a check, print its verdict, keep its output.
@@ -364,47 +388,63 @@ if [ -n "${AB_SEED:-}" ]; then
 fi
 grep '^ALLOWED' "${work}/check.tree.txt" "${work}/check.nxf-home.txt" 2>/dev/null | sed 's/^/         /' || true
 
-# The control: one flipped bit in a file the component wrote in tree B must
-# turn the tree compare red.
-control_args=(--control "${work}/b.tsv" --allow "$allow")
-# With no seed there is nothing to leave out.
-if [ -n "${AB_SEED:-}" ]; then control_args+=(--not-in "$seed_tsv"); fi
-path=$(manifest "${control_args[@]}") || {
-  echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
-  exit 2
-}
-# The file may still be a hard link into the seed: give B its own copy first.
-# printf -v keeps a trailing newline in the name, which $( ) would strip.
-printf -v rel '%b' "$path"
-real="${work}/b/${rel}"
-# A short name beside it: a 255-byte name plus a suffix would be too long.
-copy=$(mktemp "${real%/*}/.ab-copy.XXXXXX")
-if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
-  rm -f "$copy"
-  echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
-  exit 2
-fi
-# A read-only file gets owner write for each flip only, so tree B keeps its
-# mode and the compare sees one difference, the content.
-flip() {
-  if [ -w "$real" ]; then
-    manifest --flip "${work}/b" "$path" >/dev/null
-  else
-    chmod u+w "$real"
-    manifest --flip "${work}/b" "$path" >/dev/null
-    chmod u-w "$real"
+# The control. In image-only mode, side B's image list less one image it
+# added must turn the images compare red. Otherwise one flipped bit in a
+# file the component wrote in tree B must turn the tree compare red.
+if $images_only; then
+  line=$(grep -m 1 '^+' "${work}/b.images.delta" || true)
+  tag=$(printf '%s\n' "$line" | cut -f 2)
+  ctl=0
+  if [ -n "$line" ]; then
+    grep -vxF -- "$line" "${work}/b.images.delta" >"${work}/b.images.control" || true
+    same_file "${work}/a.images.delta" "${work}/b.images.control" >"${work}/check.control.txt" 2>&1 || ctl=$?
   fi
-}
-flip
-take b.control "${work}/b"
-crc=0
-manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
-flip
-if [ "$crc" -ne 1 ] || ! grep -qF "DIFF	content	${path}	" "${work}/check.control.txt"; then
-  echo "ERROR: one flipped bit in ${path} did not turn the compare red (exit ${crc}): the compare cannot fail." >&2
-  exit 2
+  if [ -z "$line" ] || [ "$ctl" -eq 0 ] || ! grep -qF -- "$tag" "${work}/check.control.txt"; then
+    echo "ERROR: side B's image list less one image it added did not turn the images compare red${tag:+ (${tag})}: the compare cannot fail." >&2
+    exit 2
+  fi
+  echo "[OK]   control: side B's image list less ${tag} is red"
+else
+  control_args=(--control "${work}/b.tsv" --allow "$allow")
+  # With no seed there is nothing to leave out.
+  if [ -n "${AB_SEED:-}" ]; then control_args+=(--not-in "$seed_tsv"); fi
+  path=$(manifest "${control_args[@]}") || {
+    echo "ERROR: tree B has no file the component wrote that is compared byte for byte, to plant the control in." >&2
+    exit 2
+  }
+  # The file may still be a hard link into the seed: give B its own copy first.
+  # printf -v keeps a trailing newline in the name, which $( ) would strip.
+  printf -v rel '%b' "$path"
+  real="${work}/b/${rel}"
+  # A short name beside it: a 255-byte name plus a suffix would be too long.
+  copy=$(mktemp "${real%/*}/.ab-copy.XXXXXX")
+  if ! cp -p "$real" "$copy" || ! mv -f "$copy" "$real"; then
+    rm -f "$copy"
+    echo "ERROR: could not give tree B its own copy of ${path}; a flip could reach the seed through a hard link." >&2
+    exit 2
+  fi
+  # A read-only file gets owner write for each flip only, so tree B keeps its
+  # mode and the compare sees one difference, the content.
+  flip() {
+    if [ -w "$real" ]; then
+      manifest --flip "${work}/b" "$path" >/dev/null
+    else
+      chmod u+w "$real"
+      manifest --flip "${work}/b" "$path" >/dev/null
+      chmod u-w "$real"
+    fi
+  }
+  flip
+  take b.control "${work}/b"
+  crc=0
+  manifest --compare "${work}/a.tsv" "${work}/b.control.tsv" --allow "$allow" >"${work}/check.control.txt" || crc=$?
+  flip
+  if [ "$crc" -ne 1 ] || ! grep -qF "DIFF	content	${path}	" "${work}/check.control.txt"; then
+    echo "ERROR: one flipped bit in ${path} did not turn the compare red (exit ${crc}): the compare cannot fail." >&2
+    exit 2
+  fi
+  echo "[OK]   control: one flipped bit in ${path} is red, and restored"
 fi
-echo "[OK]   control: one flipped bit in ${path} is red, and restored"
 
 if $bvb; then label="bash vs bash (no og side ran)"; else label="bash vs og"; fi
 if [ "$red" -eq 0 ]; then

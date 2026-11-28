@@ -1585,6 +1585,17 @@ case "$AB_STUB" in
       # digest of the other.
       printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid7\n' 8 >>"$AB_ENGINE_STATE"
     fi ;;
+  pull)
+    # --pull-only, as a user runs it: no folder. With AB_PULL_SKEW=1 the
+    # second run pulls another tag than the first.
+    [ "$*" = --pull-only ] || { echo "pull-only got more than --pull-only: $*"; exit 3; }
+    t=1.0
+    if [ "${AB_PULL_SKEW:-}" = 1 ] && [ -e "$AB_ENGINE_STATE.ran" ]; then t=1.1; fi
+    : >"$AB_ENGINE_STATE.ran"
+    printf 'registry.example/example/tool:%s\tid8\n' "$t" >>"$AB_ENGINE_STATE"
+    echo "Status: Downloaded newer image for registry.example/example/tool:$t"
+    printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid4\n' 7 >>"$AB_ENGINE_STATE"
+    printf 'Status: Downloaded newer image for example/pin@sha256:%064d\n' 7 ;;
   nothing)
     echo "nothing to do" ;;
   foreign)
@@ -1605,6 +1616,17 @@ fn ab(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
 /// [`ab`], with `prep` called on the scratch folder (the repo copy is in
 /// its `repo` folder) before ab.sh runs.
 fn ab_with(tag: &str, stub: &str, env: &[(&str, &str)], prep: &dyn Fn(&Path)) -> (i32, String) {
+    ab_comp(tag, "kir-data", stub, env, prep)
+}
+
+/// [`ab_with`] for another component than kir-data.
+fn ab_comp(
+    tag: &str,
+    comp: &str,
+    stub: &str,
+    env: &[(&str, &str)],
+    prep: &dyn Fn(&Path),
+) -> (i32, String) {
     let t = Tmp::new(tag);
     let root = t.0.join("repo");
     for f in [
@@ -1620,7 +1642,7 @@ fn ab_with(tag: &str, stub: &str, env: &[(&str, &str)], prep: &dyn Fn(&Path)) ->
     prep(&t.0);
     let mut cmd = Command::new("bash");
     cmd.arg(root.join("tests/setup/ab.sh"))
-        .args(["--bash-vs-bash", "kir-data"])
+        .args(["--bash-vs-bash", comp])
         .arg(t.0.join("work"))
         .env("OG", og_bin())
         .env("CONTAINER_ENGINE", "true")
@@ -1731,15 +1753,62 @@ fn ab_sh_refuses_a_checkout_another_run_uses() {
     );
 }
 
+/// A container engine whose images are the lines of `$AB_ENGINE_STATE`
+/// (`NAME:TAG<tab>ID`): `image ls` prints them and `rmi TAG` removes one.
+const STATE_ENGINE: &[u8] = b"#!/usr/bin/env bash\nst=$AB_ENGINE_STATE\ncase \"$1\" in\n  image) cat \"$st\" ;;\n  rmi) awk -F'\\t' -v t=\"$2\" '$1 != t' \"$st\" >\"$st.new\" && mv \"$st.new\" \"$st\" ;;\nesac\n";
+
+/// ab.sh pull-only against [`STATE_ENGINE`], with `env` on top; its exit
+/// code and output.
+fn ab_pull_only(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
+    let t = Tmp::new(&format!("{tag}-engine"));
+    let engine = t.0.join("engine");
+    write(&engine, STATE_ENGINE, 0o755);
+    let state = t.0.join("images.tsv");
+    fs::write(&state, "").unwrap();
+    let (engine, state) = (s(&engine), s(&state));
+    let mut all = vec![
+        ("CONTAINER_ENGINE", engine.as_str()),
+        ("AB_ENGINE_STATE", state.as_str()),
+    ];
+    all.extend_from_slice(env);
+    ab_comp(tag, "pull-only", stub, &all, &|_| {})
+}
+
+#[test]
+fn ab_sh_compares_pull_only_by_its_images() {
+    let (code, out) = ab_pull_only("ab-pull", "pull", &[]);
+    assert_eq!(code, 0, "a pull-only run is not green:\n{out}");
+    assert!(out.contains("side A: 2 image tag(s) added"), "{out}");
+    assert!(out.contains("removed 2 image tag(s) side A added"), "{out}");
+    assert!(
+        out.contains(
+            "[OK]   control: side B's image list less localhost/pgp-pinned/example/pin:sha256-"
+        ),
+        "the image-only control did not run:\n{out}"
+    );
+    assert!(!out.contains("flipped bit"), "{out}");
+}
+
+#[test]
+fn ab_sh_is_red_when_pull_only_pulls_another_image() {
+    let (code, out) = ab_pull_only("ab-pull-skew", "pull", &[("AB_PULL_SKEW", "1")]);
+    assert_eq!(code, 1, "side B pulling another tag is green:\n{out}");
+    assert!(out.contains("[RED]  images"), "{out}");
+    assert!(out.contains("registry.example/example/tool:1.1"), "{out}");
+}
+
+#[test]
+fn ab_sh_stops_when_pull_only_adds_no_image() {
+    let (code, out) = ab_pull_only("ab-pull-nothing", "nothing", &[]);
+    assert_eq!(code, 2, "a pull-only run that adds no image passes:\n{out}");
+    assert!(out.contains("side A added no image"), "{out}");
+}
+
 #[test]
 fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
     let t = Tmp::new("ab-engine");
     let engine = t.0.join("engine");
-    write(
-        &engine,
-        b"#!/usr/bin/env bash\nst=$AB_ENGINE_STATE\ncase \"$1\" in\n  image) cat \"$st\" ;;\n  rmi) awk -F'\\t' -v t=\"$2\" '$1 != t' \"$st\" >\"$st.new\" && mv \"$st.new\" \"$st\" ;;\nesac\n",
-        0o755,
-    );
+    write(&engine, STATE_ENGINE, 0o755);
     let state = t.0.join("images.tsv");
     fs::write(&state, "").unwrap();
     let (_, out) = ab(
