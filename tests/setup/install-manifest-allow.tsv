@@ -1,7 +1,7 @@
 path	mode	component	reason	cannot_compare
-clinvar/clinvar_*chr.vcf.gz	vcf	refresh-clinvar	bcftools annotate and view write the time of each run into their ##bcftools_annotateCommand and ##bcftools_viewCommand header lines	-
-clinvar/clinvar_*chr.vcf.gz.tbi	index	refresh-clinvar	the header lines with a time change the size of the compressed header block, so every offset after it moves; the index of the same records holds the same names and must fit its file	-
 tools/cyrius-*/**/__pycache__/*.pyc	skip	cyrius	pip compiles each module as it installs it, and a .pyc's header holds the time pip wrote the .py beside it, so each install writes other bytes	no mode reads a .pyc; the .py it is compiled from is compared byte for byte
 tools/cyrius-*/__pycache__/*.pyc	skip	cyrius	pip compiles each module as it installs it, and a .pyc's header holds the time pip wrote the .py beside it, so each install writes other bytes	no mode reads a .pyc; the .py it is compiled from is compared byte for byte
 reference/pypgx-bundle/.git/index	skip	pypgx-data	git's index holds the change time of each file the clone checked out	it is git's cache of the files' stat times; every file it lists is compared byte for byte
 reference/pypgx-bundle/.git/logs/HEAD	skip	pypgx-data	git logs the time of the clone in it	its one line is the clone's time; the commit the clone checked out is compared in .git/HEAD
+clinvar/clinvar_*chr.vcf.gz	vcf	refresh-clinvar	bcftools annotate and view write the time of each run into their ##bcftools_annotateCommand and ##bcftools_viewCommand header lines	-
+clinvar/clinvar_*chr.vcf.gz.tbi	index	refresh-clinvar	the header lines with a time change the size of the compressed header block, so every offset after it moves; the index of the same records holds the same names and must fit its file	-

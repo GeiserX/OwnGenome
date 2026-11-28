@@ -512,39 +512,43 @@ fn ctx_with(genome: &str) -> Ctx {
     .unwrap()
 }
 
-/// The paths of a component's sources (each part of a family), or a folder.
+/// The paths of a component's sources (each part of a family), or a folder,
+/// and the files the table says a raw download installs (an archive's
+/// unpacked files, its installed column without a stamp's words).
 fn source_paths(c: &Component, ctx: &Ctx, s: &Sources) -> Vec<PathBuf> {
     let mut v = Vec::new();
-    for r in c.sources(s) {
-        if r.parts.is_empty() {
-            v.push(ctx.path(r, None).unwrap());
-        } else {
-            for p in &r.parts {
-                v.push(ctx.path(r, Some(p)).unwrap());
-            }
-        }
-    }
-    v
-}
-
-/// The files a raw download of C feeds (its row's `installed` column, a
-/// stamp's words left out): what unpacking it writes.
-fn fed_paths(c: &Component, ctx: &Ctx, s: &Sources, genome: &Path) -> Vec<PathBuf> {
-    let mut v = Vec::new();
+    let genome = ctx.genome_dir().unwrap();
     for r in c.sources(s) {
         let parts: Vec<Option<&str>> = if r.parts.is_empty() {
             vec![None]
         } else {
             r.parts.iter().map(|p| Some(p.as_str())).collect()
         };
-        for part in parts {
+        for p in parts {
+            v.push(ctx.path(r, p).unwrap());
             for f in &r.installed {
-                let e = ctx.expand(f, part).unwrap();
+                let e = ctx.expand(f, p).unwrap();
                 v.push(genome.join(e.split('#').next().unwrap_or_default()));
             }
         }
     }
     v
+}
+
+/// The installed paths of C that none of its sources writes: a path of a
+/// source, or a file inside a source that is a folder.
+fn unwritten(c: &Component, ctx: &Ctx, s: &Sources, genome: &Path) -> Vec<PathBuf> {
+    let written = source_paths(c, ctx, s);
+    let reference = genome.join("reference/GRCh38_no_alt_analysis_set.fasta");
+    c.installed_paths(ctx, genome, &reference)
+        .unwrap()
+        .into_iter()
+        .filter(|p| {
+            !written
+                .iter()
+                .any(|w| w == p || (w.to_string_lossy().ends_with('/') && p.starts_with(w)))
+        })
+        .collect()
 }
 
 /// The installers that build their files from the reference or install a
@@ -559,24 +563,6 @@ const BUILT: [&str; 6] = [
     "--pypgx-data",
 ];
 
-/// The installed paths of C that none of its sources writes: a path of a
-/// source, a file inside a source that is a folder, or a file a raw
-/// download feeds.
-fn unwritten(c: &Component, ctx: &Ctx, s: &Sources, genome: &Path) -> Vec<PathBuf> {
-    let mut written = source_paths(c, ctx, s);
-    written.extend(fed_paths(c, ctx, s, genome));
-    let reference = genome.join("reference/GRCh38_no_alt_analysis_set.fasta");
-    c.installed_paths(ctx, genome, &reference)
-        .unwrap()
-        .into_iter()
-        .filter(|p| {
-            !written
-                .iter()
-                .any(|w| w == p || (w.to_string_lossy().ends_with('/') && p.starts_with(w)))
-        })
-        .collect()
-}
-
 #[test]
 fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
     let genome = Path::new("/g");
@@ -587,12 +573,12 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
         if !c.ported() || c.kind != CKind::Installer {
             continue;
         }
+        seen += 1;
         assert!(!c.installed.is_empty(), "{} has no installed paths", c.flag);
         if BUILT.contains(&c.flag) {
             built += 1;
             continue;
         }
-        seen += 1;
         assert!(!c.sources(&s).is_empty(), "{} has no source row", c.flag);
         let bad = unwritten(c, &ctx, &s, genome);
         assert!(
@@ -603,13 +589,7 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
     }
     assert!(
         seen >= 7,
-        "the seven small data installers at least, got {seen}"
-    );
-    // Every name in BUILT is an installer og runs, so none hides a typo.
-    assert_eq!(
-        built,
-        BUILT.len(),
-        "BUILT names an installer og does not run"
+        "at least the seven small data installers, {seen} seen"
     );
     // The check can fail: a row naming a path nothing writes.
     let planted = Component {
@@ -617,6 +597,12 @@ fn every_installed_path_of_a_ported_installer_is_one_it_writes() {
         ..*components::by_flag("--viral-data").unwrap()
     };
     assert_eq!(unwritten(&planted, &ctx, &s, genome).len(), 1);
+    // Every name in BUILT is an installer og runs, so none hides a typo.
+    assert_eq!(
+        built,
+        BUILT.len(),
+        "BUILT names an installer og does not run"
+    );
 }
 
 #[test]
