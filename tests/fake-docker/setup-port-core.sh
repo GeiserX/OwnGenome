@@ -61,8 +61,9 @@ said=$(env -u OG PGP_ROOT="$hb" "${REPO_ROOT}/bin/og" setup install --archaic "$
 handed_og=$(printf '%s\n' "$said" | sed -n 's/^OG=//p')
 printf '%s\n' "$said" | grep -qx 'OG_SETUP=bash' || fail "the hand-back to setup.sh had no OG_SETUP=bash: ${said}"
 printf '%s\n' "$said" | grep -qxF "args=--archaic ${G}" || fail "the hand-back changed the arguments: ${said}"
-[ -n "$handed_og" ] && [ -x "$handed_og" ] && "$handed_og" setup ported --kir-data > /dev/null \
-  || fail "the hand-back to setup.sh did not name the og that ran it in OG: ${said}"
+if ! { [ -n "$handed_og" ] && [ -x "$handed_og" ] && "$handed_og" setup ported --kir-data > /dev/null; }; then
+  fail "the hand-back to setup.sh did not name the og that ran it in OG: ${said}"
+fi
 said=$(OG=/elsewhere/og PGP_ROOT="$hb" "${REPO_ROOT}/bin/og" setup install --archaic "$G")
 printf '%s\n' "$said" | grep -qx 'OG=/elsewhere/og' || fail "the hand-back replaced an OG that was set: ${said}"
 echo "[OK] a flag og hands back runs setup.sh with OG_SETUP=bash and OG naming that og"
