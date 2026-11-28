@@ -108,10 +108,17 @@ no_info() { # a cache folder without info.txt
   mkdir -p "$1/vep_cache/homo_sapiens/${VEP_CACHE_RELEASE}_GRCh38"
 }
 bad_kept() { # a kept PCGR archive with the right layout and the wrong bytes
-  mkdir -p "$1/downloads" "${CASE_WORK}/altered/data/grch38"
-  printf 'modified reference\n' > "${CASE_WORK}/altered/data/grch38/README"
-  tar -czf "$1/downloads/pcgr_ref_data.20260620.grch38.tgz" -C "${CASE_WORK}/altered" data
+  # Made once and copied, so both sides get the same bytes: tar and gzip
+  # stamp the current second into the archive.
+  if [ ! -f "${CASE_WORK}/altered.tgz" ]; then
+    mkdir -p "${CASE_WORK}/altered/data/grch38"
+    printf 'modified reference\n' > "${CASE_WORK}/altered/data/grch38/README"
+    tar -czf "${CASE_WORK}/altered.tgz" -C "${CASE_WORK}/altered" data
+  fi
+  mkdir -p "$1/downloads"
+  cp "${CASE_WORK}/altered.tgz" "$1/downloads/pcgr_ref_data.20260620.grch38.tgz"
 }
+
 old_place() { # an older setup's archive beside the cache, and a partial one
   mkdir -p "$1/vep_cache" "$1/pcgr_data"
   cp "${FAKE_DOWNLOAD_DIR}/homo_sapiens_vep_116_GRCh38.tar.gz" "$1/vep_cache/"
