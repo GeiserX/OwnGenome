@@ -59,7 +59,6 @@ Pipeline helpers (the steps run these):
   og setup megane-kmers --fa FASTA --out DIR [--prefix P] [--mem GB] [--threads N]
   og setup chrm-shift [args]
   og setup revel [args]
-  og setup roh-af [args]
   og vcf csq-rank [options]
   og vcf index [args]
   og vcf shift-back [args]
@@ -371,7 +370,6 @@ fn main() -> ExitCode {
             Some("megane-kmers") => ExitCode::from(og_setup::megane_kmers::cli(&rest[1..])),
             Some("chrm-shift") => io(og_vcf::shift::chrm_shift_cli, &rest[1..]),
             Some("revel") => io(og_setup::revel::cli, &rest[1..]),
-            Some("roh-af") => io(og_setup::roh_af::cli, &rest[1..]),
             Some(other) => usage_error(&format!("unknown setup tool '{other}'")),
             None => usage_error("the following arguments are required: setup tool"),
         },

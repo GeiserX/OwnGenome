@@ -242,10 +242,22 @@ pub fn note(d: &Value) -> Result<String, Malformed> {
         Some(p) => format!(" of the {} reference panel", py(p)?),
         None => " of the reference panel".to_owned(),
     };
-    let low = if is_str(get(anc, "low_confidence", &at)?, "True") {
-        " The ancestry match is low-confidence: read the percentile with care."
-    } else {
-        ""
+    // A sample between two groups (`mixed`, from og summary collect) is
+    // ranked among the first only: name both, as step 25's note does.
+    let second = match get(anc, "second_population", &at)?.filter(|v| truthy(v)) {
+        Some(p) if is_str(get(anc, "mixed", &at)?, "True") => Some(py(p)?),
+        _ => None,
+    };
+    let low = match second {
+        Some(second) => format!(
+            " The ancestry match is low-confidence: the genetic ancestry sits between {group} \
+             and {second}, and the percentile ranks it among {group} samples only. Read the \
+             percentile with care."
+        ),
+        None if is_str(get(anc, "low_confidence", &at)?, "True") => {
+            " The ancestry match is low-confidence: read the percentile with care.".to_owned()
+        }
+        None => String::new(),
     };
     let eff = if names_evaluations(&rs)? {
         format!(" {EFFECT_TEXT}")

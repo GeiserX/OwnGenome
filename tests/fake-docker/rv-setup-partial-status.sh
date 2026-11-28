@@ -34,19 +34,20 @@ done
 SETUP="${COPY}/scripts/setup.sh"
 
 # A fake sha256sum: the pinned digest for the tandem-repeat map, gnomAD's chrM
-# sites and step 33's files (somalier's sites and VerifyBamID2's panel, which
-# setup.sh pins itself and checks again when they are already there), the
-# real one for every other file.
+# sites, step 11's allele-frequency panel and step 33's files (somalier's
+# sites and VerifyBamID2's panel, which setup.sh pins itself and checks again
+# when they are already there), the real one for every other file.
 real_sha=$(command -v sha256sum || true)
 mkdir -p "${CASE_WORK}/sha-bin"
 {
-  printf '%s %s\n' "${TANDEM_REPEATS_URL##*/}" "$TANDEM_REPEATS_SHA256" "${GNOMAD_MITO_URL##*/}" "$GNOMAD_MITO_SHA256"
+  printf '%s %s\n' "${TANDEM_REPEATS_URL##*/}" "$TANDEM_REPEATS_SHA256" "${GNOMAD_MITO_URL##*/}" "$GNOMAD_MITO_SHA256" \
+    "${ROH_AF_PANEL_URL##*/}" "$ROH_AF_PANEL_SHA256"
   # shellcheck disable=SC2016  # expanded by the inner bash
   bash -c 'eval "$(sed -n "/^SOMALIER_SITES_SHA256=/p; /^VB2_PANEL_FILES=\"/,/\"\$/p" "$1")"
     printf "sites.hg38.vcf.gz %s\n" "$SOMALIER_SITES_SHA256"
     while read -r u s; do printf "%s %s\n" "${u##*/}" "$s"; done <<<"$VB2_PANEL_FILES"' _ "${REPO_ROOT}/scripts/setup.sh"
 } > "${CASE_WORK}/sha-bin/pins"
-[ "$(wc -l < "${CASE_WORK}/sha-bin/pins")" -eq 6 ] || { echo "FAIL: expected 6 pinned digests, got:"; cat "${CASE_WORK}/sha-bin/pins"; exit 1; }
+[ "$(wc -l < "${CASE_WORK}/sha-bin/pins")" -eq 7 ] || { echo "FAIL: expected 7 pinned digests, got:"; cat "${CASE_WORK}/sha-bin/pins"; exit 1; }
 cat > "${CASE_WORK}/sha-bin/sha256sum" <<SHA
 #!/usr/bin/env bash
 pin=\$(awk -v n="\${1##*/}" '\$1 == n {print \$2}' "${CASE_WORK}/sha-bin/pins")
@@ -76,6 +77,10 @@ seed_installed() {
     printf 'x\n' > "${r}/${u}"
   done
   printf 'x\n' > "${g}/gnomad_mito/${GNOMAD_MITO_URL##*/}"
+  # Step 11's panel with its index, as setup.sh leaves it.
+  mkdir -p "${g}/roh_af"
+  printf 'x\n' > "${g}/roh_af/${ROH_AF_PANEL_URL##*/}"
+  printf 'x\n' > "${g}/roh_af/${ROH_AF_PANEL_URL##*/}.tbi"
   printf 'release=%s eh=%s loci=%s converter=og-str-catalog-1 extra=off\n' \
     "$STRCHIVE_VERSION" "$STRCHIVE_EH_SHA256" "$STRCHIVE_LOCI_SHA256" > "${r}/strchive-${STRCHIVE_VERSION}/catalog.stamp"
   [ "${2:-}" = no-annotsv ] && return 0

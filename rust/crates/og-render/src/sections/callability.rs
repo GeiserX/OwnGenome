@@ -69,6 +69,10 @@ fn introns_line(d: &D<'_>) -> Result<String, Malformed> {
     let head = "The share counts every base of a gene, introns included, so a gene can pass while a \
                 coding exon was not read";
     Ok(match d.get("exons_checked")? {
+        Some(n) if n.num()? == 0.0 => format!(
+            "{head}: the exon table from step 16b holds no coding exon of these genes, so no exon \
+             was checked."
+        ),
         Some(n) => format!(
             "{head}: the {} coding exons checked must pass too, and a gene with one that did not \
              is listed as not read with that exon named.",

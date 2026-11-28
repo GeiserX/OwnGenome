@@ -235,7 +235,7 @@ pub fn read_regions(path: &str) -> Result<Depths, String> {
         .collect();
     if seen.keys().cloned().collect::<HashSet<_>>() != want {
         return Err(format!(
-            "{path}: its regions differ from the ones `cyp2d6_depth_check.py bed` prints"
+            "{path}: its regions differ from the ones `og pgx cyp2d6-bed` prints"
         ));
     }
     let mean = |k: Kind| total[k as usize] / length[k as usize] as f64;
@@ -322,9 +322,7 @@ fn read_measure(path: &str) -> Result<Measured, String> {
         .map_err(|e| format!("{path}: {e}"))?
         .unwrap_or_default();
     if head != "region\tmin_mapq\tmean_depth" {
-        return Err(format!(
-            "{path}: not a file of `cyp2d6_depth_check.py measure`"
-        ));
+        return Err(format!("{path}: not a file of `og pgx cyp2d6-measure`"));
     }
     let mut out: Measured = Vec::new();
     for line in it {
@@ -511,5 +509,27 @@ mod tests {
         ];
         assert_eq!(mean_depth(&reads, 0, 10, 0), 1.5);
         assert_eq!(mean_depth(&reads, 0, 10, 1), 1.0);
+    }
+
+    #[test]
+    fn a_wrong_input_names_the_og_command_that_writes_the_right_one() {
+        let dir = std::env::temp_dir().join(format!("og-cyp2d6-names-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let regions = dir.join("other.regions.bed");
+        std::fs::write(
+            &regions,
+            "chr22\t1\t2\tflank\t30\nchr22\t3\t4\tCYP2D6\t30\n",
+        )
+        .unwrap();
+        let e = read_regions(regions.to_str().unwrap()).unwrap_err();
+        assert!(
+            e.ends_with("its regions differ from the ones `og pgx cyp2d6-bed` prints"),
+            "{e}"
+        );
+        let measure = dir.join("not-measure.tsv");
+        std::fs::write(&measure, "region\tmean\n").unwrap();
+        let e = read_measure(measure.to_str().unwrap()).unwrap_err();
+        assert!(e.ends_with("not a file of `og pgx cyp2d6-measure`"), "{e}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

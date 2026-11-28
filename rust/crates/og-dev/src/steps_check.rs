@@ -209,8 +209,15 @@ pub fn read_code(root: &Path) -> Result<Code, String> {
 
 /// (step, label, tool) of every step run-all.sh plans, and the other steps
 /// it records: those it marks skipped by hand, the scripts it runs by name
-/// (`TIDDIT:04a-tiddit`) and the four variant callers it globs.
+/// (`TIDDIT:04a-tiddit`) and the four variant callers it globs. A line
+/// commented out is no step, so full-line comments are dropped first.
 fn run_all_steps(src: &str) -> (BTreeSet<(String, String, String)>, BTreeSet<String>) {
+    let code: Vec<&str> = src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect();
+    let src = code.join("\n");
+    let src = src.as_str();
     let mut planned = BTreeSet::new();
     for c in re(r#""(\d+b?) ([^":]+):(\w+)""#).captures_iter(src) {
         planned.insert((c[1].to_owned(), c[2].to_owned(), c[3].to_owned()));
@@ -364,10 +371,11 @@ pub fn checks(rows: &[Row], code: &Code) -> Vec<Outcome> {
         .filter(|p| !procs.contains_key(*p))
         .copied()
         .collect();
-    // Step 26 runs inside PRS, so two rows name it.
+    // Step 26 runs inside PRS, so rows 25 and 26 both name it, and no
+    // other row may.
     let twice: Vec<String> = procs
         .iter()
-        .filter(|(p, v)| v.len() > 1 && **p != "PRS")
+        .filter(|(p, v)| v.len() > 1 && !(**p == "PRS" && v[..] == ["25", "26"]))
         .map(|(p, v)| format!("{p} in {v:?}"))
         .collect();
     let extra: Vec<&str> = procs

@@ -23,7 +23,7 @@
 
 ## Genes This Genome Could Not Read Reliably
 ---
-  [could not be read: callability_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)]
+  [could not be read: callability_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)]
 ## Variant Calling (DeepVariant)
 ---
   Total variants: 20000

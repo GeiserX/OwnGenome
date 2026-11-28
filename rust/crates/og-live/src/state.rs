@@ -1220,7 +1220,7 @@ mod tests {
     fn a_carrier_list_of_only_hom_or_hemizygous_rows_asks_for_attention() {
         // A man with only a hemizygous GLA row: no carrier, but no unchanged
         // copy either, so the headline asks for attention as the Python
-        // server's does (bin/owngenome_live.py, _h_carrier).
+        // server's did (bin/owngenome_live.py, _h_carrier).
         let gla = r#"{"gene": "GLA", "condition": "Fabry disease", "inheritance": "XL",
             "variant": "chrX:101398000 C>T", "genotype": "hemizygous", "zygosity": "hemizygous",
             "significance": "Pathogenic", "gq": 50, "dp": 30, "low_confidence": false}"#;

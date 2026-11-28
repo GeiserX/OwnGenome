@@ -1,7 +1,7 @@
-# bin/cn_loci.tsv: the copy-number catalog, one row per locus, read by bin/copy_number.py.
+# bin/cn_loci.tsv: the copy-number catalog, one row per locus, read by og cn and og bloodtype.
 # It sits in bin/ because bin/ is the only repository folder every container mounts (the bash steps
 # mount it as /pgp-bin, Nextflow puts it on each task's PATH), as bin/str_intermediate_ranges.tsv.
-# docs/cn-loci.md explains every column and how to add a locus; tests/test_copy_number.py checks
+# docs/cn-loci.md explains every column and how to add a locus; og-cn's tests/genome_cn.rs checks
 # every row and that no row's targets or controls overlap any region (main or paralog copy) of a
 # model the pinned Parascopy data holds (assets/parascopy_models_v1.7.txt), except RHD (RHCE's
 # model), the one exemption the test names. UGT2B17 has no row: pypgx calls its copy number in

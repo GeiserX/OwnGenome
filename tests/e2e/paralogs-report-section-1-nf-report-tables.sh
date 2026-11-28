@@ -7,7 +7,7 @@
 #      tables earlier cases wrote: HG002 (case 38: pypgx summary and depth
 #      check), HG002cdna (case clinvar-clip-check-1: hits with one flagged)
 #      and CHPH (case comphet-phasing-1-reads: prioritized VCF and the pairs).
-#      It must place each table where bin/collect_summary.py reads it (a name
+#      It must place each table where og summary collect reads it (a name
 #      it has no place for stops the task), and the reports must carry the
 #      depth-check line, the cDNA column with its flagged count, and the
 #      pairs by phase. Negative control: the same samples without the three

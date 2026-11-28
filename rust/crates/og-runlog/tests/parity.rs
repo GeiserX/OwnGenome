@@ -498,11 +498,10 @@ fn eta_hours_left_of_a_run_going() {
 /// warning (how full and how big the disk is), and the host's memory size.
 /// The memory line keeps `max_memory`, and keeps its warning only for a
 /// `max_memory` of a terabyte or more, which is above any machine the
-/// answers were recorded or checked on, when og knows the host's memory
-/// (`known`; og reads it on Linux only and says `unknown` elsewhere, where
-/// it cannot warn). Below a terabyte, whether the warning shows depends on
-/// the machine.
-fn mask_host(text: &str, known: bool) -> String {
+/// answers were recorded on, when og measured this host below a terabyte
+/// (`small_host`, from [`small_host`]). Otherwise whether the warning shows
+/// depends on the machine.
+fn mask_host(text: &str, small_host: bool) -> String {
     text.lines()
         .map(|l| {
             if l.starts_with("disk ") {
@@ -524,7 +523,7 @@ fn mask_host(text: &str, known: bool) -> String {
                 if let Some(m) = max {
                     out += ", max_memory ";
                     out += m;
-                    if let Some(w) = warn.filter(|_| known && m.ends_with(" TB")) {
+                    if let Some(w) = warn.filter(|_| small_host && m.ends_with(" TB")) {
                         out += "; WARN: ";
                         out += w;
                     }
@@ -538,6 +537,43 @@ fn mask_host(text: &str, known: bool) -> String {
         .join("\n")
 }
 
+/// Whether og's headroom answer measured this host below a terabyte (its
+/// sizes go up to TB): only then is a `max_memory` of a terabyte or more
+/// sure to warn. og reads the host memory on Linux only and says `unknown`
+/// elsewhere, where it cannot warn; a host of a terabyte or more may hold
+/// the `max_memory` asked for.
+fn small_host(og_stdout: &str) -> bool {
+    og_stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("memory host: "))
+        .map(|r| r.split([',', ';']).next().unwrap_or(r))
+        .is_some_and(|h| h != "unknown" && !h.ends_with(" TB"))
+}
+
+#[test]
+fn the_terabyte_warning_is_compared_only_on_a_host_below_a_terabyte() {
+    assert!(small_host(
+        "memory host: 15.6 GB, max_memory 2.0 TB; WARN: x\n"
+    ));
+    assert!(small_host("disk /w: 1 GB\nmemory host: 512.0 GB\n"));
+    // A host of a terabyte or more, or one og cannot measure: not compared.
+    assert!(!small_host(
+        "memory host: 1.0 TB, max_memory 2.0 TB; WARN: x\n"
+    ));
+    assert!(!small_host("memory host: 2.0 TB, max_memory 1.5 TB\n"));
+    assert!(!small_host("memory host: unknown, max_memory 2.0 TB\n"));
+    assert!(!small_host("no memory line\n"));
+    // So the answer of a host with 2 TB, with no warning, matches the one
+    // recorded on a smaller machine, which warned.
+    let recorded =
+        "memory host: 15.6 GB, max_memory 2.0 TB; WARN: max_memory is above the host's memory";
+    let big = "memory host: 2.0 TB, max_memory 2.0 TB";
+    assert_eq!(
+        mask_host(recorded, small_host(big)),
+        mask_host(big, small_host(big))
+    );
+}
+
 fn headroom_parity(label: &str, args: &[&str]) -> String {
     let st = steps();
     let mut oa = vec!["headroom", "--steps", &st];
@@ -545,16 +581,16 @@ fn headroom_parity(label: &str, args: &[&str]) -> String {
     let (p, o) = (py(label, "run_headroom", args), og(&oa));
     assert_eq!(p.code, o.code, "{}{}", p.stderr, o.stderr);
     if p.code == 0 {
-        let known = !o.stdout.contains("memory host: unknown");
         assert!(
-            known || !cfg!(target_os = "linux"),
+            !o.stdout.contains("memory host: unknown") || !cfg!(target_os = "linux"),
             "og reads the host memory on Linux: {}",
             o.stdout
         );
+        let small = small_host(&o.stdout);
         same(
             "headroom lines",
-            &mask_host(&p.stdout, known),
-            &mask_host(&o.stdout, known),
+            &mask_host(&p.stdout, small),
+            &mask_host(&o.stdout, small),
         );
     } else {
         let last = |e: &str| {

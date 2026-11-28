@@ -13,7 +13,10 @@
 # VerifyBamID2 failure, or missing data, stops the step. The markers its
 # check kept come from the first run's log: a skipped check, or fewer than
 # 5,000 markers, reads uncertain; fewer than 1,000 somalier sites make
-# identity uncertain, and one sample alone leaves it not checked.
+# identity uncertain, and one sample alone leaves it not checked. The log
+# names a match "The same person as" only when identity is checked and the
+# pair shares 1,000 sites or more, and every other one "Possible match to",
+# as the reports do.
 # Step 34: a CRAM whose flagstat differs from the BAM's, or that fails
 # quickcheck or its content checksum fails, is removed and the BAM kept; the BAM is
 # deleted only after the check passed; --restore refuses to write over a BAM
@@ -60,7 +63,13 @@ case "$*" in
       "${FAKE_SM:-sample1}" "${FAKE_SM:-sample1}" "${FAKE_SOMALIER_SEX:-$ped_code}" "$ped_sex" \
       "${FAKE_HOM_REF:-5000}" "${FAKE_HET:-6000}" "${FAKE_HOM_ALT:-4000}" \
       "${FAKE_X_N:-300}" "${FAKE_X_HET:-0}" > "${o}.samples.tsv"
-    printf '#sample_a\tsample_b\trelatedness\n' > "${o}.pairs.tsv" ;;
+    # FAKE_PAIRS: the pair rows (\t and \n escapes), with n, the sites the
+    # pair shares, as og qc sample reads it.
+    if [ -n "${FAKE_PAIRS:-}" ]; then
+      printf '#sample_a\tsample_b\trelatedness\tibs0\tibs2\tn\n%b' "$FAKE_PAIRS" > "${o}.pairs.tsv"
+    else
+      printf '#sample_a\tsample_b\trelatedness\n' > "${o}.pairs.tsv"
+    fi ;;
   "verifybamid2 "*)
     FLAG=--Output; o=$(host_path "$(arg "$@")")
     case " $* " in *" --DisableSanityCheck "*) few=false ;; *) few=${FAKE_VB2_FEW:-false} ;; esac
@@ -146,6 +155,27 @@ output_has qc-thin-markers 'The estimate is uncertain: FREEMIX rests on 3000 mar
 FAKE_HOM_REF=100 FAKE_HET=120 FAKE_HOM_ALT=80 run_expect 0 qc-thin-sites "${SCRIPTS}/33-sample-qc.sh" sample1
 [ "$(tval identity)" = uncertain ] || fail "identity from 300 sites was not uncertain: $(tval identity)"
 output_has qc-thin-sites 'Identity: uncertain \(somalier genotyped 300 sites'
+
+# Same-person matches, worded as the reports word them. T shares 12,000
+# sites with sample1, so identity is checked and T is the same person; U
+# reaches 0.97 on 300 shared sites only, so U is only a possible match.
+FAKE_PAIRS='sample1\tT\t0.99\t0\t300\t12000\nU\tsample1\t0.97\t0\t300\t300\n' \
+  run_expect 0 qc-pair-thin "${SCRIPTS}/33-sample-qc.sh" sample1
+[ "$(tval possible_same_person_as)" = "U (0.97)" ] || fail "the thin pair is not in possible_same_person_as: $(tval possible_same_person_as)"
+output_has qc-pair-thin '^!!! The same person as: T \(0\.99\)$'
+output_has qc-pair-thin '^Possible match to: U \(0\.97\) \(on fewer than 1,000 shared sites\)$'
+output_lacks qc-pair-thin 'same person as: .*U \('
+# A firm match alone: no possible one.
+FAKE_PAIRS='sample1\tT\t0.99\t0\t300\t12000\n' run_expect 0 qc-pair-firm "${SCRIPTS}/33-sample-qc.sh" sample1
+output_has qc-pair-firm '^!!! The same person as: T \(0\.99\)$'
+output_lacks qc-pair-firm 'Possible match'
+# Identity uncertain (300 somalier sites): every match is only possible,
+# and the identity line says why.
+FAKE_HOM_REF=100 FAKE_HET=120 FAKE_HOM_ALT=80 FAKE_PAIRS='sample1\tT\t0.99\t0\t300\t12000\n' \
+  run_expect 0 qc-pair-uncertain "${SCRIPTS}/33-sample-qc.sh" sample1
+[ "$(tval identity)" = uncertain ] || fail "identity from 300 sites was not uncertain: $(tval identity)"
+output_has qc-pair-uncertain '^Possible match to: T \(0\.99\)$'
+output_lacks qc-pair-uncertain 'The same person as'
 
 FAKE_SOMALIER_SEX=-9 run_expect 0 qc-unknown "${SCRIPTS}/33-sample-qc.sh" sample1 female
 output_has qc-unknown 'Sex check: not done \(somalier could not tell the sex'

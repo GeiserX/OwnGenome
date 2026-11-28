@@ -42,8 +42,8 @@ THREADS=${THREADS:-8}
 # validate_sample NAME: exit 2 unless NAME is a plain sample name. Scripts put
 # it into container paths and `bash -c` bodies, so only letters, digits, '.',
 # '_' and '-' are allowed (the same rule as main.nf), and '.' and '..' are not
-# names at all. Nor is a name that starts with '-': CPSR and bin/pgx_parse.py
-# take it as an argument value, and argparse reads '-x' as an option.
+# names at all. Nor is a name that starts with '-': CPSR and og summary collect
+# take it as an argument value, and both read '-x' as an option.
 # CPSR's 3 to 40 characters are bin/cpsr_sample_id's job.
 validate_sample() {
   local s=${1:-}

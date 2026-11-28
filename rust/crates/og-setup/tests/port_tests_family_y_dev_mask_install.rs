@@ -13,12 +13,15 @@
 //! 2. a second run asks for nothing;
 //! 3. a mask that fails its sha256 (one byte added) is downloaded again,
 //!    and nothing else is;
-//! 4. a new tree pin (an older version.txt) downloads the three tree files
-//!    and keeps the mask, with no request for it;
-//! 5. a tree download that fails keeps the checked mask, and no
+//! 4. a new tree pin (an older version.txt) downloads the tree alone and
+//!    keeps the mask and the two position tables, which still match their
+//!    pins, with no request for them;
+//! 5. a position table that fails its sha256 is downloaded again with the
+//!    tree, and the other is kept;
+//! 6. a tree download that fails keeps the checked mask and tables, and no
 //!    version.txt, so no step reads the tree; the next run asks for the
-//!    tree files only;
-//! 6. a missing mask beside current tables is downloaded on its own.
+//!    tree alone;
+//! 7. a missing mask beside current tables is downloaded on its own.
 //!
 //! Setup downloads through `og setup fetch`; the og it runs (`OG`) is this
 //! test binary, re-entered in [`og_child`].
@@ -292,40 +295,60 @@ fn setup_keeps_the_checked_chry_mask() {
             && fs::read_to_string(&version).unwrap() == version_before,
         "3. a mask that fails its sha256 is downloaded again, and nothing else: {rc} {asked:?} {out}"
     );
+    let ftdna = yt.join("positions_ftdna_hg38.txt");
+    let want_ftdna = sha256(&ftdna);
     fs::write(&version, "tree\tan older pin\n").unwrap();
     let (rc, asked, out) = w.setup("");
     assert!(
         rc == 0
-            && asked == tree3
+            && asked == ["current_tree.json"]
             && sha256(&mask) == want_mask
             && fs::read_to_string(&version).unwrap() == version_before,
-        "4. a new tree pin downloads the tree files and keeps the mask: {rc} {asked:?} {out}"
+        "4. a new tree pin downloads the tree alone and keeps the mask and tables: {rc} {asked:?} {out}"
+    );
+    let mut f = fs::OpenOptions::new().append(true).open(&ftdna).unwrap();
+    f.write_all(b"x").unwrap();
+    drop(f);
+    fs::write(&version, "tree\tan older pin\n").unwrap();
+    let (rc, asked, out) = w.setup("");
+    assert!(
+        rc == 0
+            && asked == ["current_tree.json", "ftdna_positions_hg38.txt"]
+            && sha256(&ftdna) == want_ftdna
+            && fs::read_to_string(&version).unwrap() == version_before,
+        "5. a position table that fails its sha256 is downloaded again with the tree: {rc} {asked:?} {out}"
     );
     fs::write(&version, "tree\tan older pin\n").unwrap();
     let (rc, asked, out) = w.setup("current_tree");
-    let left: Vec<String> = fs::read_dir(&yt)
+    let mut left: Vec<String> = fs::read_dir(&yt)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
+    left.sort();
     assert!(
         rc == 0
             && !asked.contains(&mask_name)
             && sha256(&mask) == want_mask
             && !version.exists()
-            && left == ["callable_mask_chrY.fasta.gz"],
-        "5. a failed tree download keeps the checked mask and leaves no version.txt: \
+            && left
+                == [
+                    "callable_mask_chrY.fasta.gz",
+                    "positions_ftdna_hg38.txt",
+                    "positions_yfull_hg38.txt",
+                ],
+        "6. a failed tree download keeps the checked mask and tables and leaves no version.txt: \
          {rc} {asked:?} {left:?} {out}"
     );
     let (rc, asked, out) = w.setup("");
     assert!(
-        rc == 0 && asked == tree3 && sha256(&mask) == want_mask,
-        "5. the next run asks for the tree files only: {rc} {asked:?} {out}"
+        rc == 0 && asked == ["current_tree.json"] && sha256(&mask) == want_mask,
+        "6. the next run asks for the tree alone: {rc} {asked:?} {out}"
     );
     fs::remove_file(&mask).unwrap();
     let (rc, asked, out) = w.setup("");
     assert!(
         rc == 0 && asked == [mask_name.as_str()] && sha256(&mask) == want_mask,
-        "6. a missing mask beside current tables is downloaded on its own: {rc} {asked:?} {out}"
+        "7. a missing mask beside current tables is downloaded on its own: {rc} {asked:?} {out}"
     );
     fs::remove_dir_all(&w.work).unwrap();
 }

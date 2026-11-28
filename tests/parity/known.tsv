@@ -6,6 +6,14 @@ y-yleaf-positions	no-tree	stderr	the message names the data folder by its absolu
 paraphase-table	broken-json	stderr	Python exception text: json.JSONDecodeError gives line and column, og gives the byte
 paraphase-check-bam	plain	stderr	Python exception text: gzip names the bad magic bytes, og says the file is not a BAM
 
+# Intentional report-render and summary-collect expectations after the missing-assets message change.
+report-render	no-assets	no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	no-assets	no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	no-assets	no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	cb-no-assets	cb-no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+
 # Intentional family report expectations after the fixture refresh.
 family	report-3gen	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 family	report-3gen	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
@@ -13,6 +21,49 @@ family	report-3gen-duo	stdout	#478 explains de novo checks for transmitting pare
 family	report-3gen-duo	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 family	report-bench	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 family	report-bench	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
+
+# Intentional report-render expectations after the PRS mixed-ancestry caveat change.
+report-render	a-escape	a-escape.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-escape	a-escape.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-full	a-full.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-full	a-full.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-no-painting	a-no-painting.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-no-painting	a-no-painting.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-numbers	a-numbers.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-painting	a-painting.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-painting	a-painting.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-since	a-since.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-since	a-since.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-stale	a-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-stale	a-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-y-calls	a-y-calls.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	a-y-calls	a-y-calls.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	all	all.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	all-history	all-history.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float--inf	c-float--inf.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float-inf	c-float-inf.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-float-nan	c-float-nan.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	c-full	c-full.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-reasons	s-consumer-reasons.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-reasons	s-consumer-reasons.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-stale	s-consumer-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-consumer-stale	s-consumer-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-chrx	s-sexloss-chrx.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-chrx	s-sexloss-chrx.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-detected	s-sexloss-detected.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-detected	s-sexloss-detected.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-failed	s-sexloss-failed.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-failed	s-sexloss-failed.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-gain-stale	s-sexloss-gain-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-gain-stale	s-sexloss-gain-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-not-estimated	s-sexloss-not-estimated.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-not-estimated	s-sexloss-not-estimated.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-odd	s-sexloss-odd.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sexloss-odd	s-sexloss-odd.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-mixed	s-sv-mixed.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-mixed	s-sv-mixed.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-stale	s-sv-stale.html	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
+report-render	s-sv-stale	s-sv-stale.txt	the PRS caveat of a mixed ancestry match names the two groups the sample sits between and says the percentile ranks it among one group only
 
 # Intentional ancestry-fine expectations after the painter moved into og.
 ancestry-fine	check-map-problems	stderr	#625: check-map accepts 1 painting reference per continental group (the painter copies from that person's two haplotypes), so the RFMix floor of 2 is no longer reported.
@@ -28,9 +79,9 @@ report-render	cb-full	cb-full.html	#628: the secondary-findings card prints the 
 report-render	cb-full	cb-full.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	cb-nf	cb-nf.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	cb-nf	cb-nf.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
-report-render	cb-nfbad	cb-nfbad.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
+report-render	cb-nfbad	cb-nfbad.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card. the gene index and search list step 6's ACMG card when the clinical section holds none, since the report shows that card on its own.
 report-render	cb-nfbad	cb-nfbad.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
-report-render	cb-notbi	cb-notbi.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
+report-render	cb-notbi	cb-notbi.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card. the gene index and search list step 6's ACMG card when the clinical section holds none, since the report shows that card on its own.
 report-render	cb-notbi	cb-notbi.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	cb-notgz	cb-notgz.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	cb-notgz	cb-notgz.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
@@ -46,11 +97,11 @@ report-render	full	full.html	#629: callability shares print at one decimal, the 
 report-render	full	full.txt	#629: callability shares print at one decimal, the report says whether coding exons were checked, and genes whose own step gave no result get a line of their own.
 report-render	m-clinical-escape	m-clinical-escape.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	m-clinical-escape	m-clinical-escape.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
-report-render	m-clinical-failed	m-clinical-failed.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
+report-render	m-clinical-failed	m-clinical-failed.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card. the gene index and search list step 6's ACMG card when the clinical section holds none, since the report shows that card on its own.
 report-render	m-clinical-failed	m-clinical-failed.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	m-clinical-stale	m-clinical-stale.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	m-clinical-stale	m-clinical-stale.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
-report-render	m-clinical-unreadable	m-clinical-unreadable.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
+report-render	m-clinical-unreadable	m-clinical-unreadable.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card. the gene index and search list step 6's ACMG card when the clinical section holds none, since the report shows that card on its own.
 report-render	m-clinical-unreadable	m-clinical-unreadable.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	m-clinvar-freq-note	m-clinvar-freq-note.html	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.
 report-render	m-clinvar-freq-note	m-clinvar-freq-note.txt	#628: the secondary-findings card prints the marks of each row (the pair word with its phase, a HIGH-impact call with no GQ, DP or AD) and the carrier list its low-confidence mark; a run whose step 23 left no clinical VCF shows the step 6 card.

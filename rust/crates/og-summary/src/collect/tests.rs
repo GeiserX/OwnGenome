@@ -276,7 +276,7 @@ fn callability_errors_name_the_file() {
     assert_eq!(
         note,
         &s(&format!(
-            "callability_genes.tsv is not in {}: the report needs the repository's assets/ folder (render_report.py --assets)",
+            "callability_genes.tsv is not in {}: the report needs the repository's assets/ folder (og report render --assets)",
             d.path("assets")
         ))
     );

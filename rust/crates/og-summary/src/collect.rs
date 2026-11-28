@@ -2,9 +2,9 @@
 //! summary.json, the file both reports, the live site and the run delta
 //! read.
 //!
-//! The port comes in groups (`--only`), each checked against the Python
+//! The port came in groups (`--only`), each checked against the Python
 //! collector (`bin/collect_summary.py`) section by section before anything
-//! switches to it. Group `a` is the model and the first seven sections:
+//! switched to it. Group `a` is the model and the first seven sections:
 //! coverage, callability, sex_check, sample_qc, mosaic_sex_loss,
 //! read_count and variants, with the run status, the manifest and each
 //! section's state. Group `b` is the clinical sections ([`group_b`]):

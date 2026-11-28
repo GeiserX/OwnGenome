@@ -18,7 +18,7 @@
 //! - [`sv`]: `og sv add-callers|postfilter`, step 05's SV calls into
 //!   AnnotSV and the checks of its class 4 and 5 calls.
 //! - [`longread`]: `og longread clair3-model`, the Clair3 model for the
-//!   basecaller (not ported yet).
+//!   basecaller.
 
 pub mod constraint;
 pub mod consumer;

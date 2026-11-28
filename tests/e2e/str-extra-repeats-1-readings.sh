@@ -3,8 +3,8 @@
 # real tools: ExpansionHunter 5.0.0 (step 09) sizes the CFTR TG/poly-T tract
 # and the UGT1A1 TA repeat of assets/str_extra_loci.json on made-up reads
 # (og dev fixture str-extra),
-# and the reports (step 24 and generate-report.sh, bin/collect_summary.py and
-# bin/render_report.py) read them:
+# and the reports (step 24 and generate-report.sh, og summary collect and
+# og report render) read them:
 #   SXA  CFTR TG12-5T on one copy and TG11-7T on the other, UGT1A1 7 and 8 TA
 #        units, no R117H copy (a made-up step 42 traits row), PharmCAT *1/*28
 #        (a made-up step 27 table)

@@ -152,7 +152,7 @@ platelet-antigens-1	shard	2	-
 prs-1-agreement	shard	68	-
 prs-2-ancestry	shard	397	prs-1-agreement
 prs-3-panel-measure	shard	0	prs-1-agreement
-prs-runopts-and-trace-1	shard	68	nextflow-from-fastq-1-bash
+prs-runopts-and-trace-1	shard	85	nextflow-from-fastq-1-bash
 prs-scores-and-run-options-1-strand-sex	shard	249	-
 prs-scores-and-run-options-2-panel-chrx	shard	342	prs-2-ancestry
 pypgx-cyp2d6-section-1-summary	shard	0	nextflow-hardening-2-nf

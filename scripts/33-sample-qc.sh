@@ -233,8 +233,22 @@ case "$(val mosaic_call)" in
   detected|gain) echo "  A population-level marker, not a diagnosis: see docs/33-sample-qc.md." ;;
 esac
 echo "Sex from the reads (somalier): $(val inferred_sex)"
+# The matches as the reports word them: with identity uncertain every one
+# is only possible; otherwise those named in possible_same_person_as (their
+# pair shares fewer than 1,000 sites) are, and the rest are the same person.
 if [ -n "$(val same_person_as)" ]; then
-  echo "!!! The same person as: $(val same_person_as)" >&2
+  awk -v all="$(val same_person_as)" -v thin="$(val possible_same_person_as)" \
+    -v unsure="$([ "$(val identity)" = uncertain ] && echo 1)" 'BEGIN {
+      n = split(thin, t, ", "); for (i = 1; i <= n; i++) th[t[i]] = 1
+      n = split(all, a, ", ")
+      for (i = 1; i <= n; i++) {
+        if (a[i] == "") continue
+        if (unsure || (a[i] in th)) poss = poss (poss == "" ? "" : ", ") a[i]
+        else firm = firm (firm == "" ? "" : ", ") a[i]
+      }
+      if (firm != "") print "!!! The same person as: " firm
+      if (poss != "") print "Possible match to: " poss (unsure ? "" : " (on fewer than 1,000 shared sites)")
+    }' >&2
 fi
 echo "Identity: $(val identity) ($(val identity_reason))"
 case "$(val sex_check)" in

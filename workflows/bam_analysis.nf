@@ -361,9 +361,21 @@ workflow BAM_ANALYSIS {
                          "${qc.freemix_warn_above}: about that share of the reads may come from another person. " +
                          "Calls, above all heterozygous ones, are less reliable; see docs/33-sample-qc.md."
             }
-            if (qc.same_person_as) {
-                log.warn "Sample '${meta.id}': somalier finds the same person in ${qc.same_person_as}: a duplicate " +
+            // As the reports: with identity uncertain every match is only
+            // possible; otherwise those in possible_same_person_as (their
+            // pair shares fewer than 1,000 sites) are, and the rest are firm.
+            def matches = (qc.same_person_as ?: '').tokenize(',')*.trim().findAll { it }
+            def thin = (qc.possible_same_person_as ?: '').tokenize(',')*.trim()
+            def unsure = qc.identity == 'uncertain'
+            def possible = matches.findAll { unsure || thin.contains(it) }
+            def firm = matches - possible
+            if (firm) {
+                log.warn "Sample '${meta.id}': somalier finds the same person in ${firm.join(', ')}: a duplicate " +
                          "row or a sample swap."
+            }
+            if (possible) {
+                log.warn "Sample '${meta.id}': possible match to ${possible.join(', ')}" +
+                         (unsure ? " (identity is uncertain: ${qc.identity_reason})." : " (on fewer than 1,000 shared sites).")
             }
             [meta, tsv]
         }

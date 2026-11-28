@@ -782,3 +782,55 @@ fn search_js_answers_each_query_as_the_rust_rule_does() {
     }
     assert_eq!(g.len(), queries.len());
 }
+
+#[test]
+fn a_step_6_card_alone_is_indexed_and_a_clinical_card_once() {
+    // Step 6's card with no step 23: the clinical section holds no card, so
+    // the reports show sections.acmg_sf, and its genes must reach the index.
+    let alone = json(
+        r#"{"sections": {"acmg_sf": {"state": "ok", "step": "06", "title": "Secondary findings",
+            "data": {"rows": [{"gene": "MUTYH", "variant": "chr1:45332803 C>T"}]}}}}"#,
+    );
+    let ai = index(&alone, None);
+    let anchor = og_render::chapters::section_of("acmg_sf").map_or("null", |x| x.id);
+    assert_eq!(
+        sections(&ai, "MUTYH"),
+        [("acmg_sf".to_owned(), anchor.to_owned(), "1".to_owned())],
+        "red on main: the card of step 6 alone was left out of the index"
+    );
+    // With step 23's card in the clinical section the same gene is listed
+    // once, under the clinical section, as the reports show it there.
+    let both = json(
+        r#"{"sections": {"acmg_sf": {"state": "ok", "step": "06", "title": "Secondary findings",
+            "data": {"rows": [{"gene": "MUTYH", "variant": "chr1:45332803 C>T"}]}},
+            "clinical": {"state": "ok", "step": "23", "title": "Clinical filter",
+            "data": {"acmg_sf": {"rows": [{"gene": "MUTYH", "variant": "chr1:45332803 C>T"}]}}}}}"#,
+    );
+    let bi = index(&both, None);
+    let keys: Vec<String> = sections(&bi, "MUTYH").into_iter().map(|x| x.0).collect();
+    assert_eq!(keys, ["clinical"]);
+    // A clinical section that did not run (or failed) is not read, so the
+    // card of step 6 is.
+    let mut failed = both.clone();
+    set(
+        &mut failed,
+        &["sections", "clinical", "state"],
+        Value::Str("failed".into()),
+    );
+    let fi = index(&failed, None);
+    let keys: Vec<String> = sections(&fi, "MUTYH").into_iter().map(|x| x.0).collect();
+    assert_eq!(keys, ["acmg_sf"]);
+    // A clinical card that is empty or false is no card, as in the reports
+    // and on the live site (both test it for truth): step 6's card is read.
+    for empty in [Value::Object(Default::default()), Value::Bool(false)] {
+        let mut e = both.clone();
+        set(
+            &mut e,
+            &["sections", "clinical", "data", "acmg_sf"],
+            empty.clone(),
+        );
+        let ei = index(&e, None);
+        let keys: Vec<String> = sections(&ei, "MUTYH").into_iter().map(|x| x.0).collect();
+        assert_eq!(keys, ["acmg_sf"], "clinical.data.acmg_sf = {empty:?}");
+    }
+}

@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// The live site's policy (`CSP` of bin/owngenome_live.py; live_replay.rs keeps its copy equal to it).
+/// The live site's policy (`CSP` of og-live's src/csp.rs; live_replay.rs keeps its own copy equal to it).
 const CSP: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; \
      img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
 const UNREAD: &str = "This page could not read this run's state, so it keeps its results closed.";

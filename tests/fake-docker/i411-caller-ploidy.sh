@@ -155,10 +155,11 @@ same "03a male after female" "$(calls gatk)" "$MALE"
 # A region that crosses the end of PAR1 is cut there; a region in PAR1 stays
 # diploid and one between the PARs is haploid.
 fresh
-INTERVALS="chr1:1-100 chrX:1000001-1200000 chrX:73700001-74000000 chrY:2700001-3000000" \
+# A region that starts one base before PAR1 keeps that base, haploid.
+INTERVALS="chr1:1-100 chrX:10000-20000 chrX:1000001-1200000 chrX:73700001-74000000 chrY:2700001-3000000" \
   run_expect 0 gatk-intervals "${SCRIPTS}/03a-gatk-haplotypecaller.sh" sample1 male
-same "03a male INTERVALS" "$(calls gatk)" "$(printf '%s\n' $'dip\tchr1:0:100,' $'dip\tchrX:1000000:1200000,' \
-  $'dip\tchrY:2700000:2781479,' $'hap\tchrX:73700000:74000000,' $'hap\tchrY:2781479:3000000,' | LC_ALL=C sort)"
+same "03a male INTERVALS" "$(calls gatk)" "$(printf '%s\n' $'dip\tchr1:0:100,' $'dip\tchrX:10000:20000,' $'dip\tchrX:1000000:1200000,' \
+  $'dip\tchrY:2700000:2781479,' $'hap\tchrX:9999:10000,' $'hap\tchrX:73700000:74000000,' $'hap\tchrY:2781479:3000000,' | LC_ALL=C sort)"
 # SCATTER=false: two processes in turn, each with every CPU.
 fresh
 SCATTER=false run_expect 0 gatk-one "${SCRIPTS}/03a-gatk-haplotypecaller.sh" sample1 male
@@ -266,6 +267,12 @@ run_expect 0 octopus-female "${SCRIPTS}/03d-octopus.sh" sample1 female
 output_has octopus-female "^Ploidy: female, every contig diploid but chrY and chrM \(Octopus' default\)"
 [ "$(octopus_runs)" -eq 1 ] || fail "03d female did not run Octopus once"
 [ "$(count ' octopus .*(--regions-file|--contig-ploidies)')" -eq 0 ] || fail "03d female passed a region file or a ploidy"
+# Two INTERVALS regions reach Octopus as two words of --regions, not one
+# word with a space inside (the fake docker logs each argument %q-quoted).
+fresh
+INTERVALS="chr1:1-100 chrX:1000001-1200000" run_expect 0 octopus-female-intervals "${SCRIPTS}/03d-octopus.sh" sample1 female
+[ "$(count ' octopus .*--regions chr1:1-100 chrX:1000001-1200000( |$)')" -eq 1 ] \
+  || fail "03d female did not pass the two INTERVALS regions as two words: $(grep -E ' octopus ' "$FAKE_DOCKER_LOG" | tail -1)"
 
 # --- A failed PAR cut ---------------------------------------------------------------------
 # This awk fails when it cuts a unit that holds chrX at the PARs. Whole-genome

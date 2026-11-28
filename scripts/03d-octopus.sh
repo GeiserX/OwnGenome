@@ -107,7 +107,10 @@ if [ "$SEX" != male ]; then
   REGION_ARGS=()
   if [ -n "${INTERVALS:-}" ]; then
     echo "Restricting to region: ${INTERVALS}"
-    REGION_ARGS=(--regions "${INTERVALS}")
+    # One word per region: Octopus takes --regions as a list of words and
+    # refuses "chr1:1-100 chr2" as one region.
+    read -r -a IV <<< "${INTERVALS}"
+    REGION_ARGS=(--regions "${IV[@]}")
   fi
   run_octopus "/genome/${SAMPLE}/vcf_octopus/${SAMPLE}.vcf.gz" ${REGION_ARGS[@]+"${REGION_ARGS[@]}"}
 else

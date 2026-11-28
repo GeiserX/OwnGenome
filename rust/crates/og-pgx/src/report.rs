@@ -15,7 +15,7 @@ use std::collections::HashMap;
 /// The allele names that mean "no call".
 const NO_CALL_NAMES: [&str; 5] = ["", "unknown", "none", "?", "n/a"];
 
-/// The genes step 36 (`bin/pgx_outside_calls.py`) can pass to PharmCAT. Any
+/// The genes step 36 (`og pgx outside-calls`) can pass to PharmCAT. Any
 /// other outside call, such as MT-RNR1 from step 20's chrM calls, never
 /// appears in its table, so the table cannot confirm or refute it.
 pub const STEP36_GENES: [&str; 3] = ["CYP2D6", "HLA-A", "HLA-B"];

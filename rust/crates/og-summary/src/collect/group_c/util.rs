@@ -267,7 +267,7 @@ pub fn asset_rows(assets: &str, name: &str) -> Result<Vec<DictRow>, String> {
     let p = crate::join(assets, name);
     if !crate::is_file(&p) {
         return Err(format!(
-            "{name} is not in {assets}: the report needs the repository's assets/ folder (render_report.py --assets)"
+            "{name} is not in {assets}: the report needs the repository's assets/ folder (og report render --assets)"
         ));
     }
     let text = std::fs::read(&p).map_err(|e| py_error("OSError", &e.to_string()))?;

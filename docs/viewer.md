@@ -125,7 +125,7 @@ The browser checks also measure the contrast of the igv.js search input and vari
 
 `tests/test_owngenome_view.sh` checks the script with `og`: igv.js is the release `versions.env` pins, with its sha256, and the script sets no pin of its own; it prints the address, picks Manta's SV VCF, refuses a foreign `Host`, a forwarded request and a reversed locus, and never calls `python3`.
 
-`tests/test_viewer.py` checks that every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table.
+`rust/crates/og-render/tests/port_live_switch.rs` (`every_findings_table_ends_each_row_with_a_viewer_link`) checks that every findings table of the report ends with a Viewer cell that links each row to its position, with the note under it; a control with the links taken out must fail that check for every table.
 
 `rust/crates/og-browser/tests/live_map.rs` (`live_site_genome_viewer`) checks the live site's viewer on the same sample: the login, the policy, the byte ranges, the files it refuses, the report's links pointed at the site, the access log, a BAM symlinked out of `GENOME_DIR`, a site started without the viewer, and the page in headless Chrome.
 

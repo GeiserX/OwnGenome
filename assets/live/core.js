@@ -384,7 +384,7 @@
   }
   // The person and finding pages: the run's state and, for a child, its results, read in the order the views read
   // them (the finding page asks for its results at once, the person page once the state has answered) and with the
-  // views' options. Who is a child is the server's one rule (bin/owngenome_live.py child_of), which state.json's
+  // views' options. Who is a child is the server's one rule (child_of in rust/crates/og-live/src/runs.rs), which state.json's
   // family plugin carries (child, or unknown for a run no readable family lists while one cannot be read); a state
   // that cannot be read cannot say the person is not a child. An adult's page then reads nothing more through the
   // gate: its views ask for the family and the results themselves. For a child the gate reads the results first. Its
@@ -428,7 +428,7 @@
       current = { child: true, unread: true, acts: null, opened: {}, order: [], perm: [] }; ownsPage = true; renderGate();
     });
   }
-  // A family's children with a run here, by the one rule (childIn, bin/owngenome_live.py child_of): family.json
+  // A family's children with a run here, by the one rule (childIn, child_of in rust/crates/og-live/src/runs.rs): family.json
   // marks each member run `child` as the server decides it over every family, so a person who is a child in another
   // family is one here too. A member who was never sequenced, or has no run, has no report to close.
   function childRun(f, s) { var r = f.runs && f.runs[s]; return !!(r && r.url && r.child !== false); }
@@ -524,7 +524,7 @@
     }
     return f;
   }
-  // Who is a child, the server's one rule (bin/owngenome_live.py child_of) over the families of runs.json: a run any
+  // Who is a child, the server's one rule (child_of in rust/crates/og-live/src/runs.rs) over the families of runs.json: a run any
   // readable family lists with a father or a mother; while a family cannot be read, every run while its members
   // cannot be read (an empty member list) and the runs it lists while another of its files cannot be read.
   function childIn(fams, name) {

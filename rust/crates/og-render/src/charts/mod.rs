@@ -355,7 +355,7 @@ fn parse(args: &[String]) -> Result<(String, Option<String>), String> {
 }
 
 /// `Sections: missing 28, ok 20`: the sections counted by state, as `og
-/// report render` and `bin/render_report.py` end.
+/// report render` ends (and `bin/render_report.py` ended).
 fn state_counts(s: &Summary) -> Result<String, Malformed> {
     let Some(Value::Object(secs)) = s.get("sections") else {
         return Err(Malformed("summary.sections is not an object".into()));

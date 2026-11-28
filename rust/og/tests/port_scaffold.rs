@@ -27,7 +27,6 @@ const PLANNED: &[&str] = &[
     "vcf shift-back",
     "setup chrm-shift",
     "setup revel",
-    "setup roh-af",
     "sv survivor-prep",
     "sv consensus-check",
     "archaic compare",

@@ -333,10 +333,11 @@ pub fn step_of(key: &str) -> &'static str {
 /// Summary keys no frame section lists, because the section of another key
 /// already shows what they hold: `(key, the key whose section shows it)`.
 /// `acmg_sf` is the secondary-findings card the clinical section also holds
-/// as `clinical.data.acmg_sf`, and the reports read it there. Listing it in
-/// the clinical-filter frame would change that section's step, state and
-/// file date before any reader shows it. It moves into the frame when the
-/// readers switch to `sections.acmg_sf` (i411-display-sf).
+/// as `clinical.data.acmg_sf` when step 23 wrote one, and the reports read
+/// it there; without it they read `sections.acmg_sf`, step 6's card alone
+/// (`sections::acmg_sf::standalone`). The clinical-filter section shows it
+/// either way, so the key has no frame section of its own, and the frame
+/// keeps the clinical section's step, state and file date.
 pub const SHOWN_WITH: &[(&str, &str)] = &[("acmg_sf", "clinical")];
 
 /// The section that shows summary key `key`.

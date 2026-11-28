@@ -8,7 +8,7 @@
 #     the run, naming both sexes; the report is never written; somalier's own
 #     table holds the samplesheet's female as the pedigree's sex;
 #   - declared male with --sex_check warn (for INDEXCOV's reading): the run
-#     ends, and the report, rendered by bin/render_report.py, shows somalier's
+#     ends, and the report, rendered by og report render, shows somalier's
 #     sex, FREEMIX and the ROH and haplogroup cards, with the numbers of the
 #     summary it was rendered from. The same BAM is given a second time under
 #     another id (BAMs with the same @RG SM): somalier keeps the two rows
@@ -109,6 +109,16 @@ check_eq "somalier names the sample by its samplesheet id" "$(tv "$T" somalier_i
 check_eq "somalier names the second row by its own id" "$(tv "$TD" somalier_id)" "$D"
 check "the first row is the same person as the second" has "^${D} \\([0-9.]+\\)$" "$(tv "$T" same_person_as)"
 check "the second row is the same person as the first" has "^${SAMPLE} \\([0-9.]+\\)$" "$(tv "$TD" same_person_as)"
+# The run log words the match as the reports do: with identity uncertain
+# (fewer than 1,000 somalier sites on the slices) only a possible match.
+if [ "$(tv "$T" identity)" = uncertain ]; then
+  check "identity uncertain: the log names the second row a possible match" \
+    has "Sample '${SAMPLE}': possible match to ${D} \\(" "$(cat "$LOG")"
+  check "and never the same person" lacks "Sample '${SAMPLE}': somalier finds the same person" "$(cat "$LOG")"
+else
+  check "identity $(tv "$T" identity): the log names the second row the same person" \
+    has "Sample '${SAMPLE}': somalier finds the same person in ${D} \\(" "$(cat "$LOG")"
+fi
 check "VERIFYBAMID2 published its selfSM" test -s "${R}/qc/verifybamid2/${SAMPLE}.selfSM"
 check "SOMALIER_RELATE published its tables" test -s "${OUT}/somalier/somalier.samples.tsv"
 check_eq "somalier's table: the samplesheet's male as the pedigree's sex, both rows" \

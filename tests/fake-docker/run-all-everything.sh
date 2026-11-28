@@ -107,7 +107,7 @@ mv "${CASE_WORK}/yleaf-away" "${G}/reference/yleaf-${YLEAF_DATA_VERSION}"
 for e in $BWAX; do mv "${G}/reference/GRCh38_no_alt_analysis_set.fasta.${e}" "${CASE_WORK}/"; done
 run_expect 2 no-bwa env EVERYTHING=true "${SCRIPTS}/run-all.sh" sample1 male
 [ "$(nfcalls)" -eq $((n + 1)) ] || fail "nextflow started without the classic BWA index"
-output_has no-bwa '^  04b GRIDSS \(GRIDSS=true\): classic BWA index not installed: reference/GRCh38_no_alt_analysis_set\.fasta\.amb; install: bwa index \(docs/04b-gridss\.md\)$'
+output_has no-bwa '^  04b GRIDSS \(GRIDSS=true\): classic BWA index not installed: reference/GRCh38_no_alt_analysis_set\.fasta\.amb; install: \./scripts/setup\.sh --bwa-index \(docs/04b-gridss\.md\)$'
 for e in $BWAX; do mv "${CASE_WORK}/GRCh38_no_alt_analysis_set.fasta.${e}" "${G}/reference/"; done
 
 # Without the academic-only PGS scores (PRS_ACADEMIC=true, setup.sh --prs-academic): the run stops first.

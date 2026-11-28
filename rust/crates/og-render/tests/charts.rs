@@ -2,9 +2,8 @@
 //! tests/fixtures/report_charts/sections.json and on changed copies of them.
 //! Checks 1 to 6 moved here from tests/test_report_charts.py; each check
 //! runs on a broken input too and must catch it. The HTML report's chart
-//! placement (old check 7, bar the anchor of a hit past the table) and the
-//! two-render check of bin/render_report.py (old check 8) stay in that file
-//! until og report render embeds the figures.
+//! placement (old check 7) and the two-render check (old check 8) are in
+//! og-live's tests/demo.rs (`charts_contract`).
 //!
 //! 1. ClinVar: one bar per star 4 to 0 with the by_stars count, then a grey
 //!    bar with the low-confidence count; no green; with no hit a grey frame

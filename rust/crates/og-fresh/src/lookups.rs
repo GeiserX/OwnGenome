@@ -309,15 +309,35 @@ pub fn pypgx(c: &Ctx<'_>) -> Lookup<Found> {
     }
     static TAG: LazyLock<Regex> = LazyLock::new(|| re(r"^v?\d+\.\d+\.\d+$"));
     let mut bundles = BTreeSet::new();
+    let mut bundle_commit = None;
     for t in tags {
         let name = string(field(t, "name")?, "a tag name")?;
         if TAG.is_match(name) {
             bundles.insert(unv(name).to_owned());
+            if unv(name) == bundle {
+                bundle_commit = Some((
+                    name.to_owned(),
+                    string(field(field(t, "commit")?, "sha")?, "a tag's commit")?.to_owned(),
+                ));
+            }
         }
     }
     if !bundles.contains(bundle) {
         return failed(format!(
             "PYPGX_BUNDLE_VERSION {bundle} is not a pypgx-bundle tag"
+        ));
+    }
+    // Setup checks out PYPGX_BUNDLE_COMMIT, and the version names the tag:
+    // the two pins must name the same commit, or step 32 reads another
+    // bundle than the version says. og recheck reads the pins from a run
+    // manifest, and one written before the commit pin has no such row:
+    // then there is nothing to compare.
+    if let Some(pinned) = c.pins.get("PYPGX_BUNDLE_COMMIT")
+        && let Some((tag, sha)) = &bundle_commit
+        && sha != pinned
+    {
+        return failed(format!(
+            "PYPGX_BUNDLE_COMMIT {pinned} is not the commit of pypgx-bundle tag {tag} ({sha}): move PYPGX_BUNDLE_VERSION and PYPGX_BUNDLE_COMMIT together"
         ));
     }
     let pypi = c.fetch.json("https://pypi.org/pypi/pypgx/json")?;
@@ -1415,5 +1435,81 @@ mod tests {
         let e = fda_page(&c).unwrap_err();
         assert!(e.is_unreachable(), "{e}");
         assert!(e.to_string().contains("archive.org"), "{e}");
+    }
+
+    /// Setup checks out PYPGX_BUNDLE_COMMIT while the version names the
+    /// tag: a commit that is not the tag's must fail the lookup, and the
+    /// tag's own commit must pass it.
+    #[test]
+    fn a_bundle_commit_that_is_not_the_tags_fails() {
+        use crate::selftest::{FakeRegistry, Stub};
+        use std::sync::Mutex;
+        let tags = || {
+            Some(Body::Json(Value::Array(vec![Value::Object(
+                [
+                    ("name".to_owned(), Value::Str("0.26.0".into())),
+                    (
+                        "commit".to_owned(),
+                        Value::Object(
+                            [("sha".to_owned(), Value::Str("aaaa".into()))]
+                                .into_iter()
+                                .collect(),
+                        ),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            )])))
+        };
+        let pypi = || {
+            Some(Body::Json(Value::Object(
+                [(
+                    "info".to_owned(),
+                    Value::Object(
+                        [("version".to_owned(), Value::Str("0.26.0".into()))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                )]
+                .into_iter()
+                .collect(),
+            )))
+        };
+        let reg = FakeRegistry {
+            tags: |_| vec!["0.26.0--pyh7e72e81_0".into()],
+            digests: |_| String::new(),
+            asked: Mutex::new(vec![]),
+        };
+        let run = |commit: Option<&str>| {
+            let stub = Stub::new(vec![
+                ("pypgx-bundle/tags", tags()),
+                ("pypi.org/pypi/pypgx", pypi()),
+            ]);
+            let row = commit.map_or(String::new(), |c| format!("PYPGX_BUNDLE_COMMIT=\"{c}\"\n"));
+            let pins = Pins::parse(&format!(
+                "PYPGX_IMAGE=\"quay.io/biocontainers/pypgx:0.26.0--pyh7e72e81_0\"\nPYPGX_BUNDLE_VERSION=\"0.26.0\"\n{row}"
+            ));
+            let c = Ctx {
+                fetch: &stub,
+                registry: &reg,
+                pins: &pins,
+                versions: Path::new("/nonexistent"),
+                setup: Path::new("/nonexistent"),
+                common: Path::new("/nonexistent"),
+                now: jiff::Timestamp::now(),
+            };
+            pypgx(&c).map(|_| ())
+        };
+        let e = run(Some("bbbb")).unwrap_err().to_string();
+        assert!(
+            e.contains(
+                "PYPGX_BUNDLE_COMMIT bbbb is not the commit of pypgx-bundle tag 0.26.0 (aaaa)"
+            ),
+            "{e}"
+        );
+        run(Some("aaaa")).expect("the tag's own commit passes");
+        // og recheck reads the pins from a run manifest, and one written
+        // before the commit pin has no such row: nothing to compare.
+        run(None).expect("pins with no PYPGX_BUNDLE_COMMIT skip the check");
     }
 }

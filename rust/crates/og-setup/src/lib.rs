@@ -11,9 +11,14 @@
 //!   member streamed to disk.
 //! - [`genetic_map`] (`og setup genetic-map`): the PLINK GRCh38 genetic map
 //!   per chromosome for steps 26b and 51, written atomically.
+//! - [`revel`] (`og setup revel`): the REVEL release projected onto GRCh38,
+//!   the score table of step 30.
+//! - [`megane_kmers`] (`og setup megane-kmers`): MEGAnE's k-mer index of the
+//!   reference for step 50.
 //!
-//! [`zip`] reads the archives the last two take. [`revel`] (`og setup
-//! revel`) and [`roh_af`] (`og setup roh-af`) are not ported yet.
+//! [`zip`] reads the archives `unzip` and `genetic_map` take. Step 11's
+//! allele-frequency panel needs no tool of its own: `og setup fetch`
+//! downloads and checks it, and setup.sh indexes it with tabix.
 
 pub mod fetch;
 pub mod genetic_map;
@@ -21,7 +26,6 @@ pub mod megane_kmers;
 pub mod plan;
 pub mod prune;
 pub mod revel;
-pub mod roh_af;
 pub mod strchive;
 pub mod unzip;
 pub mod zip;

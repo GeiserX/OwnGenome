@@ -1,4 +1,4 @@
-// recheck.js: the database re-check on the live page (a plugin, bin/owngenome_live_recheck.py).
+// recheck.js: the database re-check on the live page (a plugin, rust/crates/og-live/src/recheck.rs).
 // state.json's plugins.recheck holds a banner line and, per step, its badges ("newer ClinVar
 // available", "redone 2026-10-05"). The panel shows the banner and one line per marked step; on
 // the step map a marked step gets a small dot (coloured by live.css) with the badges as its
