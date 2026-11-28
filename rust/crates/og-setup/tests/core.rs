@@ -77,6 +77,8 @@ fn og_parse(args: &[&str], env: &[(&str, &str)]) -> Result<install::Parsed, inst
 }
 
 /// The forms that stop in the parse: og prints and exits as setup.sh does.
+/// The first form (no arguments) compares the whole usage text, so a line
+/// setup.sh's usage gains that USAGE lacks turns this red.
 #[test]
 fn the_forms_that_stop_match_setup_sh() {
     let cases: Vec<Form<&str, &str>> = vec![
