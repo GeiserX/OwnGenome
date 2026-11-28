@@ -15,20 +15,18 @@ repo_name = "GeiserX/OwnGenome"
 edit_uri = "edit/main/docs/"
 strict = true
 extra_css = ["stylesheets/theme.css"]
-# releases/ keeps release notes off the site until their release is tagged; the
-# cut moves the page from exclude_docs into the nav.
 exclude_docs = """
 [A-Z]*.md
 design/
 research/
 notes/
-releases/
 requirements-docs.txt
 """
 nav = [
   { Home = "index.md" },
   { "Get started" = [
       { "Getting started" = "getting-started.md" },
+      { "Upgrading" = "https://github.com/GeiserX/OwnGenome/blob/main/UPGRADING.md" },
       { "Hardware and Storage Requirements" = "hardware-requirements.md" },
       { "Why run locally?" = "why-local.md" },
       { "Vendor Compatibility Guide" = "vendor-guide.md" },
