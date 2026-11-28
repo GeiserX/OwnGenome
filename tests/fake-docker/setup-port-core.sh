@@ -46,6 +46,27 @@ output_has bad-og-setup-og "OG_SETUP must be og or bash, got 'rust'"
 run_expect 0 install-help "$OG" setup install --help
 output_has install-help 'og setup install'
 
+# A flag og hands back runs setup.sh with OG_SETUP=bash and OG naming the og
+# that handed it (so setup.sh neither checks nor rebuilds bin/og), unless OG
+# is set already. A stand-in setup.sh in a stand-in checkout says what it got.
+hb="${CASE_WORK}/handback-root"
+mkdir -p "${hb}/scripts"
+cat > "${hb}/scripts/setup.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'OG_SETUP=%s\nOG=%s\nargs=%s\n' "${OG_SETUP:-}" "${OG:-}" "$*"
+STUB
+chmod +x "${hb}/scripts/setup.sh"
+said=$(env -u OG PGP_ROOT="$hb" "${REPO_ROOT}/bin/og" setup install --archaic "$G") \
+  || fail "og setup install --archaic did not run the stand-in setup.sh"
+handed_og=$(printf '%s\n' "$said" | sed -n 's/^OG=//p')
+printf '%s\n' "$said" | grep -qx 'OG_SETUP=bash' || fail "the hand-back to setup.sh had no OG_SETUP=bash: ${said}"
+printf '%s\n' "$said" | grep -qxF "args=--archaic ${G}" || fail "the hand-back changed the arguments: ${said}"
+[ -n "$handed_og" ] && [ -x "$handed_og" ] && "$handed_og" setup ported --kir-data > /dev/null \
+  || fail "the hand-back to setup.sh did not name the og that ran it in OG: ${said}"
+said=$(OG=/elsewhere/og PGP_ROOT="$hb" "${REPO_ROOT}/bin/og" setup install --archaic "$G")
+printf '%s\n' "$said" | grep -qx 'OG=/elsewhere/og' || fail "the hand-back replaced an OG that was set: ${said}"
+echo "[OK] a flag og hands back runs setup.sh with OG_SETUP=bash and OG naming that og"
+
 # --- og against setup.sh's bash, flag by flag ---------------------------------------
 # SIDE_TREE DIR: every file and link under DIR with its mode and checksum.
 side_tree() {

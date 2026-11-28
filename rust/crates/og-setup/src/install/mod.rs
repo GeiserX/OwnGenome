@@ -810,14 +810,19 @@ fn disk_check(run: &Run, p: &Parsed, err: &mut dyn Write) -> Option<u8> {
 }
 
 /// Runs scripts/setup.sh with OG_SETUP=bash and ARGS; its exit status.
+/// OG names this og unless it is set already, so setup.sh uses the og that
+/// runs it (a dev build too) instead of checking or rebuilding bin/og.
 fn hand_to_bash(root: &Path, args: &[String], err: &mut dyn Write) -> u8 {
     let _ = std::io::stdout().flush();
     let script = root.join("scripts/setup.sh");
-    match Command::new(&script)
-        .args(args)
-        .env("OG_SETUP", "bash")
-        .status()
+    let mut c = Command::new(&script);
+    c.args(args).env("OG_SETUP", "bash");
+    if std::env::var_os("OG").is_none_or(|o| o.is_empty())
+        && let Ok(me) = std::env::current_exe()
     {
+        c.env("OG", me);
+    }
+    match c.status() {
         Ok(s) => s.code().map_or(1, |c| u8::try_from(c).unwrap_or(1)),
         Err(e) => {
             let _ = writeln!(err, "ERROR: cannot run {}: {e}", script.display());

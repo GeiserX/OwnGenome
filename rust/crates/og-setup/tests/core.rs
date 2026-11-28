@@ -137,10 +137,7 @@ fn every_handed_form_matches_setup_sh() {
     let rec = d.join("record");
     fs::write(
         &fake,
-        format!(
-            "#!/usr/bin/env bash\ncase \"$1 $2\" in\n  'setup ported'|'setup plan') exit 0 ;;\n  'setup install') shift 2; {{ printf '%s\\n' \"keep=$SETUP_KEEP_DOWNLOADS\"; printf '%s\\n' \"$@\"; }} > '{}'; exit 0 ;;\nesac\nexit 3\n",
-            rec.display()
-        ),
+        "#!/usr/bin/env bash\ncase \"$1 $2\" in\n  'setup ported'|'setup plan') exit 0 ;;\n  'setup install') shift 2; { printf '%s\\n' \"keep=$SETUP_KEEP_DOWNLOADS\"; printf '%s\\n' \"$@\"; } > \"$(dirname \"$0\")/record\"; exit 0 ;;\nesac\nexit 3\n",
     )
     .unwrap();
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
@@ -226,25 +223,25 @@ fn the_other_modes_parse() {
 }
 
 /// run_in's argv for a fake engine that writes its arguments, one per line.
-fn bash_run_in(genome: &str, downloads: &str, args: &str) -> Vec<String> {
+/// Paths go to bash as arguments, never inside the command text.
+fn bash_run_in(genome: &str, downloads: &str, args: &[String]) -> Vec<String> {
     let d = scratch("runin-bash");
     let fake = d.join("engine");
     let rec = d.join("argv");
     fs::write(
         &fake,
-        format!(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > '{}'\n",
-            rec.display()
-        ),
+        "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/argv\"\n",
     )
     .unwrap();
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-    let script = format!(
-        ". '{}/scripts/lib/common.sh' && run_in {args}",
-        root().display()
-    );
     let o = Command::new("bash")
-        .args(["-c", &script])
+        .args([
+            "-c",
+            ". \"$1/scripts/lib/common.sh\" && shift && run_in \"$@\"",
+            "_",
+        ])
+        .arg(root())
+        .args(args)
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .env("GENOME_DIR", genome)
@@ -272,15 +269,16 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
     let w = format!("{g}/reference/x");
     let img = "example/tool:1.0";
     // (run_in's words, og's RunIn, the words after the opt-outs, downloads)
-    let mixes: Vec<(String, RunIn, Vec<String>, &str)> = vec![
+    let ws = |w: &[&str]| -> Vec<String> { w.iter().map(|s| (*s).to_owned()).collect() };
+    let mixes: Vec<(Vec<String>, RunIn, Vec<String>, &str)> = vec![
         (
-            format!("{img} true"),
+            ws(&[img, "true"]),
             RunIn::default(),
             vec![img.into(), "true".into()],
             &inside,
         ),
         (
-            format!("--rw {w} {img} tool -o /genome/reference/x/out"),
+            ws(&["--rw", &w, img, "tool", "-o", "/genome/reference/x/out"]),
             RunIn {
                 rw: vec![w.clone()],
                 ..Default::default()
@@ -294,7 +292,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--net --rw {w} {img} fetch all"),
+            ws(&["--net", "--rw", &w, img, "fetch", "all"]),
             RunIn {
                 net: true,
                 rw: vec![w.clone()],
@@ -304,7 +302,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--rw {w} -v /x/bin:/pgp-bin:ro {img} og"),
+            ws(&["--rw", &w, "-v", "/x/bin:/pgp-bin:ro", img, "og"]),
             RunIn {
                 rw: vec![w.clone()],
                 ..Default::default()
@@ -318,7 +316,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--rw {w} --cpus 2 {img} tool"),
+            ws(&["--rw", &w, "--cpus", "2", img, "tool"]),
             RunIn {
                 rw: vec![w.clone()],
                 ..Default::default()
@@ -327,7 +325,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--net --rw {w} -v /l:/lock.txt:ro {img} fetch"),
+            ws(&["--net", "--rw", &w, "-v", "/l:/lock.txt:ro", img, "fetch"]),
             RunIn {
                 net: true,
                 rw: vec![w.clone()],
@@ -342,7 +340,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &inside,
         ),
         (
-            format!("--rw {outside}/a {img} tool"),
+            ws(&["--rw", &format!("{outside}/a"), img, "tool"]),
             RunIn {
                 rw: vec![format!("{outside}/a")],
                 ..Default::default()
@@ -351,7 +349,7 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             &outside,
         ),
         (
-            format!("--root {img} id"),
+            ws(&["--root", img, "id"]),
             RunIn {
                 root: true,
                 ..Default::default()
@@ -369,7 +367,12 @@ fn the_engine_argv_is_run_ins_for_every_mix_setup_uses() {
             uid: rustix::process::getuid().as_raw(),
             gid: rustix::process::getgid().as_raw(),
         };
-        assert_eq!(r.argv(&place, &rest).unwrap(), want, "run_in {words}");
+        assert_eq!(
+            r.argv(&place, &rest).unwrap(),
+            want,
+            "run_in {}",
+            words.join(" ")
+        );
     }
     let place = Place {
         genome: g.clone(),
@@ -407,13 +410,11 @@ fn pinned_tags_match_the_shell() {
         let o = Command::new("bash")
             .args([
                 "-c",
-                &format!(
-                    ". '{}/scripts/lib/common.sh' && pinned_tag \"$1\"",
-                    root().display()
-                ),
+                ". \"$1/scripts/lib/common.sh\" && pinned_tag \"$2\"",
                 "_",
-                &s,
             ])
+            .arg(root())
+            .arg(&s)
             .output()
             .unwrap();
         let want = String::from_utf8_lossy(&o.stdout).trim_end().to_owned();
@@ -432,11 +433,12 @@ fn the_missing_list_is_print_missings() {
     let mut m = Missing::default();
     m.note("PGS scores (step 25)", "./scripts/setup.sh /g");
     m.note("a|b with a bar", "x");
-    let script = format!(
-        "eval \"$(sed -n '/^note_missing() /p; /^print_missing() {{/,/^}}/p' '{}')\"; MISSING=(); note_missing 'PGS scores (step 25)' './scripts/setup.sh /g'; note_missing 'a|b with a bar' x; print_missing",
-        setup_sh().display()
-    );
-    let o = Command::new("bash").args(["-c", &script]).output().unwrap();
+    let script = "eval \"$(sed -n '/^note_missing() /p; /^print_missing() {/,/^}/p' \"$1\")\"; MISSING=(); note_missing 'PGS scores (step 25)' './scripts/setup.sh /g'; note_missing 'a|b with a bar' x; print_missing";
+    let o = Command::new("bash")
+        .args(["-c", script, "_"])
+        .arg(setup_sh())
+        .output()
+        .unwrap();
     // The shell splits each entry at its first bar, so "a|b with a bar"
     // prints as "a" with the retry "b with a bar|x": the list is fed only
     // by setup's own entries, which hold no bar.
