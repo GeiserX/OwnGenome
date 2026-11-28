@@ -203,12 +203,22 @@ fn switches(run_all: &str) -> Result<BTreeSet<String>, String> {
 }
 
 /// The flags of the first `case "${1:-}" in` of `setup.sh`: every `--flag`
-/// of each pattern line, up to its `esac`; `None` once setup.sh has no such
-/// case (a wrapper that hands its arguments to og).
+/// of each pattern line, up to its `esac`. `None` only for the wrapper
+/// setup.sh becomes once og runs every installer: no `case "${1` anywhere,
+/// and a line that execs `setup install` with `"$@"`. Anything else without
+/// that exact opener is setup.sh read wrong, an error.
 fn setup_flags(setup: &str) -> Result<Option<BTreeSet<String>>, String> {
     let mut lines = setup.lines();
     if !lines.any(|l| l.trim() == r#"case "${1:-}" in"#) {
-        return Ok(None);
+        let code = || setup.lines().map(str::trim).filter(|l| !l.starts_with('#'));
+        let wrapper = !setup.contains(r#"case "${1"#)
+            && code().any(|l| {
+                l.starts_with("exec ") && l.contains(" setup install ") && l.ends_with(r#""$@""#)
+            });
+        if wrapper {
+            return Ok(None);
+        }
+        return Err(r#"scripts/setup.sh: no `case "${1:-}" in` line, and it is not a wrapper that execs `og setup install "$@"`: the flags cannot be read"#.to_owned());
     }
     let mut out = BTreeSet::new();
     for line in lines.take_while(|l| l.trim() != "esac") {
@@ -635,6 +645,48 @@ mod tests {
             &d,
             "scripts/setup.sh: flag --new-data is not in og's setup table",
         );
+    }
+
+    /// A case opener the parse does not know is no wrapper: the check
+    /// fails instead of skipping the compare (a planted flag got through).
+    #[test]
+    fn an_unknown_case_opener_fails() {
+        let d = copy("setup-opener");
+        edit(
+            &d,
+            "scripts/setup.sh",
+            "case \"${1:-}\" in\n  --everything)",
+            "case \"${1:-}\" in  # the flags\n  --everything)",
+        );
+        edit(
+            &d,
+            "scripts/setup.sh",
+            "|--archaic)",
+            "|--archaic|--planted-data)",
+        );
+        let (code, text) = run(&d);
+        let _ = fs::remove_dir_all(&d);
+        // 2, as for any file the check cannot read.
+        assert_eq!(code, 2, "{text}");
+        assert!(
+            text.contains("scripts/setup.sh: no `case \"${1:-}\" in` line"),
+            "{text}"
+        );
+    }
+
+    /// The last slice's setup.sh, a wrapper that hands its arguments to og,
+    /// has no case to compare: the table alone lists the flags.
+    #[test]
+    fn a_forwarding_wrapper_has_no_case_to_compare() {
+        let d = copy("setup-wrapper");
+        fs::write(
+            d.join("scripts/setup.sh"),
+            "#!/usr/bin/env bash\n# setup is og's now.\nexec \"$(dirname \"$0\")/../bin/og\" setup install \"$@\"\n",
+        )
+        .unwrap();
+        let (code, text) = run(&d);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(code, 0, "{text}");
     }
 
     #[test]
