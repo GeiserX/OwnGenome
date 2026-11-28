@@ -122,10 +122,12 @@ output_has bad-value "PRS_KEEP_AMBIGUOUS must be 'true' or 'false'"
 
 # --- control: step 25 without the "previous run" block -------------------------------------
 # A copy of the checkout's scripts, bin, assets and versions.env (common.sh
-# finds them beside itself), with the block cut out and the old rm -rf back.
+# finds them beside itself), plus the pgsc_calc errorStrategy helper step 25
+# runs from modules/, with the block cut out and the old rm -rf back.
 B="${CASE_WORK}/broken"
-mkdir -p "$B"
+mkdir -p "${B}/modules/local/prs"
 cp -R "${REPO_ROOT}/scripts" "${REPO_ROOT}/bin" "${REPO_ROOT}/assets" "${REPO_ROOT}/versions.env" "$B/"
+cp "${REPO_ROOT}/modules/local/prs/pgsc_error_override.sh" "${B}/modules/local/prs/"
 awk '/^# >>> previous run/ {skip = 1} !skip {print} /^# <<< previous run/ {skip = 0}' "${SCRIPTS}/25-prs.sh" \
   | sed 's|^mkdir -p "\${WORK}/scores"$|rm -rf "$WORK"; mkdir -p "${WORK}/scores"|' > "${B}/scripts/25-prs.sh"
 if grep -q '>>> previous run' "${B}/scripts/25-prs.sh" || ! grep -q '^rm -rf "\$WORK"; mkdir' "${B}/scripts/25-prs.sh"; then

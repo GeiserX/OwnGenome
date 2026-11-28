@@ -287,6 +287,18 @@ workflow {
     if (params.hla_qc && !tools_list.contains('hla_typing')) {
         log.warn "--hla_qc does nothing without hla_typing in --tools: OptiType runs as a second caller beside T1K."
     }
+    // A results folder that a run before 1.0 wrote into: MULTIQC and
+    // SOMALIER_RELATE published multiqc/ and somalier/ beside the sample
+    // folders on every run, one sample at a time too, so they can hold the
+    // last sample's report and tables only. Now each sample has its own, and
+    // those two folders are the cohort's, for a run of two samples or more;
+    // their somalier/ never holds a versions.yml (the old one did).
+    if (file("${params.outdir}/somalier/versions.yml").exists()) {
+        log.warn "${params.outdir}/multiqc and ${params.outdir}/somalier are left from a run before 1.0, and may hold " +
+                 "the report and somalier tables of the last sample that ran there only. Each sample's are now in " +
+                 "<sample>/multiqc and <sample>/qc/somalier, and these two folders are written only by a run of two " +
+                 "samples or more. Delete them, or move them into that sample's folder (UPGRADING.md)."
+    }
     if (tools_list.contains('parascopy') && !(params.parascopy_population in ['AFR', 'AMR', 'EAS', 'EUR', 'SAS'])) {
         error "--parascopy_population must be one of AFR, AMR, EAS, EUR, SAS (the 1000 Genomes models), " +
               "got '${params.parascopy_population}'."
@@ -1374,7 +1386,7 @@ workflow {
         }
 
     // QC files for MultiQC (mosdepth summaries)
-    ch_multiqc_files = BAM_ANALYSIS.out.coverage.map { meta, f -> f }
+    ch_multiqc_files = BAM_ANALYSIS.out.coverage
 
     REPORTING(
         ch_report_inputs,

@@ -1242,6 +1242,16 @@ fn roh_af_panel_report_and_chart_name_the_frequency_source() {
     for (af, expected) in [
         (
             "global (panel roh_af_gnomad_v4.1.tsv.gz); no step 26 group at 0.8 or more",
+            "Allele frequencies came from the global panel: no step 26 ancestry group reached 0.8.",
+        ),
+        (
+            "global (panel roh_af_gnomad_v4.1.tsv.gz); no step 26 ancestry table",
+            "Allele frequencies came from the global panel: there was no step 26 ancestry table \
+             (no ancestry was run, or PRS failed).",
+        ),
+        // A global header with no reason, as before the reason was written.
+        (
+            "global (panel roh_af_gnomad_v4.1.tsv.gz)",
             "Allele frequencies came from the global panel.",
         ),
         (

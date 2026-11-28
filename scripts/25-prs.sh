@@ -338,6 +338,11 @@ if [ -n "$SEX" ]; then
   printf '#IID\tSEX\n%s\t%s\n' "$VCF_ID" "$([ "$SEX" = male ] && echo 1 || echo 2)" > "${SEX_DIR}/sex.tsv"
   MOUNT=" -v \"${SEX_DIR}:${SEX_DIR}:ro\""
 fi
+# The processes of this pgsc_calc copy that set errorStrategy themselves, in
+# one withName line with 'terminate' (empty when none does).
+# >>> own errorStrategy (tests/test_pgsc_error_strategy.sh runs this block)
+OWN_LINE=$(bash "${PGP_ROOT}/modules/local/prs/pgsc_error_override.sh" "$PGSC_CALC_DIR")
+# <<< own errorStrategy
 # The images of versions.env for pgsc_calc's process labels (the same table
 # as scripts/ci/gen-containers-config.sh's NATIVE row), and no network for its
 # containers: the scores, the genotypes and the panel are all local.
@@ -356,7 +361,16 @@ fi
   # it 2 CPUs, and 4 on its own retry under the same --max_memory. One
   # thread, all of PGSC_MAX_MEMORY, and no retry at the same limit (not
   # maxRetries = 0: Nextflow reads 0 as its default, one retry).
-  printf "    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '%s'; errorStrategy = 'finish' }\n" "$PGSC_MAX_MEMORY"
+  # 'terminate', never 'finish', for every task of pgsc_calc (its own default
+  # is 'finish'): with 'finish' a task still pending in the ancestry branch
+  # can leave pgsc_calc waiting for ever; 'terminate' kills the pending tasks
+  # and exits, as the Nextflow PRS module does. The generic line covers the
+  # tasks that take pgsc_calc's default; OWN_LINE gives it to the processes
+  # that set errorStrategy themselves (MATCH_VARIANTS and PLINK2_SCORE at
+  # v2.3.0), which outrank a generic line.
+  echo "    errorStrategy = { task.exitStatus in ((130..145) + 104) ? 'retry' : 'terminate' }"
+  printf "    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '%s'; errorStrategy = 'terminate' }\n" "$PGSC_MAX_MEMORY"
+  [ -z "$OWN_LINE" ] || echo "$OWN_LINE"
   echo '}'
   # shellcheck disable=SC2016  # $(id -u) is expanded by the task's shell
   echo 'docker.runOptions = '"'"'-u $(id -u):$(id -g) --network none'"${MOUNT}'"

@@ -50,12 +50,12 @@ step	label	tool	recorded	processes	sections	upstream	hours	hours_from	hours_low	
 26	Ancestry (pgsc_calc)	ancestry	yes	PRS		25				
 26b	Fine-grained ancestry	ancestry_fine	yes	ANCESTRY_FINE_GENOTYPE,ANCESTRY_FINE_FRACTIONS,ANCESTRY_FINE_PHASE,ANCESTRY_FINE_PAINT,ANCESTRY_FINE_REPORT	ancestry_fine	03				
 27	CPIC lookup	cpic	yes	CPIC_LOOKUP	cpic	06,07,32,36	0.01	measured	0.0008	PHARMCAT_IMAGE
-28	MultiQC	multiqc	yes	MULTIQC		16b	0.01	measured	0.0008	
+28	MultiQC	multiqc	yes	MULTIQC,MULTIQC_COHORT		16b	0.01	measured	0.0008	
 29	Somatic (Mutect2)		yes			02	6	estimate		
 30	vcfanno	vcfanno	yes	VCFANNO,VCFANNO_INDEX		13	0.3	estimate		
 31	slivar	slivar	yes	SLIVAR_PRIORITIZE,SLIVAR,COMPHET_PHASE	slivar	13	0.17	measured	0.0666	
 32	pypgx	pypgx	yes	PYPGX,CYP2D6_DEPTH	pypgx	02,03	0.17	measured	0.093	PYPGX_BUNDLE_VERSION
-33	Sample identity and QC	sample_qc	yes	SOMALIER,SOMALIER_RELATE,VERIFYBAMID2,SAMPLE_QC	sample_qc,mosaic_sex_loss	02				
+33	Sample identity and QC	sample_qc	yes	SOMALIER,SOMALIER_RELATE,SOMALIER_RELATE_COHORT,VERIFYBAMID2,SAMPLE_QC	sample_qc,mosaic_sex_loss	02				
 34	CRAM archive	cram_archive	no	CRAM_ARCHIVE		02				
 35	Parascopy SMN1/SMN2	parascopy	yes	PARASCOPY	parascopy	02				
 35b	Paraphase (PacBio HiFi)	paraphase	yes	PARAPHASE_CHECK,PARAPHASE,PARAPHASE_REPORT	paralogs	02				

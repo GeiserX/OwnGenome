@@ -32,6 +32,7 @@ include { PARASCOPY        } from '../modules/local/parascopy/main'
 include { PARAPHASE_CHECK; PARAPHASE; PARAPHASE_REPORT } from '../modules/local/paraphase/main'
 include { SOMALIER         } from '../modules/local/somalier/main'
 include { SOMALIER_RELATE  } from '../modules/local/somalier/main'
+include { SOMALIER_RELATE_COHORT } from '../modules/local/somalier/main'
 include { SAMPLE_QC        } from '../modules/local/somalier/main'
 include { VERIFYBAMID2     } from '../modules/local/verifybamid2/main'
 include { Y_POSITIONS; Y_PILEUP; Y_HAPLOGROUP; Y_PRIVATE } from '../modules/local/y_haplogroup/main'
@@ -302,12 +303,12 @@ workflow BAM_ANALYSIS {
     // MODULE 7: Sample identity and contamination (somalier, VerifyBamID2)
     // Gates on: params.tools contains 'sample_qc' (main.nf requires
     // --somalier_sites and --verifybamid2_panel with it)
-    // SOMALIER_RELATE runs once over every sample, so two rows that are the
-    // same person are reported. A sex that disagrees with the samplesheet
-    // stops the run as INDEXCOV's check does (--sex_check warn logs it);
-    // contamination only warns. SAMPLE_QC also gets mosdepth's windows and
-    // the VCF, when they exist, for the mosaic loss of chrY or chrX (an
-    // exome: the VCF only).
+    // SOMALIER_RELATE_COHORT relates every sample of a run of two or more,
+    // so two rows that are the same person are reported. A sex that
+    // disagrees with the samplesheet stops the run as INDEXCOV's check does
+    // (--sex_check warn logs it); contamination only warns. SAMPLE_QC also
+    // gets mosdepth's windows and the VCF, when they exist, for the mosaic
+    // loss of chrY or chrX (an exome: the VCF only).
     //
     if (params.tools && params.tools.split(',').collect{it.trim()}.contains('sample_qc')) {
         SOMALIER(ch_bam, ch_reference, ch_reference_fai, ch_somalier_sites)
@@ -320,7 +321,31 @@ workflow BAM_ANALYSIS {
             }
             .collectFile(name: 'samples.ped', newLine: true, sort: true)
             .first()   // a value channel, so every SAMPLE_QC task gets the tables
-        SOMALIER_RELATE(SOMALIER.out.extract.map { meta, f, id_file -> f }.collect(), ch_somalier_sites, ch_somalier_ped)
+        // SOMALIER_RELATE: each sample on its own, its tables in its folder,
+        // so a run of another sample into the same --outdir leaves them
+        // alone. SOMALIER_RELATE_COHORT: every sample of a run of two or
+        // more, every pair, in the shared somalier/ folder.
+        SOMALIER_RELATE(SOMALIER.out.extract.map { meta, f, id_file -> [meta, f] }, ch_somalier_sites)
+        ch_relate_rows = SOMALIER.out.extract
+            .map { meta, f, id_file -> [meta.id, f] }
+            .collect(flat: false)
+        ch_relate_n = ch_relate_rows.map { rows -> rows.collect { row -> row[0] }.unique().size() }
+        SOMALIER_RELATE_COHORT(
+            ch_relate_rows
+                .filter { rows -> rows.collect { row -> row[0] }.unique().size() > 1 }
+                .map { rows -> rows.collect { row -> row[1] } },
+            ch_somalier_sites, ch_somalier_ped)
+        // The tables SAMPLE_QC reads, as value channels: the cohort's when
+        // the run has two samples or more (only they hold the pairs), else
+        // the one sample's own.
+        ch_relate_tables = SOMALIER_RELATE.out.tables
+            .combine(ch_relate_n)
+            .filter { meta, samples, pairs, n -> n == 1 }
+            .map { meta, samples, pairs, n -> [samples, pairs] }
+            .mix(SOMALIER_RELATE_COHORT.out.tables)
+            .first()
+        ch_relate_samples = ch_relate_tables.map { samples, pairs -> samples }
+        ch_relate_pairs   = ch_relate_tables.map { samples, pairs -> pairs }
         VERIFYBAMID2(ch_bam, ch_reference, ch_reference_fai, ch_verifybamid2_panel)
         // An exome's mosdepth regions are its capture regions, not the
         // 500 bp windows og qc sex-loss sums into 10 kb blocks: an exome gets
@@ -334,7 +359,7 @@ workflow BAM_ANALYSIS {
             .filter { items -> items[1] != null }   // a VCF-only row has no BAM
             .map { _id, meta, id_file, selfsm, marker_check, regions, vcf ->
                 [meta, id_file, selfsm, marker_check, regions ?: [], vcf ?: []] }
-        SAMPLE_QC(ch_qc_in, SOMALIER_RELATE.out.samples, SOMALIER_RELATE.out.pairs)
+        SAMPLE_QC(ch_qc_in, ch_relate_samples, ch_relate_pairs)
         ch_sample_qc = SAMPLE_QC.out.table.map { meta, tsv ->
             def qc = [:]
             tsv.text.readLines().drop(1).each { line ->
@@ -367,7 +392,7 @@ workflow BAM_ANALYSIS {
             }
             [meta, tsv]
         }
-        ch_versions = ch_versions.mix(SOMALIER.out.versions, SOMALIER_RELATE.out.versions,
+        ch_versions = ch_versions.mix(SOMALIER.out.versions, SOMALIER_RELATE.out.versions, SOMALIER_RELATE_COHORT.out.versions,
                                       VERIFYBAMID2.out.versions, SAMPLE_QC.out.versions)
     }
 

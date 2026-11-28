@@ -56,7 +56,8 @@ In the Nextflow pipeline, `multiqc` reads the mosdepth summaries only. A run wit
 
 | File | Location | Description |
 |---|---|---|
-| HTML report | `multiqc/multiqc_report.html` | Interactive QC dashboard (open in browser) |
+| HTML report | `<sample>/multiqc/multiqc_report.html` | Interactive QC dashboard (open in browser) |
+| Cohort report (Nextflow, two samples or more in one run) | `multiqc/multiqc_report.html` | One dashboard across the run's samples, beside the sample folders |
 
 <figure markdown="span">
   ![The MultiQC report: the General Statistics table, then the haplocheck and somalier tables](images/demo-multiqc-report.png){ loading=lazy }
@@ -69,7 +70,7 @@ About 3 seconds, measured in three 30-40x WGS runs ([runtime](hardware-requireme
 
 ## Notes
 
-- MultiQC runs after all other steps to capture the most outputs. Through `run-all.sh` it is the pipeline's `MULTIQC` task: it reads the mosdepth summaries (above) and writes `${GENOME_DIR}/multiqc/multiqc_report.html`, beside the sample folders rather than inside one. Run `./scripts/28-multiqc.sh <sample_name>` for the script's report of every QC file in the sample folder
+- MultiQC runs after all other steps to capture the most outputs. Through `run-all.sh` it is the pipeline's `MULTIQC` task: it reads the mosdepth summaries (above) and writes `${GENOME_DIR}/<sample>/multiqc/multiqc_report.html`, the folder the script writes to, so a run of another sample into the same `GENOME_DIR` leaves it alone. A Nextflow run of two samples or more also writes one report across them, `multiqc/multiqc_report.html` beside the sample folders (the `MULTIQC_COHORT` task); a run of one sample never writes it. Run `./scripts/28-multiqc.sh <sample_name>` for the script's report of every QC file in the sample folder
 - The report title includes the sample name for easy identification
 - If you add new tools to the pipeline that MultiQC supports, their outputs are picked up automatically on the next run
-- To re-generate the report (e.g., after running additional steps), delete the `multiqc/` directory and re-run
+- To re-generate the report (e.g., after running additional steps), delete the sample's `multiqc/` directory and re-run

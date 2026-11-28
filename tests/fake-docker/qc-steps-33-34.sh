@@ -13,7 +13,9 @@
 # VerifyBamID2 failure, or missing data, stops the step. The markers its
 # check kept come from the first run's log: a skipped check, or fewer than
 # 5,000 markers, reads uncertain; fewer than 1,000 somalier sites make
-# identity uncertain, and one sample alone leaves it not checked.
+# identity uncertain, and one sample alone leaves it not checked. The hook
+# names somalier's tables as somalier 0.3.7 does (a '.' after -o only when -o
+# has none), so a sample named 'sample2.' must get sample2..samples.tsv.
 # Step 34: a CRAM whose flagstat differs from the BAM's, or that fails
 # quickcheck or its content checksum fails, is removed and the BAM kept; the BAM is
 # deleted only after the check passed; --restore refuses to write over a BAM
@@ -49,6 +51,9 @@ case "$*" in
     printf 'fake' > "${h}/${FAKE_SM:-sample1}.somalier" ;;
   "somalier relate"*)
     FLAG=-o; o=$(host_path "$(arg "$@")")
+    # As somalier 0.3.7 (relate.nim): a '.' goes after -o only when -o does
+    # not already end with one.
+    case "$o" in *.) ;; *) o="${o}." ;; esac
     # As somalier: the pedigree's sex is original_pedigree_sex, and the sex
     # column starts from it (FAKE_SOMALIER_SEX plays what the reads change it to).
     FLAG=--ped; ped=$(arg "$@"); ped_code=-9; ped_sex=-9
@@ -59,8 +64,8 @@ case "$*" in
     printf '#family_id\tsample_id\tpaternal_id\tmaternal_id\tsex\tphenotype\toriginal_pedigree_sex\tgt_depth_mean\tn_hom_ref\tn_het\tn_hom_alt\tX_depth_mean\tX_n\tX_hom_ref\tX_het\tX_hom_alt\tY_depth_mean\tY_n\n%s\t%s\t-9\t-9\t%s\t-9\t%s\t30.0\t%s\t%s\t%s\t15.0\t%s\t40\t%s\t260\t14.0\t17\n' \
       "${FAKE_SM:-sample1}" "${FAKE_SM:-sample1}" "${FAKE_SOMALIER_SEX:-$ped_code}" "$ped_sex" \
       "${FAKE_HOM_REF:-5000}" "${FAKE_HET:-6000}" "${FAKE_HOM_ALT:-4000}" \
-      "${FAKE_X_N:-300}" "${FAKE_X_HET:-0}" > "${o}.samples.tsv"
-    printf '#sample_a\tsample_b\trelatedness\n' > "${o}.pairs.tsv" ;;
+      "${FAKE_X_N:-300}" "${FAKE_X_HET:-0}" > "${o}samples.tsv"
+    printf '#sample_a\tsample_b\trelatedness\n' > "${o}pairs.tsv" ;;
   "verifybamid2 "*)
     FLAG=--Output; o=$(host_path "$(arg "$@")")
     case " $* " in *" --DisableSanityCheck "*) few=false ;; *) few=${FAKE_VB2_FEW:-false} ;; esac
@@ -159,6 +164,15 @@ output_has qc-ped-kept 'Sex check: not done \(somalier could not tell the sex fr
 run_expect 0 qc-ped-none "${SCRIPTS}/33-sample-qc.sh" sample1
 [ "$(awk -F'\t' '{print $5}' "${GENOME_DIR}/sample1/qc/somalier/sample1.declared.ped")" = -9 ] \
   || fail "the pedigree of an undeclared sample is not -9"
+
+# A sample name may end with '.'. somalier adds the '.' before samples.tsv only
+# when -o does not end with one, so -o must end with its own '.' for the tables
+# to be <sample>.samples.tsv and <sample>.pairs.tsv.
+seed_sample "$GENOME_DIR" sample2.
+FAKE_SM=sample2. run_expect 0 qc-dot-name "${SCRIPTS}/33-sample-qc.sh" sample2.
+for t in samples pairs; do
+  [ -s "${GENOME_DIR}/sample2./qc/somalier/sample2..${t}.tsv" ] || fail "a sample named sample2. has no sample2..${t}.tsv"
+done
 
 # somalier's -2: chrX heterozygous like a female, yet chrY has reads
 FAKE_SOMALIER_SEX=-2 FAKE_X_HET=150 run_expect 0 qc-x-and-y "${SCRIPTS}/33-sample-qc.sh" sample1 female

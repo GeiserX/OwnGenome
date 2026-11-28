@@ -22,12 +22,12 @@
 #   required   tsv and csv: the columns; vcf: the INFO/ and FORMAT/ fields of its header; json: the
 #              top-level keys; comma-separated, - for none. More columns may come; none of these may go.
 kind	name	step	process	legs	format	stability	e2e	required
-file	multiqc/multiqc_report.html	28	MULTIQC	nextflow	html	stable	-	-
-file	multiqc/multiqc_report_data	28	MULTIQC	nextflow	dir	stable	-	-
+file	multiqc/multiqc_report.html	28	MULTIQC_COHORT	nextflow	html	stable	-	-
+file	multiqc/multiqc_report_data	28	MULTIQC_COHORT	nextflow	dir	stable	-	-
 file	pipeline_info/software_versions.yml	-	-	nextflow	yml	stable	nextflow	-
-file	somalier/somalier.html	33	SOMALIER_RELATE	nextflow	html	experimental	-	-
-file	somalier/somalier.pairs.tsv	33	SOMALIER_RELATE	nextflow	tsv	experimental	-	-
-file	somalier/somalier.samples.tsv	33	SOMALIER_RELATE	nextflow	tsv	experimental	-	-
+file	somalier/somalier.html	33	SOMALIER_RELATE_COHORT	nextflow	html	experimental	-	-
+file	somalier/somalier.pairs.tsv	33	SOMALIER_RELATE_COHORT	nextflow	tsv	experimental	-	-
+file	somalier/somalier.samples.tsv	33	SOMALIER_RELATE_COHORT	nextflow	tsv	experimental	-	-
 file	{family}/compound_het.tsv	38	FAMILY_REPORT	nextflow	tsv	experimental	-	-
 file	{family}/couple_*.md	39	COUPLE_CARRIER	nextflow	md	experimental	-	-
 file	{family}/couple_*.tsv	39	COUPLE_CARRIER	nextflow	tsv	experimental	-	-
@@ -179,6 +179,8 @@ file	{sample}/locityper/{sample}_locityper.log	53	LOCITYPER	both	text	experiment
 file	{sample}/locityper/{sample}_locityper.tsv	53	LOCITYPER	both	tsv	experimental	-	-
 file	{sample}/locityper/work	53	LOCITYPER	both	dir	experimental	-	-
 file	{sample}/mosdepth/{sample}.mosdepth.summary.txt	16b	-	bash	tsv	stable	bash	chrom,length,bases,mean,min,max
+file	{sample}/multiqc/multiqc_report.html	28	MULTIQC	both	html	stable	-	-
+file	{sample}/multiqc/multiqc_report_data	28	MULTIQC	both	dir	stable	-	-
 file	{sample}/paralogs/{sample}_*_copy_number.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_cn_dosage.tsv	35	PARASCOPY	both	tsv	experimental	-	-
 file	{sample}/paralogs/{sample}_cn_intervals.tsv	35	PARASCOPY	both	tsv	experimental	-	-
@@ -203,6 +205,9 @@ file	{sample}/pypgx/{sample}_cyp2d6_depth_check.tsv	32	PYPGX	both	tsv	stable	bas
 file	{sample}/pypgx/{sample}_pharmcat_comparison.tsv	27	CPIC_LOOKUP	both	tsv	stable	bash	-
 file	{sample}/pypgx/{sample}_pypgx_results	32	PYPGX	nextflow	dir	stable	-	-
 file	{sample}/pypgx/{sample}_pypgx_summary.tsv	32	PYPGX	both	tsv	stable	bash	-
+file	{sample}/qc/somalier/{sample}.html	33	SOMALIER_RELATE	both	html	experimental	-	-
+file	{sample}/qc/somalier/{sample}.pairs.tsv	33	SOMALIER_RELATE	both	tsv	experimental	-	-
+file	{sample}/qc/somalier/{sample}.samples.tsv	33	SOMALIER_RELATE	both	tsv	experimental	-	-
 file	{sample}/qc/somalier/{sample}.somalier	33	SOMALIER	nextflow	bin	experimental	-	-
 file	{sample}/qc/somalier/{sample}.somalier_id	33	SOMALIER	nextflow	bin	internal	-	-
 file	{sample}/qc/verifybamid2/{sample}.Ancestry	33	VERIFYBAMID2	nextflow	bin	experimental	-	-

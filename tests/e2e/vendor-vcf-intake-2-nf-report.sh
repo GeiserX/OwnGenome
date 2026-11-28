@@ -28,6 +28,7 @@ check "no onComplete handler error" lacks 'Failed to invoke .workflow.onComplete
 check_eq "one log line says MultiQC was skipped" "$(grep -c 'multiqc skipped: ' <<< "$LOG" || true)" 1
 check "the skip line names the reason (mosdepth)" has 'multiqc skipped: .*mosdepth' "$LOG"
 check "no multiqc folder" test ! -e "${NF_OUT}/multiqc"
+check "no multiqc folder in the sample's folder" test ! -e "${R}/multiqc"
 
 # --- HTML report: ROH, mito haplogroup and CPIC ----------------------------------
 HTML="${R}/${SAMPLE}_report.html"

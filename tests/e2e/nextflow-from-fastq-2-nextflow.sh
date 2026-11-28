@@ -167,6 +167,7 @@ check "the HTML report is written" nonempty "${R}/${P}_report.html"
 check_eq "the report summary names the academic-only scores left out" \
   "$(jq -r '.sections.prs.data.skipped[].pgs_id' "${G}/${R}/summary.json" | LC_ALL=C sort | paste -sd, -)" \
   "PGS000014,PGS000016,PGS000017,PGS000027"
-check "MultiQC report is written" nonempty "nf-fastq/multiqc/multiqc_report.html"
+check "MultiQC report is written in the sample's folder" nonempty "${R}/multiqc/multiqc_report.html"
+check "a run of one sample writes no shared multiqc/" test ! -e "${NF_OUT}/multiqc"
 
 finish

@@ -15,6 +15,8 @@
 //! Outputs must agree byte for byte, except `generated_utc` (the clock), and
 //! the disk and host memory lines of `headroom`, which describe the machine
 //! the answers were recorded on.
+//! Case state-6 reads the live demo weblog and the catalogue its answer was
+//! recorded on, frozen in `tests/vectors/run_state_live`.
 //! `og run state` says its one sentence on stderr where the Python said it on
 //! stdout. A case whose answer is missing fails: its input changed.
 
@@ -257,11 +259,15 @@ fn state_case(dir: &Path) -> (PathBuf, PathBuf) {
 }
 
 fn state_parity(label: &str, sample: &str, dir: &Path, extra: &[&str]) {
-    let st = steps();
+    state_parity_on(label, sample, dir, extra, &steps());
+}
+
+/// [`state_parity`] on the catalogue `st`.
+fn state_parity_on(label: &str, sample: &str, dir: &Path, extra: &[&str], st: &str) {
     let py_out = dir.join("py.json");
     let og_out = dir.join("og.json");
     let d = dir.to_string_lossy().into_owned();
-    let mut base = vec!["--sample", sample, "--sample-dir", &d, "--steps", &st];
+    let mut base = vec!["--sample", sample, "--sample-dir", &d, "--steps", st];
     base.extend_from_slice(extra);
     let po = py_out.to_string_lossy().into_owned();
     let oo = og_out.to_string_lossy().into_owned();
@@ -332,12 +338,18 @@ fn state_not_started_and_the_live_fixture() {
         &repo().join("tests/fixtures/live/DEMO-001"),
         &live.join("DEMO-001"),
     );
-    let ev = repo().join("tests/fixtures/live/demo-001.weblog.jsonl");
-    state_parity(
+    // The weblog and the catalogue the answer was recorded on, frozen in
+    // tests/vectors/run_state_live: the live fixture and assets/steps.tsv
+    // change with the pipeline's processes (og dev demo-events writes the
+    // fixture from the catalogue).
+    let frozen = repo().join("rust/crates/og-runlog/tests/vectors/run_state_live");
+    let ev = frozen.join("demo-001.weblog.jsonl");
+    state_parity_on(
         "state-6",
         "DEMO-001",
         &live.join("DEMO-001"),
         &["--events", &ev.to_string_lossy()],
+        &frozen.join("steps.tsv").to_string_lossy(),
     );
     let ops = tmp("state-ops");
     fs::create_dir_all(ops.join("OPS-001/logs")).unwrap();

@@ -244,8 +244,24 @@ process PRS {
     # inside pgsc_calc, which would repeat the same limit: a memory kill
     # ends pgsc_calc, and this task's retry doubles the memory. Not
     # maxRetries = 0: Nextflow reads 0 as its default, one retry.
-    FORMAT_LINE="    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '${task.memory.toGiga()}.GB'; errorStrategy = 'finish' }"
-    printf '%s\\n' 'process {' ${labels} "\$SEX_LINE" "\$FORMAT_LINE" '}' > images.config
+    # 'terminate', never 'finish', for every task of pgsc_calc (its own
+    # default is 'finish' for an exit it does not retry): with 'finish'
+    # Nextflow waits for the pending tasks, and in pgsc_calc's ancestry
+    # branch one that ends minutes later leaves a dataflow operator that
+    # never ends, so pgsc_calc never exits and this task never ends.
+    # 'terminate' kills the pending tasks and exits at once
+    # (tests/e2e/t3-run-fixes-2-1-prs-kill-ends.sh). The generic line covers
+    # the tasks that take pgsc_calc's default. A process that sets
+    # errorStrategy itself (MATCH_VARIANTS and PLINK2_SCORE set 'finish' at
+    # v2.3.0) outranks it, so OWN_LINE names those in a withName line,
+    # found in the pgsc_calc copy this task runs.
+    ${offline}
+    # >>> own errorStrategy (tests/test_pgsc_error_strategy.sh runs this block)
+    OWN_LINE=\$(bash '${moduleDir}/pgsc_error_override.sh' "\$(dirname '${pipeline}')")
+    # <<< own errorStrategy
+    ERROR_LINE="    errorStrategy = { task.exitStatus in ((130..145) + 104) ? 'retry' : 'terminate' }"
+    FORMAT_LINE="    withName: 'FORMAT_SCOREFILES' { cpus = 1; memory = '${task.memory.toGiga()}.GB'; errorStrategy = 'terminate' }"
+    printf '%s\\n' 'process {' "\$ERROR_LINE" ${labels} "\$SEX_LINE" "\$FORMAT_LINE" "\$OWN_LINE" '}' > images.config
     OUTER_DOCKER='${outer_docker}'
     # >>> outer docker flags (tests/test_prs_runopts.sh runs this block)
     # pgsc_calc's containers run as this user, with no network and the sex
@@ -273,7 +289,6 @@ process PRS {
     printf "docker.runOptions = '%s'\\n" "-u \$(id -u):\$(id -g) --network none\$MOUNT\${EXTRA:+ \$EXTRA}" >> images.config
     # <<< outer docker flags
     cat images.config
-    ${offline}
     rc=0
     mkdir -p pgsc_calc
     if [ "\$(gzip -dc "\$VCF" | grep -vc '^#' || true)" -eq 0 ]; then
