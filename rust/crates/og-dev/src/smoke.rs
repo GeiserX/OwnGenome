@@ -285,6 +285,7 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
     ];
     let mut codes = std::collections::BTreeMap::new();
     let mut at = [None, None];
+    let mut fractions: Vec<(String, f64)> = Vec::new();
     for (i, line) in lines(path)?.enumerate() {
         let line = line.map_err(|e| e.to_string())?;
         let r = fields(&line);
@@ -330,6 +331,8 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                 };
                 groups[g].add(float(r.get(1))?);
             }
+            // og ancestry-fine paint writes its .msp.tsv in RFMix's layout: the
+            // planted query is POPA on both haplotypes at 5 Mb and POPB at 15 Mb.
             "rfmix" => {
                 if i == 0 {
                     for pair in line
@@ -357,6 +360,16 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                     }
                 }
             }
+            // One `GROUP FRACTION` line per group of og ancestry-fine project's
+            // continental fit: the planted person, drawn from POPA, is POPA.
+            "project" => {
+                if line.trim().is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                n += 1;
+                let code = r.first().ok_or("short projection row")?;
+                fractions.push(((*code).to_owned(), float(r.get(1))?));
+            }
             _ => return Err(format!("unknown smoke check {kind}")),
         }
     }
@@ -377,6 +390,21 @@ fn check(kind: &str, path: &str, out: &mut dyn Write) -> Result<bool, String> {
                 .get(*p)
                 .is_some_and(|c| at[i].as_ref() == Some(&[c.clone(), c.clone()]))
         }),
+        "project" => {
+            let of = |g: &str| {
+                let f: Vec<f64> = fractions
+                    .iter()
+                    .filter(|(c, _)| c == g)
+                    .map(|(_, f)| *f)
+                    .collect();
+                if f.len() == 1 { Some(f[0]) } else { None }
+            };
+            let sum: f64 = fractions.iter().map(|(_, f)| f).sum();
+            fractions.iter().all(|(_, f)| (0.0..=1.0).contains(f))
+                && (sum - 1.0).abs() <= 1e-3
+                && of("POPB").is_some()
+                && of("POPA").is_some_and(|a| a >= 0.9)
+        }
         _ => false,
     };
     writeln!(out, "{kind}: {n} rows; {}", if ok { "OK" } else { "FAIL" })
@@ -406,5 +434,42 @@ pub fn cli(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             let _ = writeln!(err, "ERROR: {e}");
             2
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check;
+
+    fn project(text: &str) -> bool {
+        let dir = std::env::temp_dir().join(format!(
+            "og-smoke-project-{}-{}",
+            std::process::id(),
+            text.len()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("q.tsv");
+        std::fs::write(&path, text).unwrap();
+        let mut out = Vec::new();
+        let ok = check("project", path.to_str().unwrap(), &mut out);
+        std::fs::remove_dir_all(&dir).unwrap();
+        ok.unwrap_or(false)
+    }
+
+    #[test]
+    fn the_projection_check_wants_popa_and_fractions_that_sum_to_one() {
+        assert!(project("POPA\t0.97\nPOPB\t0.03\n"));
+        assert!(project("POPB 0.0995\nPOPA 0.9005\n"));
+        // The labels swapped, as a model built on swapped groups gives.
+        assert!(!project("POPA\t0.03\nPOPB\t0.97\n"));
+        assert!(!project("POPA\t0.89\nPOPB\t0.11\n"));
+        assert!(!project("POPA\t0.97\nPOPB\t0.13\n"), "sum 1.1");
+        assert!(!project("POPA\t0.97\n"), "no POPB row");
+        assert!(
+            !project("POPA\t0.97\nPOPA\t0.97\nPOPB\t0.03\n"),
+            "POPA twice"
+        );
+        assert!(!project("POPA\t1.2\nPOPB\t-0.2\n"), "outside 0 to 1");
+        assert!(!project(""));
     }
 }
