@@ -49,7 +49,7 @@ Pinned in `versions.env`; [Image versions](versions.md) lists the current tags.
 The script runs, in its containers:
 ```bash
 somalier extract -d qc/somalier --sites "${SOMALIER_SITES}" -f "${REF_FASTA}" aligned/${SAMPLE}_sorted.bam
-somalier relate --infer --ped qc/somalier/${SAMPLE}.declared.ped --sites "${SOMALIER_SITES}" -o qc/somalier/${SAMPLE} qc/somalier/<SM>.somalier
+somalier relate --infer --ped qc/somalier/${SAMPLE}.declared.ped --sites "${SOMALIER_SITES}" -o qc/somalier/${SAMPLE}. qc/somalier/<SM>.somalier
 verifybamid2 --SVDPrefix "${VERIFYBAMID2_PANEL}" --Reference "${REF_FASTA}" \
   --BamFile aligned/${SAMPLE}_sorted.bam --Output qc/verifybamid2/${SAMPLE}
 bin/og qc sample --sample ${SAMPLE} ...   # the verdict table

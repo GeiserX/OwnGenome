@@ -96,11 +96,13 @@ process SOMALIER {
 // changes only when the reads tell; SAMPLE_QC reads the call, not the
 // pedigree.
 // prefix: the tables' name (<prefix>.samples.tsv, .pairs.tsv, .html).
+// -o gets the prefix with its own '.': somalier adds one only when -o has none,
+// so an id ending in '.' would otherwise lose the dot before samples.tsv.
 // prelude: a line run first (SOMALIER_RELATE writes its pedigree there).
 def somalier_relate_script(ped, sites, prefix, process_name, container, prelude = '') {
     """
     ${prelude}
-    somalier relate --infer --ped ${ped} --sites ${sites} -o '${prefix}' extract/*.somalier
+    somalier relate --infer --ped ${ped} --sites ${sites} -o '${prefix}.' extract/*.somalier
 
     cat <<-END_VERSIONS > versions.yml
     "${process_name}":

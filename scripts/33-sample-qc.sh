@@ -123,11 +123,13 @@ case "$DECLARED_SEX" in male) PED_SEX=1 ;; female) PED_SEX=2 ;; esac
 printf '%s\t%s\t-9\t-9\t%s\t-9\n' "$SOMALIER_ID" "$SOMALIER_ID" "$PED_SEX" > "${OUT}/somalier/${SAMPLE}.declared.ped"
 
 echo "--- somalier relate"
+# -o ends with its own '.': somalier adds one only when -o has none, so a
+# sample name ending in '.' would otherwise lose the dot before samples.tsv.
 run_in --cpus 1 --memory 2g "$SOMALIER_IMAGE" \
   somalier relate --infer \
     --ped "/genome/${SAMPLE}/qc/somalier/${SAMPLE}.declared.ped" \
     --sites "$SITES_C" \
-    -o "/genome/${SAMPLE}/qc/somalier/${SAMPLE}" \
+    -o "/genome/${SAMPLE}/qc/somalier/${SAMPLE}." \
     "/genome/${SAMPLE}/qc/somalier/${SOMALIER_ID}.somalier"
 for f in samples pairs; do
   [ -s "${OUT}/somalier/${SAMPLE}.${f}.tsv" ] || { echo "ERROR: somalier relate wrote no ${SAMPLE}.${f}.tsv" >&2; exit 1; }
