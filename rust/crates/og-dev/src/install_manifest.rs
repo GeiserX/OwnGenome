@@ -110,7 +110,9 @@
 //! the middle of DIR/PATH (twice restores it); PATH must name a regular file
 //! inside DIR, reached through folders only. `--compare-logs A B` compares
 //! two setup logs with times, durations, speeds and download progress
-//! masked, and the missing list (`Missing (...)`, `  - item`, `retry:`)
+//! masked and download retries left out (fetch's `Download attempt i/n
+//! failed: URL` and `Checksum download attempt i/n failed: URL`, and curl's
+//! `curl: (N) ...`; nothing else), and the missing list (`Missing (...)`, `  - item`, `retry:`)
 //! line by line, unmasked.
 //!
 //! Exit 0 when nothing differs outside the allowlist, 1 when something
@@ -1523,6 +1525,16 @@ static CURL_ROW: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*\d{1,3}(\s+(\d+(\.\d+)?[kMGTP]?|[\d-]*:[\d:-]*)){7,11}\s*$")
         .expect("a valid pattern")
 });
+static RETRY: LazyLock<Regex> = LazyLock::new(|| {
+    // A download that failed and is tried again: fetch's notice for a file
+    // or a checksum list, and curl's own message. A rerun meets another
+    // server state, so these lines come and go between two good runs. A
+    // check failure (`failed its check`), the last `ERROR: could not
+    // download` and a pull retry stay compared.
+    Regex::new(r"^(  (Checksum d|D)ownload attempt \d+/\d+ failed: \S|curl: \(\d+\) )")
+        .expect("a valid pattern")
+});
+
 static PULL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^(Unable to find image '[^']+' locally$|[0-9a-f]{12}: (Pulling fs layer|Waiting|Downloading|Verifying Checksum|Download complete|Extracting|Pull complete|Already exists)|Digest: sha256:|Status: (Downloaded newer image|Image is up to date) for |\S+: Pulling from )",
@@ -1589,6 +1601,7 @@ fn masked_log(text: &str) -> Vec<String> {
                 && !l.trim_start().starts_with("% Total")
                 && !l.trim_start().starts_with("Dload")
                 && !PULL.is_match(l)
+                && !RETRY.is_match(l)
         })
         .map(|l| {
             MASKS.iter().fold(mask_dates(l), |s, (re, to)| {

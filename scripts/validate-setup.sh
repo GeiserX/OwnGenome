@@ -6,6 +6,25 @@
 # sample data readiness. Exits 0 if all critical checks pass, 1 otherwise.
 set -euo pipefail
 
+# og runs these checks (og setup check, rust/crates/og-setup/src/check.rs),
+# reading the component table og setup install installs from. OG_SETUP=bash
+# keeps this script's own checks, the reference tests/setup/check-ab.sh
+# compares og with. An og that cannot run them (missing, or built before og
+# setup check) leaves them to this script, which then says how to rebuild og.
+case "${OG_SETUP:-}" in
+  bash) ;;
+  ""|og)
+    og_root=$(cd "$(dirname "$0")/.." && pwd)
+    og_cmd=${OG:-${og_root}/bin/og}
+    if "$og_cmd" setup check --help > /dev/null 2>&1; then
+      PGP_ROOT=$og_root exec "$og_cmd" setup check "$@"
+    elif [ "${OG_SETUP:-}" = og ]; then
+      echo "ERROR: OG_SETUP=og but ${og_cmd} cannot run og setup check: run scripts/setup.sh --og" >&2
+      exit 1
+    fi ;;
+  *) echo "ERROR: OG_SETUP must be og or bash, got '${OG_SETUP}' (bash runs this script's own checks)" >&2; exit 2 ;;
+esac
+
 # Image versions, data versions and the docker wrapper. They are needed by the
 # image list and by the sample checks, which also run when the Docker daemon
 # is not up.

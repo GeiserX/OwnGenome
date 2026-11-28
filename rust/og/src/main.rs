@@ -29,8 +29,8 @@ const USAGE: &str = "usage: og <tool> [verb] [args]
 Run a genome (docs/getting-started.md):
   GENOME_DIR=/data ./scripts/run-all.sh SAMPLE male|female [nextflow options]
                        start a run; run it again to resume, it reuses every finished step
-  ./scripts/validate-setup.sh [SAMPLE]
-                       check the setup before a run
+  og setup check [SAMPLE]
+                       check the setup before a run (./scripts/validate-setup.sh runs it)
   og run state|tasks|eta|headroom|delta [args]
                        inspect a run's progress and time left; og run never starts a run
   og recheck --sample S [--genome-dir DIR] [--offline FILE] [--rerun [--refresh-clinvar]] | --affected KEYS | --launch-dir DIR
@@ -48,6 +48,9 @@ Pipeline helpers (the steps run these):
   og map build --root DIR --run RUN --assets DIR --cache-dir DIR [--predicate-table]
   og map genes --root DIR --cache-dir DIR (--chrom CHROM | --names)
   og map svg [args]
+  og setup install [FLAG] <genome_dir>
+                       setup.sh's installers, run by og (the ported ones)
+  og setup ported FLAG | og setup flags [--long]
   og setup fetch URL DEST [KIND VALUE] | --source ID [--part P] | --get URL OUT
   og setup source ID [--part P] path|url|check|value|bytes
   og setup path
@@ -360,6 +363,16 @@ fn main() -> ExitCode {
         "map" if rest.first().is_some_and(|v| v == "svg") => io(og_map::svg::cli, &rest[1..]),
         "map" => map::run(rest, tree_hash()),
         "setup" => match rest.first().map(String::as_str) {
+            Some("check") => io(og_setup::check::cli, &rest[1..]),
+            // Not io(): an installer runs containers and downloads whose
+            // output goes to the terminal between its own lines.
+            Some("install") => ExitCode::from(og_setup::install::cli(
+                &rest[1..],
+                &mut std::io::stdout(),
+                &mut std::io::stderr(),
+            )),
+            Some("ported") => io(og_setup::install::ported_cli, &rest[1..]),
+            Some("flags") => io(og_setup::install::flags_cli, &rest[1..]),
             Some("fetch") => io(og_setup::fetch::cli, &rest[1..]),
             Some("source") => io(og_setup::fetch::source_cli, &rest[1..]),
             Some("path") => io(og_setup::fetch::path_cli, &rest[1..]),
