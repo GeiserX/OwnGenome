@@ -129,7 +129,11 @@ pub fn dirname(path: &str) -> String {
     match t.rfind('/') {
         Some(i) => {
             let d = t[..i].trim_end_matches('/');
-            if d.is_empty() { "/".to_owned() } else { d.to_owned() }
+            if d.is_empty() {
+                "/".to_owned()
+            } else {
+                d.to_owned()
+            }
         }
         None => ".".to_owned(),
     }
@@ -139,7 +143,11 @@ pub fn dirname(path: &str) -> String {
 pub fn basename(path: &str) -> String {
     let t = path.trim_end_matches('/');
     if t.is_empty() {
-        return if path.is_empty() { String::new() } else { "/".to_owned() };
+        return if path.is_empty() {
+            String::new()
+        } else {
+            "/".to_owned()
+        };
     }
     t.rsplit('/').next().unwrap_or(t).to_owned()
 }
@@ -599,13 +607,9 @@ pub fn adopt(
                     "  [WARN] {o}{x}, left by an older setup, and {n}{x} are both here; neither is deleted, and {n}{x} is the one fetch uses."
                 );
             }
-        } else if std::fs::create_dir_all(dirname(&n)).is_ok()
-            && mv(&ox, &nx, &mut std::io::sink())
+        } else if std::fs::create_dir_all(dirname(&n)).is_ok() && mv(&ox, &nx, &mut std::io::sink())
         {
-            let _ = writeln!(
-                out,
-                "  Moved {o}{x}, left by an older setup, to {n}{x}."
-            );
+            let _ = writeln!(out, "  Moved {o}{x}, left by an older setup, to {n}{x}.");
         }
     }
 }
@@ -669,10 +673,7 @@ pub fn cyrius(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let lock = show(&r.root.join("scripts/cyrius-constraints.txt"));
     let stamp = format!("python={img} lock={}", sha256(&p(&lock)));
     if cat(&p(&format!("{dest}/INSTALLED"))) == stamp {
-        let _ = writeln!(
-            out,
-            "[OK] Cyrius {v} (step 21) already installed: {dest}"
-        );
+        let _ = writeln!(out, "[OK] Cyrius {v} (step 21) already installed: {dest}");
         return 0;
     }
     let _ = writeln!(
@@ -762,7 +763,8 @@ pub fn parascopy_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         let Some((url, raw)) = urls(err, name) else {
             return 1;
         };
-        if !r.fetch(&url, &p(&raw), "md5", md5, err) || !host("tar", &["-xzf", &raw, "-C", &part], out)
+        if !r.fetch(&url, &p(&raw), "md5", md5, err)
+            || !host("tar", &["-xzf", &raw, "-C", &part], out)
         {
             rm_rf(&p(&part));
             let _ = writeln!(
@@ -929,7 +931,11 @@ pub fn yleaf_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     // A mask that matches its pin is kept: a new tree pin does not download
     // it again. The two position tables are fetched again with the tree.
     if mask_ok {
-        let _ = cp(&mask, &p(&format!("{ytp}/callable_mask_chrY.fasta.gz")), err);
+        let _ = cp(
+            &mask,
+            &p(&format!("{ytp}/callable_mask_chrY.fasta.gz")),
+            err,
+        );
     }
     let got = r.fetch(
         tree_url,
@@ -1059,10 +1065,7 @@ pub fn masked_reference(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8
         .nonempty("MASKED_REF_SHA256")
         .map(str::to_owned)
         .unwrap_or_else(|| r.version("GRC_MASKED_REF_SHA256"));
-    if nonempty(&p(&dest))
-        && nonempty(&p(&fai))
-        && nonempty(&p(&dict))
-        && sha256(&p(&dest)) == want
+    if nonempty(&p(&dest)) && nonempty(&p(&fai)) && nonempty(&p(&dict)) && sha256(&p(&dest)) == want
     {
         let _ = writeln!(
             out,
@@ -1434,11 +1437,7 @@ pub fn panel_regions(loci: &[String]) -> String {
             ((*f.first().unwrap_or(&"")).to_owned(), s, e)
         })
         .collect();
-    iv.sort_by(|a, b| {
-        a.0.as_bytes()
-            .cmp(b.0.as_bytes())
-            .then(a.1.total_cmp(&b.1))
-    });
+    iv.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()).then(a.1.total_cmp(&b.1)));
     let mut s = String::new();
     let mut cur: Option<(String, f64, f64)> = None;
     for (chrom, a, b) in iv {
@@ -1510,7 +1509,8 @@ pub fn locityper_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     if !mkdir(&p(&dir), err) {
         return 1;
     }
-    let read = |f: &str| String::from_utf8_lossy(&std::fs::read(f).unwrap_or_default()).into_owned();
+    let read =
+        |f: &str| String::from_utf8_lossy(&std::fs::read(f).unwrap_or_default()).into_owned();
     let (fai_text, loci_text) = (read(&fai), read(&loci));
     if let Some(bad) = bad_locus(&fai_text, &loci_text, &loci) {
         let _ = writeln!(
@@ -1599,7 +1599,10 @@ pub fn locityper_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         ) == 0;
         if !counted {
             rm_rf(&at("counts.jf.part"));
-            let _ = writeln!(out, "[WARN] jellyfish could not count the reference's k-mers");
+            let _ = writeln!(
+                out,
+                "[WARN] jellyfish could not count the reference's k-mers"
+            );
             return 1;
         }
         if !mv(&at("counts.jf.part"), &at("counts.jf"), err)
@@ -1610,7 +1613,13 @@ pub fn locityper_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     }
 
     let url = r.version("LOCITYPER_PANEL_URL");
-    if !r.fetch(&format!("{url}.tbi"), &at("panel.remote.tbi"), "sha256", &tbi_sha, err) {
+    if !r.fetch(
+        &format!("{url}.tbi"),
+        &at("panel.remote.tbi"),
+        "sha256",
+        &tbi_sha,
+        err,
+    ) {
         let _ = writeln!(
             out,
             "[WARN] Could not download the panel's index; run: {} --locityper-data {}",
@@ -1868,7 +1877,12 @@ pub fn pypgx_data(r: &Run, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     };
     if p(&dest).is_dir() {
         let safe = format!("safe.directory={dest}");
-        let head = git(r, &["-c", &safe, "-C", &dest, "rev-parse", "HEAD"], true, out);
+        let head = git(
+            r,
+            &["-c", &safe, "-C", &dest, "rev-parse", "HEAD"],
+            true,
+            out,
+        );
         if head.as_deref() == Some(commit.as_str()) {
             return 0;
         }
@@ -1942,7 +1956,10 @@ mod tests {
         std::fs::create_dir_all(&d).unwrap();
         let (guard, st) = stage(&d, ".pypgx", &mut std::io::sink()).unwrap();
         let name = st.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with(".pypgx.") && name.len() == ".pypgx.".len() + 6, "{name}");
+        assert!(
+            name.starts_with(".pypgx.") && name.len() == ".pypgx.".len() + 6,
+            "{name}"
+        );
         assert!(st.is_dir());
         drop(guard);
         assert!(!st.exists());

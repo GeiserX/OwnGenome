@@ -112,10 +112,7 @@ fn the_locityper_container_scripts_are_setup_sh_s() {
         return; // setup.sh is a wrapper now.
     };
     assert_eq!(panel, tools::LOCITYPER_PANEL_SCRIPT);
-    assert_eq!(
-        locityper_script(1).unwrap(),
-        tools::LOCITYPER_BUILD_SCRIPT
-    );
+    assert_eq!(locityper_script(1).unwrap(), tools::LOCITYPER_BUILD_SCRIPT);
 }
 
 // --- the awk programs of --locityper-data, against awk ---------------------------------
@@ -136,7 +133,10 @@ fn the_awk_programs_are_setup_sh_s() {
         return; // setup.sh is a wrapper now: these copies are the record.
     };
     for p in [AWK_BAD, AWK_SIZE, AWK_KEEP, AWK_PAD, AWK_MERGE] {
-        assert!(body.contains(p), "install_locityper_data no longer holds:\n{p}");
+        assert!(
+            body.contains(p),
+            "install_locityper_data no longer holds:\n{p}"
+        );
     }
 }
 
@@ -179,10 +179,17 @@ fn fais() -> Vec<(&'static str, String)> {
         ("GRCh38", fai(&grch38)),
         (
             "235Mb",
-            fai(&[("chr20", 64_444_167), ("chr21", 46_709_983), ("chr1", 123_845_850)]),
+            fai(&[
+                ("chr20", 64_444_167),
+                ("chr21", 46_709_983),
+                ("chr1", 123_845_850),
+            ]),
         ),
         ("floor", fai(&[("chr1", 1_000_000)])),
-        ("one line, no newline", "chr1\t2500000000\t6\t60\t61".to_owned()),
+        (
+            "one line, no newline",
+            "chr1\t2500000000\t6\t60\t61".to_owned(),
+        ),
     ]
 }
 
@@ -228,7 +235,11 @@ fn the_loci_check_refuses_the_rows_awk_refuses() {
         let name = loci.to_string_lossy().into_owned();
         let got = tools::bad_locus(&fai_text, &text, &name).unwrap_or_default();
         assert_eq!(got, want.trim_end_matches('\n'), "{what}");
-        assert_eq!(got, format!("{name}:4"), "{what}: awk and og both name row 4");
+        assert_eq!(
+            got,
+            format!("{name}:4"),
+            "{what}: awk and og both name row 4"
+        );
         refused += 1;
     }
     assert!(refused >= 6);
@@ -358,7 +369,10 @@ fn bash_side(flag: &str, g: &Path, env: &BTreeMap<String, String>) -> (u8, Strin
 
 /// og's installer KEY on G with ENV: exit code, stdout, stderr.
 fn og_side(key: &str, g: &Path, env: &BTreeMap<String, String>) -> (u8, String, String) {
-    let script = root().join("scripts/setup.sh").to_string_lossy().into_owned();
+    let script = root()
+        .join("scripts/setup.sh")
+        .to_string_lossy()
+        .into_owned();
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let run = Run::new(
         &root(),
@@ -391,25 +405,27 @@ fn tiny_reference(g: &Path) {
 
 #[test]
 fn an_engine_too_small_for_megane_is_refused_as_bash_refuses_it() {
-    for (engine, field) in [("docker", "{{.MemTotal}}"), ("podman", "{{.Host.MemTotal}}")] {
+    for (engine, field) in [
+        ("docker", "{{.MemTotal}}"),
+        ("podman", "{{.Host.MemTotal}}"),
+    ] {
         let d = scratch(&format!("megane-{engine}"));
         let stub = stub_engine(&d, engine, field, "2147483648");
         let mut sides = Vec::new();
         for side in ["bash", "og"] {
             let g = d.join(side);
             tiny_reference(&g);
-            let env = base_env(&g, &[("CONTAINER_ENGINE", stub.to_string_lossy().into_owned())]);
+            let env = base_env(
+                &g,
+                &[("CONTAINER_ENGINE", stub.to_string_lossy().into_owned())],
+            );
             let got = if side == "bash" {
                 bash_side("--megane-kmers", &g, &env)
             } else {
                 og_side("megane-kmers", &g, &env)
             };
             let g_s = g.to_string_lossy().into_owned();
-            sides.push((
-                got.0,
-                got.1.replace(&g_s, "G"),
-                got.2.replace(&g_s, "G"),
-            ));
+            sides.push((got.0, got.1.replace(&g_s, "G"), got.2.replace(&g_s, "G")));
             assert!(
                 !g.join("reference/megane").exists(),
                 "{engine} {side}: the refusal made reference/megane"
@@ -467,7 +483,11 @@ fn pin(k: &str) -> String {
 
 /// Both sides of `--pypgx-data` on their own G with a fake git cloning
 /// COMMIT; each side's (code, stdout, stderr) with G masked, then G.
-fn pypgx_both(d: &Path, commit: &str, seed: &dyn Fn(&Path)) -> Vec<((u8, String, String), PathBuf)> {
+fn pypgx_both(
+    d: &Path,
+    commit: &str,
+    seed: &dyn Fn(&Path),
+) -> Vec<((u8, String, String), PathBuf)> {
     let path = fake_git(d, commit);
     ["bash", "og"]
         .iter()
@@ -538,7 +558,10 @@ fn the_pinned_pypgx_tag_installs_once_and_another_bundle_is_left_alone() {
 
     // A bundle there at the pin: kept, nothing said. One at another
     // commit: refused, kept.
-    for (there, want_code) in [(commit.as_str(), 0u8), ("1111111111111111111111111111111111111111", 1)] {
+    for (there, want_code) in [
+        (commit.as_str(), 0u8),
+        ("1111111111111111111111111111111111111111", 1),
+    ] {
         let d = scratch("pypgx-there");
         let seed = |g: &Path| {
             let b = g.join("reference/pypgx-bundle");
@@ -580,7 +603,11 @@ fn the_megane_path_is_setup_sh_s() {
             .unwrap();
         let want = String::from_utf8_lossy(&o.stdout).trim_end().to_owned();
         let m = (!mk.is_empty()).then_some(mk);
-        assert_eq!(tools::megane_kmers_path(reference, m, "/g"), want, "{reference} {mk}");
+        assert_eq!(
+            tools::megane_kmers_path(reference, m, "/g"),
+            want,
+            "{reference} {mk}"
+        );
     }
 }
 
