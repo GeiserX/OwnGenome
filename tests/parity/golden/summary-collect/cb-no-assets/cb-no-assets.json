@@ -443,7 +443,7 @@
    "file_date": "2021-03-04 05:06 UTC",
    "note": null,
    "data": {
-    "unavailable": "carrier_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)"
+    "unavailable": "carrier_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)"
    }
   },
   "pharmcat": {
@@ -1265,7 +1265,7 @@
     "genes": 3,
     "acmg_sf": {
      "version": "ACMG SF v3.3",
-     "unavailable": "acmg_sf.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)",
+     "unavailable": "acmg_sf.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)",
      "clinvar_hits": [],
      "high_impact": [],
      "structural": [],

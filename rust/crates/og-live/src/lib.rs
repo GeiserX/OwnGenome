@@ -3,10 +3,6 @@
 //! (`og live family`, [`family`]), the public demo as static pages
 //! (`og live demo`, [`demo`]) and the reads viewer (`og view serve`,
 //! [`viewer`]).
-//!
-//! Not ported yet: each verb says so and exits 2 until its unit of the
-//! 1.0.0 plan lands. Every module those units name is declared here now,
-//! so they add code without editing the same files.
 
 pub mod auth;
 pub mod charts;

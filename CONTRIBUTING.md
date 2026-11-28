@@ -81,6 +81,10 @@ This repository must never contain:
 
 The CI pipeline enforces this with automated scanning.
 
+### Bundled Data
+
+Every file under `assets/` needs a row in [`assets/SOURCES.tsv`](assets/SOURCES.tsv): where it comes from, its version, its licence and the header phrase the file carries. A third-party file also needs its notice in [`NOTICE`](NOTICE). The Lint job `data-sources` runs `og dev licences check` and fails on a file with no row.
+
 ### Docker Images
 
 - Every image is one line in [`versions.env`](versions.env), with an exact tag, never `:latest`. Scripts, `setup.sh` and `validate-setup.sh` read it from there.

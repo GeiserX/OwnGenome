@@ -224,7 +224,7 @@ RED_RC=$?
 # no chromosome passes the 5 cM rule and the red run stops after the fractions:
 # this control is for the fraction checks, and the painting checks have theirs
 # in the two swapped sides above.
-rm -f "${RED}/maps/${LONG_CHR}.map" "${RED}/maps/${LONG_CHR}.rfmix.map"
+rm -f "${RED}/maps/${LONG_CHR}.map"
 check_eq "setup.sh refits the model on the rotated labels" "$RED_RC" 0
 check "and reuses the panel's genotypes (no chromosome read again)" lacks 'reading the panel' "$(cat "${CASE_TMP}/red_setup.log")"
 mkdir -p "${G}/HG002R/vcf"

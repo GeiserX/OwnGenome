@@ -1,4 +1,4 @@
-// family.js: the family card of a person's page (bin/owngenome_live_family.py fills plugins.family):
+// family.js: the family card of a person's page (rust/crates/og-live/src/family.rs fills plugins.family):
 // a link to each family the person is in. A family's own page is family.html (family-page.js); this
 // card still draws a family's state when a page with live.js gets one. Text only through
 // textContent; images from this server only.

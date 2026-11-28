@@ -6,6 +6,14 @@ y-yleaf-positions	no-tree	stderr	the message names the data folder by its absolu
 paraphase-table	broken-json	stderr	Python exception text: json.JSONDecodeError gives line and column, og gives the byte
 paraphase-check-bam	plain	stderr	Python exception text: gzip names the bad magic bytes, og says the file is not a BAM
 
+# Intentional report-render and summary-collect expectations after the missing-assets message change.
+report-render	no-assets	no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	no-assets	no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.txt	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+report-render	cb-no-assets	cb-no-assets.html	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	no-assets	no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+summary-collect	cb-no-assets	cb-no-assets.json	the missing-assets message names og report render --assets, the option that exists now, not the retired Python renderer
+
 # Intentional family report expectations after the fixture refresh.
 family	report-3gen	stdout	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.
 family	report-3gen	out/family_report.md	#478 explains de novo checks for transmitting parents. #622 refreshes counts and segment totals from the portable fixture stream.

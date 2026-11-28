@@ -1,6 +1,5 @@
 # Example Prometheus alert rules for OwnGenome runs, on the metrics of the live site's ops module
-# (GET /metrics: bin/owngenome_live_ops.py, and og-live's ops module, rust/crates/og-live/src/ops.rs,
-# which writes the same text). docs/alerts.md says how to scrape them and what each one means.
+# (GET /metrics: og-live's ops module, rust/crates/og-live/src/ops.rs). docs/alerts.md says how to scrape them and what each one means.
 # rust/crates/og-live/tests/ops.rs checks that every metric these rules use is one /metrics writes.
 # The thresholds the page also shows (disk warn percent, stall minutes) are flags of the site,
 # so the page and these rules always agree. Each disk is compared with the warn ratio of the site

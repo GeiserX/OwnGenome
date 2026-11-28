@@ -154,7 +154,7 @@ pub fn asset_rows(assets: &str, name: &str) -> Result<Vec<DictRow>, String> {
     let missing = || {
         format!(
             "{name} is not in {assets}: the report needs the repository's assets/ folder \
-             (render_report.py --assets)"
+             (og report render --assets)"
         )
     };
     if !crate::is_file(&p) {

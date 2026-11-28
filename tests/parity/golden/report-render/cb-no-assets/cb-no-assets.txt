@@ -67,7 +67,7 @@
   By impact: . 1, HIGH 3, MODERATE 1
   Frequency unknown (not counted as rare): 1
   Weak genotype calls (check the reads): 2
-  Secondary findings: not assessed, acmg_sf.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)
+  Secondary findings: not assessed, acmg_sf.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)
 
 ## Cancer Predisposition Screening (CPSR)
 ---
@@ -145,7 +145,7 @@
 
 ## Carrier List (this sample)
 ---
-  Carrier list: not made, carrier_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (render_report.py --assets)
+  Carrier list: not made, carrier_genes.tsv is not in nowhere: the report needs the repository's assets/ folder (og report render --assets)
   Carrier list: the ClinVar P/LP hits of this sample in the genes of assets/carrier_genes.tsv (autosomal recessive and X-linked conditions), one person, no partner needed. A carrier of one recessive change is usually healthy; the result matters for a child when a partner carries a change in the same gene (step 39). A hypomorph or pseudodeficiency allele is set aside.
 
 ## SMN1/SMN2 Copy Number (Parascopy, short reads)
