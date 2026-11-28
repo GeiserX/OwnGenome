@@ -121,9 +121,9 @@ impl RunIn {
         use std::io::Write;
         let a = self.argv(p, rest)?;
         let _ = std::io::stdout().flush();
-        Ok(Command::new(engine)
-            .args(&a)
-            .status()
-            .map_or(1, |s| s.code().unwrap_or(1)))
+        Ok(
+            crate::child::status(Command::new(engine).args(&a))
+                .map_or(1, |s| s.code().unwrap_or(1)),
+        )
     }
 }

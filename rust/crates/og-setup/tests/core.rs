@@ -108,14 +108,14 @@ fn the_forms_that_stop_match_setup_sh() {
     }
 }
 
-/// A second flag is refused; setup.sh would read it as the install folder.
+/// A second flag after one og runs is refused; setup.sh would read it as
+/// the install folder.
 #[test]
 fn a_second_flag_is_refused() {
     for args in [
         vec!["--kir-data", "--viral-data"],
         vec!["--kir-data", "/g", "--viral-data"],
-        vec!["/g", "--kir-data"],
-        vec!["--refresh", "clinvar", "--everything"],
+        vec!["--pull-only", "--kir-data"],
     ] {
         let stop = og_parse(&args, &[]).unwrap_err();
         assert_eq!(stop.code, 2, "{args:?}");
@@ -123,6 +123,26 @@ fn a_second_flag_is_refused() {
             stop.stderr.contains("one flag at a time"),
             "{}",
             stop.stderr
+        );
+    }
+}
+
+/// After a flag og hands back to setup.sh, a second flag is setup.sh's to
+/// read, as it always was: og parses the form and hands it on (it refused
+/// `--vep-cache /data --kir-data` with exit 2).
+#[test]
+fn a_second_flag_after_a_flag_bash_runs_goes_to_bash() {
+    for args in [
+        vec!["--vep-cache", "/g", "--kir-data"],
+        vec!["/g", "--kir-data"],
+        vec!["--refresh", "clinvar", "/g", "--everything"],
+    ] {
+        let p = og_parse(&args, &[])
+            .unwrap_or_else(|s| panic!("{args:?} stopped with {}: {}", s.code, s.stderr));
+        assert!(
+            !og_setup::install::ported(p.mode.key()),
+            "{args:?}: og runs {}",
+            p.mode.key()
         );
     }
 }
@@ -599,6 +619,57 @@ fn every_row_expands_and_names_real_images() {
             .unwrap()[0],
         PathBuf::from("/g/reference/megane/GRCh38_no_alt_analysis_set.mk")
     );
+    // MEGANE_KMERS moves it, as setup.sh's megane_kmers_path: a relative
+    // path is under the install folder, and the .mi sits beside the .mk.
+    for (set, want) in [
+        ("custom/panel.mk", "/g/custom/panel"),
+        ("/elsewhere/panel.mk", "/elsewhere/panel"),
+    ] {
+        let ctx = Ctx::new(
+            &root(),
+            Box::new(move |k| match k {
+                "GENOME_DIR" => Some("/g".to_owned()),
+                "MEGANE_KMERS" => Some(set.to_owned()),
+                _ => None,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            mk.installed_paths(&ctx, Path::new("/g"), reference)
+                .unwrap(),
+            vec![
+                PathBuf::from(format!("{want}.mk")),
+                PathBuf::from(format!("{want}.mi"))
+            ],
+            "MEGANE_KMERS={set}"
+        );
+    }
+    // --annotation-scores lists the files validate-setup.sh looks for in
+    // annotations/ (it listed `annotation_scores`, which nothing writes).
+    let validate = fs::read_to_string(root().join("scripts/validate-setup.sh")).unwrap();
+    let scores = components::by_flag("--annotation-scores").unwrap();
+    let paths = scores
+        .installed_paths(&ctx, Path::new("/g"), reference)
+        .unwrap();
+    assert_eq!(paths.len(), 12, "{paths:?}");
+    for p in paths {
+        let name = p
+            .strip_prefix("/g/annotations")
+            .unwrap_or_else(|_| panic!("{p:?}"));
+        let name = name.to_string_lossy();
+        let base = name.strip_suffix(".tbi").unwrap_or(&name);
+        // It checks the two SpliceAI kinds in one loop over ${kind}.
+        let base = if base.starts_with("spliceai_scores.") {
+            base.replace(".snv.", ".${kind}.")
+                .replace(".indel.", ".${kind}.")
+        } else {
+            base.to_owned()
+        };
+        assert!(
+            validate.contains(&format!("${{ANNOT_DIR}}/{base}")),
+            "validate-setup.sh does not look for {name}"
+        );
+    }
 }
 
 /// The retry command of every row is one setup takes, and runs that row:
@@ -676,4 +747,137 @@ fn quoting_is_printf_q() {
             "{w:?}"
         );
     }
+    // Control characters, as setup's bash (4.4 or later) writes them: its
+    // named escapes, and a C1 control as the bytes of its UTF-8 form (og
+    // wrote U+0085 as \205, which $'...' reads as one byte). macOS's
+    // /bin/bash 3.2 garbles the C1 case, and setup does not run on it.
+    let new_bash = Command::new("bash")
+        .args([
+            "-c",
+            "(( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 ))",
+        ])
+        .status()
+        .is_ok_and(|s| s.success());
+    if !new_bash {
+        eprintln!("skipped the control characters: bash is older than 4.4");
+        return;
+    }
+    for w in [
+        "a\u{85}b",
+        "a\u{9f}b",
+        "a\x07\x08\x0b\x0c\x1bb",
+        "x\x01",
+        "a\x7fb",
+        "it's\x01",
+        "back\\slash\x01",
+        "new\nline",
+    ] {
+        let o = Command::new("bash")
+            .args(["-c", "printf '%q' \"$1\"", "_", w])
+            .env("LC_ALL", "C.UTF-8")
+            .output()
+            .unwrap();
+        assert_eq!(
+            install::shell_quote(w),
+            String::from_utf8_lossy(&o.stdout),
+            "{w:?}"
+        );
+    }
+}
+
+/// Only the usage template's own `$0` and `${NAME}` are expanded: a value
+/// holding a placeholder is written as it is (one that held its own name
+/// was expanded forever).
+#[test]
+fn usage_expands_only_its_template() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(install::usage("/s/${BWA_VERSION}/setup.sh", &|n| {
+            format!("${{{n}}}")
+        }));
+    });
+    let text = rx
+        .recv_timeout(std::time::Duration::from_secs(20))
+        .expect("usage did not return");
+    assert!(text.contains("/s/${BWA_VERSION}/setup.sh"), "{text}");
+    let plain = install::usage("./scripts/setup.sh", &|_| "v1".to_owned());
+    assert!(!plain.contains("${") && !plain.contains("$0"), "{plain}");
+    assert!(
+        plain.contains("./scripts/setup.sh /data/genomics"),
+        "{plain}"
+    );
+}
+
+/// A variable that is not UTF-8 (a name or a value) does not stop setup;
+/// og's environment leaves it out (it panicked). This test runs itself
+/// as og, with such a variable.
+#[test]
+fn a_variable_that_is_not_utf8_is_left_out() {
+    use std::os::unix::ffi::OsStrExt;
+    const CHILD: &str = "OG_SETUP_TEST_VARS";
+    if std::env::var_os(CHILD).is_some() {
+        let v = install::Vars::from_process();
+        assert_eq!(v.get(CHILD), Some("1"));
+        assert_eq!(v.get("OG_SETUP_TEST_BAD"), None);
+        return;
+    }
+    let o = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "a_variable_that_is_not_utf8_is_left_out",
+            "--test-threads=1",
+        ])
+        .env(CHILD, "1")
+        .env(
+            "OG_SETUP_TEST_BAD",
+            std::ffi::OsStr::from_bytes(b"\xff\xfe"),
+        )
+        .env(std::ffi::OsStr::from_bytes(b"OG_\xff"), "x")
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert!(String::from_utf8_lossy(&o.stdout).contains("1 passed"));
+}
+
+/// Every process og's setup starts goes through og_setup::child, so a
+/// signal stops it before a lock goes (lock.rs).
+#[test]
+fn every_child_is_started_through_child_rs() {
+    let found = |text: &str| -> usize {
+        let code = text.split("#[cfg(test)]").next().unwrap_or(text);
+        code.lines()
+            .filter(|l| {
+                !l.trim_start().starts_with("//")
+                    && [".spawn()", ".status()", ".output()"]
+                        .iter()
+                        .any(|c| l.contains(c))
+            })
+            .count()
+    };
+    // The check can fail.
+    assert_eq!(found("let o = Command::new(\"du\").output();\n"), 1);
+    let mut bad = vec![];
+    let mut dirs = vec![root().join("rust/crates/og-setup/src")];
+    while let Some(d) = dirs.pop() {
+        for e in fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                dirs.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs")
+                && p.file_name().is_some_and(|n| n != "child.rs")
+                && found(&fs::read_to_string(&p).unwrap()) > 0
+            {
+                bad.push(p);
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "start these through og_setup::child: {bad:?}"
+    );
 }

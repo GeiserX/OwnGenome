@@ -412,10 +412,7 @@ impl Knobs {
             .clone()
             .unwrap_or_else(|| (u64::from(try_no) * 5).to_string());
         // The sleep command, as the shell ran it.
-        let ran = Command::new("sleep")
-            .arg(&secs)
-            .stdin(Stdio::null())
-            .status()
+        let ran = crate::child::status(Command::new("sleep").arg(&secs).stdin(Stdio::null()))
             .is_ok_and(|s| s.success());
         if !ran && let Ok(n) = secs.parse::<u64>() {
             std::thread::sleep(std::time::Duration::from_secs(n));
@@ -458,14 +455,15 @@ pub fn get(url: &str, out: Out, knobs: &Knobs) -> Result<(bool, Vec<u8>), String
         ];
         match out {
             Out::Stdout => {
-                let o = Command::new("curl")
-                    .arg("-fsSL")
-                    .args(bound)
-                    .arg(url)
-                    .stdin(Stdio::null())
-                    .stderr(Stdio::inherit())
-                    .output()
-                    .map_err(|e| format!("ERROR: cannot run curl: {e}"))?;
+                let o = crate::child::output(
+                    Command::new("curl")
+                        .arg("-fsSL")
+                        .args(bound)
+                        .arg(url)
+                        .stdin(Stdio::null())
+                        .stderr(Stdio::inherit()),
+                )
+                .map_err(|e| format!("ERROR: cannot run curl: {e}"))?;
                 Ok((o.status.success(), o.stdout))
             }
             Out::File(p) => {
@@ -477,7 +475,7 @@ pub fn get(url: &str, out: Out, knobs: &Knobs) -> Result<(bool, Vec<u8>), String
                     }
                     c.arg("-o").arg(p).arg(url);
                     c.stdin(Stdio::null()).stdout(Stdio::null());
-                    c.status()
+                    crate::child::status(&mut c)
                         .map(|s| s.code())
                         .map_err(|e| format!("ERROR: cannot run curl: {e}"))
                 };
@@ -498,28 +496,30 @@ pub fn get(url: &str, out: Out, knobs: &Knobs) -> Result<(bool, Vec<u8>), String
         ];
         match out {
             Out::Stdout => {
-                let o = Command::new("wget")
-                    .arg("-q")
-                    .args(&bound)
-                    .args(["-O", "-"])
-                    .arg(url)
-                    .stdin(Stdio::null())
-                    .stderr(Stdio::inherit())
-                    .output()
-                    .map_err(|e| format!("ERROR: cannot run wget: {e}"))?;
+                let o = crate::child::output(
+                    Command::new("wget")
+                        .arg("-q")
+                        .args(&bound)
+                        .args(["-O", "-"])
+                        .arg(url)
+                        .stdin(Stdio::null())
+                        .stderr(Stdio::inherit()),
+                )
+                .map_err(|e| format!("ERROR: cannot run wget: {e}"))?;
                 Ok((o.status.success(), o.stdout))
             }
             Out::File(p) => {
-                let s = Command::new("wget")
-                    .arg("-c")
-                    .args(&bound)
-                    .arg("-O")
-                    .arg(p)
-                    .arg(url)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .status()
-                    .map_err(|e| format!("ERROR: cannot run wget: {e}"))?;
+                let s = crate::child::status(
+                    Command::new("wget")
+                        .arg("-c")
+                        .args(&bound)
+                        .arg("-O")
+                        .arg(p)
+                        .arg(url)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null()),
+                )
+                .map_err(|e| format!("ERROR: cannot run wget: {e}"))?;
                 Ok((s.success(), vec![]))
             }
         }

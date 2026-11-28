@@ -23,6 +23,7 @@
 //! revel`) and [`roh_af`] (`og setup roh-af`) are not ported yet.
 
 pub mod check;
+pub mod child;
 pub mod components;
 pub mod disk;
 pub mod engine;

@@ -33,24 +33,26 @@ fn field(out: &[u8], line: usize, col: usize) -> Option<String> {
 
 impl Probe for Shell {
     fn free_kib(&self, dir: &Path) -> Option<String> {
-        let o = Command::new("df")
-            .arg("-Pk")
-            .arg(dir)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
+        let o = crate::child::output(
+            Command::new("df")
+                .arg("-Pk")
+                .arg(dir)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null()),
+        )
+        .ok()?;
         field(&o.stdout, 1, 3)
     }
 
     fn used_kib(&self, file: &Path) -> Option<String> {
-        let o = Command::new("du")
-            .arg("-k")
-            .arg(file)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
+        let o = crate::child::output(
+            Command::new("du")
+                .arg("-k")
+                .arg(file)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null()),
+        )
+        .ok()?;
         field(&o.stdout, 0, 0)
     }
 }

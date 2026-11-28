@@ -33,22 +33,20 @@ impl Engine {
     /// The call's exit status with its output discarded (`&>/dev/null`).
     pub fn quiet(&self, args: &[&str]) -> bool {
         let _ = std::io::stdout().flush();
-        Command::new(&self.cmd)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        crate::child::status(
+            Command::new(&self.cmd)
+                .args(args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null()),
+        )
+        .is_ok_and(|s| s.success())
     }
 
     /// The call's exit status, its output on the terminal.
     pub fn loud(&self, args: &[&str]) -> bool {
         let _ = std::io::stdout().flush();
-        Command::new(&self.cmd)
-            .args(args)
-            .stdin(Stdio::null())
-            .status()
+        crate::child::status(Command::new(&self.cmd).args(args).stdin(Stdio::null()))
             .is_ok_and(|s| s.success())
     }
 
@@ -56,12 +54,12 @@ impl Engine {
     /// and whether the call succeeded.
     pub fn capture(&self, args: &[&str]) -> (bool, String) {
         let _ = std::io::stdout().flush();
-        match Command::new(&self.cmd)
-            .args(args)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-        {
+        match crate::child::output(
+            Command::new(&self.cmd)
+                .args(args)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null()),
+        ) {
             Ok(o) => {
                 let s = String::from_utf8_lossy(&o.stdout);
                 (o.status.success(), s.trim_end_matches('\n').to_owned())
@@ -209,10 +207,7 @@ pub fn pull_image(e: &Engine, img: &str, v: &Vars, err: &mut dyn Write) -> bool 
             } else {
                 wait.clone()
             };
-            let ran = Command::new("sleep")
-                .arg(&secs)
-                .stdin(Stdio::null())
-                .status()
+            let ran = crate::child::status(Command::new("sleep").arg(&secs).stdin(Stdio::null()))
                 .is_ok_and(|s| s.success());
             if !ran && let Ok(n) = secs.parse::<u64>() {
                 std::thread::sleep(std::time::Duration::from_secs(n));

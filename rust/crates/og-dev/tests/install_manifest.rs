@@ -1594,8 +1594,17 @@ case "$AB_STUB" in
     : >"$AB_ENGINE_STATE.ran"
     printf 'registry.example/example/tool:%s\tid8\n' "$t" >>"$AB_ENGINE_STATE"
     echo "Status: Downloaded newer image for registry.example/example/tool:$t"
-    printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid4\n' 7 >>"$AB_ENGINE_STATE"
-    printf 'Status: Downloaded newer image for example/pin@sha256:%064d\n' 7 ;;
+    # A digest-pinned image, pulled only when the engine lacks it, as
+    # setup does; the pull gives it NAME:<none> and the digest reference.
+    d=$(printf 'example/pin@sha256:%064d' 7)
+    if "$CONTAINER_ENGINE" image inspect --format '{{.Id}}' "$d" >/dev/null 2>&1; then
+      echo "  already present: $d"
+    else
+      echo "  Pulling: $d"
+      printf '%s\tid4\n' "$d" >>"$AB_ENGINE_STATE.digests"
+      printf 'example/pin:<none>\tid4\n' >>"$AB_ENGINE_STATE"
+    fi
+    printf 'localhost/pgp-pinned/example/pin:sha256-%064d\tid4\n' 7 >>"$AB_ENGINE_STATE" ;;
   nothing)
     echo "nothing to do" ;;
   foreign)
@@ -1627,6 +1636,17 @@ fn ab_comp(
     env: &[(&str, &str)],
     prep: &dyn Fn(&Path),
 ) -> (i32, String) {
+    ab_run(tag, &["--bash-vs-bash", comp], stub, env, prep)
+}
+
+/// ab.sh ARGS (and the work folder) in the scratch copy of [`ab_with`].
+fn ab_run(
+    tag: &str,
+    args: &[&str],
+    stub: &str,
+    env: &[(&str, &str)],
+    prep: &dyn Fn(&Path),
+) -> (i32, String) {
     let t = Tmp::new(tag);
     let root = t.0.join("repo");
     for f in [
@@ -1642,7 +1662,7 @@ fn ab_comp(
     prep(&t.0);
     let mut cmd = Command::new("bash");
     cmd.arg(root.join("tests/setup/ab.sh"))
-        .args(["--bash-vs-bash", comp])
+        .args(args)
         .arg(t.0.join("work"))
         .env("OG", og_bin())
         .env("CONTAINER_ENGINE", "true")
@@ -1755,16 +1775,40 @@ fn ab_sh_refuses_a_checkout_another_run_uses() {
 
 /// A container engine whose images are the lines of `$AB_ENGINE_STATE`
 /// (`NAME:TAG<tab>ID`): `image ls` prints them and `rmi TAG` removes one.
-const STATE_ENGINE: &[u8] = b"#!/usr/bin/env bash\nst=$AB_ENGINE_STATE\ncase \"$1\" in\n  image) cat \"$st\" ;;\n  rmi) awk -F'\\t' -v t=\"$2\" '$1 != t' \"$st\" >\"$st.new\" && mv \"$st.new\" \"$st\" ;;\nesac\n";
+/// A digest reference (`NAME@sha256:HEX<tab>ID` in `$AB_ENGINE_STATE.digests`)
+/// stays when the image's tags go, as in Docker: `image inspect` finds
+/// it, and only `rmi NAME@sha256:HEX` removes it with its `NAME:<none>` line.
+const STATE_ENGINE: &[u8] = br#"#!/usr/bin/env bash
+st=$AB_ENGINE_STATE
+touch "$st.digests"
+case "$1 ${2:-}" in
+  "image ls") cat "$st" ;;
+  "image inspect")
+    awk -F'\t' -v r="${!#}" '$1 == r { print "sha256:" $2; f = 1 } END { exit !f }' "$st.digests" ;;
+  rmi\ *@sha256:*)
+    id=$(awk -F'\t' -v r="$2" '$1 == r { print $2 }' "$st.digests")
+    [ -n "$id" ] || exit 1
+    awk -F'\t' -v r="$2" '$1 != r' "$st.digests" >"$st.new" && mv "$st.new" "$st.digests"
+    awk -F'\t' -v t="${2%@*}:<none>" -v i="$id" '!($1 == t && $2 == i)' "$st" >"$st.new" && mv "$st.new" "$st" ;;
+  rmi\ *) awk -F'\t' -v t="$2" '$1 != t' "$st" >"$st.new" && mv "$st.new" "$st" ;;
+esac
+"#;
 
-/// ab.sh pull-only against [`STATE_ENGINE`], with `env` on top; its exit
-/// code and output.
-fn ab_pull_only(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
+/// ab.sh pull-only against [`STATE_ENGINE`], with `env` on top, the engine
+/// holding the images `before` gives (its image list and its digest
+/// references); its exit code and output.
+fn ab_pull_only(
+    tag: &str,
+    stub: &str,
+    env: &[(&str, &str)],
+    before: (&str, &str),
+) -> (i32, String) {
     let t = Tmp::new(&format!("{tag}-engine"));
     let engine = t.0.join("engine");
     write(&engine, STATE_ENGINE, 0o755);
     let state = t.0.join("images.tsv");
-    fs::write(&state, "").unwrap();
+    fs::write(&state, before.0).unwrap();
+    fs::write(t.0.join("images.tsv.digests"), before.1).unwrap();
     let (engine, state) = (s(&engine), s(&state));
     let mut all = vec![
         ("CONTAINER_ENGINE", engine.as_str()),
@@ -1776,22 +1820,44 @@ fn ab_pull_only(tag: &str, stub: &str, env: &[(&str, &str)]) -> (i32, String) {
 
 #[test]
 fn ab_sh_compares_pull_only_by_its_images() {
-    let (code, out) = ab_pull_only("ab-pull", "pull", &[]);
+    let (code, out) = ab_pull_only("ab-pull", "pull", &[], ("", ""));
     assert_eq!(code, 0, "a pull-only run is not green:\n{out}");
-    assert!(out.contains("side A: 2 image tag(s) added"), "{out}");
+    assert!(out.contains("side A: 3 image tag(s) added"), "{out}");
     assert!(out.contains("removed 2 image tag(s) side A added"), "{out}");
+    // The digest-pinned image goes too, or side B finds it and pulls nothing.
     assert!(
-        out.contains(
-            "[OK]   control: side B's image list less localhost/pgp-pinned/example/pin:sha256-"
-        ),
+        out.contains("removed 1 digest reference(s) of images side A pulled"),
+        "{out}"
+    );
+    assert!(
+        out.contains("[OK]   control: side B's image list less example/pin:<none> is red"),
         "the image-only control did not run:\n{out}"
     );
     assert!(!out.contains("flipped bit"), "{out}");
 }
 
 #[test]
+fn ab_sh_keeps_a_digest_image_the_engine_had_before_side_a() {
+    // The digest-pinned image is on the engine already, untagged: neither
+    // side pulls it, and ab.sh must not remove it between them.
+    let ref7 = format!("example/pin@sha256:{:064}", 7);
+    let (code, out) = ab_pull_only(
+        "ab-pull-had",
+        "pull",
+        &[],
+        ("example/pin:<none>\tid4\n", &format!("{ref7}\tid4\n")),
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("side A: 2 image tag(s) added"), "{out}");
+    assert!(
+        !out.contains("digest reference(s)"),
+        "an image that was there before side A was removed:\n{out}"
+    );
+}
+
+#[test]
 fn ab_sh_is_red_when_pull_only_pulls_another_image() {
-    let (code, out) = ab_pull_only("ab-pull-skew", "pull", &[("AB_PULL_SKEW", "1")]);
+    let (code, out) = ab_pull_only("ab-pull-skew", "pull", &[("AB_PULL_SKEW", "1")], ("", ""));
     assert_eq!(code, 1, "side B pulling another tag is green:\n{out}");
     assert!(out.contains("[RED]  images"), "{out}");
     assert!(out.contains("registry.example/example/tool:1.1"), "{out}");
@@ -1799,7 +1865,7 @@ fn ab_sh_is_red_when_pull_only_pulls_another_image() {
 
 #[test]
 fn ab_sh_stops_when_pull_only_adds_no_image() {
-    let (code, out) = ab_pull_only("ab-pull-nothing", "nothing", &[]);
+    let (code, out) = ab_pull_only("ab-pull-nothing", "nothing", &[], ("", ""));
     assert_eq!(code, 2, "a pull-only run that adds no image passes:\n{out}");
     assert!(out.contains("side A added no image"), "{out}");
 }
@@ -1834,6 +1900,48 @@ fn ab_sh_leaves_another_tag_of_the_same_image_name_alone() {
             "another job's tag {tag:?} was removed:\n{left}\n{out}"
         );
     }
+}
+
+/// A component og does not run would be handed back to setup.sh on side
+/// B, so a bash-versus-og run of it compares bash with bash: ab.sh stops
+/// before side A (it ran both and said "bash vs og").
+#[test]
+fn ab_sh_refuses_a_component_og_hands_back() {
+    let t = Tmp::new("ab-unported-og");
+    let og = t.0.join("og");
+    write(
+        &og,
+        format!(
+            "#!/usr/bin/env bash\ncase \"$1 $2\" in\n  'setup install') [ \"${{3:-}}\" = --help ] && echo 'og setup install'; exit 0 ;;\n  'setup ported') exit 1 ;;\nesac\nexec {} \"$@\"\n",
+            s(&og_bin())
+        )
+        .as_bytes(),
+        0o755,
+    );
+    let (code, out) = ab_run(
+        "ab-unported",
+        &["kir-data"],
+        "ok",
+        &[("OG", &s(&og))],
+        &|_| {},
+    );
+    assert_eq!(
+        code, 2,
+        "a component og hands back ran as bash vs og:\n{out}"
+    );
+    assert!(out.contains("og does not run --kir-data"), "{out}");
+    assert!(!out.contains("== side a"), "side A ran:\n{out}");
+}
+
+/// A WORK_DIR that holds og.before already is refused: ab.sh would copy
+/// bin/.og into it and restore the wrong folder before side B.
+#[test]
+fn ab_sh_refuses_a_work_dir_with_an_og_snapshot() {
+    let (code, out) = ab_with("ab-og-before", "ok", &[], &|t| {
+        fs::create_dir_all(t.join("work/og.before")).unwrap();
+    });
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("og.before exists"), "{out}");
 }
 
 #[test]
