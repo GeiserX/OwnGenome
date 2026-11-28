@@ -40,16 +40,6 @@ if ! "$OG" version > /dev/null 2>&1; then
   exit 0
 fi
 
-# free_port: a port on 127.0.0.1 that nothing answers on (bash's /dev/tcp
-# connect is refused), picked at random from 20000 to 52767.
-free_port() {
-  local p
-  for _ in $(seq 100); do
-    p=$((20000 + RANDOM % 32768))
-    if ! (exec 3<> "/dev/tcp/127.0.0.1/${p}") 2> /dev/null; then echo "$p"; return; fi
-  done
-  fail "no free port on 127.0.0.1"
-}
 # og live serve reads assets/ and steps.tsv from the checkout its binary sits in.
 # An OG outside the checkout (unit-tests sets one) runs as a copy in a folder
 # that links to this checkout's assets/.
@@ -59,12 +49,20 @@ case "$(cd "$(dirname "$OG")" && pwd -P)/" in
   *) mkdir -p "${WORK}/checkout/bin"; ln -s "${REPO}/assets" "${WORK}/checkout/assets"
      cp "$OG" "${WORK}/checkout/bin/og"; SERVE="${WORK}/checkout/bin/og" ;;
 esac
-WEB=$(free_port) ING=$(free_port)
 mkdir -p "${WORK}/genome"
-"$SERVE" live serve --root "${WORK}/genome" --state-dir "${WORK}/state" --port "$WEB" \
-  --ingest-port "$ING" --quiet 2> "${WORK}/server.err" &
+"$SERVE" live serve --root "${WORK}/genome" --state-dir "${WORK}/state" --port 0 \
+  --ingest-port 0 --quiet 2> "${WORK}/server.err" &
 PID=$!
-for _ in $(seq 50); do [ -s "${WORK}/state/ingest-token" ] && curl -s -o /dev/null "http://127.0.0.1:${ING}/" && break; sleep 0.1; done
+# Port 0: the site's start line, printed once both listen, names the ports it bound. Each port
+# must be followed by '/', so a line still being written is never read.
+ING=""
+for _ in $(seq 100); do
+  read -r _ ING < <(sed -n 's|^og live serve: browser http://127\.0\.0\.1:\([0-9]*\)/ ; ingest http://127\.0\.0\.1:\([0-9]*\)/.*|\1 \2|p' \
+    "${WORK}/server.err") && break
+  kill -0 "$PID" 2>/dev/null || break
+  sleep 0.1
+done
+[ -n "$ING" ] || fail "og live serve printed no ports: $(cat "${WORK}/server.err")"
 # og live serve takes a message only under the token of its state folder, the first part of the path.
 TOK=$(cat "${WORK}/state/ingest-token") || fail "og live serve wrote no ingest token: $(cat "${WORK}/server.err")"
 EV="${WORK}/state/runs/demo1/events.jsonl"

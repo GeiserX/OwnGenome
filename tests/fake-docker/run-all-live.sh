@@ -57,11 +57,19 @@ OG="${REPO_ROOT}/bin/og"
 "$OG" version > /dev/null || fail "og does not run here: build it into bin/.og (rust/og.sh, the Guard fake-docker job does)"
 CURL=$(PATH=/usr/local/bin:/usr/bin:/bin command -v curl) || fail "the real curl is needed"
 STATE="${CASE_WORK}/live-state"
-WEB=$("$OG" dev fixture free-port) ING=$("$OG" dev fixture free-port)
-"$OG" live serve --root "$G" --state-dir "$STATE" --port "$WEB" --ingest-port "$ING" --quiet 2> "${CASE_WORK}/site.err" &
+"$OG" live serve --root "$G" --state-dir "$STATE" --port 0 --ingest-port 0 --quiet 2> "${CASE_WORK}/site.err" &
 SITE=$!
 trap 'kill "$SITE" 2>/dev/null || true' EXIT
-for _ in $(seq 100); do [ -s "${STATE}/ingest-token" ] && "$CURL" -s -o /dev/null "http://127.0.0.1:${ING}/" && break; sleep 0.1; done
+# Port 0: the site's start line, printed once both listen, names the ports it bound. Each port
+# must be followed by '/', so a line still being written is never read.
+WEB="" ING=""
+for _ in $(seq 100); do
+  read -r WEB ING < <(sed -n 's|^og live serve: browser http://127\.0\.0\.1:\([0-9]*\)/ ; ingest http://127\.0\.0\.1:\([0-9]*\)/.*|\1 \2|p' \
+    "${CASE_WORK}/site.err") && break
+  kill -0 "$SITE" 2>/dev/null || break
+  sleep 0.1
+done
+[ -n "$ING" ] || fail "og live serve printed no ports: $(cat "${CASE_WORK}/site.err")"
 TOK=$(cat "${STATE}/ingest-token") || fail "og live serve wrote no ingest token: $(cat "${CASE_WORK}/site.err")"
 URL="http://127.0.0.1:${ING}"
 

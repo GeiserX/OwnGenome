@@ -48,7 +48,9 @@ bases=$(head -c 3000 < /dev/zero | tr '\0' 'A')
 printf 'chr1\t3000\t6\t60\t61\n' > "${G}/reference/synthetic.fasta.fai"
 : > "${G}/S/manta/results/variants/diploidSV.vcf.gz"
 : > "${G}/S/sv_merged/S_sv_consensus.vcf.gz"
-PORT=$((20000 + RANDOM % 20000))
+# The viewer runs on port 0: og view serve binds a port the system picks and prints it in its
+# address line, read into PORT below.
+PORT=""
 
 # A python3 that fails, first on PATH: the viewer must not need one.
 NOPY="${WORK}/nopy"
@@ -56,9 +58,11 @@ mkdir -p "$NOPY"
 printf '#!/bin/sh\necho "python3 was called: $*" >&2\nexit 127\n' > "${NOPY}/python3"
 chmod 755 "${NOPY}/python3"
 
+# Each call runs in a subshell of its own (&, $(...)): exec makes that subshell the script, which
+# execs og view serve, so killing SERVER stops the server and leaves none behind.
 view() {
-  GENOME_DIR="$G" REF_FASTA="${G}/reference/synthetic.fasta" OWNGENOME_VIEW_PORT="$PORT" READS=none \
-    PATH="${NOPY}:${PATH}" bash "${REPO}/scripts/owngenome-view.sh" "$@"
+  GENOME_DIR="$G" REF_FASTA="${G}/reference/synthetic.fasta" OWNGENOME_VIEW_PORT=0 READS=none \
+    PATH="${NOPY}:${PATH}" exec bash "${REPO}/scripts/owngenome-view.sh" "$@"
 }
 
 # --- 1-2. start it ------------------------------------------------------------------------
@@ -67,7 +71,9 @@ SERVER=$!
 up=""
 for _ in $(seq 1 240); do
   kill -0 "$SERVER" 2> /dev/null || break
-  if grep -qF "Viewer for S: http://127.0.0.1:${PORT}/#chr1:451" "${WORK}/server.log"; then up=1; break; fi
+  # The locus follows the port, so a line still being written is never read.
+  got=$(sed -n 's|^Viewer for S: http://127\.0\.0\.1:\([1-9][0-9]*\)/#chr1:451$|\1|p' "${WORK}/server.log")
+  if [ -n "$got" ]; then PORT=$got up=1; break; fi
   sleep 0.5
 done
 if [ -n "$up" ]; then pass "owngenome-view.sh starts og view serve and prints the address"; else

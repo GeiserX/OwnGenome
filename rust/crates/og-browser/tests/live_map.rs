@@ -3088,12 +3088,17 @@ fn request(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: 
     parse_resp(&raw)
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// The browser port of a line of `og live serve`'s start line (`og live serve: browser
+/// http://HOST:PORT/ ; ingest ...`), the port it bound; `None` for any other line.
+fn browser_port(line: &str) -> Option<u16> {
+    line.strip_prefix("og live serve: browser ")?
+        .split_whitespace()
+        .next()?
+        .trim_end_matches('/')
+        .rsplit_once(':')?
+        .1
+        .parse()
+        .ok()
 }
 
 /// `og live serve` on a free port, with the repository's assets and steps.
@@ -3132,13 +3137,8 @@ impl Site {
         let mut lines = BufReader::new(site.child.stderr.take().unwrap()).lines();
         while let Some(line) = lines.next() {
             let line = line.unwrap();
-            if let Some(url) = line.strip_prefix("og live serve: browser ") {
-                site.port = url
-                    .split_whitespace()
-                    .next()
-                    .and_then(|u| u.trim_end_matches('/').rsplit(':').next())
-                    .and_then(|p| p.parse().ok())
-                    .expect("og live serve printed no port");
+            if line.starts_with("og live serve: browser ") {
+                site.port = browser_port(&line).expect("og live serve printed no port");
                 // Keep reading what the server says, so it never writes to a
                 // closed pipe.
                 std::thread::spawn(move || {
@@ -3610,18 +3610,26 @@ impl Drop for Reap {
     }
 }
 
-fn wait_port(port: u16, child: &mut Child, secs: u64) -> bool {
+/// The browser port in the start line `og live serve` writes to `err` once it listens, read
+/// only when that whole line, up to its newline, is there (it is written in parts); `None` when
+/// `child` exits first or `secs` pass.
+fn started_port(err: &Path, child: &mut Child, secs: u64) -> Option<u16> {
     let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
+        let text = fs::read_to_string(err).unwrap_or_default();
+        let port = text
+            .split_inclusive('\n')
+            .filter_map(|l| l.strip_suffix('\n'))
+            .find_map(browser_port);
+        if port.is_some() {
+            return port;
+        }
         if child.try_wait().ok().flatten().is_some() {
-            return false;
+            return None;
         }
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return true;
-        }
-        sleep(500);
+        sleep(100);
     }
-    false
+    None
 }
 
 fn access_rows(path: &Path) -> Vec<String> {
@@ -3657,8 +3665,8 @@ fn live_site_genome_viewer() {
     fs::write(state.join("password"), format!("{PASSWORD_HASH}\n")).unwrap();
     let mut r = Report::default();
 
-    // 1. owngenome-live.sh, with a password.
-    let (port, iport) = (free_port(), free_port());
+    // 1. owngenome-live.sh, with a password, on port 0 for both listeners: the site's start
+    // line names the browser port it bound.
     let log = work.join("site.log");
     let mut script = Reap(
         Command::new("bash")
@@ -3666,8 +3674,8 @@ fn live_site_genome_viewer() {
             .arg("--quiet")
             .env("GENOME_DIR", &gd)
             .env("REF_FASTA", "reference/synthetic.fasta")
-            .env("OWNGENOME_LIVE_PORT", port.to_string())
-            .env("OWNGENOME_LIVE_INGEST_PORT", iport.to_string())
+            .env("OWNGENOME_LIVE_PORT", "0")
+            .env("OWNGENOME_LIVE_INGEST_PORT", "0")
             .env("OWNGENOME_LIVE_STATE_DIR", &state)
             .env_remove("OWNGENOME_LIVE_PASSWORD_HASH")
             .stdin(Stdio::null())
@@ -3676,7 +3684,8 @@ fn live_site_genome_viewer() {
             .spawn()
             .unwrap(),
     );
-    let up = wait_port(port, &mut script.0, 120);
+    let started = started_port(&work.join("site.err"), &mut script.0, 120);
+    let (up, port) = (started.is_some(), started.unwrap_or(0));
     let said = || {
         format!(
             "{}{}",

@@ -1146,6 +1146,16 @@ fn a_lookup_that_fails_after_the_replay_makes_the_command_exit_1() {
     assert_eq!(rc, 1, "{out}");
 }
 
+/// A port of 127.0.0.1 where nothing listens, and the two ends of the connection that hold it:
+/// the port is the local end of a connection to a listener of our own. A connection to it is
+/// refused at once, and the system gives it to no other socket while it is held.
+fn closed_port() -> ([std::net::TcpStream; 2], u16) {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let c = std::net::TcpStream::connect(l.local_addr().unwrap()).unwrap();
+    let port = c.local_addr().unwrap().port();
+    ([c, l.accept().unwrap().0], port)
+}
+
 /// Every lookup through the online client at a port where nothing listens:
 /// a refused connection, not an HTTP error.
 struct Refused(Online, u16);
@@ -1211,10 +1221,9 @@ fn a_failed_lookup_never_prints_nothing_newer_and_keeps_a_newer_file_here_rerun_
 
 #[test]
 fn when_every_lookup_is_refused_the_check_says_it_could_not_check() {
-    let port = {
-        let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
+    // The port stays held while the check runs, so every connection is refused and no other
+    // test is given it.
+    let (_down, port) = closed_port();
     let g = genome("all-refused", Opt::default());
     let r = Refused(online(port), port);
     let c = run_check(&g, &r, &this_pins(), Some("3.66.0"));
@@ -1224,6 +1233,11 @@ fn when_every_lookup_is_refused_the_check_says_it_could_not_check() {
         .filter(|i| i.error.is_some() || i.upstream.is_some())
     {
         assert_eq!(i.class, Class::Error, "{i:?}");
+        // Refused, not answered: an answer from anything else on the port is an error too.
+        assert!(
+            i.error.as_deref().is_some_and(|e| e.contains("no answer")),
+            "{i:?}"
+        );
     }
     assert!(c.release.is_err());
     assert_eq!(c.errors(), 7);

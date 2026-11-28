@@ -1982,7 +1982,17 @@ impl LiveServe {
     fn start(og: &Path, root: &Path, state: &Path, assets: &Path) -> Self {
         let mut server = Self {
             child: Command::new(og)
-                .args(["live", "serve", "--port", "0", "--quiet", "--root"])
+                // Port 0 for the ingest listener too: its default, 8788, may be taken.
+                .args([
+                    "live",
+                    "serve",
+                    "--port",
+                    "0",
+                    "--ingest-port",
+                    "0",
+                    "--quiet",
+                    "--root",
+                ])
                 .arg(root)
                 .arg("--state-dir")
                 .arg(state)

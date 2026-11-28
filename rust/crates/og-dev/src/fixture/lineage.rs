@@ -97,7 +97,6 @@ const TABLE: &[(&str, &str, Run)] = &[
         ystr::readcount,
     ),
     ("ystr-cut", "START END READS.sam", ystr::cut),
-    ("free-port", "", free_port),
 ];
 
 /// The usage lines of every kind, one per line.
@@ -414,17 +413,6 @@ fn cigar(s: &str) -> Vec<Op> {
     ops
 }
 
-/// `og dev fixture free-port`: a TCP port on 127.0.0.1 that was free a
-/// moment ago (the OS picks it), for a case that starts a server.
-fn free_port(args: &[String], out: &mut dyn Write, _err: &mut dyn Write) -> Result<(), Fail> {
-    want(args, 0)?;
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0))?
-        .local_addr()?
-        .port();
-    writeln!(out, "{port}")?;
-    Ok(())
-}
-
 #[cfg(test)]
 pub(crate) mod testutil {
     use std::path::PathBuf;
@@ -555,12 +543,5 @@ mod tests {
             assert!(help.iter().any(|k| k == name), "{name}: {help:?}");
             assert!(err.iter().any(|k| k == name), "{name}: {err:?}");
         }
-    }
-
-    #[test]
-    fn free_port_prints_a_port() {
-        let (code, out, _) = run("free-port", &[]);
-        assert_eq!(code, 0);
-        assert!(out.trim().parse::<u16>().expect("a port") > 0);
     }
 }
