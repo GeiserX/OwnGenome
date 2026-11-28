@@ -13,6 +13,7 @@ rustix = { workspace = true, features = ["fs", "process"] }
 signal-hook.workspace = true
 pycompat.workspace = true
 og-io.workspace = true
+og-intervals.workspace = true
 og-filters.workspace = true
 flate2.workspace = true
 zlib-rs.workspace = true

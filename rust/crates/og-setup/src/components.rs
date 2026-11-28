@@ -230,7 +230,7 @@ pub const TABLE: &[Component] = &[
             "{ref_stem}_maskedGRC.fasta.fai",
             "{ref_stem}_maskedGRC.dict",
         ],
-        &["OG_IMAGE"],
+        &["SAMTOOLS_IMAGE"],
     ),
     terms(
         installer(
