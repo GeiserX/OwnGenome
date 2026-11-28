@@ -29,10 +29,7 @@ fn readable(p: &str) -> bool {
 /// Runs a host tool with stdout and stderr shared; true when it exits 0.
 fn host(out: &mut dyn Write, tool: &str, args: &[&str]) -> bool {
     let _ = out.flush();
-    Command::new(tool)
-        .args(args)
-        .stdin(Stdio::null())
-        .status()
+    crate::child::status(Command::new(tool).args(args).stdin(Stdio::null()))
         .is_ok_and(|s| s.success())
 }
 
@@ -89,9 +86,8 @@ pub fn adopt(r: &Run, old: &str, new: &str, check: Option<&Check>, out: &mut dyn
         }
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+            .stderr(Stdio::null());
+        crate::child::status(&mut cmd).is_ok_and(|s| s.success())
     };
     let has_url = check.is_some();
     let has_sum = check.is_some_and(|c| c.sum.is_some());

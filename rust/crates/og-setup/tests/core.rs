@@ -115,6 +115,7 @@ fn a_second_flag_is_refused() {
     for args in [
         vec!["--kir-data", "--viral-data"],
         vec!["--kir-data", "/g", "--viral-data"],
+        vec!["--vep-cache", "/g", "--kir-data"],
         vec!["--pull-only", "--kir-data"],
     ] {
         let stop = og_parse(&args, &[]).unwrap_err();
@@ -128,12 +129,10 @@ fn a_second_flag_is_refused() {
 }
 
 /// After a flag og hands back to setup.sh, a second flag is setup.sh's to
-/// read, as it always was: og parses the form and hands it on (it refused
-/// `--vep-cache /data --kir-data` with exit 2).
+/// read, as it always was: og parses the form and hands it on.
 #[test]
 fn a_second_flag_after_a_flag_bash_runs_goes_to_bash() {
     for args in [
-        vec!["--vep-cache", "/g", "--kir-data"],
         vec!["/g", "--kir-data"],
         vec!["--refresh", "clinvar", "/g", "--everything"],
     ] {

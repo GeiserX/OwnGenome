@@ -145,11 +145,11 @@ pub fn staging(dir: &str, err: &mut dyn Write) -> Option<String> {
 /// `tar xzf ARCHIVE -C DIR`, the host's tar with its own messages.
 pub fn untar(archive: &str, dir: &str, out: &mut dyn Write, err: &mut dyn Write) -> bool {
     let _ = out.flush();
-    match Command::new("tar")
-        .args(["xzf", archive, "-C", dir])
-        .stdin(Stdio::null())
-        .status()
-    {
+    match crate::child::status(
+        Command::new("tar")
+            .args(["xzf", archive, "-C", dir])
+            .stdin(Stdio::null()),
+    ) {
         Ok(s) => s.success(),
         Err(e) => {
             let _ = writeln!(err, "ERROR: cannot run tar: {e}");
