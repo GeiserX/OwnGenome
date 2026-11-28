@@ -109,10 +109,11 @@
 //! component); `--flip DIR PATH` flips one bit of the byte in
 //! the middle of DIR/PATH (twice restores it); PATH must name a regular file
 //! inside DIR, reached through folders only. `--compare-logs A B` compares
-//! two setup logs with times, durations, speeds and download progress
-//! masked and download retries left out (fetch's `Download attempt i/n
-//! failed: URL` and `Checksum download attempt i/n failed: URL`, and curl's
-//! `curl: (N) ...`; nothing else), and the missing list (`Missing (...)`, `  - item`, `retry:`)
+//! two setup logs with times, durations, speeds, download and git clone
+//! progress and mktemp's random stage names masked, and download retries
+//! left out (fetch's `Download attempt i/n failed: URL` and `Checksum
+//! download attempt i/n failed: URL`, and curl's `curl: (N) ...`; nothing
+//! else), and the missing list (`Missing (...)`, `  - item`, `retry:`)
 //! line by line, unmasked.
 //!
 //! Exit 0 when nothing differs outside the allowlist, 1 when something
@@ -1541,6 +1542,21 @@ static PULL: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("a valid pattern")
 });
+static GIT_PROGRESS: LazyLock<Regex> = LazyLock::new(|| {
+    // A progress row of git clone and checkout (`Receiving objects:  40%
+    // (3/7)`, `Updating files:  96% (357/369)`, `remote: Total 391 ...`):
+    // how far it got when the terminal was drawn, which two runs of the
+    // same clone print at other points.
+    Regex::new(
+        r"^(remote: )?((Enumerating|Counting|Compressing|Receiving|Unpacking) objects|Resolving deltas|Updating files):\s+\d{1,3}% |^remote: Total \d+ ",
+    )
+    .expect("a valid pattern")
+});
+static STAGE: LazyLock<Regex> = LazyLock::new(|| {
+    // The folder `mktemp -d <dir>/.<name>.XXXXXX` made: setup stages a
+    // download or a clone there, under a new random name each run.
+    Regex::new(r"/\.([A-Za-z0-9_-]+)\.[A-Za-z0-9]{6}/").expect("a valid pattern")
+});
 static DATE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?")
         .expect("a valid pattern")
@@ -1602,9 +1618,11 @@ fn masked_log(text: &str) -> Vec<String> {
                 && !l.trim_start().starts_with("Dload")
                 && !PULL.is_match(l)
                 && !RETRY.is_match(l)
+                && !GIT_PROGRESS.is_match(l.trim_start())
         })
         .map(|l| {
-            MASKS.iter().fold(mask_dates(l), |s, (re, to)| {
+            let l = STAGE.replace_all(l, "/.$1.XXXXXX/");
+            MASKS.iter().fold(mask_dates(&l), |s, (re, to)| {
                 re.replace_all(&s, *to).into_owned()
             })
         })
@@ -2012,5 +2030,21 @@ mod tests {
         assert_eq!(l, ["kept"]);
         let l = masked_log("100 apples\n");
         assert_eq!(l, ["100 apples"]);
+        // git clone's progress rows come at other points in two runs, and
+        // the stage mktemp made has a new name each run.
+        let l = masked_log(
+            "Cloning into '/g/reference/.pypgx.oR0S9n/bundle'...\nremote: Total 391 (delta 18), reused 5 (delta 0)\nReceiving objects:  40% (3/7)\rUpdating files:  96% (357/369)\rUpdating files: 100% (369/369), done.\nNote: switching to 'abc'.\n",
+        );
+        assert_eq!(
+            l,
+            [
+                "Cloning into '/g/reference/.pypgx.XXXXXX/bundle'...",
+                "Note: switching to 'abc'."
+            ]
+        );
+        // A stage name is six characters after a hidden folder's name; a
+        // longer one, or one under a visible name, is kept.
+        let l = masked_log("kept /g/.cache.abcdefg/x and /g/pypgx.oR0S9n/x\n");
+        assert_eq!(l, ["kept /g/.cache.abcdefg/x and /g/pypgx.oR0S9n/x"]);
     }
 }
