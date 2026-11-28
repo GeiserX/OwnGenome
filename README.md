@@ -74,6 +74,7 @@ On a release tag, `setup.sh` downloads that release's `og` binaries. On `main` i
 The full documentation is at **https://geiserx.github.io/OwnGenome/**, one page per pipeline step included.
 
 - [Getting started](https://geiserx.github.io/OwnGenome/getting-started/): prerequisites, the install steps for each platform, platform notes (macOS, WSL2, Unraid), the full run with `run-all.sh` and its switches, the FASTQ, BAM, VCF and ORA entry paths step by step, directory layout
+- [Upgrading](UPGRADING.md): what changed in each major release, and every step to move an install to it
 - [Quick test](https://geiserx.github.io/OwnGenome/quick-test/): verify the setup on public data before your own
 - [Hardware and storage requirements](https://geiserx.github.io/OwnGenome/hardware-requirements/): download sizes, per-step runtime, memory and disk figures
 - [Reference data setup](https://geiserx.github.io/OwnGenome/00-reference-setup/): the GRCh38 reference (the no-ALT analysis set) and every database

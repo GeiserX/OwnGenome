@@ -1,4 +1,7 @@
 Site list: 11 sites; kept 5, dropped 6
+  kept, strand from the liftover chain: 2
+  kept, strand from the alleles (the chain does not place the site at its dbSNP position): 2
+  kept, chrM (one sequence in both builds): 1
   dropped, no rsID (a 23andMe internal id): 1
   dropped, not in dbSNP (merged or withdrawn): 1
   dropped, not an SNV in dbSNP: 1

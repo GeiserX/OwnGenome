@@ -1,0 +1,1 @@
+ERROR: old-sites.tsv.gz: the site table has no '## table_format: 2' line, so it was built before og took each site's strand from the liftover chain, and it exports wrong bases at sites on inverted blocks: rebuild it with ./scripts/setup.sh --consumer-sites <genome_dir>, which replaces a site table that is not the pinned build

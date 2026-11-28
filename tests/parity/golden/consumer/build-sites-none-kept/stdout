@@ -1,2 +1,5 @@
 Site list: 2 sites; kept 0, dropped 2
+  kept, strand from the liftover chain: 0
+  kept, strand from the alleles (the chain does not place the site at its dbSNP position): 0
+  kept, chrM (one sequence in both builds): 0
   dropped, no rsID (a 23andMe internal id): 2

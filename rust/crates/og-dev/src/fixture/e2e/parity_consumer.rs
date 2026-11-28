@@ -128,9 +128,14 @@ pub(super) fn run(args: &[String]) -> Result<(), Fail> {
     vcf.finish()?.flush()?;
     let mut template =
         flate2::write::GzEncoder::new(create(Path::new(template))?, flate2::Compression::default());
+    // The format line og consumer build-sites writes (og-steps consumer
+    // TABLE_FORMAT_LINE); og consumer export refuses a table without it or
+    // with another format, so the export-synthetic parity case fails when
+    // the two formats part.
     writeln!(
         template,
-        "## template_sites: {}\n## dropped: 1000\n#rsid\tchrom\tpos37\tref37\tpos38\tref38\tstrand",
+        "## table_format: 2 (each site's strand from UCSC's hg19ToHg38 liftover chain)\n\
+         ## template_sites: {}\n## dropped: 1000\n#rsid\tchrom\tpos37\tref37\tpos38\tref38\tstrand",
         site_count + 1000
     )?;
     template.write_all(&sites)?;

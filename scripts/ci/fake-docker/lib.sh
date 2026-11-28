@@ -131,8 +131,12 @@ expect_rc() {
 
 # docker_log_has AWK_REGEX MESSAGE: fail with MESSAGE unless a line of the
 # docker/wget/curl log matches. One awk process, so no pipe can lose a match.
+# The regex reaches awk through the environment, as it is. awk -v would read
+# its backslashes as string escapes first, and gawk, the runner's awk, turns an
+# escape it does not know (\( or \.) into the bare character, so the same
+# pattern would match other lines under gawk than under mawk.
 docker_log_has() {
-  awk -v re="$1" '$0 ~ re { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG" || fail "$2"
+  DOCKER_LOG_RE="$1" awk 'BEGIN { re = ENVIRON["DOCKER_LOG_RE"] } $0 ~ re { found = 1 } END { exit !found }' "$FAKE_DOCKER_LOG" || fail "$2"
 }
 
 # hide_commands NAME...: point PATH at one directory of links to every command

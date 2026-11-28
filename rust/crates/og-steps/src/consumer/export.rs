@@ -50,8 +50,8 @@ use rustc_hash::FxHashSet;
 use super::check::{self, Layout};
 use super::zip::{self, DosDate};
 use super::{
-    Args, CHROMS, Fail, MT, Usage, X, Y, basename, chrom_index, gvcf_contig, head, path_join,
-    py_repr, py_repr_list, report,
+    Args, CHROMS, Fail, MT, TABLE_FORMAT, Usage, X, Y, basename, chrom_index, gvcf_contig, head,
+    path_join, py_repr, py_repr_list, report,
 };
 
 pub const DOC_URL: &str =
@@ -206,6 +206,27 @@ impl Table {
     }
 }
 
+/// The table's `## table_format:` value must open with [`TABLE_FORMAT`]. A
+/// table with no such line was built before og took each site's strand from
+/// the liftover chain: its strand is wrong at sites on inverted blocks, so
+/// it would export the complement of the chip's bases there. setup.sh
+/// rebuilds a table that is not the pinned build.
+fn check_format(path: &str, format: Option<&str>) -> Result<(), Fail> {
+    let fix = "rebuild it with ./scripts/setup.sh --consumer-sites <genome_dir>, \
+               which replaces a site table that is not the pinned build";
+    match format.and_then(|v| v.split_whitespace().next()) {
+        Some(TABLE_FORMAT) => Ok(()),
+        Some(other) => Err(Fail::input(format!(
+            "{path}: site table format {other}, and this og reads format {TABLE_FORMAT}: {fix}"
+        ))),
+        None => Err(Fail::input(format!(
+            "{path}: the site table has no '## table_format: {TABLE_FORMAT}' line, so it was built \
+             before og took each site's strand from the liftover chain, and it exports wrong bases \
+             at sites on inverted blocks: {fix}"
+        ))),
+    }
+}
+
 fn read_table(path: &str) -> Result<Table, Fail> {
     let input = og_io::open(path).map_err(|e| Fail::io(path, &e))?;
     let mut lines = Lines::new(input, Utf8::Replace);
@@ -242,6 +263,7 @@ fn read_table(path: &str) -> Result<Table, Fail> {
                     py_repr_list(&SITES_HEADER)
                 )));
             }
+            check_format(path, t.meta("table_format"))?;
             have_cols = true;
             continue;
         }
@@ -1420,6 +1442,55 @@ mod tests {
         );
         let e = run("unsorted.g.vcf.gz", "unit-sites.tsv.gz", "").unwrap_err();
         assert!(e.code == 1 && e.msg.contains("is not sorted"), "{e:?}");
+    }
+
+    /// A table with no `## table_format: 2` line, as every build before the
+    /// strand came from the chain wrote it, or with another format, is
+    /// refused before a site is read; the message names the rebuild.
+    #[test]
+    fn a_table_built_before_the_chain_strand_is_refused() {
+        let dir = std::env::temp_dir().join(format!("og-consumer-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch directory");
+        let cols = "#rsid\tchrom\tpos37\tref37\tpos38\tref38\tstrand\nrs1\t1\t100\tG\t200\tC\t+\n";
+        let table = |name: &str, meta: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, format!("## consumer sites: test\n{meta}{cols}")).expect("a table");
+            p.to_string_lossy().into_owned()
+        };
+        let old = table("old.tsv", "## template_sites: 1\n");
+        let e = read_table(&old).err().expect("refused");
+        assert_eq!(e.code, 2, "{e:?}");
+        assert!(
+            e.msg.contains("has no '## table_format: 2' line"),
+            "{}",
+            e.msg
+        );
+        assert!(
+            e.msg
+                .contains("./scripts/setup.sh --consumer-sites <genome_dir>"),
+            "{}",
+            e.msg
+        );
+        let other = table("other.tsv", "## table_format: 3 (later)\n");
+        let e = read_table(&other).err().expect("refused");
+        assert!(
+            e.msg
+                .contains("site table format 3, and this og reads format 2"),
+            "{}",
+            e.msg
+        );
+        let good = table(
+            "good.tsv",
+            &format!("{}\n", super::super::TABLE_FORMAT_LINE),
+        );
+        assert_eq!(read_table(&good).expect("read").sites.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            super::super::TABLE_FORMAT_LINE
+                .starts_with(&format!("## table_format: {TABLE_FORMAT} (")),
+            "the line og writes opens with the format og reads"
+        );
     }
 
     #[test]

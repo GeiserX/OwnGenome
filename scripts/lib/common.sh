@@ -415,6 +415,17 @@ consumer_sites_digest() {
   _digest sha256 <(gzip -dc "$1")
 }
 
+# consumer_sites_current TABLE: true when the step-40 site table has the format
+# og consumer export reads, a "## table_format: 2" line. og consumer
+# build-sites writes it since each site's strand comes from the liftover chain;
+# a table built before has no such line, has the wrong bases at sites on
+# inverted blocks, and og consumer export refuses it. Only the header is read.
+consumer_sites_current() {
+  local f
+  f=$({ gzip -dc "$1" 2>/dev/null || true; } | awk '/^## table_format: / { print $3; exit } /^#rsid/ { exit }')
+  [ "$f" = 2 ]
+}
+
 # og_bin: the og that downloads, OG when set (the unit tests set it),
 # else bin/og of this checkout.
 og_bin() { printf '%s' "${OG:-${PGP_ROOT}/bin/og}"; }
