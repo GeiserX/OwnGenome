@@ -32,7 +32,9 @@
 #    errorStrategy 'finish' is named by both blocks and passes the audit;
 #    the audit with the v2.3.0 list written out by hand reports it (the
 #    audit can fail); a planted withName 'finish' in pgsc_calc's conf/ is
-#    reported; a module without the block fails.
+#    reported, also on one line and inside a one-line process block, while a
+#    one-line 'retry' or 'ignore' (with or without ';') passes; a module
+#    without the block fails.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -105,6 +107,16 @@ audit() {
   # shellcheck disable=SC2016  # the dollar signs are awk's
   find -L "$dir" -type f \( -name '*.nf' -o -name '*.config' -o -name '*.groovy' \) | sort | while IFS= read -r f; do
     awk -v covered="$(paste -sd'|' - <<< "$covered")" -v rel="${f#"$dir"/}" '
+      # safe CODE: every errorStrategy of the line is a literal retry or ignore
+      # that ends there (with ";", "}" or the line end), so no value can follow.
+      function safe(s,   rest) {
+        while (match(s, /errorStrategy/)) {
+          rest = substr(s, RSTART)
+          if (!match(rest, /^errorStrategy[[:space:]]*=[[:space:]]*["\047](retry|ignore)["\047][[:space:]]*(;|\}|$)/)) return 0
+          s = substr(rest, RLENGTH + 1)
+        }
+        return 1
+      }
       BEGIN { n = split(covered, c, "|"); for (i = 1; i <= n; i++) if (c[i] != "") ok[c[i]] = 1
               nf = rel ~ /\.nf$/ }
       {
@@ -124,10 +136,12 @@ audit() {
           } else {
             top = depth ? head[depth] : ""
             # A one-line selector (withLabel:x { errorStrategy = ... }) balances
-            # its braces, so depth never enters it: the line is the context.
-            if (code ~ /with(Label|Name)[[:space:]]*:[^{]*\{/) { top = code; sub(/[[:space:]]*\{.*$/, "", top); sub(/^[[:space:]]+/, "", top) }
+            # its braces, so depth never enters it: the line is the context. The
+            # selector is read where withLabel or withName starts, so a one-line
+            # process { withLabel:x { ... } } is the selector, not "process".
+            if (match(code, /with(Label|Name)[[:space:]]*:[^{]*\{/)) { top = substr(code, RSTART, RLENGTH - 1); sub(/[[:space:]]+$/, "", top) }
             if (top == "process") { }
-            else if (top ~ /^with(Label|Name)[[:space:]]*:/ && code ~ /errorStrategy[[:space:]]*=[[:space:]]*["\047](retry|ignore)["\047][[:space:]]*\}?[[:space:]]*$/) { }
+            else if (top ~ /^with(Label|Name)[[:space:]]*:/ && safe(code)) { }
             else print rel ":" FNR ": an errorStrategy under \"" top "\" that may be finish: " line
           }
         }
@@ -226,6 +240,31 @@ if grep -q 'conf/planted_one_line.config:2: an errorStrategy under "withLabel:pl
   ok "the audit reports a one-line withLabel 'finish' and accepts a one-line 'retry'"
 else
   bad "the audit misreads one-line selectors: ${ONE:-nothing}"
+fi
+# A one-line process block that holds a one-line selector: the selector, not
+# "process", is the context, so its 'finish' is reported. A selector whose
+# value ends with ';' or with more than one '}' is still a 'retry'. A value
+# that goes on after the 'retry' is reported, and so is a second errorStrategy
+# on a line whose first one is a 'retry'.
+{
+  echo "process { withLabel: planted_nested { errorStrategy = 'finish' } }"
+  echo "process {"
+  echo "    withLabel: planted_semi { errorStrategy = 'retry'; }"
+  echo "}"
+  echo "process { withName: 'PLANTED_OK' { errorStrategy = 'ignore' } }"
+  echo "process {"
+  echo "    withLabel: planted_expr { errorStrategy = 'retry' ?: 'finish' }"
+  echo "    withLabel: planted_two { errorStrategy = 'retry' }; withLabel: planted_two_b { errorStrategy = 'finish' }"
+  echo "}"
+} > "${P}/conf/planted_nested.config"
+NEST=$(audit "$P" "$(names "$PL")" | grep 'conf/planted_nested.config:' || true)
+if [ "$(grep -c . <<< "$NEST")" = 3 ] \
+  && grep -q 'conf/planted_nested.config:1: an errorStrategy under "withLabel: planted_nested"' <<< "$NEST" \
+  && grep -q 'conf/planted_nested.config:7: ' <<< "$NEST" \
+  && grep -q 'conf/planted_nested.config:8: ' <<< "$NEST"; then
+  ok "the audit reports a selector inside a one-line process block, a value after 'retry' and a second errorStrategy, and accepts ';' and '} }'"
+else
+  bad "the audit misreads one-line process blocks: ${NEST:-nothing}"
 fi
 grep -v 'own errorStrategy' "$MODULE" > "${WORK}/noblock.nf"
 if module_line "$PGSC" "${WORK}/noblock.nf" >/dev/null 2>&1; then
