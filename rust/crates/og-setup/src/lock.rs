@@ -8,7 +8,8 @@
 //! A live one is waited for, five seconds at a time. The lock goes when its
 //! [`Lock`] is dropped, and when SIGINT, SIGTERM or SIGHUP ends og (Ctrl-C,
 //! a kill, a closed terminal): the shell's `trap 'lock_release ...' EXIT`
-//! removed it then too. A lock left by a run killed with SIGKILL is
+//! removed it then too. A signal ignored when og started (nohup's SIGHUP) stays
+//! ignored, as bash keeps it. A lock left by a run killed with SIGKILL is
 //! taken over as stale.
 
 use std::io::Write;
@@ -40,14 +41,24 @@ fn held() -> MutexGuard<'static, Vec<PathBuf>> {
 
 /// Once per process, before the first lock is made: on SIGINT, SIGTERM or
 /// SIGHUP, remove every held lock and exit 128 + the signal (130, 143,
-/// 129), the status a shell gives a script those signals end.
+/// 129), the status a shell gives a script those signals end. A signal
+/// this process ignored when it started stays ignored, as bash keeps it:
+/// nohup's SIGHUP, the SIGINT of a job a script started with `&`.
 fn on_signals() -> std::io::Result<()> {
     use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
     static ARMED: OnceLock<Result<(), String>> = OnceLock::new();
     ARMED
         .get_or_init(|| {
-            let mut signals = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP])
-                .map_err(|e| e.to_string())?;
+            let ignored = ignored_at_start();
+            let watch: Vec<i32> = [SIGINT, SIGTERM, SIGHUP]
+                .into_iter()
+                .filter(|s| !ignored.contains(s))
+                .collect();
+            if watch.is_empty() {
+                return Ok(());
+            }
+            let mut signals =
+                signal_hook::iterator::Signals::new(watch).map_err(|e| e.to_string())?;
             std::thread::Builder::new()
                 .name("og-lock-signals".to_owned())
                 .spawn(move || {
@@ -66,6 +77,44 @@ fn on_signals() -> std::io::Result<()> {
         })
         .clone()
         .map_err(|e| std::io::Error::other(format!("cannot watch for signals: {e}")))
+}
+
+/// The signals this process ignores (SIG_IGN), read before og sets any
+/// handler, so they are the ones it started with. Linux lists them in
+/// /proc/self/status (`SigIgn:`, a hex mask, bit N-1 for signal N).
+/// Elsewhere a child bash inherits them and `trap -p` prints each as
+/// `trap -- '' SIGHUP` (bash 4.2 or later, and setup needs 4.4; the 3.2 of
+/// macOS's /bin/bash, or no bash, lists none).
+fn ignored_at_start() -> Vec<i32> {
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        return status
+            .lines()
+            .find_map(|l| l.strip_prefix("SigIgn:"))
+            .and_then(|m| u64::from_str_radix(m.trim(), 16).ok())
+            .map(|mask| (1..=64).filter(|n| mask >> (n - 1) & 1 == 1).collect())
+            .unwrap_or_default();
+    }
+    let Ok(o) = std::process::Command::new("bash")
+        .args(["-c", "trap -p"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .filter_map(|l| l.strip_prefix("trap -- '' "))
+        .filter_map(|name| {
+            [
+                signal_hook::consts::SIGINT,
+                signal_hook::consts::SIGTERM,
+                signal_hook::consts::SIGHUP,
+            ]
+            .into_iter()
+            .find(|&s| signal_hook::low_level::signal_name(s) == Some(name.trim()))
+        })
+        .collect()
 }
 
 /// Whether a process with this pid text is alive, as `kill -0 PID` says:
@@ -289,20 +338,20 @@ mod tests {
             std::process::exit(9);
         }
         let d = tmp("signal");
-        for (sig, code) in [
-            (rustix::process::Signal::INT, 130),
-            (rustix::process::Signal::TERM, 143),
-            (rustix::process::Signal::HUP, 129),
-        ] {
-            let lock = d.join(format!("{code}.lock"));
-            let mut child = Command::new(std::env::current_exe().unwrap())
+        // The child, started by bash after IGNORE (a `trap '' SIG` that
+        // ignores signals, as nohup or a script's `&` does); it says when
+        // it holds LOCK.
+        let hold = |lock: &Path, ignore: &str| {
+            let mut child = Command::new("bash")
+                .args(["-c", &format!("{ignore}exec \"$0\" \"$@\"")])
+                .arg(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
                     "lock::tests::a_signal_removes_the_held_lock",
                     "--nocapture",
                     "--test-threads=1",
                 ])
-                .env(CHILD, &lock)
+                .env(CHILD, lock)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
@@ -316,11 +365,55 @@ mod tests {
             );
             assert!(lock.join("pid").exists());
             let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();
+            (child, pid)
+        };
+        for (sig, code) in [
+            (rustix::process::Signal::INT, 130),
+            (rustix::process::Signal::TERM, 143),
+            (rustix::process::Signal::HUP, 129),
+        ] {
+            // A signal this test itself started with ignored (under nohup)
+            // is ignored in the child too, which is the case below.
+            if ignored_at_start().contains(&sig.as_raw()) {
+                continue;
+            }
+            let lock = d.join(format!("{code}.lock"));
+            let (mut child, pid) = hold(&lock, "");
             rustix::process::kill_process(pid, sig).unwrap();
             let status = child.wait().unwrap();
             assert_eq!(status.code(), Some(code), "after {sig:?}: {status}");
             assert!(!lock.exists(), "{sig:?} left {}", lock.display());
         }
+        // Ignored when og started: still ignored, and the lock stays held.
+        // Without /proc, only a bash that lists inherited ignores (4.2 or
+        // later; macOS's /bin/bash 3.2 does not) tells og about them.
+        let told = Path::new("/proc/self/status").exists()
+            || Command::new("bash")
+                .args(["-c", "trap '' HUP; bash -c 'trap -p'"])
+                .output()
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("SIGHUP"));
+        if !told {
+            let _ = std::fs::remove_dir_all(&d);
+            return;
+        }
+        let lock = d.join("nohup.lock");
+        let (mut child, pid) = hold(&lock, "trap '' HUP INT; ");
+        for sig in [rustix::process::Signal::HUP, rustix::process::Signal::INT] {
+            rustix::process::kill_process(pid, sig).unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        let gone = child.try_wait().unwrap();
+        assert!(
+            gone.is_none(),
+            "an ignored signal ended the child: {gone:?}"
+        );
+        assert!(
+            lock.join("pid").exists(),
+            "an ignored signal removed the lock"
+        );
+        rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
+        assert_eq!(child.wait().unwrap().code(), Some(143));
+        assert!(!lock.exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
